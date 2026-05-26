@@ -102,7 +102,7 @@ export function AuthProvider({ children }) {
   const sendPasswordReset = async (email) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     await api.post("/auth/password-reset/validate", { email: normalizedEmail });
-    await sendPasswordResetEmail(auth, normalizedEmail);
+    await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings());
   };
 
   const resendVerificationEmail = async ({ email, password } = {}) => {

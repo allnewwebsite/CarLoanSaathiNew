@@ -39,6 +39,9 @@ function authMessage(error) {
   if (code === "auth/wrong-password" || code === "auth/invalid-credential") return "Incorrect email or password.";
   if (code === "auth/weak-password") return "Password is too weak.";
   if (code === "auth/too-many-requests") return "Too many attempts. Try again later.";
+  if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
+    return "This domain is blocked by Firebase API key restrictions. Add this website in Google Cloud API key restrictions.";
+  }
   if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") return "Unable to send password reset email. Try again later.";
   return message || "Unable to login. Please verify your email and password.";
 }
