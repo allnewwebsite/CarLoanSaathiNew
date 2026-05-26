@@ -29,6 +29,18 @@ function walk(dir, files = []) {
   return files;
 }
 
+function gitVisibleFiles() {
+  try {
+    return execSync("git ls-files --cached --others --exclude-standard", { encoding: "utf8" })
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((file) => path.join(root, file))
+      .filter((file) => fs.existsSync(file));
+  } catch {
+    return walk(root);
+  }
+}
+
 function stagedFiles() {
   try {
     return execSync("git diff --cached --name-only", { encoding: "utf8" })
@@ -41,7 +53,7 @@ function stagedFiles() {
   }
 }
 
-const files = process.argv.includes("--staged") ? stagedFiles() : walk(root);
+const files = process.argv.includes("--staged") ? stagedFiles() : gitVisibleFiles();
 const findings = [];
 
 for (const file of files) {

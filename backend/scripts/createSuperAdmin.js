@@ -11,13 +11,17 @@ function fail(message) {
 async function sendVerificationEmail(email, password) {
   const apiKey = process.env.FIREBASE_WEB_API_KEY;
   const continueUrl = process.env.FIREBASE_ACTION_CONTINUE_URL || process.env.CLIENT_ORIGIN || "http://localhost:5173/super-admin";
-  if (!apiKey) {
+  const printVerificationLink = async (reason = "") => {
     const link = await firebaseAdmin.auth().generateEmailVerificationLink(email, {
       url: continueUrl,
       handleCodeInApp: false,
     });
-    console.log("FIREBASE_WEB_API_KEY is not set. Verification email was not sent.");
+    if (reason) console.log(reason);
     console.log(`Email verification link: ${link}`);
+  };
+
+  if (!apiKey) {
+    await printVerificationLink("FIREBASE_WEB_API_KEY is not set. Verification email was not sent.");
     return;
   }
 
@@ -27,7 +31,10 @@ async function sendVerificationEmail(email, password) {
     body: JSON.stringify({ email, password, returnSecureToken: true }),
   });
   const signInBody = await signIn.json();
-  if (!signIn.ok) fail(signInBody.error?.message || "Unable to sign in seeded super admin for verification email.");
+  if (!signIn.ok) {
+    await printVerificationLink(signInBody.error?.message || "Unable to send verification email through Firebase Web API.");
+    return;
+  }
 
   const verify = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
     method: "POST",
@@ -35,8 +42,38 @@ async function sendVerificationEmail(email, password) {
     body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: signInBody.idToken, continueUrl }),
   });
   const verifyBody = await verify.json();
-  if (!verify.ok) fail(verifyBody.error?.message || "Unable to send verification email.");
+  if (!verify.ok) {
+    await printVerificationLink(verifyBody.error?.message || "Unable to send verification email through Firebase Web API.");
+    return;
+  }
   console.log(`Verification email sent to ${email}.`);
+}
+
+async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
+  const record = {
+    uid: authUser.uid,
+    email,
+    role: "super-admin",
+    approved: true,
+    active: true,
+    accountStatus: "active",
+    accountApproved: true,
+    accountActive: true,
+    emailVerified,
+    dealershipId: null,
+    bankId: null,
+    updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+  };
+  await firestore.collection("users").doc(email).set({
+    ...record,
+    createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
+    role: "super-admin",
+    approved: true,
+    active: true,
+    email,
+  });
 }
 
 async function main() {
@@ -48,8 +85,15 @@ async function main() {
   if (password.length < 8) fail("SUPER_ADMIN_PASSWORD must be at least 8 characters.");
 
   try {
-    await firebaseAdmin.auth().getUserByEmail(email);
-    fail(`Super admin already exists in Firebase Authentication: ${email}`);
+    const existingUser = await firebaseAdmin.auth().getUserByEmail(email);
+    await upsertSuperAdminRecord(existingUser, email, existingUser.emailVerified === true);
+    if (existingUser.emailVerified === true) {
+      console.log(`Super admin already exists and is verified: ${email}`);
+      return;
+    }
+    await sendVerificationEmail(email, password);
+    console.log(`Super admin already exists. Firestore role repaired and verification flow prepared: ${email}`);
+    return;
   } catch (error) {
     if (error.code !== "auth/user-not-found") throw error;
   }
@@ -61,28 +105,7 @@ async function main() {
     disabled: false,
   });
 
-  const record = {
-    uid: authUser.uid,
-    email,
-    role: "super-admin",
-    approved: true,
-    active: true,
-    accountStatus: "active",
-    accountApproved: true,
-    accountActive: true,
-    emailVerified: false,
-    dealershipId: null,
-    bankId: null,
-    createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
-  };
-  await firestore.collection("users").doc(email).set(record, { merge: true });
-  await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
-    role: "super-admin",
-    approved: true,
-    active: true,
-    email,
-  });
+  await upsertSuperAdminRecord(authUser, email, false);
   await sendVerificationEmail(email, password);
   console.log(`Super admin seeded safely: ${email}`);
 }
