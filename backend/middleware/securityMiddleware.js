@@ -24,7 +24,8 @@ export function corsOptions() {
   return {
     origin(origin, callback) {
       if (process.env.NODE_ENV !== "production") return callback(null, true);
-      if (!origin || allowedOrigins().includes(origin)) return callback(null, true);
+      const normalizedOrigin = origin ? origin.replace(/\/+$/, "") : origin;
+      if (!normalizedOrigin || allowedOrigins().includes(normalizedOrigin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,

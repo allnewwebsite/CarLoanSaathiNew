@@ -8,6 +8,7 @@ import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
+import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 
 async function canAccessLead(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -120,11 +121,19 @@ export async function createPublicLead(req, res, next) {
 
 export async function getLeads(req, res, next) {
   try {
-    const scoped = [];
-    for (const lead of await listRecords("leads")) {
-      if (await canAccessLead(req, lead)) scoped.push(lead);
+    if (req.user?.role === "super-admin") return res.json(await queryAllLeads({ query: req.query }));
+    if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
+      const dealershipId = req.user?.dealershipId || req.user?.email || req.user?.uid;
+      return res.json(await queryDealershipLeads({ dealershipId, query: req.query }));
     }
-    res.json(scoped);
+    if (req.user?.role === "bank-manager") {
+      const bankId = req.user?.bankId || req.user?.bankName || req.user?.email || req.user?.uid;
+      return res.json(await queryBankLeads({ bankId, query: req.query }));
+    }
+    if (req.user?.role === "loan-executive") {
+      return res.json(await queryExecutiveLeads({ executiveId: req.user?.uid, executiveEmail: req.user?.email, query: req.query }));
+    }
+    return res.status(403).json({ message: "Lead access denied" });
   } catch (error) {
     next(error);
   }
@@ -132,8 +141,7 @@ export async function getLeads(req, res, next) {
 
 export async function updateLeadStatus(req, res, next) {
   try {
-    const leads = await listRecords("leads");
-    const existing = leads.find((item) => item.id === req.params.id);
+    const existing = await getRecord("leads", req.params.id);
     if (!existing) return res.status(404).json({ message: "Lead not found" });
     if (!(await canAccessLead(req, existing))) return res.status(403).json({ message: "Lead access denied" });
     const nextStatus = assertValidStatusTransition(existing?.status, req.body.status);

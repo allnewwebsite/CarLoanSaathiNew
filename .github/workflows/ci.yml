@@ -1,0 +1,54 @@
+name: CarLoanSaathi CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Secret scan
+        run: npm run security:scan
+
+      - name: Backend syntax check
+        run: node --check server.js
+        working-directory: backend
+
+      - name: Frontend build
+        run: npm run build
+        working-directory: frontend
+
+      - name: Backend dependency audit
+        run: npm audit --audit-level=high
+        working-directory: backend
+
+      - name: Frontend dependency audit
+        run: npm audit --audit-level=high
+        working-directory: frontend

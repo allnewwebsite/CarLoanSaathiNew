@@ -17,6 +17,7 @@ dist/
 .firebase/
 coverage/
 uploads/
+*.log
 
 # Firebase service account keys
 *-firebase-adminsdk-*.json

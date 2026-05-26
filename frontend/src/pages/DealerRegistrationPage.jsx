@@ -6,7 +6,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Toast } from "../components/ui/Toast.jsx";
 import { brandLogos } from "../data/catalogFallback.js";
 import { api } from "../services/api.js";
-import { auth, db, storage } from "../services/firebase.js";
+import { auth } from "../services/firebase.js";
+import { db } from "../services/firebaseDb.js";
+import { storage } from "../services/firebaseStorage.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const cities = ["Bahadurgarh", "Jhajjar", "Rohtak", "Sonipat", "Beri", "Gurugram", "Jind", "Manesar", "Gohana", "Murthal", "Panipat"];

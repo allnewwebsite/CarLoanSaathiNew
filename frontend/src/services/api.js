@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const PRODUCTION_API_BASE_URL = "https://carloansaathi-backend.onrender.com/api";
+const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 
 function apiBaseUrl() {
   const configured = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";

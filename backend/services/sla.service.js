@@ -2,6 +2,8 @@ import { createRecord, listRecords, updateRecord } from "./firestore.service.js"
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
+import { GOVERNANCE_LIMITS, SLA_STAGES } from "../config/governance.js";
+import { queueAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 
 export const slaStatuses = [
@@ -80,6 +82,44 @@ export function calculateSlaScore({ responseTimeMinutes, processingTimeMinutes, 
   if (status === "rejected") score -= 10;
   if (status === "expired") score -= 40;
   return Math.max(score, 0);
+}
+
+export function evaluateSlaState({ startedAt, targetMinutes }) {
+  if (!startedAt || !targetMinutes) return "healthy";
+  const elapsedMinutes = Math.max(Math.round((Date.now() - new Date(startedAt).getTime()) / 60000), 0);
+  const ratio = elapsedMinutes / Number(targetMinutes);
+  if (ratio >= GOVERNANCE_LIMITS.sla.breachRatio) return "breached";
+  if (ratio >= GOVERNANCE_LIMITS.sla.warningRatio) return "warning";
+  return "healthy";
+}
+
+export async function upsertSlaMetric({ lead, stageKey, startedAt, completedAt = null, owner = {} }) {
+  const stage = Object.values(SLA_STAGES).find((item) => item.key === stageKey) || SLA_STAGES.BANK_PROCESSING;
+  const status = completedAt ? "completed" : evaluateSlaState({ startedAt, targetMinutes: stage.targetMinutes });
+  const elapsedMinutes = startedAt ? Math.max(Math.round(((completedAt ? new Date(completedAt).getTime() : Date.now()) - new Date(startedAt).getTime()) / 60000), 0) : 0;
+  const metric = await createRecord("slaMetrics", {
+    leadId: lead.id,
+    caseId: lead.caseId || null,
+    stage: stage.key,
+    targetMinutes: stage.targetMinutes,
+    elapsedMinutes,
+    status,
+    dealershipId: lead.dealershipId || null,
+    bankId: lead.bankId || null,
+    assignedExecutiveId: lead.assignedExecutiveId || null,
+    ownerRole: owner.role || null,
+    ownerId: owner.id || owner.email || null,
+    startedAt,
+    completedAt,
+  });
+  if (status === "warning" || status === "breached") {
+    queueAuditLog({
+      actionType: status === "breached" ? AUDIT_ACTIONS.SLA_BREACHED : AUDIT_ACTIONS.SLA_WARNING,
+      leadId: lead.id,
+      meta: { caseId: lead.caseId, stage: stage.key, status },
+    });
+  }
+  return metric;
 }
 
 export async function expireAssignment({ lead, assignment, reason }) {

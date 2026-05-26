@@ -154,7 +154,7 @@ export function AuthProvider({ children }) {
     const interval = window.setInterval(() => {
       const current = JSON.parse(localStorage.getItem("cls_user") || "null");
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
-    }, 10000);
+    }, 60000);
     const onFocus = () => validateSession();
     window.addEventListener("focus", onFocus);
     return () => {

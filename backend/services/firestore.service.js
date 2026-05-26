@@ -6,6 +6,7 @@ const memoryStore = {
   documents: [],
   leadAssignments: [],
   slaLogs: [],
+  slaMetrics: [],
   reassignmentLogs: [],
   dealers: [],
   dealerships: [],
@@ -27,13 +28,18 @@ const memoryStore = {
   settings: [],
   partnerQueues: [],
   notifications: [],
+  notificationEvents: [],
   notificationLogs: [],
   whatsappQueue: [],
   auditLogs: [],
+  authAuditLogs: [],
+  documentAuditLogs: [],
   leadTimeline: [],
   bankDocuments: [],
   slaTracking: [],
   analytics: [],
+  metrics: [],
+  operationalMetrics: [],
   systemCounters: [],
 };
 
@@ -130,6 +136,116 @@ export async function listRecords(collection) {
   const records = pairs.map((pair) => pair.record);
   if (collection === "leads") return withLeadCaseIds(records, pairs.map((pair) => pair.doc));
   return records;
+}
+
+function parseCursor(cursor) {
+  if (!cursor) return null;
+  try {
+    return JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function encodeCursor(record, orderByField) {
+  if (!record) return null;
+  const value = record[orderByField] || record.createdAt || record.updatedAt || "";
+  return Buffer.from(JSON.stringify({ value, id: record.id })).toString("base64url");
+}
+
+function applyMemoryWhere(records, whereClauses = []) {
+  return records.filter((record) => whereClauses.every(({ field, op = "==", value }) => {
+    if (op === "==") return record[field] === value;
+    if (op === "in") return Array.isArray(value) && value.includes(record[field]);
+    if (op === ">=") return record[field] >= value;
+    if (op === "<=") return record[field] <= value;
+    return true;
+  }));
+}
+
+function applySearch(records, search, fields = []) {
+  const needle = String(search || "").trim().toLowerCase();
+  if (!needle) return records;
+  return records.filter((record) => fields.some((field) => String(record[field] || "").toLowerCase().includes(needle)));
+}
+
+function selectFields(record, fields = []) {
+  if (!fields.length) return record;
+  return fields.reduce((next, field) => {
+    if (Object.prototype.hasOwnProperty.call(record, field)) next[field] = record[field];
+    return next;
+  }, { id: record.id });
+}
+
+export async function queryRecords(collection, {
+  where = [],
+  orderBy = "createdAt",
+  direction = "desc",
+  limit = 20,
+  cursor = null,
+  search = "",
+  searchFields = [],
+  fields = [],
+  maxLimit = 100,
+} = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit || 20), 1), maxLimit);
+  const parsedCursor = parseCursor(cursor);
+
+  if (!firestore) {
+    let rows = applyMemoryWhere(memoryStore[collection] || [], where);
+    rows = applySearch(rows, search, searchFields);
+    rows = rows.sort((left, right) => {
+      const leftValue = String(left[orderBy] || "");
+      const rightValue = String(right[orderBy] || "");
+      return direction === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
+    });
+    if (parsedCursor) {
+      const index = rows.findIndex((row) => row.id === parsedCursor.id);
+      if (index >= 0) rows = rows.slice(index + 1);
+    }
+    const page = rows.slice(0, safeLimit);
+    return {
+      data: page.map((record) => selectFields(record, fields)),
+      total: rows.length,
+      limit: safeLimit,
+      nextCursor: page.length === safeLimit ? encodeCursor(page[page.length - 1], orderBy) : null,
+    };
+  }
+
+  let ref = firestore.collection(collection);
+  for (const clause of where) {
+    ref = ref.where(clause.field, clause.op || "==", clause.value);
+  }
+  ref = ref.orderBy(orderBy, direction);
+  if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
+  ref = ref.limit(safeLimit + 1);
+
+  const snapshot = await ref.get();
+  let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  rows = applySearch(rows, search, searchFields);
+  const hasMore = rows.length > safeLimit;
+  rows = rows.slice(0, safeLimit);
+  if (collection === "leads") rows = await withLeadCaseIds(rows, snapshot.docs.slice(0, rows.length));
+  return {
+    data: rows.map((record) => selectFields(record, fields)),
+    limit: safeLimit,
+    nextCursor: hasMore ? encodeCursor(rows[rows.length - 1], orderBy) : null,
+  };
+}
+
+export async function countRecords(collection, { where = [] } = {}) {
+  if (!firestore) return applyMemoryWhere(memoryStore[collection] || [], where).length;
+
+  let ref = firestore.collection(collection);
+  for (const clause of where) {
+    ref = ref.where(clause.field, clause.op || "==", clause.value);
+  }
+  if (typeof ref.count === "function") {
+    const snapshot = await ref.count().get();
+    return snapshot.data().count || 0;
+  }
+  const snapshot = await ref.select().get();
+  return snapshot.size;
 }
 
 export async function getRecord(collection, id) {

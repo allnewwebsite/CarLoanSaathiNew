@@ -3,7 +3,7 @@ import { Bell, CheckCheck, X } from "lucide-react";
 import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../services/api.js";
-import { db } from "../services/firebase.js";
+import { db } from "../services/firebaseDb.js";
 
 function formatDate(value) {
   if (!value) return "";

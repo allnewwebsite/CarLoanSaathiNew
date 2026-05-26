@@ -8,6 +8,7 @@ import { deleteLeadDocument, uploadLeadDocument } from "../services/storage.serv
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
+import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.ASSIGNED,
@@ -131,21 +132,13 @@ async function liveBankRegistrationForAccount(account) {
 }
 
 async function assignedLeadsForPartner(partner, query = {}) {
-  const leads = await listRecords("leads");
-  const assignments = await listRecords("leadAssignments");
-  const partnerAssignments = assignments.filter((item) => {
-    if (partner.roleType === "loan-executive") return item.executiveId === partner.id || item.executiveId === partner.email;
-    if (partner.roleType === "bank-manager") {
-      const partnerCity = partner.branchCity || partner.city || partner.operatingCity;
-      const sameCity = !partnerCity || item.branchCity === partnerCity;
-      const sameBank = item.partnerId === partner.bankPartnerId || item.partnerId === partner.partnerId || item.partnerId === partner.bankName || item.partnerName === partner.bankName;
-      return sameCity && sameBank;
-    }
-    return item.partnerId === partner.id || item.partnerId === partner.email || item.partnerName === partner.bankName || item.partnerName === partner.companyName;
-  });
-  const ids = new Set(partnerAssignments.map((item) => item.leadId));
-  const assigned = leads.filter((lead) => ids.has(lead.id) || partnerCanAccessLead(partner, lead));
-  return applyFilters(assigned, query);
+  if (partner.roleType === "loan-executive") {
+    const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 } });
+    return applyFilters(result.data, query);
+  }
+  const identity = bankIdentity(partner);
+  const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 } });
+  return applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query);
 }
 
 async function requireAssignedLead(req) {
@@ -356,16 +349,10 @@ export async function getBankLeads(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const page = Math.max(Number(req.query.page || 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
-    const leads = await assignedLeadsForPartner(partner, req.query);
-    const start = (page - 1) * limit;
-    res.json({
-      data: leads.slice(start, start + limit),
-      total: leads.length,
-      page,
-      limit,
-    });
+    if (partner.roleType === "loan-executive") {
+      return res.json(await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query }));
+    }
+    return res.json(await queryBankLeads({ bankId: bankIdentity(partner).bankId, query: req.query }));
   } catch (error) {
     next(error);
   }

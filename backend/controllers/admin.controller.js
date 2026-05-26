@@ -9,6 +9,8 @@ import { getAuditLogs, writeAuditLog } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
+import { queryAllLeads } from "../services/leadQuery.service.js";
+import { computeLeadMetrics } from "../services/metrics.service.js";
 
 function sameDate(value, target) {
   if (!target) return true;
@@ -235,8 +237,7 @@ async function deleteMatchingRecords(collection, matcher) {
 
 export async function getAdminLeads(req, res, next) {
   try {
-    const leads = await listRecords("leads");
-    res.json(filterLeads(leads, req.query));
+    res.json(await queryAllLeads({ query: req.query }));
   } catch (error) {
     next(error);
   }
@@ -760,8 +761,7 @@ export async function updateAdminOnboardingRequest(req, res, next) {
 
 export async function updateAdminLeadStatus(req, res, next) {
   try {
-    const leads = await listRecords("leads");
-    const existing = leads.find((item) => item.id === req.params.id);
+    const existing = await getRecord("leads", req.params.id);
     if (!existing) return res.status(404).json({ message: "Lead not found" });
     const status = assertValidStatusTransition(existing?.status, req.body.status);
     const lead = await updateRecord("leads", req.params.id, { status });
@@ -937,23 +937,23 @@ export async function getAdminPartners(_req, res, next) {
 
 export async function getAdminAnalytics(_req, res, next) {
   try {
-    const leads = await listRecords("leads");
-    const month = new Date().toISOString().slice(0, 7);
+    const metrics = await computeLeadMetrics();
     res.json({
-      totalLeads: leads.length,
-      approvedLeads: leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.APPROVED).length,
-      rejectedLeads: leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED).length,
-      monthlyLeads: leads.filter((lead) => (lead.createdAt || "").startsWith(month)).length,
+      totalLeads: metrics.totalLeads,
+      approvedLeads: metrics.approved,
+      rejectedLeads: metrics.rejected,
+      monthlyLeads: metrics.totalLeads,
+      metrics,
     });
   } catch (error) {
     next(error);
   }
 }
 
-export async function getAdminEcosystem(_req, res, next) {
+export async function getAdminEcosystem(req, res, next) {
   try {
+    const leadPage = await queryAllLeads({ query: { limit: req.query.limit || 100, cursor: req.query.cursor } });
     const [
-      leads,
       onboardingRequests,
       dealerships,
       financeDesks,
@@ -975,7 +975,6 @@ export async function getAdminEcosystem(_req, res, next) {
       loginActivity,
       users,
     ] = await Promise.all([
-      listRecords("leads"),
       listRecords("onboardingRequests"),
       listRecords("dealerships"),
       listRecords("financeDesks"),
@@ -1008,7 +1007,8 @@ export async function getAdminEcosystem(_req, res, next) {
     const visibleUsers = users.filter((item) => !["finance-desk", "gm-sm"].includes(item.role) || isActiveDealerScoped(item));
 
     res.json({
-      leads,
+      leads: leadPage.data,
+      leadPagination: { nextCursor: leadPage.nextCursor, hasMore: leadPage.hasMore, limit: leadPage.limit },
       onboardingRequests,
       dealerships,
       financeDesks: visibleFinanceDesks,

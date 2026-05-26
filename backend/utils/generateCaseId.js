@@ -9,7 +9,7 @@ function formatCaseId(counter) {
 
 export async function generateLeadCaseId() {
   const counterId = "leads";
-  const existingMax = (await listRecords("leads"))
+  const existingMax = firestore ? 0 : (await listRecords("leads"))
     .map((lead) => String(lead.caseId || ""))
     .map((value) => {
       const match = value.match(/^CLS-(?:\d{4}-)?(\d{4,})$/);

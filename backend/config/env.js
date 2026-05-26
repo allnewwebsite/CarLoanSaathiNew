@@ -27,6 +27,6 @@ export function validateEnv() {
 export function allowedOrigins() {
   return (process.env.CLIENT_ORIGIN || "http://localhost:5173")
     .split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 }

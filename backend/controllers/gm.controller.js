@@ -1,5 +1,6 @@
 import { getRecord, listRecords } from "../services/firestore.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
+import { queryDealershipLeads } from "../services/leadQuery.service.js";
 
 function userEmail(req) {
   return req.user?.email || req.user?.uid;
@@ -37,35 +38,15 @@ function financeStatus(status) {
 async function gmLeads(req) {
   const dealershipEmail = await dealershipEmailForGm(req);
   if (!dealershipEmail) return [];
-  return (await listRecords("leads")).filter((lead) => belongsToDealership(lead, dealershipEmail));
+  const result = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
+  return result.data;
 }
 
 export async function getGmLeads(req, res, next) {
   try {
-    let leads = await gmLeads(req);
-    const page = Math.max(Number(req.query.page || 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
-    const search = String(req.query.search || "").trim().toLowerCase();
-    const salesperson = String(req.query.salesperson || "").trim().toLowerCase();
-    const salespersonId = String(req.query.salespersonId || "").trim();
-    const bank = String(req.query.bank || "").trim().toLowerCase();
-    const status = String(req.query.status || "").trim();
-    const date = String(req.query.date || "").trim();
-
-    leads = leads.filter((lead) => {
-      const text = [lead.caseId, lead.fullName, lead.customerName, lead.mobile, lead.assignedSalesperson, lead.preferredBank, lead.bankPartner, lead.selectedBrand, lead.selectedModel].filter(Boolean).join(" ").toLowerCase();
-      const statusOk = !status || financeStatus(lead.status) === status || normalizeStatus(lead.status) === normalizeStatus(status);
-      const salespersonOk = (!salesperson && !salespersonId)
-        || String(lead.salespersonId || "") === salespersonId
-        || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
-      const bankOk = !bank || String(lead.preferredBank || lead.bankPartner || "").toLowerCase() === bank;
-      const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
-      const searchOk = !search || text.includes(search);
-      return statusOk && salespersonOk && bankOk && dateOk && searchOk;
-    });
-
-    const start = (page - 1) * limit;
-    res.json({ data: leads.slice(start, start + limit), total: leads.length, page, limit });
+    const dealershipEmail = await dealershipEmailForGm(req);
+    if (!dealershipEmail) return res.json({ data: [], limit: 20, nextCursor: null, hasMore: false });
+    res.json(await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query }));
   } catch (error) {
     next(error);
   }

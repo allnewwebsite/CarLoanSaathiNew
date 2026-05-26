@@ -1,4 +1,4 @@
-import { createRecord, listRecords } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
 
 export const TIMELINE_EVENTS = {
   LEAD_CREATED: "lead-created",
@@ -82,7 +82,7 @@ export async function addTimelineEvent({
   metadata = {},
   visibility,
 }) {
-  const lead = leadId ? (await listRecords("leads")).find((entry) => entry.id === leadId || entry.caseId === leadId) : null;
+  const lead = leadId ? await getRecord("leads", leadId) : null;
   return createRecord("leadTimeline", {
     leadId,
     caseId: lead?.caseId || metadata.caseId || meta.caseId || null,
@@ -100,10 +100,13 @@ export async function addTimelineEvent({
 }
 
 export async function getTimelineForLead(leadId) {
-  const events = await listRecords("leadTimeline");
-  return events
-    .filter((event) => event.leadId === leadId)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const result = await queryRecords("leadTimeline", {
+    where: [{ field: "leadId", value: leadId }],
+    orderBy: "createdAt",
+    direction: "asc",
+    limit: 100,
+  });
+  return result.data;
 }
 
 export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
@@ -116,7 +119,18 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
   const dateFilter = String(query.date || "").trim();
   const role = actor.role || "";
 
-  let events = await listRecords("leadTimeline");
+  const where = [];
+  if (leadId) where.push({ field: "leadId", value: leadId });
+  if (eventType) where.push({ field: "eventType", value: eventType });
+  const result = await queryRecords("leadTimeline", {
+    where,
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: page * limit,
+    search,
+    searchFields: ["title", "description", "actorName", "actorId", "leadId", "caseId"],
+  });
+  let events = result.data;
   events = events.filter((event) => {
     const visibility = asList(event.visibility);
     const visible = role === "super-admin" || !visibility.length || visibility.includes(role);

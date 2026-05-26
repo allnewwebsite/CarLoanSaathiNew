@@ -1,6 +1,10 @@
-import { createRecord, listRecords } from "./firestore.service.js";
+import { createRecord, getRecord, listRecords } from "./firestore.service.js";
+import { logError } from "./logger.service.js";
 
 export const AUDIT_ACTIONS = {
+  LOGIN: "LOGIN",
+  LOGOUT: "LOGOUT",
+  PASSWORD_RESET: "PASSWORD_RESET",
   LEAD_CREATED: "LEAD_CREATED",
   LEAD_ASSIGNED: "LEAD_ASSIGNED",
   STATUS_UPDATED: "STATUS_UPDATED",
@@ -13,33 +17,78 @@ export const AUDIT_ACTIONS = {
   DEALERSHIP_APPROVED: "DEALERSHIP_APPROVED",
   BANK_APPROVED: "BANK_APPROVED",
   ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED",
+  NOTIFICATION_CREATED: "NOTIFICATION_CREATED",
+  SLA_WARNING: "SLA_WARNING",
+  SLA_BREACHED: "SLA_BREACHED",
+  SECURITY_INCIDENT: "SECURITY_INCIDENT",
 };
 
-export async function writeAuditLog({ req, actorId, actorRole, actionType, oldValue = null, newValue = null, leadId = null, meta = {} }) {
-  const lead = leadId ? (await listRecords("leads")).find((entry) => entry.id === leadId || entry.caseId === leadId) : null;
+const sensitiveKeys = /password|token|secret|privateKey|authorization|apiKey|otp|credential/i;
+
+function maskSensitive(value) {
+  if (Array.isArray(value)) return value.map(maskSensitive);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, val]) => {
+    if (sensitiveKeys.test(key)) return [key, "[masked]"];
+    return [key, maskSensitive(val)];
+  }));
+}
+
+export async function writeAuditLog({
+  req,
+  actorId,
+  actorRole,
+  actionType,
+  action,
+  oldValue = null,
+  previousValue = null,
+  newValue = null,
+  targetEntity = null,
+  targetId = null,
+  leadId = null,
+  sourcePortal = null,
+  meta = {},
+  collection = "auditLogs",
+}) {
+  const lead = leadId ? await getRecord("leads", leadId) : null;
   const timestamp = new Date().toISOString();
   const performedBy = actorId || req?.user?.email || req?.user?.uid || "system";
   const role = actorRole || req?.user?.role || "system";
-  return createRecord("auditLogs", {
-    actionType,
-    oldValue,
-    newValue,
-    oldStatus: meta.oldStatus || oldValue?.status || null,
+  const resolvedAction = actionType || action;
+  return createRecord(collection, {
+    action: resolvedAction,
+    actionType: resolvedAction,
+    previousValue: maskSensitive(previousValue || oldValue),
+    oldValue: maskSensitive(oldValue),
+    newValue: maskSensitive(newValue),
+    oldStatus: meta.oldStatus || oldValue?.status || previousValue?.status || null,
     newStatus: meta.newStatus || newValue?.status || null,
     performedBy,
     role,
     actorId: performedBy,
     actorRole: role,
+    targetEntity,
+    targetId: targetId || leadId || null,
     dealershipId: meta.dealershipId || lead?.dealershipId || req?.user?.dealershipId || null,
     bankId: meta.bankId || lead?.bankId || req?.user?.bankId || null,
     assignedExecutiveId: meta.assignedExecutiveId || lead?.assignedExecutiveId || null,
     leadId,
     caseId: lead?.caseId || meta.caseId || leadId || null,
     timestamp,
+    createdAt: timestamp,
     ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || null,
     userAgent: req?.headers?.["user-agent"] || null,
-    meta,
+    requestId: req?.requestId || meta.requestId || null,
+    sourcePortal: sourcePortal || meta.sourcePortal || req?.headers?.["x-source-portal"] || null,
+    immutable: true,
+    meta: maskSensitive(meta),
   });
+}
+
+export function queueAuditLog(payload) {
+  Promise.resolve()
+    .then(() => writeAuditLog(payload))
+    .catch((error) => logError("Audit write failed", { actionType: payload?.actionType, error: error.message }));
 }
 
 export async function getAuditLogs(filters = {}) {

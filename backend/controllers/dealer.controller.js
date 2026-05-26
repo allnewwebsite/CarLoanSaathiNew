@@ -7,6 +7,7 @@ import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { sanitizeFirestoreData } from "../utils/firestoreSanitizer.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
+import { queryDealershipLeads } from "../services/leadQuery.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -662,38 +663,8 @@ export async function createDealerLead(req, res, next) {
 
 export async function getDealerLeads(req, res, next) {
   try {
-    const { email, dealershipEmail } = await financeDeskContext(req);
-    let leads = owned(await listRecords("leads"), email, dealershipEmail);
-    const page = Math.max(Number(req.query.page || 1), 1);
-    const limit = Math.min(Math.max(Number(req.query.limit || 20), 1), 100);
-    const status = String(req.query.status || "").trim();
-    const salesperson = String(req.query.salesperson || "").trim().toLowerCase();
-    const salespersonId = String(req.query.salespersonId || "").trim();
-    const bank = String(req.query.bank || "").trim().toLowerCase();
-    const city = String(req.query.city || "").trim().toLowerCase();
-    const date = String(req.query.date || "").trim();
-    const search = String(req.query.search || "").trim().toLowerCase();
-
-    leads = leads.filter((lead) => {
-      const statusOk = !status || normalizeFinanceStatus(lead.status) === status;
-      const salespersonOk = (!salesperson && !salespersonId)
-        || String(lead.salespersonId || "") === salespersonId
-        || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
-      const bankOk = !bank || String(lead.preferredBank || lead.bankPartner || "").toLowerCase() === bank;
-      const cityOk = !city || String(lead.city || "").toLowerCase() === city;
-      const dateOk = !date || String(lead.createdAt || "").startsWith(date);
-      const text = [lead.caseId, lead.fullName, lead.mobile, lead.city, lead.selectedBrand, lead.selectedModel, lead.preferredBank, lead.assignedSalesperson].filter(Boolean).join(" ").toLowerCase();
-      const searchOk = !search || text.includes(search);
-      return statusOk && salespersonOk && bankOk && cityOk && dateOk && searchOk;
-    });
-
-    const start = (page - 1) * limit;
-    res.json({
-      data: leads.slice(start, start + limit),
-      total: leads.length,
-      page,
-      limit,
-    });
+    const { dealershipEmail } = await financeDeskContext(req);
+    res.json(await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query }));
   } catch (error) {
     next(error);
   }
@@ -774,8 +745,8 @@ export async function removeDealerSalesperson(req, res, next) {
 export async function getDealerLead(req, res, next) {
   try {
     const { email, dealershipEmail } = await financeDeskContext(req);
-    const lead = owned(await listRecords("leads"), email, dealershipEmail).find((item) => item.id === req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    const lead = await getRecord("leads", req.params.id);
+    if (!lead || !owned([lead], email, dealershipEmail).length) return res.status(404).json({ message: "Lead not found" });
     res.json(lead);
   } catch (error) {
     next(error);
@@ -784,8 +755,8 @@ export async function getDealerLead(req, res, next) {
 
 export async function getDealerEarnings(req, res, next) {
   try {
-    const { email, dealershipEmail } = await financeDeskContext(req);
-    const leads = owned(await listRecords("leads"), email, dealershipEmail);
+    const { dealershipEmail } = await financeDeskContext(req);
+    const leads = (await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } })).data;
     const disbursed = leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED);
     const approved = leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.APPROVED);
     res.json({

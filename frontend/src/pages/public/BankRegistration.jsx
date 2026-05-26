@@ -3,7 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, FileCheck2, Loader2, ShieldCheck, UploadCloud } from "lucide-react";
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { auth, storage } from "../../services/firebase.js";
+import { auth } from "../../services/firebase.js";
+import { storage } from "../../services/firebaseStorage.js";
 
 const banks = ["HDFC Bank", "ICICI Bank", "SBI", "Axis Bank", "Kotak Mahindra", "PNB", "AU Bank", "IDFC First", "Bank of Baroda", "Yes Bank", "Canara Bank", "Union Bank", "IndusInd", "Federal Bank", "Other"];
 const branchLocations = ["Bahadurgarh", "Jhajjar", "Rohtak", "Gurugram", "Sonipat", "Panipat", "Karnal", "Hisar", "Jind", "Rewari"];

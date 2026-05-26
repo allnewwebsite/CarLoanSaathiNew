@@ -5,6 +5,7 @@ import { createSlaLog, expireAssignment } from "./sla.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
+import { countOpenExecutiveLeads } from "./leadQuery.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 
 function queueIdForLead(lead) {
@@ -358,14 +359,9 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     throw error;
   }
 
-  const activeLeads = await listRecords("leads");
-  const workload = new Map();
-  activeLeads.forEach((item) => {
-    const executiveId = item.assignedExecutiveId || item.assignedExecutiveEmail;
-    if (executiveId && ![LEAD_STATUSES.APPROVED, LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(item.status)) {
-      workload.set(executiveId, (workload.get(executiveId) || 0) + 1);
-    }
-  });
+  const workload = new Map(await Promise.all(
+    eligible.map(async (item) => [item.id, await countOpenExecutiveLeads(item.id)])
+  ));
   const executive = eligible.sort((a, b) => (workload.get(a.id) || 0) - (workload.get(b.id) || 0))[0];
   const now = new Date().toISOString();
   const responseDeadlineAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
