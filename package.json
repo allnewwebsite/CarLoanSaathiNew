@@ -1,0 +1,17 @@
+{
+  "name": "car-loan-saathi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "create-super-admin": "npm --prefix backend run create-super-admin",
+    "security:scan": "node scripts/scan-secrets.js",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*": "node scripts/scan-secrets.js --staged"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11"
+  }
+}

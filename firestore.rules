@@ -1,0 +1,208 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() ? request.auth.token.role : null;
+    }
+
+    function email() {
+      return signedIn() ? request.auth.token.email : null;
+    }
+
+    function dealershipId() {
+      return signedIn() ? request.auth.token.dealershipId : null;
+    }
+
+    function bankId() {
+      return signedIn() ? request.auth.token.bankId : null;
+    }
+
+    function isSuperAdmin() {
+      return role() == "super-admin";
+    }
+
+    function isFinanceDesk() {
+      return role() == "finance-desk";
+    }
+
+    function isGmSm() {
+      return role() == "gm-sm";
+    }
+
+    function isBankManager() {
+      return role() == "bank-manager";
+    }
+
+    function isLoanExecutive() {
+      return role() == "loan-executive";
+    }
+
+    function approved() {
+      return signedIn()
+        && request.auth.token.approved == true
+        && request.auth.token.active == true;
+    }
+
+    function sameDealership(data) {
+      return approved()
+        && dealershipId() != null
+        && data.dealershipId == dealershipId();
+    }
+
+    function sameBank(data) {
+      return approved()
+        && bankId() != null
+        && data.bankId == bankId();
+    }
+
+    function assignedExecutive(data) {
+      return approved()
+        && (
+          data.assignedExecutiveId == request.auth.uid
+          || data.assignedExecutiveId == email()
+          || data.assignedExecutiveEmail == email()
+        );
+    }
+
+    function canReadLead(data) {
+      return isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(data))
+        || (isBankManager() && sameBank(data))
+        || (isLoanExecutive() && assignedExecutive(data));
+    }
+
+    function canReadDocument(data) {
+      return isSuperAdmin()
+        || sameDealership(data)
+        || sameBank(data)
+        || assignedExecutive(data);
+    }
+
+    match /users/{userId} {
+      allow read: if approved()
+        && (request.auth.uid == userId || email() == userId);
+      allow update: if approved()
+        && (request.auth.uid == userId || email() == userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.approved == resource.data.approved
+        && request.resource.data.dealershipId == resource.data.dealershipId
+        && request.resource.data.bankId == resource.data.bankId;
+      allow create, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /leads/{leadId} {
+      allow read: if canReadLead(resource.data);
+      allow create: if isFinanceDesk()
+        && approved()
+        && request.resource.data.dealershipId == dealershipId();
+      allow update: if isLoanExecutive()
+        && assignedExecutive(resource.data)
+        && request.resource.data.dealershipId == resource.data.dealershipId
+        && request.resource.data.bankId == resource.data.bankId;
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /documents/{documentId} {
+      allow read: if canReadDocument(resource.data);
+      allow create: if isFinanceDesk()
+        && approved()
+        && request.resource.data.dealershipId == dealershipId()
+        && request.resource.data.uploadedBy == email();
+      allow update: if isLoanExecutive()
+        && assignedExecutive(resource.data);
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /leadTimeline/{timelineId} {
+      allow read: if canReadLead(resource.data);
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read, update: if isSuperAdmin()
+        || (approved() && resource.data.userId == request.auth.uid)
+        || (approved() && resource.data.recipientId == email())
+        || ((isFinanceDesk() || isGmSm()) && resource.data.dealershipId == dealershipId())
+        || (isBankManager() && resource.data.bankId == bankId())
+        || (isLoanExecutive() && resource.data.assignedExecutiveId == request.auth.uid);
+      allow create, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /notificationLogs/{logId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /salespersons/{salespersonId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      allow create, update: if isFinanceDesk()
+        && approved()
+        && request.resource.data.dealershipId == dealershipId();
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /loanExecutives/{executiveId} {
+      allow read: if isSuperAdmin()
+        || (isBankManager() && sameBank(resource.data))
+        || (isLoanExecutive() && (request.auth.uid == executiveId || resource.data.email == email()));
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /bankPartners/{partnerId} {
+      allow read: if isSuperAdmin()
+        || (isBankManager() && sameBank(resource.data));
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /dealerships/{dealerId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /approvedDealerships/{dealerId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /pendingDealershipApprovals/{id} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /pendingBankApprovals/{id} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /loginActivity/{id} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /systemCounters/{id} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

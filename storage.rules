@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return signedIn() ? request.auth.token.role : null;
+    }
+
+    function approved() {
+      return signedIn()
+        && request.auth.token.approved == true
+        && request.auth.token.active == true;
+    }
+
+    function validCustomerFile() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('application/pdf|image/jpeg|image/png');
+    }
+
+    function sameDealership(data) {
+      return approved()
+        && request.auth.token.dealershipId != null
+        && data.dealershipId == request.auth.token.dealershipId;
+    }
+
+    function sameBank(data) {
+      return approved()
+        && request.auth.token.bankId != null
+        && data.bankId == request.auth.token.bankId;
+    }
+
+    function assignedExecutive(data) {
+      return approved()
+        && (
+          data.assignedExecutiveId == request.auth.uid
+          || data.assignedExecutiveEmail == request.auth.token.email
+        );
+    }
+
+    function canReadPrivateFile(data) {
+      return role() == "super-admin"
+        || sameDealership(data)
+        || sameBank(data)
+        || assignedExecutive(data);
+    }
+
+    match /documents/leads/{caseId}/{fileName} {
+      allow read: if canReadPrivateFile(resource.metadata);
+      allow write: if role() == "finance-desk"
+        && approved()
+        && validCustomerFile()
+        && request.resource.metadata.dealershipId == request.auth.token.dealershipId;
+      allow delete: if role() == "super-admin";
+    }
+
+    match /leads/{leadId}/{fileName} {
+      allow read: if canReadPrivateFile(resource.metadata);
+      allow write: if role() == "finance-desk"
+        && approved()
+        && validCustomerFile()
+        && request.resource.metadata.dealershipId == request.auth.token.dealershipId;
+      allow delete: if role() == "super-admin";
+    }
+
+    match /dealer-registration/{dealerUid}/{documentType}/{fileName} {
+      allow read: if role() == "super-admin" || (signedIn() && request.auth.uid == dealerUid);
+      allow write: if signedIn() && request.auth.uid == dealerUid && validCustomerFile();
+      allow delete: if role() == "super-admin" || (signedIn() && request.auth.uid == dealerUid);
+    }
+
+    match /bank-registration/{bankUid}/{documentType}/{fileName} {
+      allow read: if role() == "super-admin" || (signedIn() && request.auth.uid == bankUid);
+      allow write: if signedIn() && request.auth.uid == bankUid && validCustomerFile();
+      allow delete: if role() == "super-admin" || (signedIn() && request.auth.uid == bankUid);
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

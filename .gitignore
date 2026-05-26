@@ -1,0 +1,26 @@
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+backend/.env
+frontend/.env
+serviceAccount.json
+firebase-adminsdk.json
+*.pem
+*.key
+
+node_modules/
+dist/
+.vercel/
+.firebase/
+coverage/
+uploads/
+
+# Firebase service account keys
+*-firebase-adminsdk-*.json
+*serviceAccount*.json
+firebase-adminsdk*.json
+**/*firebase-adminsdk*.json
+**/*serviceAccount*.json
