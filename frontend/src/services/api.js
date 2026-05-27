@@ -28,10 +28,28 @@ function apiBaseUrl() {
 export const api = axios.create({
   baseURL: apiBaseUrl(),
   timeout: 15000,
+  withCredentials: true,
 });
 
+function getSessionToken() {
+  const sessionToken = sessionStorage.getItem("cls_token");
+  if (sessionToken) return sessionToken;
+
+  const legacyToken = localStorage.getItem("cls_token");
+  if (legacyToken) {
+    sessionStorage.setItem("cls_token", legacyToken);
+    localStorage.removeItem("cls_token");
+  }
+  return legacyToken;
+}
+
+function clearSessionToken() {
+  sessionStorage.removeItem("cls_token");
+  localStorage.removeItem("cls_token");
+}
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("cls_token");
+  const token = getSessionToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -47,7 +65,7 @@ api.interceptors.response.use(
       error.message = `API route not found: ${baseURL}${url}`;
     } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED"].includes(error.response?.data?.code)) {
       localStorage.removeItem("cls_user");
-      localStorage.removeItem("cls_token");
+      clearSessionToken();
       if (typeof window !== "undefined") {
         const target = error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank-login" : "/dealer-login";
         if (!window.location.pathname.includes(target.replace("/", ""))) window.location.assign(target);

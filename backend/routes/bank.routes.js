@@ -22,15 +22,16 @@ import {
 } from "../controllers/bank.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
+import { registrationSecurity } from "../middleware/registrationSecurity.js";
 import { registrationRateLimit, uploadRateLimit } from "../middleware/securityMiddleware.js";
 import { upload } from "../middleware/upload.js";
 import { ROLES } from "../utils/constants.js";
 
 const router = Router();
 
-router.post("/register", registrationRateLimit, registerBankPartner);
-router.post("/register/email-start", registrationRateLimit, startBankRegistration);
-router.post("/register/status", registrationRateLimit, getBankRegistrationStatus);
+router.post("/register", registrationRateLimit, registrationSecurity, registerBankPartner);
+router.post("/register/email-start", registrationRateLimit, registrationSecurity, startBankRegistration);
+router.post("/register/status", registrationRateLimit, registrationSecurity, getBankRegistrationStatus);
 router.use(authenticate, requireRole(ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE));
 router.get("/leads", getBankLeads);
 router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);

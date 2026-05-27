@@ -18,7 +18,8 @@ import { processSlaBreaches } from "./services/assignment.service.js";
 import { processWhatsAppQueue } from "./services/whatsapp.service.js";
 import { processNotificationEvents } from "./services/notificationWorker.service.js";
 import { sanitizeRequest } from "./middleware/sanitize.js";
-import { corsOptions, globalRateLimit, requireHttps, securityHeaders } from "./middleware/securityMiddleware.js";
+import { corsOptions, globalRateLimit, monitoringRateLimit, requireHttps, securityHeaders } from "./middleware/securityMiddleware.js";
+import { requireMonitoringAccess } from "./middleware/monitoringAuth.js";
 import { requestContext } from "./middleware/requestContext.js";
 import { attachApiResponse } from "./utils/apiResponse.js";
 import { auditMiddleware } from "./middleware/auditMiddleware.js";
@@ -61,7 +62,7 @@ app.get("/health", async (_req, res, next) => {
     next(error);
   }
 });
-app.get("/health/deep", async (_req, res, next) => {
+app.get("/health/deep", monitoringRateLimit, requireMonitoringAccess, async (_req, res, next) => {
   try {
     const health = await productionHealth({ deep: true });
     res.set("Cache-Control", "no-store").status(health.status === "down" ? 503 : 200).json(health);
@@ -69,14 +70,14 @@ app.get("/health/deep", async (_req, res, next) => {
     next(error);
   }
 });
-app.get("/health/queues", async (_req, res, next) => {
+app.get("/health/queues", monitoringRateLimit, requireMonitoringAccess, async (_req, res, next) => {
   try {
     res.set("Cache-Control", "no-store").json(await queueHealth());
   } catch (error) {
     next(error);
   }
 });
-app.get("/health/observability", async (_req, res, next) => {
+app.get("/health/observability", monitoringRateLimit, requireMonitoringAccess, async (_req, res, next) => {
   try {
     res.set("Cache-Control", "no-store").json(await observabilitySnapshot());
   } catch (error) {

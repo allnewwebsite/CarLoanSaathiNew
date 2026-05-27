@@ -67,6 +67,68 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function ecosystemLimit(value, fallback = 50) {
+  const parsed = Number(value || fallback);
+  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : fallback;
+}
+
+async function boundedList(collection, limit, mapper = (item) => item) {
+  const rows = await listRecords(collection);
+  return rows.slice(0, limit).map(mapper);
+}
+
+function safeAdminUser(user = {}) {
+  return {
+    id: user.id,
+    uid: user.uid || user.email,
+    email: user.email,
+    role: user.role,
+    approved: user.approved === true,
+    active: user.active !== false,
+    accountStatus: user.accountStatus || user.status || "",
+    dealershipId: user.dealershipId || null,
+    bankId: user.bankId || null,
+    branchId: user.branchId || null,
+    createdAt: user.createdAt || null,
+    updatedAt: user.updatedAt || null,
+    lastLoginAt: user.lastLoginAt || null,
+    lockedUntil: user.lockedUntil || null,
+  };
+}
+
+function safeLoginActivity(item = {}) {
+  return {
+    id: item.id,
+    email: item.email,
+    role: item.role || null,
+    status: item.status,
+    reason: item.reason || "",
+    createdAt: item.createdAt || item.timestamp || null,
+    ipAddress: item.ipAddress ? "recorded" : "",
+    userAgent: item.userAgent ? "recorded" : "",
+  };
+}
+
+function safeDocument(item = {}) {
+  return {
+    id: item.id,
+    leadId: item.leadId || null,
+    caseId: item.caseId || null,
+    dealershipId: item.dealershipId || null,
+    bankId: item.bankId || null,
+    assignedExecutiveId: item.assignedExecutiveId || null,
+    assignedExecutiveEmail: item.assignedExecutiveEmail || null,
+    type: item.type || item.documentType || item.label || "",
+    documentType: item.documentType || item.type || "",
+    fileName: item.fileName || item.originalName || "",
+    fileType: item.fileType || item.mimeType || "",
+    size: item.size || item.fileSize || null,
+    status: item.status || "",
+    uploadedBy: item.uploadedBy || "",
+    createdAt: item.createdAt || item.uploadedAt || null,
+  };
+}
+
 function requestLoginEmail(request) {
   return normalizeEmail(request.loginEmail || request.primaryGoogleEmail || request.dealership?.loginEmail || request.financeDesk?.officialEmail || request.dealership?.officialDealershipEmail);
 }
@@ -952,6 +1014,7 @@ export async function getAdminAnalytics(_req, res, next) {
 
 export async function getAdminEcosystem(req, res, next) {
   try {
+    const limit = ecosystemLimit(req.query.ecosystemLimit);
     const leadPage = await queryAllLeads({ query: { limit: req.query.limit || 100, cursor: req.query.cursor } });
     const [
       onboardingRequests,
@@ -975,25 +1038,25 @@ export async function getAdminEcosystem(req, res, next) {
       loginActivity,
       users,
     ] = await Promise.all([
-      listRecords("onboardingRequests"),
-      listRecords("dealerships"),
-      listRecords("financeDesks"),
-      listRecords("dealershipManagers"),
-      listRecords("bankPartners"),
-      listRecords("banks"),
-      listRecords("branches"),
-      listRecords("branchManagers"),
-      listRecords("loanExecutives"),
-      listRecords("leadAssignments"),
-      listRecords("slaLogs"),
-      listRecords("reassignmentLogs"),
-      listRecords("documents"),
-      listRecords("bankDocuments"),
-      listRecords("pendingDealershipApprovals"),
-      listRecords("pendingBankApprovals"),
-      listRecords("approvalLogs"),
-      listRecords("pendingGoogleAccounts"),
-      listRecords("loginActivity"),
+      boundedList("onboardingRequests", limit),
+      boundedList("dealerships", limit),
+      boundedList("financeDesks", limit),
+      boundedList("dealershipManagers", limit),
+      boundedList("bankPartners", limit),
+      boundedList("banks", limit),
+      boundedList("branches", limit),
+      boundedList("branchManagers", limit),
+      boundedList("loanExecutives", limit),
+      boundedList("leadAssignments", limit),
+      boundedList("slaLogs", limit),
+      boundedList("reassignmentLogs", limit),
+      boundedList("documents", limit, safeDocument),
+      boundedList("bankDocuments", limit, safeDocument),
+      boundedList("pendingDealershipApprovals", limit),
+      boundedList("pendingBankApprovals", limit),
+      boundedList("approvalLogs", limit),
+      boundedList("pendingGoogleAccounts", limit),
+      boundedList("loginActivity", limit, safeLoginActivity),
       listRecords("users"),
     ]);
     const activeDealershipIds = new Set(dealerships
@@ -1004,7 +1067,10 @@ export async function getAdminEcosystem(req, res, next) {
     const isActiveDealerScoped = (item) => activeDealershipIds.has(normalizeEmail(item.dealershipEmail || item.dealershipId || item.loginEmail || item.id));
     const visibleFinanceDesks = financeDesks.filter(isActiveDealerScoped);
     const visibleDealershipManagers = dealershipManagers.filter(isActiveDealerScoped);
-    const visibleUsers = users.filter((item) => !["finance-desk", "gm-sm"].includes(item.role) || isActiveDealerScoped(item));
+    const visibleUsers = users
+      .filter((item) => !["finance-desk", "gm-sm"].includes(item.role) || isActiveDealerScoped(item))
+      .slice(0, limit)
+      .map(safeAdminUser);
 
     res.json({
       leads: leadPage.data,

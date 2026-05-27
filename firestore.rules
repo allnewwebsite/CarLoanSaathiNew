@@ -143,7 +143,13 @@ service cloud.firestore {
         || (approved() && resource.data.recipientId == email())
         || ((isFinanceDesk() || isGmSm()) && resource.data.dealershipId == dealershipId())
         || (isBankManager() && resource.data.bankId == bankId())
-        || (isLoanExecutive() && resource.data.assignedExecutiveId == request.auth.uid);
+        || (isLoanExecutive()
+          && (
+            resource.data.assignedExecutiveId == request.auth.uid
+            || resource.data.assignedExecutiveId == email()
+            || resource.data.assignedExecutiveEmail == email()
+            || resource.data.recipientId == email()
+          ));
       allow create, delete: if false;
       allow read, write: if isSuperAdmin();
     }

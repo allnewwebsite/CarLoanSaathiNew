@@ -37,6 +37,9 @@ jobs:
       - name: Secret scan
         run: npm run security:scan
 
+      - name: Authorization audit
+        run: npm run security:authz-audit
+
       - name: Backend syntax check
         run: node --check server.js
         working-directory: backend
@@ -45,10 +48,5 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      - name: Backend dependency audit
-        run: npm audit --audit-level=high
-        working-directory: backend
-
-      - name: Frontend dependency audit
-        run: npm audit --audit-level=high
-        working-directory: frontend
+      - name: Dependency security audit
+        run: npm run security:deps

@@ -17,6 +17,30 @@ const PORTAL_ROLES = {
 };
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 5);
 const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 30);
+const SESSION_COOKIE_NAME = "cls_session";
+
+function authCookieEnabled() {
+  return process.env.ENABLE_AUTH_COOKIES === "true";
+}
+
+function authCookieOptions() {
+  const production = process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    secure: production,
+    sameSite: production ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  };
+}
+
+function setAuthCookie(res, token) {
+  if (authCookieEnabled() && token) res.cookie(SESSION_COOKIE_NAME, token, authCookieOptions());
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(SESSION_COOKIE_NAME, { ...authCookieOptions(), maxAge: undefined });
+}
 
 async function writeLoginActivity({ email, role = null, status, reason = "", req }) {
   return createRecord("loginActivity", {
@@ -328,6 +352,7 @@ export async function login(req, res, next) {
     await setFirebaseClaims(normalizedEmail, user);
     const token = jwt.sign(user, process.env.JWT_SECRET || "development-secret", { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
+    setAuthCookie(res, token);
     res.json({ token, user, redirectTo: ROLE_ROUTES[user.role] });
   } catch (error) {
     next(error);
@@ -430,6 +455,7 @@ export async function session(req, res, next) {
 export async function logout(req, res, next) {
   try {
     await writeLoginActivity({ email: req.user?.email || req.user?.uid, role: req.user?.role, status: "logout", req });
+    clearAuthCookie(res);
     res.json({ message: "Logged out" });
   } catch (error) {
     next(error);

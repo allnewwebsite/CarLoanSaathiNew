@@ -30,7 +30,7 @@ export function corsOptions() {
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Monitoring-Secret"],
   };
 }
 
@@ -63,6 +63,14 @@ export const registrationRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many registration attempts. Try again later." },
+});
+
+export const monitoringRateLimit = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: numberEnv("MONITORING_RATE_LIMIT_MAX", 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many monitoring requests. Try again later." },
 });
 
 export const uploadRateLimit = rateLimit({

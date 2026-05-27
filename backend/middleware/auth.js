@@ -3,6 +3,15 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord } from "../services/firestore.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 
+function cookieValue(req, name) {
+  const cookieHeader = String(req.headers.cookie || "");
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+}
+
 async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
@@ -60,7 +69,9 @@ async function firebaseEmailVerified(email) {
 export async function authenticate(req, res, next) {
   try {
     const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : null;
+    const cookieToken = cookieValue(req, "cls_session");
+    const token = bearerToken || cookieToken;
     if (!token) {
       observeAuthFailure(req, "missing_token");
       return res.status(401).json({ message: "Authentication token is required" });

@@ -35,9 +35,28 @@ function sessionFromResponse(response) {
   };
 }
 
+function storedToken() {
+  const sessionToken = sessionStorage.getItem("cls_token");
+  if (sessionToken) return sessionToken;
+  const legacyToken = localStorage.getItem("cls_token");
+  if (legacyToken) {
+    sessionStorage.setItem("cls_token", legacyToken);
+    localStorage.removeItem("cls_token");
+  }
+  return legacyToken;
+}
+
+function clearStoredToken() {
+  sessionStorage.removeItem("cls_token");
+  localStorage.removeItem("cls_token");
+}
+
 function storeAuthSession(session, token) {
   localStorage.setItem("cls_user", JSON.stringify(session));
-  if (token) localStorage.setItem("cls_token", token);
+  if (token) {
+    sessionStorage.setItem("cls_token", token);
+    localStorage.removeItem("cls_token");
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -46,13 +65,13 @@ export function AuthProvider({ children }) {
     return stored ? JSON.parse(stored) : null;
   });
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(localStorage.getItem("cls_token")));
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(storedToken()));
   const [authReady, setAuthReady] = useState(false);
-  const [sessionChecking, setSessionChecking] = useState(Boolean(localStorage.getItem("cls_token")));
+  const [sessionChecking, setSessionChecking] = useState(Boolean(storedToken()));
 
   const clearLocalSession = async () => {
     localStorage.removeItem("cls_user");
-    localStorage.removeItem("cls_token");
+    clearStoredToken();
     setFirebaseUser(null);
     setIsAuthenticated(false);
     setUser(null);
@@ -66,8 +85,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setFirebaseUser(currentUser || null);
-      setIsAuthenticated(Boolean(localStorage.getItem("cls_token")));
-      if (!localStorage.getItem("cls_token")) setUser(null);
+      setIsAuthenticated(Boolean(storedToken()));
+      if (!storedToken()) setUser(null);
       setAuthReady(true);
     });
     return unsubscribe;
@@ -123,7 +142,7 @@ export function AuthProvider({ children }) {
   };
 
   const validateSession = async ({ silent = true } = {}) => {
-    const token = localStorage.getItem("cls_token");
+    const token = storedToken();
     if (!token) {
       setSessionChecking(false);
       return null;
@@ -146,7 +165,7 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    if (!localStorage.getItem("cls_token")) {
+    if (!storedToken()) {
       setSessionChecking(false);
       return undefined;
     }
