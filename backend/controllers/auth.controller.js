@@ -108,7 +108,7 @@ async function accountForEmail(email, portal) {
   }
   const allowed = PORTAL_ROLES[portal] || [];
   const users = await listRecords("users");
-  const approvedUser = users.find((item) => item.email === email && item.approved !== false && item.active !== false && allowed.includes(item.role));
+  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item));
   if (approvedUser) return approvedUser;
   const candidates = [];
   if (allowed.includes("finance-desk")) {
@@ -142,7 +142,7 @@ async function accountForEmail(email, portal) {
   }
   if (allowed.includes("bank-manager")) {
     const managers = await listRecords("branchManagers");
-    const manager = managers.find((item) => item.email === email || item.id === email);
+    const manager = managers.find((item) => item.email === email || item.officialEmail === email || item.id === email);
     if (manager) candidates.push({
       role: "bank-manager",
       bankId: manager.bankPartnerId || manager.bankId || manager.bankName,
@@ -153,10 +153,46 @@ async function accountForEmail(email, portal) {
       accountApproved: manager.accountApproved !== false,
       accountActive: manager.accountActive !== false,
     });
+
+    const bankAccounts = await listRecords("pendingBankAccounts");
+    const approvedBankAccount = bankAccounts.find((item) =>
+      item.email === email
+      && item.approvalStatus === "approved"
+      && item.accountApproved === true
+      && item.accountActive === true
+    );
+    if (approvedBankAccount) candidates.push({
+      role: "bank-manager",
+      bankId: approvedBankAccount.bankId || approvedBankAccount.bankData?.bankId || approvedBankAccount.email,
+      branchId: approvedBankAccount.branchId || approvedBankAccount.bankData?.bankBranchLocation || approvedBankAccount.bankData?.branchLocation,
+      status: "active",
+      accountStatus: "active",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+    });
+
+    const bankApprovals = await listRecords("pendingBankApprovals");
+    const approvedBankRequest = bankApprovals.find((item) =>
+      (item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email)
+      && item.status === "approved"
+    );
+    if (approvedBankRequest) candidates.push({
+      role: "bank-manager",
+      bankId: approvedBankRequest.bankId || approvedBankRequest.email || approvedBankRequest.officialEmail || email,
+      branchId: approvedBankRequest.bankBranchLocation || approvedBankRequest.branchLocation || approvedBankRequest.city,
+      status: "active",
+      accountStatus: "active",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+    });
   }
   if (allowed.includes("loan-executive")) {
     const executives = await listRecords("loanExecutives");
-    const executive = executives.find((item) => item.email === email || item.id === email);
+    const executive = executives.find((item) => item.email === email || item.officialEmail === email || item.id === email);
     if (executive) candidates.push({
       role: "loan-executive",
       bankId: executive.bankPartnerId || executive.bankId || executive.bankName,
@@ -197,12 +233,69 @@ async function dealerRegistrationStatus(email) {
 async function bankRegistrationStatus(email) {
   const registrations = await listRecords("pendingBankAccounts");
   const registration = registrations.find((item) => item.email === email);
-  if (!registration) return null;
+  if (!registration) {
+    const approvals = await listRecords("pendingBankApprovals");
+    const approval = approvals.find((item) => item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email);
+    if (!approval) return null;
+    return {
+      email,
+      registrationSubmitted: true,
+      approvalStatus: approval.status || "pending",
+      accountApproved: approval.status === "approved",
+      accountActive: approval.status === "approved",
+      bankId: approval.bankId || approval.email || approval.officialEmail || email,
+      branchId: approval.bankBranchLocation || approval.branchLocation || approval.city,
+      linkedApprovalFound: true,
+      liveBankProfileFound: approval.status === "approved",
+    };
+  }
   const approvals = await listRecords("pendingBankApprovals");
-  const approval = approvals.find((item) => item.id === registration.approvalRequestId || item.email === email || item.primaryGoogleEmail === email);
-  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === email || item.id === email);
-  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === email || item.id === email);
-  return approval || bankPartner || branchManager ? registration : null;
+  const approval = approvals.find((item) => item.id === registration.approvalRequestId || item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email);
+  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === email || item.officialEmail === email || item.id === email);
+  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === email || item.officialEmail === email || item.id === email);
+  return {
+    ...registration,
+    linkedApprovalFound: Boolean(approval),
+    liveBankProfileFound: Boolean(bankPartner || branchManager),
+  };
+}
+
+function bankLoginGate(registration) {
+  if (!registration) {
+    return {
+      reason: "bank-registration-required",
+      message: "Please create your bank account from Bank Registration before using Bank Login.",
+      redirectTo: "/bank-registration",
+      actionLabel: "Go to Bank Registration",
+    };
+  }
+
+  if (registration.approvalStatus === "rejected") {
+    return {
+      reason: "bank-registration-rejected",
+      message: registration.rejectionReason
+        ? `Your bank registration was rejected: ${registration.rejectionReason}`
+        : "Your bank registration was rejected. Please contact CarLoanSaathi support.",
+      redirectTo: "/bank-registration",
+      actionLabel: "Register Again",
+    };
+  }
+
+  if (registration.registrationSubmitted === true || registration.approvalStatus === "pending") {
+    return {
+      reason: "bank-approval-pending",
+      message: "Your bank registration is submitted and pending Super Admin approval.",
+      redirectTo: "/bank-registration/pending",
+      actionLabel: "Check Approval Status",
+    };
+  }
+
+  return {
+    reason: "bank-registration-form-required",
+    message: "Your email account is verified. Please complete the Bank Registration form before using Bank Login.",
+    redirectTo: "/bank-registration/form",
+    actionLabel: "Complete Bank Registration",
+  };
 }
 
 async function approvedDealerAccess(email, account) {
@@ -285,13 +378,12 @@ export async function login(req, res, next) {
       }
       if (portal === "bank") {
         const registration = await bankRegistrationStatus(normalizedEmail);
-        await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: registration ? "bank-approval-pending" : "bank-registration-required", req });
+        const gate = bankLoginGate(registration);
+        await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: gate.reason, req });
         return res.status(403).json({
-          message: registration?.registrationSubmitted === true
-            ? "Your bank account is still pending approval."
-            : "Please create your bank account from Bank Registration before using Bank Login.",
-          redirectTo: registration ? "/bank-registration/pending" : "/bank-registration",
-          actionLabel: registration ? "Check Approval Status" : "Go to Bank Registration",
+          message: gate.message,
+          redirectTo: gate.redirectTo,
+          actionLabel: gate.actionLabel,
         });
       }
       await createPendingGoogleAccount({ decoded, portal, reason: "not-approved" });

@@ -143,10 +143,11 @@ async function liveBankRegistrationForAccount(account) {
   const approval = approvals.find((item) =>
     item.id === account.approvalRequestId
     || item.email === account.email
+    || item.officialEmail === account.email
     || item.primaryGoogleEmail === account.email
   ) || null;
-  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === account.email || item.id === account.email) || null;
-  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === account.email || item.id === account.email) || null;
+  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === account.email || item.officialEmail === account.email || item.id === account.email) || null;
+  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === account.email || item.officialEmail === account.email || item.id === account.email) || null;
   return { approval, bankPartner, branchManager, live: Boolean(approval || bankPartner || branchManager) };
 }
 
@@ -351,11 +352,11 @@ export async function getBankRegistrationStatus(req, res, next) {
     if (account?.approvalStatus === "approved" && account.accountApproved === true && account.accountActive === true && active) {
       return res.json({ status: "approved", approvalStatus: "approved", registrationSubmitted: true, accountApproved: true, accountActive: true, email, redirectTo: "/bank-registration/approved", message: "Your bank account has been approved successfully by CarLoanSaathi." });
     }
-    if (!live.live) {
-      return res.json({ status: "not-registered", approvalStatus: "not-registered", registrationSubmitted: false, accountApproved: false, accountActive: false, email, redirectTo: "/bank-registration", message: "No active bank registration was found for this account." });
-    }
     if (account?.registrationSubmitted === false || account?.approvalStatus === "not-submitted") {
       return res.json({ status: "not-submitted", approvalStatus: "not-submitted", registrationSubmitted: false, accountApproved: false, accountActive: false, email, registrationId: account.id, redirectTo: "/bank-registration/form", message: "Complete your bank registration form." });
+    }
+    if (!live.live) {
+      return res.json({ status: "not-registered", approvalStatus: "not-registered", registrationSubmitted: false, accountApproved: false, accountActive: false, email, redirectTo: "/bank-registration", message: "No active bank registration was found for this account." });
     }
     res.json({ status: account?.approvalStatus || "pending", approvalStatus: account?.approvalStatus || "pending", registrationSubmitted: account?.registrationSubmitted !== false, accountApproved: account?.accountApproved === true, accountActive: account?.accountActive === true, email, registrationId: account?.id || null, redirectTo: "/bank-registration/pending", message: "Your bank account is still pending approval from CarLoanSaathi." });
   } catch (error) {

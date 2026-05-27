@@ -603,28 +603,46 @@ export async function approveBankApproval(req, res, next) {
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
     if (request.status !== "pending") return res.status(400).json({ message: "Application is not pending" });
     const now = new Date().toISOString();
-    const bankId = request.email;
+    const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
+    if (!bankEmail) return res.status(400).json({ message: "Bank manager email is missing on this approval request" });
+    const bankId = request.bankId || bankEmail;
     const bankName = request.bankName || request.companyName;
     const branchLocation = request.bankBranchLocation || request.branchLocation || request.city;
-    await upsertRecord("bankPartners", bankId, { ...request, id: bankId, bankName, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    await upsertRecord("banks", bankId, { id: bankId, name: bankName, bankName, status: "active", active: true, approved: true });
+    await upsertRecord("bankPartners", bankId, { ...request, id: bankId, email: bankEmail, officialEmail: bankEmail, bankId, bankName, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    await upsertRecord("banks", bankId, { id: bankId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, status: "active", active: true, approved: true });
     await upsertRecord("branches", `${bankId}:${branchLocation}`, { bankPartnerId: bankId, bankName, bankBranchLocation: branchLocation, branchLocation, city: branchLocation, branchCity: branchLocation, state: "Haryana", status: "active", active: true });
-    await upsertRecord("branchManagers", request.email, { email: request.email, bankPartnerId: bankId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountApproved: true, accountActive: true });
-    await upsertRecord("users", request.email, { uid: request.email, email: request.email, role: "bank-manager", approved: true, active: true, accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
+    await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: bankId, bankId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+    await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
+    if (firebaseAdmin) {
+      try {
+        const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
+        await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
+          role: "bank-manager",
+          approved: true,
+          active: true,
+          dealershipId: null,
+          bankId,
+          branchId: branchLocation || null,
+        });
+      } catch {
+        // Firebase account may be created later; login will repair claims.
+      }
+    }
     for (const executive of Array.isArray(request.executives) ? request.executives : []) {
-      if (executive.email) {
-        await upsertRecord("loanExecutives", executive.email, { ...executive, bankPartnerId: bankId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, status: "active", active: true, approved: true, accountApproved: true, accountActive: true });
-        await upsertRecord("users", executive.email, { uid: executive.email, email: executive.email, role: "loan-executive", approved: true, active: true, accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
+      const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
+      if (executiveEmail) {
+        await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: bankId, bankId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+        await upsertRecord("users", executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
       }
     }
     for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
       await upsertRecord("bankCityMappings", `${bankId}:${city}`, { bankPartnerId: bankId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
     }
     const updated = await updateRecord("pendingBankApprovals", request.id, { status: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === request.email || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
+    if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
-    await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: request.email, partnerId: bankId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
+    await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId } });
     res.json({ message: "Bank approved", request: updated });
   } catch (error) {
@@ -638,11 +656,12 @@ export async function rejectBankApproval(req, res, next) {
     if (!reason) return res.status(400).json({ message: "Rejection reason is required" });
     const request = await getRecord("pendingBankApprovals", req.params.id);
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
+    const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     const updated = await updateRecord("pendingBankApprovals", request.id, { status: "rejected", rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === request.email || item.approvalRequestId === request.id);
+    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
     if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
-    await createNotification({ type: "bank-rejected", title: "Bank branch rejected", message: reason, recipientRole: "bank-manager", recipientId: request.email, partnerId: request.email, phoneNumber: request.mobile, priority: "high", meta: { bankName: request.bankName || request.companyName, reason } });
+    await createNotification({ type: "bank-rejected", title: "Bank branch rejected", message: reason, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankEmail, phoneNumber: request.mobile, priority: "high", meta: { bankName: request.bankName || request.companyName, reason } });
     await writeAuditLog({ req, actionType: "BANK_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
     res.json({ message: "Bank rejected", request: updated });
   } catch (error) {

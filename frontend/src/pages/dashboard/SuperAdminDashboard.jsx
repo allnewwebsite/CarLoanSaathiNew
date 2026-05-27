@@ -375,7 +375,7 @@ function AdminListPage({ mode }) {
 
   const deleteBank = async (item) => {
     const label = item.bankName || item.companyName || item.email || item.id;
-    const confirmed = window.confirm(`Permanently delete ${label}? This will remove the bank account and linked database records.`);
+    const confirmed = window.confirm(`Delete ${label}? This will remove the bank account, users, executives, and approval/profile records. Existing leads, documents, audit logs, and customer history will remain saved.`);
     if (!confirmed) return;
     setUpdatingId(item.id);
     try {
@@ -387,7 +387,6 @@ function AdminListPage({ mode }) {
   };
 
   const disableDealer = (item) => suspendApplication({ ...item, disableReason: "Disabled by Super Admin" });
-  const disableBank = (item) => suspendBankApplication({ ...item, disableReason: "Disabled by Super Admin" });
 
   const setLeadFilter = (value) => {
     setParams((current) => {
@@ -418,7 +417,7 @@ function AdminListPage({ mode }) {
       return {
         title: "Approved Banks",
         headers: ["Bank Name", "IFSC Code", "Bank Location", "Manager Name", "Manager Mobile", "Official Email", "Monthly Capacity", "Number Of Executives", "Approval Date", "Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), display(item.executiveCount), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => suspendBankApplication(item)} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-50">Suspend</button><button disabled={updatingId === item.id} onClick={() => disableBank(item)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">Disable</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), display(item.executiveCount), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "approval-banks") {
