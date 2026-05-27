@@ -1,16 +1,17 @@
-import { stages } from "./config.js";
-import { apiGet, assertOk, pause, rawGet } from "./helpers.js";
+import { DEFAULT_THRESHOLDS, stages, sharedTags } from "./config.js";
+import { apiGet, assertOk, enforceReadOnlySafety, handleSummary, pause, rawGet } from "./helpers.js";
 
 export const options = {
   stages: stages(),
-  thresholds: {
-    http_req_failed: ["rate<0.02"],
-    http_req_duration: ["p(95)<1500", "p(99)<3000"],
-  },
+  thresholds: DEFAULT_THRESHOLDS,
 };
 
+export { handleSummary };
+
 export default function () {
-  assertOk(rawGet("/health", { area: "health" }), "health");
-  assertOk(apiGet("/banks", null, { area: "catalog" }), "catalog banks");
+  enforceReadOnlySafety();
+  assertOk(rawGet("/health", sharedTags("health")), "health", 1500);
+  assertOk(rawGet("/health/queues", sharedTags("queue-health")), "queue health", 2000);
+  assertOk(apiGet("/banks", null, sharedTags("catalog")), "catalog banks", 2000);
   pause();
 }

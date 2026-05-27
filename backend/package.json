@@ -8,7 +8,8 @@
     "start": "node server.js",
     "create-super-admin": "node scripts/createSuperAdmin.js",
     "maintenance": "node scripts/runMaintenance.js",
-    "backfill:metrics": "node scripts/backfillMetrics.js"
+    "backfill:metrics": "node scripts/backfillMetrics.js",
+    "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {
     "@sentry/node": "^10.54.0",

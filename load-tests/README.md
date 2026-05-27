@@ -1,41 +1,125 @@
-# CarLoanSaathi Load Testing
+# CarLoanSaathi Enterprise Load Testing
 
-Use k6 for production-like API load testing without committing credentials.
+This suite uses k6 to benchmark backend APIs, Firebase auth, Firestore query paths, queues, uploads, and real dealership-bank workflows.
+
+## Safety Rules
+
+- Do not run heavy tests against production.
+- Use a separate staging Render service, staging Vercel site, and staging Firebase project.
+- Write scenarios require `ALLOW_WRITES=true` and should only run on staging.
+- Production smoke tests require `ALLOW_PRODUCTION_LOAD=true` and should use `PROFILE=smoke`.
 
 ## Install
 
-Install k6 locally from https://k6.io/docs/get-started/installation/
-
-## Smoke Test
+Install k6 locally:
 
 ```powershell
-k6 run -e BASE_URL=https://carloansaathi-apkaapnasaathi.onrender.com load-tests/k6/api-smoke.js
+winget install k6
 ```
 
-## Authenticated Dashboard Test
-
-Generate a short-lived auth token manually from the browser/session, then run:
+## Staging Environment Variables
 
 ```powershell
-k6 run -e BASE_URL=https://carloansaathi-apkaapnasaathi.onrender.com -e AUTH_TOKEN=YOUR_TOKEN -e PROFILE=light load-tests/k6/dashboard-load.js
+$env:TEST_ENV="staging"
+$env:BASE_URL="https://your-staging-backend.onrender.com"
+$env:FRONTEND_URL="https://your-staging-frontend.vercel.app"
+$env:FIREBASE_WEB_API_KEY="your-staging-web-api-key"
+$env:FINANCE_EMAIL="finance-load@demo.local"
+$env:FINANCE_PASSWORD="strong-password"
+$env:GM_EMAIL="gm-load@demo.local"
+$env:GM_PASSWORD="strong-password"
+$env:BANK_MANAGER_EMAIL="manager-load@demo.local"
+$env:BANK_MANAGER_PASSWORD="strong-password"
+$env:EXECUTIVE_EMAIL="exec-load@demo.local"
+$env:EXECUTIVE_PASSWORD="strong-password"
+$env:ADMIN_EMAIL="admin-load@demo.local"
+$env:ADMIN_PASSWORD="strong-password"
 ```
 
-## Lead Workflow Test
+## Synthetic Data
 
-Default mode only reads lists. Lead creation is disabled unless explicitly enabled.
+Dry run:
 
 ```powershell
-k6 run -e BASE_URL=https://carloansaathi-apkaapnasaathi.onrender.com -e AUTH_TOKEN=YOUR_TOKEN -e PROFILE=medium load-tests/k6/lead-workflow.js
+npm run load:seed
 ```
 
-To test lead creation against a staging project only:
+Seed staging:
 
 ```powershell
-k6 run -e BASE_URL=https://staging-api.example.com -e AUTH_TOKEN=YOUR_TOKEN -e CREATE_LEADS=true load-tests/k6/lead-workflow.js
+$env:LOAD_TEST_ENV="staging"
+$env:LOAD_TEST_SEED_APPLY="true"
+$env:LOAD_TEST_LEAD_COUNT="100000"
+npm run load:seed
 ```
 
-## Thresholds
+## Test Suites
 
-- API p95 under 2 seconds.
-- Error rate under 2 percent.
-- No production lead-create stress unless staging data is isolated.
+Smoke:
+
+```powershell
+npm run load:smoke
+```
+
+Auth:
+
+```powershell
+$env:PROFILE="medium"
+npm run load:auth
+```
+
+Dashboards:
+
+```powershell
+$env:PROFILE="medium"
+npm run load:dashboard
+```
+
+Lead workflow read-only:
+
+```powershell
+$env:PROFILE="medium"
+npm run load:leads
+```
+
+Lead creation on staging only:
+
+```powershell
+$env:ALLOW_WRITES="true"
+$env:CREATE_LEADS="true"
+npm run load:leads
+```
+
+Firestore indexed-query stress:
+
+```powershell
+$env:PROFILE="heavy"
+npm run load:firestore
+```
+
+Queue and notification stress:
+
+```powershell
+$env:PROFILE="heavy"
+npm run load:queue
+```
+
+Upload stress on staging only:
+
+```powershell
+$env:ALLOW_WRITES="true"
+$env:LEAD_ID="CLS-LT-0000001"
+npm run load:upload
+```
+
+## Output
+
+Every run writes a JSON summary to `load-tests/results/<RUN_ID>-summary.json`.
+
+Summarize local runs:
+
+```powershell
+npm run load:report
+```
+
+Use the generated p50/p95/p99 values with Render metrics, Sentry traces, Firebase usage, and `/health/queues` to determine real safe capacity.

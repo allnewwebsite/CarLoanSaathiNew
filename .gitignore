@@ -18,6 +18,8 @@ dist/
 coverage/
 uploads/
 *.log
+load-tests/results/*
+!load-tests/results/.gitkeep
 
 # Firebase service account keys
 *-firebase-adminsdk-*.json
