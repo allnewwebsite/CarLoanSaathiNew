@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
 import { logError } from "./logger.service.js";
 
 export const AUDIT_ACTIONS = {
@@ -92,7 +92,28 @@ export function queueAuditLog(payload) {
 }
 
 export async function getAuditLogs(filters = {}) {
-  const logs = await listRecords("auditLogs");
+  const where = [];
+  if (filters.actorId || filters.user) where.push({ field: "actorId", value: String(filters.actorId || filters.user).trim() });
+  if (filters.actionType || filters.action) where.push({ field: "actionType", value: String(filters.actionType || filters.action).trim() });
+  if (filters.role) where.push({ field: "role", value: String(filters.role).trim() });
+  if (filters.dealership || filters.dealershipId) where.push({ field: "dealershipId", value: String(filters.dealership || filters.dealershipId).trim() });
+  if (filters.bank || filters.bankId) where.push({ field: "bankId", value: String(filters.bank || filters.bankId).trim() });
+  if (filters.leadId) where.push({ field: "leadId", value: String(filters.leadId).trim() });
+  if (filters.caseId) where.push({ field: "caseId", value: String(filters.caseId).trim() });
+  if (filters.date) {
+    const day = String(filters.date).slice(0, 10);
+    where.push({ field: "timestamp", op: ">=", value: `${day}T00:00:00.000Z` });
+    where.push({ field: "timestamp", op: "<=", value: `${day}T23:59:59.999Z` });
+  }
+  const result = await queryRecords("auditLogs", {
+    where,
+    orderBy: "timestamp",
+    direction: "desc",
+    limit: filters.limit || 50,
+    cursor: filters.cursor,
+    maxLimit: 100,
+  });
+  const logs = result.data;
   const search = String(filters.search || "").trim().toLowerCase();
   return logs.filter((log) => {
     const actor = filters.actorId || filters.user;

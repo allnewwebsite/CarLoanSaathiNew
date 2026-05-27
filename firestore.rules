@@ -226,7 +226,45 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /dailyMetrics/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /monthlyMetrics/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /dealershipMetrics/{id} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && id == dealershipId());
+      allow write: if false;
+    }
+
+    match /bankMetrics/{id} {
+      allow read: if isSuperAdmin()
+        || (isBankManager() && id == bankId());
+      allow write: if false;
+    }
+
+    match /executiveMetrics/{id} {
+      allow read: if isSuperAdmin()
+        || (isLoanExecutive() && id == request.auth.uid);
+      allow write: if false;
+    }
+
     match /operationalMetrics/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /operationalEvents/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /operationalAlerts/{id} {
       allow read: if isSuperAdmin();
       allow write: if false;
     }
@@ -236,6 +274,16 @@ service cloud.firestore {
         || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data))
         || (isBankManager() && sameBank(resource.data))
         || (isLoanExecutive() && assignedExecutive(resource.data));
+      allow write: if false;
+    }
+
+    match /archivedLeads/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /archivalLogs/{id} {
+      allow read: if isSuperAdmin();
       allow write: if false;
     }
 

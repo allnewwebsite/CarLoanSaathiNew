@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, updateRecord } from "../services/firestore.service.js";
+import { createRecord, getRecord, queryRecords, updateRecord } from "../services/firestore.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { createShortLivedDocumentUrl, uploadLeadDocument } from "../services/storage.service.js";
@@ -33,8 +33,7 @@ async function canReviewCustomerDocument(req, lead) {
   if (req.user?.role === "loan-executive") {
     const email = req.user?.email || req.user?.uid;
     if (lead?.assignedExecutiveEmail === email || lead?.assignedExecutiveId === email) return true;
-    const executives = await listRecords("loanExecutives");
-    const executive = executives.find((item) => item.email === email || item.id === email);
+    const executive = await getRecord("loanExecutives", email);
     return Boolean(executive && (lead?.assignedExecutiveId === executive.id || lead?.assignedExecutiveEmail === executive.email));
   }
   return false;
@@ -106,10 +105,14 @@ export async function getLeadDocuments(req, res, next) {
     const lead = await getRecord("leads", req.params.leadId);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
     if (!(await canReadCustomerDocument(req, lead))) return res.status(403).json({ message: "Document access denied" });
-    const documents = (await listRecords("documents"))
-      .filter((document) => document.leadId === req.params.leadId)
-      .map((document) => ({ ...document, url: null }))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const documentsPage = await queryRecords("documents", {
+      where: [{ field: "leadId", value: req.params.leadId }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 50,
+      maxLimit: 50,
+    });
+    const documents = documentsPage.data.map((document) => ({ ...document, url: null }));
     res.json(documents);
   } catch (error) {
     next(error);

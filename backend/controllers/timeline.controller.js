@@ -1,4 +1,4 @@
-import { getRecord, listRecords } from "../services/firestore.service.js";
+import { getRecord } from "../services/firestore.service.js";
 import { getTimelineEvents } from "../services/timeline.service.js";
 
 async function canReadLeadTimeline(req, leadId) {
@@ -16,8 +16,7 @@ async function canReadLeadTimeline(req, leadId) {
   }
 
   if (req.user?.role === "bank-manager") {
-    const managers = await listRecords("branchManagers");
-    const manager = managers.find((item) => item.email === email || item.id === email);
+    const manager = await getRecord("branchManagers", email);
     if (manager) {
       const managerCity = manager.branchCity || manager.city || manager.operatingCity;
       const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity;

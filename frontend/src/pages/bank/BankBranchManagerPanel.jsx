@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
 import { api } from "../../services/api.js";
 
@@ -58,33 +59,7 @@ function responseRows(response) {
 }
 
 function Table({ title, headers, rows, loading, page, total, onPage }) {
-  const pages = Math.max(Math.ceil(total / pageSize), 1);
-  return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs font-medium uppercase text-slate-500">
-            <tr>{headers.map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-slate-500">Loading...</td></tr> : null}
-            {!loading && rows.map((row) => <tr key={row.key} className="hover:bg-slate-50">{row.cells.map((cell, index) => <td key={`${row.key}-${index}`} className="px-4 py-3 text-slate-600">{cell}</td>)}</tr>)}
-            {!loading && !rows.length ? <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-slate-500">No records found.</td></tr> : null}
-          </tbody>
-        </table>
-      </div>
-      {onPage ? (
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-4 py-3 text-sm">
-          <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 disabled:opacity-50">Prev</button>
-          <span className="text-slate-500">Page {page} of {pages}</span>
-          <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 disabled:opacity-50">Next</button>
-        </div>
-      ) : null}
-    </section>
-  );
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
 }
 
 function SearchBar({ value, onChange }) {

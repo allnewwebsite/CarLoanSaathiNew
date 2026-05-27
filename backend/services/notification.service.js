@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, queryRecords, updateRecord } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords, updateRecord } from "./firestore.service.js";
 import { buildWhatsAppMessage, queueWhatsAppNotification } from "./whatsapp.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { logError } from "./logger.service.js";
@@ -6,6 +6,7 @@ import { GOVERNANCE_LIMITS } from "../config/governance.js";
 import { DOMAIN_EVENTS, emitDomainEvent, onDomainEvent } from "./eventBus.service.js";
 import { renderNotificationTemplate } from "./notificationTemplates.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
+import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 
 export async function createNotification({
   type,
@@ -101,8 +102,10 @@ export async function createNotification({
 }
 
 export function emitNotificationEvent(event) {
-  emitDomainEvent(DOMAIN_EVENTS.NOTIFICATION_REQUESTED, event);
-  return Promise.resolve({ queued: true });
+  return addQueueJob(QUEUE_NAMES.NOTIFICATIONS, event?.type || "notification", event, {
+    priority: event?.priority || "medium",
+    fallback: (payload) => emitDomainEvent(DOMAIN_EVENTS.NOTIFICATION_REQUESTED, payload),
+  });
 }
 
 onDomainEvent(DOMAIN_EVENTS.NOTIFICATION_REQUESTED, async ({ payload }) => {
@@ -134,38 +137,12 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
     searchFields: ["title", "message", "caseId", "leadId"],
   });
 
-  const leads = [];
-  const executives = role === "loan-executive" ? await listRecords("loanExecutives") : [];
-  const managers = role === "bank-manager" ? await listRecords("branchManagers") : [];
-  const executive = executives.find((item) => item.email === id || item.id === id);
-  const manager = managers.find((item) => item.email === id || item.id === id);
-  const canReadLeadNotification = (item) => {
-    if (!item.leadId) return item.recipientId === id || item.dealerEmail === id || item.partnerId === id;
-    const lead = leads.find((entry) => entry.id === item.leadId);
-    if (!lead) return false;
-    if (["finance-desk", "gm-sm"].includes(role)) return lead.dealerEmail === id || lead.dealershipEmail === id || lead.createdBy === id;
-    if (role === "loan-executive") {
-      return lead.assignedExecutiveEmail === id
-        || lead.assignedExecutiveId === id
-        || (executive && (lead.assignedExecutiveId === executive.id || lead.assignedExecutiveEmail === executive.email));
-    }
-    if (role === "bank-manager") {
-      const managerCity = manager?.branchCity || manager?.city || manager?.operatingCity;
-      const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
-      const managerBank = manager?.bankName || manager?.bankPartnerId;
-      const sameCity = !managerCity || managerCity === leadCity;
-      const sameBank = !managerBank || lead.assignedPartnerId === managerBank || lead.bankPartner === managerBank || lead.preferredBank === managerBank;
-      return sameCity && sameBank;
-    }
-    return false;
-  };
-
   let items = result.data.filter((item) => {
     const allowed = role === "super-admin"
       || item.recipientId === id
       || item.dealerEmail === id
       || item.partnerId === id
-      || (item.recipientRole === role && canReadLeadNotification(item));
+      || item.recipientRole === role;
     const unreadOk = !unreadOnly || item.read === false;
     return allowed && unreadOk;
   });
@@ -174,7 +151,7 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
 }
 
 export async function markNotificationRead(id, actor = {}) {
-  const item = (await listRecords("notifications")).find((entry) => entry.id === id);
+  const item = await getRecord("notifications", id);
   if (!item) {
     const error = new Error("Notification not found");
     error.status = 404;
@@ -182,9 +159,7 @@ export async function markNotificationRead(id, actor = {}) {
   }
   const lead = item.leadId ? await getRecord("leads", item.leadId) : null;
   const actorId = actor.email || actor.uid;
-  const manager = actor.role === "bank-manager"
-    ? (await listRecords("branchManagers")).find((entry) => entry.email === actorId || entry.id === actorId)
-    : null;
+  const manager = actor.role === "bank-manager" ? await getRecord("branchManagers", actorId) : null;
   const managerCity = manager?.branchCity || manager?.city || manager?.operatingCity;
   const leadCity = lead?.bankBranchCity || lead?.branchCity || lead?.routingCity || lead?.dealershipCity || lead?.city;
   const managerBank = manager?.bankName || manager?.bankPartnerId;

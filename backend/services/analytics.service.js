@@ -1,66 +1,60 @@
-import { listRecords } from "./firestore.service.js";
-import { normalizeStatus } from "../utils/status.constants.js";
-
-function monthKey(date) {
-  return (date || new Date().toISOString()).slice(0, 7);
-}
-
-function groupCount(items, keyFn) {
-  return Object.entries(items.reduce((acc, item) => {
-    const key = keyFn(item) || "Unknown";
-    acc[key] = (acc[key] || 0) + 1;
-    return acc;
-  }, {})).map(([label, count]) => ({ label, count }));
-}
+import { getGlobalMetrics, getLeaderboardMetrics, getMetric, getTrendMetrics } from "./analyticsEngine.service.js";
 
 export async function overviewAnalytics() {
-  const [leads, commissions, slaLogs] = await Promise.all([listRecords("leads"), listRecords("commissions"), listRecords("slaLogs")]);
-  const approved = leads.filter((lead) => ["APPROVED", "DISBURSED"].includes(normalizeStatus(lead.status))).length;
-  const rejected = leads.filter((lead) => normalizeStatus(lead.status) === "REJECTED").length;
+  const metrics = await getGlobalMetrics();
   return {
-    totalLeads: leads.length,
-    approvedLeads: approved,
-    rejectedLeads: rejected,
-    approvalRatio: leads.length ? Math.round((approved / leads.length) * 100) : 0,
-    rejectionRatio: leads.length ? Math.round((rejected / leads.length) * 100) : 0,
-    slaBreaches: slaLogs.filter((log) => log.status === "expired").length,
-    commissionPayouts: commissions.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+    totalLeads: metrics.totalLeads,
+    pendingLeads: metrics.pendingLeads,
+    approvedLeads: metrics.approvedLeads || 0,
+    disbursedLeads: metrics.disbursedLeads,
+    rejectedLeads: metrics.rejectedLeads,
+    pendingDocuments: metrics.pendingDocuments,
+    bankProcess: metrics.bankProcess,
+    approvalRatio: metrics.approvalRatio,
+    rejectionRatio: metrics.rejectionRatio,
+    slaBreaches: metrics.slaBreaches,
+    averageProcessingTime: metrics.averageProcessingTime,
+    commissionPayouts: metrics.commissionPayouts || 0,
   };
 }
 
 export async function monthlyLeadAnalytics() {
-  return groupCount(await listRecords("leads"), (lead) => monthKey(lead.createdAt)).sort((a, b) => a.label.localeCompare(b.label));
+  const rows = await getTrendMetrics({ collection: "monthlyMetrics", limit: 12 });
+  return rows.map((item) => ({ label: item.period || item.id, count: item.totalLeads || 0 }));
 }
 
 export async function cityAnalytics() {
-  return groupCount(await listRecords("leads"), (lead) => lead.city);
+  return [];
 }
 
 export async function dealerAnalytics() {
-  const leads = await listRecords("leads");
-  const commissions = await listRecords("commissions");
-  return groupCount(leads, (lead) => lead.dealerEmail || lead.createdBy)
-    .map((dealer) => ({
-      ...dealer,
-      amount: commissions
-        .filter((commission) => (commission.dealerEmail || "Unknown") === dealer.label)
-        .reduce((sum, commission) => sum + Number(commission.amount || 0), 0),
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  const metrics = await getLeaderboardMetrics({ collection: "dealershipMetrics", limit: 20 });
+  return metrics.map((item) => ({ label: item.scopeId, count: item.totalLeads || 0, amount: item.commissionPayouts || 0 }));
 }
 
 export async function bankAnalytics() {
-  return groupCount(await listRecords("leads"), (lead) => lead.bankPartner || lead.preferredBank).sort((a, b) => b.count - a.count).slice(0, 10);
+  const metrics = await getLeaderboardMetrics({ collection: "bankMetrics", limit: 20 });
+  return metrics.map((item) => ({ label: item.scopeId, count: item.totalLeads || 0 }));
 }
 
 export async function slaAnalytics() {
-  const logs = await listRecords("slaLogs");
-  return groupCount(logs, (log) => log.status).concat([
-    { label: "Average SLA Score", count: Math.round(logs.reduce((sum, log) => sum + Number(log.slaScore || 0), 0) / Math.max(logs.length, 1)) },
-  ]);
+  const metrics = await getGlobalMetrics();
+  return [
+    { label: "SLA Breaches", count: metrics.slaBreaches || 0 },
+    { label: "Average Processing Time", count: metrics.averageProcessingTime || 0 },
+    { label: "Approval Ratio", count: metrics.approvalRatio || 0 },
+    { label: "Rejection Ratio", count: metrics.rejectionRatio || 0 },
+  ];
 }
 
 export async function disbursalAnalytics() {
-  return groupCount((await listRecords("leads")).filter((lead) => normalizeStatus(lead.status) === "DISBURSED"), (lead) => monthKey(lead.updatedAt || lead.createdAt));
+  const rows = await getTrendMetrics({ collection: "monthlyMetrics", limit: 12 });
+  return rows.map((item) => ({ label: item.period || item.id, count: item.disbursedLeads || 0 }));
+}
+
+export async function scopedAnalytics({ dealershipId, bankId, assignedExecutiveId } = {}) {
+  if (dealershipId) return getMetric("dealershipMetrics", dealershipId);
+  if (bankId) return getMetric("bankMetrics", bankId);
+  if (assignedExecutiveId) return getMetric("executiveMetrics", assignedExecutiveId);
+  return getGlobalMetrics();
 }

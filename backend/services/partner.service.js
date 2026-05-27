@@ -1,4 +1,4 @@
-import { listRecords, updateRecord } from "./firestore.service.js";
+import { queryRecords, updateRecord } from "./firestore.service.js";
 import { getBanks } from "./catalog.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
 
@@ -16,8 +16,14 @@ function routingCityForLead(lead) {
 }
 
 export async function getBankPartners() {
-  const partners = await listRecords("bankPartners");
-  if (partners.length) return partners;
+  const partners = await queryRecords("bankPartners", {
+    where: [{ field: "active", value: true }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 300,
+    maxLimit: 300,
+  }).catch(() => ({ data: [] }));
+  if (partners.data.length) return partners.data;
 
   const banks = await getBanks();
   return banks.map((bank, index) => ({
@@ -43,7 +49,6 @@ export async function getBankPartners() {
 export async function getEligiblePartners(lead) {
   const settings = await getWorkflowSettings();
   const partners = await getBankPartners();
-  const assignments = await listRecords("leadAssignments");
 
   return partners.filter((partner) => {
     const branchLocation = partner.bankBranchLocation || partner.branchLocation || partner.operatingCity || partner.city || partner.branchCity;
@@ -63,10 +68,7 @@ export async function getEligiblePartners(lead) {
       || activeCities.includes(routingCity);
     const brandOk = !settings.assignmentRules.requireBrandSupport || brands.includes("All") || brands.includes(lead.selectedBrand);
     const bankOk = !settings.assignmentRules.requireBankSupport || banks.includes("All") || banks.includes(bank);
-    const activeLeadCount = assignments.filter((assignment) => {
-      const samePartner = assignment.partnerId === partner.id || assignment.partnerName === partner.name || assignment.partnerName === partner.bankName;
-      return samePartner && ["pending", "accepted", "in-progress"].includes(assignment.status);
-    }).length;
+    const activeLeadCount = Number(partner.activeLeadCount || 0);
     const limitOk = activeLeadCount < maxActive;
 
     return partner.active !== false

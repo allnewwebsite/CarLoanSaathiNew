@@ -47,3 +47,11 @@
 - Notifications are persisted first, then delivery work runs asynchronously.
 - Queue migration targets: BullMQ/Redis, Firebase Functions, or Cloud Tasks.
 - SLA/TAT thresholds live in `backend/config/governance.js` and can later move into Firestore settings.
+
+## Enterprise Scale Phase
+
+- Analytics reads must use metrics documents and not live lead aggregation.
+- Redis/BullMQ is optional through `REDIS_URL`; local fallback preserves deployment compatibility.
+- Sentry is optional through `SENTRY_DSN` and `VITE_SENTRY_DSN`.
+- Archive jobs copy first and delete only when `ARCHIVE_DELETE_SOURCE=true`.
+- Large tables should migrate to `VirtualTable` from `frontend/src/components/VirtualTable.jsx`.

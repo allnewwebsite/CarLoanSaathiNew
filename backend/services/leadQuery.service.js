@@ -97,6 +97,11 @@ function queryWhere(baseWhere = [], query = {}) {
   if (query.salespersonId) where.push({ field: "salespersonId", value: String(query.salespersonId).trim() });
   if (query.bankId) where.push({ field: "bankId", value: String(query.bankId).trim() });
   if (query.assignedExecutiveId) where.push({ field: "assignedExecutiveId", value: String(query.assignedExecutiveId).trim() });
+  if (query.city) where.push({ field: "city", value: String(query.city).trim() });
+  if (query.preferredBank || query.bank) where.push({ field: "preferredBank", value: String(query.preferredBank || query.bank).trim() });
+  if (query.caseId) where.push({ field: "caseId", value: String(query.caseId).trim() });
+  const search = String(query.search || "").trim();
+  if (/^CLS-/i.test(search)) where.push({ field: "caseId", value: search.toUpperCase() });
   if (query.dateFrom) where.push({ field: "createdAt", op: ">=", value: String(query.dateFrom).trim() });
   if (query.dateTo) where.push({ field: "createdAt", op: "<=", value: String(query.dateTo).trim() });
   return where;
@@ -108,13 +113,13 @@ export async function queryDealershipLeads({ dealershipId, query = {}, fields = 
     where: queryWhere([{ field: "dealershipId", value: dealershipId }], query),
     orderBy: "createdAt",
     direction: "desc",
-    limit: limit * 2,
+    limit,
     cursor,
-    search: query.search,
+    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
   });
-  const data = localFilters(result.data, query).slice(0, limit);
+  const data = localFilters(result.data, query);
   return pageResponse({ data, limit, nextCursor: result.nextCursor });
 }
 
@@ -124,13 +129,13 @@ export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS 
     where: queryWhere([{ field: "bankId", value: bankId }], query),
     orderBy: "createdAt",
     direction: "desc",
-    limit: limit * 2,
+    limit,
     cursor,
-    search: query.search,
+    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
   });
-  const data = localFilters(result.data, query).slice(0, limit);
+  const data = localFilters(result.data, query);
   return pageResponse({ data, limit, nextCursor: result.nextCursor });
 }
 
@@ -140,9 +145,9 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
     where: queryWhere([{ field: "assignedExecutiveId", value: executiveId || executiveEmail }], query),
     orderBy: "createdAt",
     direction: "desc",
-    limit: limit * 2,
+    limit,
     cursor,
-    search: query.search,
+    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
   });
@@ -150,7 +155,7 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
   if (executiveEmail && executiveId !== executiveEmail) {
     data = data.filter((lead) => lead.assignedExecutiveId === executiveId || lead.assignedExecutiveEmail === executiveEmail);
   }
-  data = localFilters(data, query).slice(0, limit);
+  data = localFilters(data, query);
   return pageResponse({ data, limit, nextCursor: result.nextCursor });
 }
 
@@ -164,6 +169,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     search: query.search,
     searchFields: SEARCH_FIELDS,
     fields,
+    allowGlobal: true,
   });
   return pageResponse(result);
 }

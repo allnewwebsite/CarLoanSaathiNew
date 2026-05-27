@@ -1,5 +1,6 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
+import { assertLeadQueryScoped, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 
 const memoryStore = {
   leads: [],
@@ -39,7 +40,16 @@ const memoryStore = {
   slaTracking: [],
   analytics: [],
   metrics: [],
+  dailyMetrics: [],
+  monthlyMetrics: [],
+  dealershipMetrics: [],
+  bankMetrics: [],
+  executiveMetrics: [],
   operationalMetrics: [],
+  operationalEvents: [],
+  operationalAlerts: [],
+  archivedLeads: [],
+  archivalLogs: [],
   systemCounters: [],
 };
 
@@ -128,6 +138,12 @@ export async function createRecord(collection, payload) {
 }
 
 export async function listRecords(collection) {
+  if (process.env.NODE_ENV === "production" && collection === "leads") {
+    const error = new Error("Unbounded lead reads are disabled in production");
+    error.status = 400;
+    error.code = "UNBOUNDED_LEAD_READ_DISABLED";
+    throw error;
+  }
   if (!firestore) return memoryStore[collection] || [];
   const snapshot = await firestore.collection(collection).get();
   const pairs = snapshot.docs
@@ -187,9 +203,11 @@ export async function queryRecords(collection, {
   searchFields = [],
   fields = [],
   maxLimit = 100,
+  allowGlobal = false,
 } = {}) {
-  const safeLimit = Math.min(Math.max(Number(limit || 20), 1), maxLimit);
+  const safeLimit = Math.min(clampQueryLimit(limit, 20), maxLimit);
   const parsedCursor = parseCursor(cursor);
+  if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: Boolean(allowGlobal) });
 
   if (!firestore) {
     let rows = applyMemoryWhere(memoryStore[collection] || [], where);
@@ -212,15 +230,17 @@ export async function queryRecords(collection, {
     };
   }
 
-  let ref = firestore.collection(collection);
-  for (const clause of where) {
-    ref = ref.where(clause.field, clause.op || "==", clause.value);
-  }
-  ref = ref.orderBy(orderBy, direction);
-  if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
-  ref = ref.limit(safeLimit + 1);
-
-  const snapshot = await ref.get();
+  const snapshot = await withQueryMonitoring({ collection, operation: "query", where, limit: safeLimit }, async () => {
+    let ref = firestore.collection(collection);
+    for (const clause of where) {
+      ref = ref.where(clause.field, clause.op || "==", clause.value);
+    }
+    ref = ref.orderBy(orderBy, direction);
+    if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
+    if (fields.length && typeof ref.select === "function") ref = ref.select(...fields.filter((field) => field !== "id"));
+    ref = ref.limit(safeLimit + 1);
+    return ref.get();
+  });
   let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   rows = applySearch(rows, search, searchFields);
   const hasMore = rows.length > safeLimit;
@@ -234,18 +254,21 @@ export async function queryRecords(collection, {
 }
 
 export async function countRecords(collection, { where = [] } = {}) {
+  if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: false });
   if (!firestore) return applyMemoryWhere(memoryStore[collection] || [], where).length;
 
-  let ref = firestore.collection(collection);
-  for (const clause of where) {
-    ref = ref.where(clause.field, clause.op || "==", clause.value);
-  }
-  if (typeof ref.count === "function") {
-    const snapshot = await ref.count().get();
-    return snapshot.data().count || 0;
-  }
-  const snapshot = await ref.select().get();
-  return snapshot.size;
+  return withQueryMonitoring({ collection, operation: "count", where, limit: 0 }, async () => {
+    let ref = firestore.collection(collection);
+    for (const clause of where) {
+      ref = ref.where(clause.field, clause.op || "==", clause.value);
+    }
+    if (typeof ref.count === "function") {
+      const snapshot = await ref.count().get();
+      return snapshot.data().count || 0;
+    }
+    const snapshot = await ref.select().get();
+    return snapshot.size;
+  });
 }
 
 export async function getRecord(collection, id) {
@@ -290,6 +313,30 @@ export async function upsertRecord(collection, id, payload) {
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
   return { id, ...update };
+}
+
+export async function incrementRecord(collection, id, increments = {}, base = {}) {
+  const now = new Date().toISOString();
+  if (!firestore) {
+    memoryStore[collection] = memoryStore[collection] || [];
+    const index = memoryStore[collection].findIndex((item) => item.id === id);
+    const current = index >= 0 ? memoryStore[collection][index] : { id, ...base, createdAt: now };
+    const next = { ...current, ...base, updatedAt: now };
+    for (const [key, value] of Object.entries(increments)) {
+      next[key] = Number(next[key] || 0) + Number(value || 0);
+    }
+    if (index >= 0) memoryStore[collection][index] = next;
+    else memoryStore[collection].push(next);
+    return next;
+  }
+  const { FieldValue } = await import("firebase-admin/firestore");
+  const update = { ...base, updatedAt: now };
+  for (const [key, value] of Object.entries(increments)) {
+    update[key] = FieldValue.increment(Number(value || 0));
+  }
+  await firestore.collection(collection).doc(id).set(update, { merge: true });
+  const doc = await firestore.collection(collection).doc(id).get();
+  return { id: doc.id, ...doc.data() };
 }
 
 export async function deleteRecord(collection, id) {

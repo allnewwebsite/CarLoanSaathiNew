@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, updateRecord } from "../services/firestore.service.js";
+import { createRecord, getRecord, updateRecord } from "../services/firestore.service.js";
 import { leadSchema, publicLeadSchema } from "../validations/lead.validation.js";
 import { assignLeadRoundRobin, retrieveAndReassignLead } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
@@ -8,6 +8,7 @@ import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
+import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analyticsEngine.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 
 async function canAccessLead(req, lead) {
@@ -18,13 +19,11 @@ async function canAccessLead(req, lead) {
   }
   if (req.user?.role === "loan-executive") {
     if (lead.assignedExecutiveEmail === email || lead.assignedExecutiveId === email) return true;
-    const executives = await listRecords("loanExecutives");
-    const executive = executives.find((item) => item.email === email || item.id === email);
+    const executive = await getRecord("loanExecutives", email);
     return Boolean(executive && (lead.assignedExecutiveId === executive.id || lead.assignedExecutiveEmail === executive.email));
   }
   if (req.user?.role === "bank-manager") {
-    const managers = await listRecords("branchManagers");
-    const manager = managers.find((item) => item.email === email || item.id === email);
+    const manager = await getRecord("branchManagers", email);
     const managerCity = manager?.branchCity || manager?.city || manager?.operatingCity || req.user?.branchCity;
     const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
     const managerBank = manager?.bankName || manager?.bankPartnerId || req.user?.bankId || req.user?.bankName;
@@ -72,6 +71,7 @@ export async function createLead(req, res, next) {
       metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName },
     });
     await assignLeadRoundRobin(lead);
+    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
     res.status(201).json(lead);
   } catch (error) {
     next(error);
@@ -107,6 +107,7 @@ export async function createPublicLead(req, res, next) {
       meta: { caseId, dealershipId: lead.dealershipId },
     });
     const assignment = await assignLeadRoundRobin(lead);
+    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
     res.status(201).json({
       leadId: lead.id,
       caseId: lead.caseId,
@@ -151,6 +152,13 @@ export async function updateLeadStatus(req, res, next) {
       statusUpdatedBy: req.user?.email || req.user?.uid || null,
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
+    const processingTimeMinutes = existing.createdAt ? Math.max(Math.round((Date.now() - new Date(existing.createdAt).getTime()) / 60000), 0) : 0;
+    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.STATUS_CHANGED, {
+      lead,
+      previousStatus: existing.status,
+      nextStatus,
+      processingTimeMinutes,
+    });
     await updateSlaForLead(lead, nextStatus);
     await ensureCommissionForLead(lead, nextStatus);
     if (nextStatus === LEAD_STATUSES.REJECTED && req.body.finalRejection !== true) {

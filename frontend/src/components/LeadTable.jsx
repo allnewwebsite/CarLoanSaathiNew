@@ -1,6 +1,23 @@
 import { StatusBadge } from "./StatusBadge.jsx";
+import { VirtualTable } from "./VirtualTable.jsx";
 
 export function LeadTable({ leads }) {
+  if (leads.length > 25) {
+    return (
+      <VirtualTable
+        rows={leads}
+        columns={[
+          { key: "case", label: "Case", render: (lead) => lead.caseId || lead.id },
+          { key: "customer", label: "Customer", render: (lead) => lead.customer },
+          { key: "car", label: "Vehicle", render: (lead) => lead.car },
+          { key: "bank", label: "Bank Partner", render: (lead) => lead.bank },
+          { key: "status", label: "Status", render: (lead) => <StatusBadge status={lead.status} /> },
+          { key: "documents", label: "Docs", render: (lead) => `${lead.documents}/8` },
+          { key: "updated", label: "Updated", render: (lead) => lead.updated },
+        ]}
+      />
+    );
+  }
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto">

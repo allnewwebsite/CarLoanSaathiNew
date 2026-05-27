@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord } from "../services/firestore.service.js";
+import { observeAuthFailure } from "../services/observability.service.js";
 
 async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
@@ -60,14 +61,23 @@ export async function authenticate(req, res, next) {
   try {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ message: "Authentication token is required" });
+    if (!token) {
+      observeAuthFailure(req, "missing_token");
+      return res.status(401).json({ message: "Authentication token is required" });
+    }
 
     if (firebaseAdmin) {
       try {
         const decoded = await firebaseAdmin.auth().verifyIdToken(token);
         const email = String(decoded.email || "").trim().toLowerCase();
-        if (!email) return res.status(401).json({ message: "Authenticated account email is required" });
-        if (decoded.email_verified !== true) return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
+        if (!email) {
+          observeAuthFailure(req, "missing_email");
+          return res.status(401).json({ message: "Authenticated account email is required" });
+        }
+        if (decoded.email_verified !== true) {
+          observeAuthFailure(req, "email_not_verified");
+          return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
+        }
         const account = await verifiedAccountFromEmail(email);
         req.user = {
           uid: account.uid || decoded.uid || email,
@@ -89,9 +99,13 @@ export async function authenticate(req, res, next) {
 
     const tokenUser = jwt.verify(token, process.env.JWT_SECRET || "development-secret");
     const email = String(tokenUser.email || tokenUser.uid || "").trim().toLowerCase();
-    if (!email) return res.status(401).json({ message: "Invalid session" });
+    if (!email) {
+      observeAuthFailure(req, "invalid_session_email");
+      return res.status(401).json({ message: "Invalid session" });
+    }
     const account = await verifiedAccountFromEmail(email);
     if (!(await firebaseEmailVerified(email))) {
+      observeAuthFailure(req, "email_not_verified");
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
     req.user = {
@@ -108,10 +122,12 @@ export async function authenticate(req, res, next) {
       emailVerified: true,
     };
     if (!(await dealerAccountIsActive(req.user))) {
+      observeAuthFailure(req, "dealer_account_inactive");
       return res.status(403).json({ message: "Dealer account is inactive or deleted", code: "DEALER_ACCOUNT_INACTIVE" });
     }
     return next();
   } catch (error) {
+    observeAuthFailure(req, "invalid_or_expired_token");
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 }

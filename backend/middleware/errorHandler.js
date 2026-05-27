@@ -1,4 +1,5 @@
 import { logError } from "../services/logger.service.js";
+import { captureBackendError } from "../services/monitoring.service.js";
 
 export function errorHandler(error, _req, res, _next) {
   logError("API error", {
@@ -6,6 +7,10 @@ export function errorHandler(error, _req, res, _next) {
     status: error.status || 500,
     message: error.message,
     stack: process.env.NODE_ENV === "production" ? undefined : error.stack,
+  });
+  captureBackendError(error, {
+    requestId: res.locals.requestId || res.getHeader("X-Request-Id"),
+    status: error.status || 500,
   });
   if (error?.issues) {
     return res.status(400).json({

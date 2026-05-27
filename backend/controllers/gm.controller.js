@@ -1,4 +1,4 @@
-import { getRecord, listRecords } from "../services/firestore.service.js";
+import { getRecord, queryRecords } from "../services/firestore.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 
@@ -7,10 +7,10 @@ function userEmail(req) {
 }
 
 async function dealershipEmailForGm(req) {
+  if (req.user?.dealershipId) return req.user.dealershipId;
   const email = userEmail(req);
   if (!email) return null;
-  const managers = await listRecords("dealershipManagers");
-  const manager = managers.find((item) => item.email === email || item.id === email);
+  const manager = await getRecord("dealershipManagers", email);
   if (manager?.dealershipEmail) return manager.dealershipEmail;
   const dealership = await getRecord("dealerships", email) || await getRecord("dealers", email);
   return dealership ? email : null;
@@ -56,9 +56,17 @@ export async function getGmSalespersons(req, res, next) {
   try {
     const dealershipEmail = await dealershipEmailForGm(req);
     if (!dealershipEmail) return res.json([]);
-    const leads = await gmLeads(req);
-    const salespersons = (await listRecords("salespersons"))
-      .filter((person) => person.dealershipId === dealershipEmail && person.active !== false)
+    const leadsPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
+    const leads = leadsPage.data;
+    const salespersonsPage = await queryRecords("salespersons", {
+      where: [{ field: "dealershipId", value: dealershipEmail }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+    });
+    const salespersons = salespersonsPage.data
+      .filter((person) => person.active !== false)
       .map((person) => {
         const cases = leads.filter((lead) => lead.salespersonId === person.id || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === String(person.name || "").toLowerCase());
         return {
@@ -81,9 +89,18 @@ export async function getGmSalespersons(req, res, next) {
 
 export async function getGmLead(req, res, next) {
   try {
-    const lead = (await gmLeads(req)).find((item) => item.id === req.params.id);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
-    const documents = (await listRecords("documents")).filter((document) => document.leadId === lead.id);
+    const lead = await getRecord("leads", req.params.id);
+    const dealershipEmail = await dealershipEmailForGm(req);
+    const allowed = lead && (lead.dealershipId === dealershipEmail || belongsToDealership(lead, dealershipEmail));
+    if (!allowed) return res.status(404).json({ message: "Lead not found" });
+    const documentsPage = await queryRecords("documents", {
+      where: [{ field: "leadId", value: lead.id }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 50,
+      maxLimit: 50,
+    });
+    const documents = documentsPage.data;
     res.json({ ...lead, documents });
   } catch (error) {
     next(error);

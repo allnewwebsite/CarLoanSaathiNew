@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { getEligiblePartners } from "./partner.service.js";
 import { createSlaLog, expireAssignment } from "./sla.service.js";
@@ -24,7 +24,14 @@ function nextPartnerIndex(queue, partners) {
 }
 
 async function selectBranchExecutive({ lead, partner, city }) {
-  const executives = await listRecords("loanExecutives");
+  const executivesPage = await queryRecords("loanExecutives", {
+    where: partner.bankId || partner.id ? [{ field: "bankId", value: partner.bankId || partner.id }] : [],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 100,
+    maxLimit: 100,
+  });
+  const executives = executivesPage.data;
   const eligible = executives.filter((executive) => {
     const executiveCity = executive.branchCity || executive.city || executive.operatingCity;
     const sameBranchCity = !city || !executiveCity || executiveCity === city;
@@ -60,12 +67,14 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
   if (settings.roundRobinEnabled === false) return null;
   const routingCity = routingCityForLead(lead);
 
-  const dealerships = await listRecords("dealerships");
-  const matchingDealerships = dealerships.filter((dealer) =>
-    dealer.city === routingCity
-    && dealer.status !== "Rejected"
-    && dealer.active !== false
-  );
+  const dealershipsPage = routingCity ? await queryRecords("dealerships", {
+    where: [{ field: "city", value: routingCity }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 25,
+    maxLimit: 25,
+  }) : { data: [] };
+  const matchingDealerships = dealershipsPage.data.filter((dealer) => dealer.status !== "Rejected" && dealer.active !== false);
   const partners = (await getEligiblePartners(lead)).filter((partner) => !excludePartnerIds.includes(partner.id));
   if (!partners.length) {
     await createRecord("reassignmentLogs", {
@@ -274,8 +283,14 @@ export async function retrieveAndReassignLead(leadId, reason = "manual-reassignm
     throw error;
   }
 
-  const assignments = await listRecords("leadAssignments");
-  const active = assignments.find((item) => item.leadId === leadId && ["pending", "accepted", "in-progress"].includes(item.status));
+  const assignmentsPage = await queryRecords("leadAssignments", {
+    where: [{ field: "leadId", value: leadId }, { field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 5,
+    maxLimit: 5,
+  });
+  const active = assignmentsPage.data[0];
   const excluded = [];
 
   if (active) {
@@ -341,7 +356,14 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
 
   const branchCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
   const currentExecutive = lead.assignedExecutiveId || lead.assignedExecutiveEmail;
-  const executives = await listRecords("loanExecutives");
+  const executivesPage = await queryRecords("loanExecutives", {
+    where: lead.bankId ? [{ field: "bankId", value: lead.bankId }] : [],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 100,
+    maxLimit: 100,
+  });
+  const executives = executivesPage.data;
   const eligible = executives.filter((executive) => {
     const executiveCity = executive.branchCity || executive.city || executive.operatingCity;
     const sameCity = !branchCity || !executiveCity || executiveCity === branchCity;
@@ -384,8 +406,14 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     }],
   });
 
-  const assignments = await listRecords("leadAssignments");
-  const activeAssignment = assignments.find((item) => item.leadId === leadId && ["pending", "accepted", "in-progress"].includes(item.status));
+  const assignmentsPage = await queryRecords("leadAssignments", {
+    where: [{ field: "leadId", value: leadId }, { field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 5,
+    maxLimit: 5,
+  });
+  const activeAssignment = assignmentsPage.data[0];
   if (activeAssignment) {
     await updateRecord("leadAssignments", activeAssignment.id, {
       executiveId: executive.id,
@@ -432,7 +460,14 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
 export async function processSlaBreaches() {
   const settings = await getWorkflowSettings();
   if (settings.slaEngineEnabled === false) return [];
-  const assignments = await listRecords("leadAssignments");
+  const assignmentsPage = await queryRecords("leadAssignments", {
+    where: [{ field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
+    orderBy: "assignmentTimestamp",
+    direction: "asc",
+    limit: Number(process.env.SLA_ENGINE_BATCH_SIZE || 100),
+    maxLimit: 100,
+  });
+  const assignments = assignmentsPage.data;
   const now = Date.now();
   const expired = assignments.filter((assignment) => {
     if (!["pending", "accepted", "in-progress"].includes(assignment.status)) return false;
