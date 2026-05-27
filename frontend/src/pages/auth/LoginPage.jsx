@@ -30,13 +30,16 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function authMessage(error) {
+function authMessage(error, portal) {
   const code = error.response?.data?.code || error.code || "";
   const message = error.response?.data?.message || error.message || "";
   if (/resetting password/i.test(message)) return "Verify your email before resetting password.";
   if (code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(message)) return "Please verify your email address before logging in.";
   if (code === "auth/user-not-found" || error.response?.status === 404) return "No account found with this email address.";
-  if (code === "auth/wrong-password" || code === "auth/invalid-credential") return "Incorrect email or password.";
+  if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
+    if (portal === "dealer") return "No dealer account found. Create account from Dealer Registration, or use Forgot Password if this email is already registered.";
+    return "Incorrect email or password.";
+  }
   if (code === "auth/weak-password") return "Password is too weak.";
   if (code === "auth/too-many-requests") return "Too many attempts. Try again later.";
   if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
@@ -82,7 +85,7 @@ export function LoginPage({ portal = "dealer" }) {
       if (!rememberMe) sessionStorage.setItem("cls_session_only", "true");
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
-      const nextMessage = authMessage(err);
+      const nextMessage = authMessage(err, portal);
       setError(nextMessage);
       setShowResend(err.code === "EMAIL_NOT_VERIFIED" || err.response?.data?.code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(nextMessage));
     } finally {
@@ -102,7 +105,7 @@ export function LoginPage({ portal = "dealer" }) {
       await sendPasswordReset(email);
       setMessage("Password reset link sent successfully. Please check your inbox.");
     } catch (err) {
-      setError(authMessage(err) || "Unable to send password reset email. Try again later.");
+      setError(authMessage(err, portal) || "Unable to send password reset email. Try again later.");
     } finally {
       setResetLoading(false);
     }
@@ -121,7 +124,7 @@ export function LoginPage({ portal = "dealer" }) {
       setMessage(result.alreadyVerified ? "Email already verified. Please login again." : "Verification email sent successfully. Please check your inbox.");
       setShowResend(false);
     } catch (err) {
-      setError(authMessage(err) || "Unable to send verification email. Try again later.");
+      setError(authMessage(err, portal) || "Unable to send verification email. Try again later.");
     } finally {
       setResendLoading(false);
     }
@@ -217,6 +220,11 @@ export function LoginPage({ portal = "dealer" }) {
               </div>
 
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
+              {portal === "dealer" && /create account|dealer registration/i.test(error) && (
+                <button type="button" onClick={() => navigate("/dealer-registration")} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
+                  Create Account
+                </button>
+              )}
               {message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">{message}</p>}
               {showResend && (
                 <button type="button" disabled={resendLoading} onClick={resendVerification} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1] disabled:opacity-70">

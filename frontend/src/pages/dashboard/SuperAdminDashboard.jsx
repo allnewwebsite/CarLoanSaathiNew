@@ -362,7 +362,7 @@ function AdminListPage({ mode }) {
 
   const deleteDealership = async (item) => {
     const label = item.dealershipName || item.name || item.loginEmail || item.id;
-    const confirmed = window.confirm(`Permanently delete ${label}? This will remove the dealership account and linked database records.`);
+    const confirmed = window.confirm(`Delete ${label}? This will remove dealership account, users, approvals, and access records. Existing leads, documents, audit logs, and customer history will remain saved.`);
     if (!confirmed) return;
     setUpdatingId(item.id);
     try {
@@ -386,8 +386,6 @@ function AdminListPage({ mode }) {
     }
   };
 
-  const disableDealer = (item) => suspendApplication({ ...item, disableReason: "Disabled by Super Admin" });
-
   const setLeadFilter = (value) => {
     setParams((current) => {
       const next = Object.fromEntries(current.entries());
@@ -403,14 +401,14 @@ function AdminListPage({ mode }) {
       return {
         title: "Approved Dealerships",
         headers: ["Dealership Name", "Brand", "Dealership Location", "Finance Desk Email", "GM/SM Email", "Total Leads", "Approval Date", "Active Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.dealershipName), display(item.dealershipBrand), display(item.city), display(item.financeDesk?.officialEmail || item.loginEmail || item.email), display(item.generalManager?.email), display(item.totalLeads || 0), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : "Active"), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/dealerships/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => suspendApplication(item)} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-50">Suspend</button><button disabled={updatingId === item.id} onClick={() => disableDealer(item)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-50">Disable</button><button disabled={updatingId === item.id} onClick={() => deleteDealership(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.dealershipName), display(item.dealershipBrand), display(item.city), display(item.financeDesk?.officialEmail || item.loginEmail || item.email), display(item.generalManager?.email), display(item.totalLeads || 0), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : "Active"), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/dealerships/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteDealership(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "approval-dealerships") {
       return {
         title: "Pending Approval Dealerships",
-        headers: ["Dealership Name", "Brand", "Location", "Finance Desk Email", "Registration Date", "GSTIN", "Dealer Code", "Documents", "Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.dealershipName), display(item.dealershipBrand), display(item.city), display(item.financeDesk?.officialEmail || item.loginEmail || item.email), formatDate(item.submittedAt || item.createdAt), display(item.dealership?.gstin || item.gstin), display(item.dealership?.authorizedDealerCode || item.authorizedDealerCode), <button key="docs" onClick={() => navigate(`/admin/approvals/dealerships/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>, display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button disabled={updatingId === item.id} onClick={() => approveApplication("dealerships", item)} className="rounded-md bg-[#0d47a1] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Approve</button><button disabled={updatingId === item.id} onClick={() => rejectApplication("dealerships", item)} className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Reject</button><button disabled={updatingId === item.id} onClick={() => suspendApplication(item)} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-50">Suspend</button></div>] })),
+        headers: ["Dealership Name", "Brand", "Location", "Finance Desk Email", "Registration Date", "GSTIN", "Dealer Code", "Status", "Actions"],
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.dealershipName), display(item.dealershipBrand), display(item.city), display(item.financeDesk?.officialEmail || item.loginEmail || item.email), formatDate(item.submittedAt || item.createdAt), display(item.dealership?.gstin || item.gstin), display(item.dealership?.authorizedDealerCode || item.authorizedDealerCode), display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/dealerships/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteDealership(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "banks") {
@@ -423,8 +421,8 @@ function AdminListPage({ mode }) {
     if (mode === "approval-banks") {
       return {
         title: "Pending Approval Banks",
-        headers: ["Bank Name", "IFSC Code", "Location", "Manager Name", "Manager Mobile", "Official Email", "Monthly Capacity", "Documents", "Registration Date", "Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), <button key="docs" onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>, formatDate(item.submittedAt || item.createdAt), display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button disabled={updatingId === item.id} onClick={() => approveApplication("banks", item)} className="rounded-md bg-[#0d47a1] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Approve</button><button disabled={updatingId === item.id} onClick={() => rejectApplication("banks", item)} className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Reject</button><button disabled={updatingId === item.id} onClick={() => suspendBankApplication(item)} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-50">Suspend</button></div>] })),
+        headers: ["Bank Name", "IFSC Code", "Location", "Manager Name", "Manager Mobile", "Official Email", "Monthly Capacity", "Registration Date", "Status", "Actions"],
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), formatDate(item.submittedAt || item.createdAt), display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "status") {

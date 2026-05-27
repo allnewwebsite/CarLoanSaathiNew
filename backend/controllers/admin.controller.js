@@ -573,9 +573,6 @@ export async function deleteDealershipPermanently(req, res, next) {
       "users",
       "notifications",
       "cityMappings",
-      "leads",
-      "leadTimeline",
-      "documents",
     ]) {
       deleted[collection] = (deleted[collection] || 0) + await deleteMatchingRecords(collection, matchesDealer);
     }

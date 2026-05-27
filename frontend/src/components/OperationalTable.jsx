@@ -6,7 +6,7 @@ const VirtualRow = memo(function VirtualRow({ index, style, rows, gridTemplateCo
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50" data-row-index={index}>
       {row.cells.map((cell, cellIndex) => (
-        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="whitespace-nowrap px-3 py-3 text-sm text-slate-600">
+        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="min-w-0 break-words px-3 py-3 text-sm leading-5 text-slate-600">
           {cell}
         </div>
       ))}
@@ -29,7 +29,7 @@ export function OperationalTable({
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
   const useVirtual = !loading && rows.length >= virtualizeAt;
-  const gridTemplateColumns = `repeat(${headers.length}, minmax(140px, 1fr))`;
+  const gridTemplateColumns = `repeat(${headers.length}, minmax(150px, 1fr))`;
 
   return (
     <section className="card overflow-hidden">
@@ -38,7 +38,7 @@ export function OperationalTable({
         <div role="table" className="min-w-full text-left text-sm">
           <div role="rowgroup" className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full" style={{ gridTemplateColumns }}>
-              {headers.map((head) => <div role="columnheader" key={head} className="whitespace-nowrap px-3 py-3">{head}</div>)}
+              {headers.map((head) => <div role="columnheader" key={head} className="min-w-0 break-words px-3 py-3 leading-4">{head}</div>)}
             </div>
           </div>
 
@@ -61,7 +61,7 @@ export function OperationalTable({
             <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
               {rows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
-                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="whitespace-nowrap px-3 py-3 text-sm text-slate-600">{cell}</div>)}
+                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="min-w-0 break-words px-3 py-3 text-sm leading-5 text-slate-600">{cell}</div>)}
                 </div>
               ))}
             </div>

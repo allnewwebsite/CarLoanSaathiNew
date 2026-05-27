@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, FileCheck2, Landmark, Loader2, Search, ShieldCheck, Sparkles, UploadCloud } from "lucide-react";
+import { CheckCircle2, ChevronDown, Eye, EyeOff, FileCheck2, Landmark, Loader2, Search, ShieldCheck, Sparkles, UploadCloud } from "lucide-react";
 import { doc as firestoreDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -209,6 +209,7 @@ export function DealerRegistrationPage() {
   const [error, setError] = useState("");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
   const { startDealerRegistrationWithEmail } = useAuth();
   const navigate = useNavigate();
 
@@ -246,7 +247,15 @@ export function DealerRegistrationPage() {
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <label className="text-sm font-medium text-slate-700">Email Address<input type="email" className="field mt-1.5 h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /></label>
-              <label className="text-sm font-medium text-slate-700">Password<input type="password" className="field mt-1.5 h-11 rounded-md" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} /></label>
+              <label className="text-sm font-medium text-slate-700">
+                Password
+                <div className="field mt-1.5 flex h-11 items-center gap-2 rounded-md bg-white px-3">
+                  <input type={showAuthPassword ? "text" : "password"} className="min-w-0 flex-1 bg-transparent outline-none" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
+                  <button type="button" onClick={() => setShowAuthPassword((current) => !current)} className="text-slate-500" aria-label={showAuthPassword ? "Hide password" : "Show password"}>
+                    {showAuthPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </label>
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button onClick={beginRegistration} disabled={loading} className="inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-70">
@@ -323,7 +332,12 @@ export function DealerRegistrationPage() {
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">Create your official email/password account first. Dashboard access starts only after Super Admin approval.</p>
           <div className="mx-auto mt-5 grid max-w-xl gap-3 sm:grid-cols-2">
             <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
-            <input type="password" placeholder="Password" className="field h-11 rounded-md" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
+            <div className="field flex h-11 items-center gap-2 rounded-md bg-white px-3">
+              <input type={showAuthPassword ? "text" : "password"} placeholder="Password" className="min-w-0 flex-1 bg-transparent outline-none" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
+              <button type="button" onClick={() => setShowAuthPassword((current) => !current)} className="text-slate-500" aria-label={showAuthPassword ? "Hide password" : "Show password"}>
+                {showAuthPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <button onClick={beginRegistration} disabled={loading} className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-6 text-sm font-medium text-white disabled:opacity-70">
             {loading ? "Creating account..." : "Create Account"}
