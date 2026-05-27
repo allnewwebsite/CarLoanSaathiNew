@@ -59,6 +59,12 @@ function storeAuthSession(session, token) {
   }
 }
 
+function registrationAccountError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem("cls_user");
@@ -189,8 +195,27 @@ export function AuthProvider({ children }) {
       credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (error) {
       if (error.code === "auth/email-already-in-use") {
-        credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        try {
+          credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        } catch {
+          throw registrationAccountError(
+            "This email already has an account. Please enter the existing password or reset the password before continuing.",
+            "ACCOUNT_ALREADY_EXISTS"
+          );
+        }
       } else {
+        if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password") {
+          throw registrationAccountError(
+            "This email already has an account. Please enter the existing password or reset the password before continuing.",
+            "ACCOUNT_ALREADY_EXISTS"
+          );
+        }
+        if (error.code === "auth/weak-password") {
+          throw registrationAccountError("Password is too weak. Please use at least 6 characters.", "WEAK_PASSWORD");
+        }
+        if (error.code === "auth/invalid-email") {
+          throw registrationAccountError("Enter a valid email address.", "INVALID_EMAIL");
+        }
         throw error;
       }
     }
