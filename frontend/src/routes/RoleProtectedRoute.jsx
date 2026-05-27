@@ -19,7 +19,6 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   if ([ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
     return <Navigate to="/bank-registration/pending" replace />;
   }
-  if (user.role === ROLES.SUPER_ADMIN) return <Outlet />;
   if (allowedRoles.length && !allowedRoles.includes(user.role)) {
     return <Navigate to={ROLE_ROUTES[user.role] || loginPathForRole(user.role)} replace />;
   }

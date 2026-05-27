@@ -8,6 +8,7 @@
     "backfill:metrics": "npm --prefix backend run backfill:metrics",
     "load:seed": "npm --prefix backend run load:seed",
     "security:scan": "node scripts/scan-secrets.js",
+    "security:authz-audit": "node scripts/audit-authorization.js",
     "load:smoke": "k6 run load-tests/k6/api-smoke.js",
     "load:auth": "k6 run load-tests/k6/auth-load.js",
     "load:dashboard": "k6 run load-tests/k6/dashboard-load.js",

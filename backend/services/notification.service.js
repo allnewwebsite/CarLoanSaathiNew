@@ -138,16 +138,28 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
   });
 
   let items = result.data.filter((item) => {
-    const allowed = role === "super-admin"
-      || item.recipientId === id
-      || item.dealerEmail === id
-      || item.partnerId === id
-      || item.recipientRole === role;
+    const allowed = canAccessNotification(item, actor);
     const unreadOk = !unreadOnly || item.read === false;
     return allowed && unreadOk;
   });
 
   return pageResponse({ data: items, limit, nextCursor: result.nextCursor, extra: { unread: items.filter((item) => !item.read).length } });
+}
+
+function canAccessNotification(item, actor = {}) {
+  const actorId = actor.email || actor.uid;
+  if (actor.role === "super-admin") return true;
+  if (item.recipientId === actorId || item.userId === actorId || item.dealerEmail === actorId || item.partnerId === actorId) return true;
+  if (["finance-desk", "gm-sm"].includes(actor.role)) {
+    return Boolean(actor.dealershipId && item.dealershipId === actor.dealershipId);
+  }
+  if (actor.role === "bank-manager") {
+    return Boolean(actor.bankId && item.bankId === actor.bankId);
+  }
+  if (actor.role === "loan-executive") {
+    return item.assignedExecutiveId === actor.uid || item.assignedExecutiveId === actor.email;
+  }
+  return false;
 }
 
 export async function markNotificationRead(id, actor = {}) {
@@ -157,23 +169,7 @@ export async function markNotificationRead(id, actor = {}) {
     error.status = 404;
     throw error;
   }
-  const lead = item.leadId ? await getRecord("leads", item.leadId) : null;
-  const actorId = actor.email || actor.uid;
-  const manager = actor.role === "bank-manager" ? await getRecord("branchManagers", actorId) : null;
-  const managerCity = manager?.branchCity || manager?.city || manager?.operatingCity;
-  const leadCity = lead?.bankBranchCity || lead?.branchCity || lead?.routingCity || lead?.dealershipCity || lead?.city;
-  const managerBank = manager?.bankName || manager?.bankPartnerId;
-  const canAccessLeadScoped = lead && (
-    (["finance-desk", "gm-sm"].includes(actor.role) && [lead.dealerEmail, lead.dealershipEmail, lead.createdBy].includes(actorId))
-    || (actor.role === "loan-executive" && [lead.assignedExecutiveEmail, lead.assignedExecutiveId].includes(actorId))
-    || (actor.role === "bank-manager" && (!managerCity || managerCity === leadCity) && (!managerBank || [lead.assignedPartnerId, lead.bankPartner, lead.preferredBank].includes(managerBank)))
-  );
-  const canAccess = actor.role === "super-admin"
-    || item.recipientId === actor.email
-    || item.dealerEmail === actor.email
-    || item.partnerId === actor.email
-    || (item.recipientRole === actor.role && canAccessLeadScoped);
-  if (!canAccess) {
+  if (!canAccessNotification(item, actor)) {
     const error = new Error("Notification access denied");
     error.status = 403;
     throw error;

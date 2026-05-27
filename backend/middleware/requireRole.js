@@ -11,7 +11,6 @@ export function requireRole(...allowedRoles) {
       observeAuthFailure(req, "account_not_active");
       return res.status(403).json({ message: "Unauthorized", code: "ACCOUNT_NOT_ACTIVE" });
     }
-    if (user.role === "super-admin") return next();
     if (!allowedRoles.length || allowedRoles.includes(user.role)) return next();
     observeAuthFailure(req, "role_forbidden");
     return res.status(403).json({ message: "Unauthorized", code: "ROLE_FORBIDDEN" });

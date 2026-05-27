@@ -83,15 +83,25 @@ service cloud.firestore {
         || assignedExecutive(data);
     }
 
+    function immutableUserSecurityFields() {
+      return request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.approved == resource.data.approved
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.accountApproved == resource.data.accountApproved
+        && request.resource.data.accountActive == resource.data.accountActive
+        && request.resource.data.accountStatus == resource.data.accountStatus
+        && request.resource.data.dealershipId == resource.data.dealershipId
+        && request.resource.data.bankId == resource.data.bankId;
+    }
+
     match /users/{userId} {
       allow read: if approved()
         && (request.auth.uid == userId || email() == userId);
       allow update: if approved()
         && (request.auth.uid == userId || email() == userId)
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.approved == resource.data.approved
-        && request.resource.data.dealershipId == resource.data.dealershipId
-        && request.resource.data.bankId == resource.data.bankId;
+        && immutableUserSecurityFields();
       allow create, delete: if false;
       allow read, write: if isSuperAdmin();
     }

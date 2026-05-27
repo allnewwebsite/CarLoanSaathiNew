@@ -15,7 +15,10 @@ async function canAccessLead(req, lead) {
   if (req.user?.role === "super-admin") return true;
   const email = req.user?.email || req.user?.uid;
   if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
-    return lead.dealerEmail === email || lead.dealershipEmail === email || lead.createdBy === email;
+    return lead.dealershipId === req.user?.dealershipId
+      || lead.dealerEmail === email
+      || lead.dealershipEmail === email
+      || lead.createdBy === email;
   }
   if (req.user?.role === "loan-executive") {
     if (lead.assignedExecutiveEmail === email || lead.assignedExecutiveId === email) return true;
@@ -28,7 +31,11 @@ async function canAccessLead(req, lead) {
     const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
     const managerBank = manager?.bankName || manager?.bankPartnerId || req.user?.bankId || req.user?.bankName;
     const sameCity = !managerCity || managerCity === leadCity;
-    const sameBank = !managerBank || lead.assignedPartnerId === managerBank || lead.bankPartner === managerBank || lead.preferredBank === managerBank;
+    const sameBank = lead.bankId === req.user?.bankId
+      || lead.assignedBankId === req.user?.bankId
+      || lead.assignedPartnerId === managerBank
+      || lead.bankPartner === managerBank
+      || lead.preferredBank === managerBank;
     return sameCity && sameBank;
   }
   return false;

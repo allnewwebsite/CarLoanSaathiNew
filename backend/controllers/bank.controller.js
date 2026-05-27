@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { reassignLeadToNextBranchExecutive, retrieveAndReassignLead } from "../services/assignment.service.js";
@@ -27,15 +27,31 @@ function userEmail(req) {
 async function currentPartner(req) {
   const email = userEmail(req);
   if (req.user?.role === "loan-executive") {
-    const executives = await listRecords("loanExecutives");
-    const executive = executives.find((item) => item.email === email || item.id === email);
+    const executive = await getRecord("loanExecutives", email);
     if (executive) return { ...executive, roleType: "loan-executive" };
+    return {
+      id: req.user.uid || email,
+      email,
+      bankId: req.user.bankId,
+      bankPartnerId: req.user.bankId,
+      branchId: req.user.branchId,
+      roleType: "loan-executive",
+      active: req.user.active !== false,
+    };
   }
 
   if (req.user?.role === "bank-manager") {
-    const managers = await listRecords("branchManagers");
-    const manager = managers.find((item) => item.email === email || item.id === email);
+    const manager = await getRecord("branchManagers", email);
     if (manager) return { ...manager, roleType: "bank-manager" };
+    return {
+      id: req.user.uid || email,
+      email,
+      bankId: req.user.bankId,
+      bankPartnerId: req.user.bankId,
+      branchId: req.user.branchId,
+      roleType: "bank-manager",
+      active: req.user.active !== false,
+    };
   }
 
   const partners = await listRecords("bankPartners");
@@ -55,7 +71,10 @@ function partnerCanAccessLead(partner, lead) {
     const partnerCity = partner.branchCity || partner.city || partner.operatingCity;
     const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity;
     const sameCity = !partnerCity || partnerCity === leadCity;
-    const sameBank = lead.assignedPartnerId === partner.bankPartnerId
+    const sameBank = lead.bankId === partner.bankId
+      || lead.bankId === partner.bankPartnerId
+      || lead.assignedBankId === partner.bankId
+      || lead.assignedPartnerId === partner.bankPartnerId
       || lead.assignedPartnerId === partner.partnerId
       || lead.assignedBankId === partner.bankPartnerId
       || lead.assignedBankId === partner.partnerId
@@ -148,9 +167,8 @@ async function requireAssignedLead(req) {
     error.status = 404;
     throw error;
   }
-  const leads = await assignedLeadsForPartner(partner);
-  const lead = leads.find((item) => item.id === req.params.id);
-  if (!lead) {
+  const lead = await getRecord("leads", req.params.id);
+  if (!lead || !partnerCanAccessLead(partner, lead)) {
     const error = new Error("Lead not assigned to this bank partner");
     error.status = 403;
     throw error;
@@ -363,7 +381,17 @@ export async function getBankExecutives(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view executives" });
     const identity = bankIdentity(partner);
-    const [executives, leads] = await Promise.all([listRecords("loanExecutives"), assignedLeadsForPartner(partner)]);
+    const [executivesPage, leads] = await Promise.all([
+      queryRecords("loanExecutives", {
+        where: [{ field: "bankId", value: identity.bankId }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 100,
+        maxLimit: 100,
+      }),
+      assignedLeadsForPartner(partner),
+    ]);
+    const executives = executivesPage.data;
     const rows = executives
       .filter((executive) => executiveBelongsToBank(executive, identity))
       .map((executive) => {
@@ -405,7 +433,13 @@ export async function createBankExecutive(req, res, next) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Valid official email is required" });
 
     const identity = bankIdentity(partner);
-    const executives = await listRecords("loanExecutives");
+    const executives = (await queryRecords("loanExecutives", {
+      where: [{ field: "bankId", value: identity.bankId }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 200,
+      maxLimit: 200,
+    })).data;
     const duplicate = executives.find((executive) => executive.active !== false && (executive.mobile === mobile || executive.jobId === jobId || executive.email === email || executive.officialEmail === email || executive.id === email));
     if (duplicate?.mobile === mobile) return res.status(409).json({ message: "Mobile number already exists for this bank" });
     if (duplicate?.jobId === jobId) return res.status(409).json({ message: "Job ID already exists for this bank" });
@@ -514,13 +548,25 @@ export async function getBankLead(req, res, next) {
   try {
     const { lead } = await requireAssignedLead(req);
     const [documents, bankDocuments] = await Promise.all([
-      listRecords("documents"),
-      listRecords("bankDocuments"),
+      queryRecords("documents", {
+        where: [{ field: "leadId", value: lead.id }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 50,
+        maxLimit: 50,
+      }),
+      queryRecords("bankDocuments", {
+        where: [{ field: "leadId", value: lead.id }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 50,
+        maxLimit: 50,
+      }),
     ]);
     res.json({
       ...lead,
-      documents: documents.filter((document) => document.leadId === lead.id),
-      bankDocuments: bankDocuments.filter((document) => document.leadId === lead.id),
+      documents: documents.data,
+      bankDocuments: bankDocuments.data,
     });
   } catch (error) {
     next(error);
@@ -821,8 +867,7 @@ export async function uploadBankLeadDocument(req, res, next) {
 export async function deleteBankLeadDocument(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
-    const documents = await listRecords("bankDocuments");
-    const document = documents.find((item) => item.id === req.params.documentId && item.leadId === lead.id);
+    const document = await getRecord("bankDocuments", req.params.documentId);
     if (!document || document.partnerId !== partner.id) return res.status(404).json({ message: "Document not found" });
     await deleteLeadDocument(document.storagePath);
     await deleteRecord("bankDocuments", document.id);
