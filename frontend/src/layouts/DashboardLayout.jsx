@@ -1,4 +1,5 @@
-import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Settings, Shield, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Shield, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -37,52 +38,96 @@ const navByRole = {
   ],
 };
 
+const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
+
+function readSidebarState() {
+  try {
+    return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 export function DashboardLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [collapsed, setCollapsed] = useState(readSidebarState);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const handleLogout = () => {
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
+    } catch {
+      // Sidebar preference is non-critical.
+    }
+  }, [collapsed]);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname, location.search]);
+
+  const handleLogout = useCallback(() => {
     logout();
     navigate("/");
-  };
-  const nav = navByRole[user?.role] || [];
+  }, [logout, navigate]);
+
+  const nav = useMemo(() => navByRole[user?.role] || [], [user?.role]);
   const currentTarget = `${location.pathname}${location.search}`;
-  const isNavActive = (to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search);
+  const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search), [currentTarget, location.pathname, location.search]);
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200 bg-white px-3 py-4 lg:flex lg:flex-col">
-        <NavLink to="/" className="flex shrink-0 items-center gap-3 rounded-lg bg-slate-50 p-3 text-base font-semibold">
+      {mobileOpen ? <button aria-label="Close sidebar overlay" className="fixed inset-0 z-30 bg-slate-900/30 lg:hidden" onClick={() => setMobileOpen(false)} /> : null}
+      <aside className={`fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-white px-3 py-4 transition-[width,transform] duration-200 ease-out lg:flex-col ${collapsed ? "lg:w-20" : "lg:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} w-64 flex-col`}>
+        <div className="flex shrink-0 items-center gap-2">
+          <NavLink to="/" className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg bg-slate-50 p-3 text-base font-semibold ${collapsed ? "lg:justify-center" : ""}`} title="CarLoanSaathi">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d47a1] text-sm text-white">CL</span>
-          <span><span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span></span>
-        </NavLink>
+          <span className={`truncate transition-opacity ${collapsed ? "lg:hidden" : ""}`}><span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span></span>
+          </NavLink>
+          <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close sidebar" className="rounded-md border border-slate-200 p-2 text-slate-600 lg:hidden">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <button type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} className={`mt-4 hidden h-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 lg:flex ${collapsed ? "w-full" : "w-9"}`}>
+          <ToggleIcon className="h-4 w-4" />
+        </button>
         <div className="mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3">
           {nav.map((item) => {
             const Icon = item.icon;
             return (
-              <NavLink key={item.to} to={item.to} className={() => `flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}>
-                <Icon className="h-5 w-5" /> {item.label}
+              <NavLink key={item.to} to={item.to} title={collapsed ? item.label : undefined} className={() => `flex min-h-10 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition ${collapsed ? "lg:justify-center lg:px-2" : ""} ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}>
+                <Icon className="h-5 w-5 shrink-0" /> <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
               </NavLink>
             );
           })}
         </div>
-        <div className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Session</p>
-          <p className="mt-1 break-words text-sm font-medium leading-5 text-slate-900">{user?.email}</p>
+        <div className={`shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-3 ${collapsed ? "lg:px-2" : ""}`}>
+          <p className={`text-xs font-medium uppercase tracking-[0.12em] text-slate-500 ${collapsed ? "lg:hidden" : ""}`}>Session</p>
+          <p className={`hidden text-center text-xs font-semibold text-slate-500 ${collapsed ? "lg:block" : ""}`}>{user?.email?.slice(0, 1)?.toUpperCase() || "U"}</p>
+          <p className={`mt-1 break-words text-sm font-medium leading-5 text-slate-900 ${collapsed ? "lg:hidden" : ""}`}>{user?.email}</p>
         </div>
       </aside>
-      <main className="min-w-0 lg:pl-64">
+      <main className={`min-w-0 transition-[padding] duration-200 ease-out ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
           <div className="flex min-h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-6">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{user?.roleLabel || "Workspace"}</p>
-              <h1 className="text-lg font-semibold text-slate-900">Operating Dashboard</h1>
+            <div className="flex min-w-0 items-center gap-3">
+              <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open sidebar" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 lg:hidden">
+                <Menu className="h-4 w-4" />
+              </button>
+              <button type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} className="hidden h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 lg:inline-flex">
+                <ToggleIcon className="h-4 w-4" />
+              </button>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{user?.roleLabel || "Workspace"}</p>
+                <h1 className="truncate text-lg font-semibold text-slate-900">Operating Dashboard</h1>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <NotificationCenter />
               <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <LogOut className="h-4 w-4" /> Logout
+                <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>

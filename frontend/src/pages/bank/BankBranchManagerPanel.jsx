@@ -63,6 +63,34 @@ function Table({ title, headers, rows, loading, page, total, onPage }) {
   return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
 }
 
+function DetailState({ title, message, requestId, onRetry, tone = "slate" }) {
+  const tones = {
+    slate: "border-slate-200 bg-white text-slate-600",
+    red: "border-red-100 bg-red-50 text-red-700",
+    amber: "border-amber-100 bg-amber-50 text-amber-700",
+  };
+  return (
+    <section className={`rounded-lg border p-5 text-sm ${tones[tone] || tones.slate}`}>
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1">{message}</p>
+      {requestId ? <p className="mt-2 text-xs opacity-80">Request ID: {requestId}</p> : null}
+      {onRetry ? <button onClick={onRetry} className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">Retry</button> : null}
+    </section>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <section className="space-y-4">
+      <div className="h-20 animate-pulse rounded-lg border border-slate-200 bg-white" />
+      <div className="grid gap-3 md:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => <div key={item} className="h-20 animate-pulse rounded-lg border border-slate-200 bg-white" />)}
+      </div>
+      <div className="h-64 animate-pulse rounded-lg border border-slate-200 bg-white" />
+    </section>
+  );
+}
+
 function SearchBar({ value, onChange }) {
   return (
     <div className="relative rounded-lg border border-slate-200 bg-white p-3">
@@ -280,18 +308,22 @@ export function BankBranchManagerPanel({ mode = "leads" }) {
 export function BankManagerLeadDetailPage() {
   const { leadId } = useParams();
   const [lead, setLead] = useState(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
-    setError("");
+    setError(null);
     if (!silent) setLoading(true);
     try {
       const response = await api.get(`/bank/leads/${leadId}`);
       setLead(response.data);
     } catch (err) {
       setLead(null);
-      setError(err.response?.data?.message || err.message || "Lead not found.");
+      setError({
+        status: err.response?.status || 0,
+        message: err.response?.data?.message || err.message || "Unable to load this lead.",
+        requestId: err.response?.data?.requestId || err.response?.headers?.["x-request-id"] || "",
+      });
     } finally {
       if (!silent) setLoading(false);
     }
@@ -300,8 +332,12 @@ export function BankManagerLeadDetailPage() {
   useEffect(() => { loadLead(); }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
-  if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">{error || "Lead not found."}</section>;
+  if (loading) return <DetailSkeleton />;
+  if (!lead) {
+    if (error?.status === 403) return <DetailState title="Access denied" message="This lead is outside your authorized bank or branch scope." requestId={error.requestId} onRetry={() => loadLead()} tone="amber" />;
+    if (error?.status === 404) return <DetailState title="Lead not found" message="This lead may have been removed or the link is no longer valid." requestId={error.requestId} onRetry={() => loadLead()} />;
+    return <DetailState title="Documents could not be loaded" message={error?.message || "Unexpected server error while loading this lead."} requestId={error?.requestId} onRetry={() => loadLead()} tone="red" />;
+  }
 
   const documents = [...(lead.documents || [])];
   const rows = customerDocumentTypes.map((type) => {

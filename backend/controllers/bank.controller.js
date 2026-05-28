@@ -379,6 +379,15 @@ export async function startBankRegistration(req, res, next) {
     });
     res.json({ status: "account-created", registrationId: registration.id, email, message: "Account created successfully. Continue bank registration.", redirectTo: "/bank-registration/form" });
   } catch (error) {
+    recordOperationalEvent({
+      type: "bank_lead_detail_fetch_failed",
+      severity: error.status === 403 ? ALERT_SEVERITY.HIGH : ALERT_SEVERITY.MEDIUM,
+      component: "bank-documents",
+      message: "Bank lead detail fetch failed",
+      entityId: req.params.id,
+      requestId: req.requestId,
+      meta: { status: error.status || 500, actor: userEmail(req), reason: error.message },
+    }).catch(() => {});
     next(error);
   }
 }
@@ -610,8 +619,8 @@ export async function getBankLead(req, res, next) {
     const leadDocuments = async (collection) => {
       const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
         where: [{ field: "leadId", value: leadId }],
-        orderBy: "createdAt",
-        direction: "desc",
+        orderBy: "leadId",
+        direction: "asc",
         limit: 50,
         maxLimit: 50,
       })));
