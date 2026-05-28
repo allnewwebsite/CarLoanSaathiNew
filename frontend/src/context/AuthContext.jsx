@@ -10,6 +10,7 @@ import {
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
 import { auth } from "../services/firebase.js";
+import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
 const AuthContext = createContext(null);
 
@@ -76,6 +77,7 @@ export function AuthProvider({ children }) {
   const [sessionChecking, setSessionChecking] = useState(Boolean(storedToken()));
 
   const clearLocalSession = async () => {
+    teardownRealtimeSubscriptions();
     localStorage.removeItem("cls_user");
     clearStoredToken();
     setFirebaseUser(null);

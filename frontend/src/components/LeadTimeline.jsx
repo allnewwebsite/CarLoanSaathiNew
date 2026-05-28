@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, FileText, Search, Send, ShieldAlert } from "lucide-react";
+import { useTimelineRealtime } from "../hooks/useRealtimeRefresh.js";
 import { api } from "../services/api.js";
 
 const iconByType = {
@@ -39,14 +40,16 @@ export function LeadTimeline({ leadId, compact = false }) {
 
   const load = async (nextFilters = filters) => {
     if (!leadId) return;
-    setLoading(true);
+    const silent = nextFilters?.silent === true;
+    if (!silent) setLoading(true);
     try {
-      const response = await api.get(`/timeline/leads/${leadId}`, { params: { ...nextFilters, limit } });
+      const { silent: _silent, ...params } = nextFilters;
+      const response = await api.get(`/timeline/leads/${leadId}`, { params: { ...params, limit } });
       const payload = response.data;
       setEvents(Array.isArray(payload) ? payload : payload.data || []);
       setTotal(Array.isArray(payload) ? payload.length : payload.total || 0);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -54,6 +57,7 @@ export function LeadTimeline({ leadId, compact = false }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
+  useTimelineRealtime({ leadId, onRefresh: () => load({ ...filters, silent: true }) });
 
   const updateFilter = (field, value) => {
     const next = { ...filters, [field]: value, page: field === "page" ? value : 1 };

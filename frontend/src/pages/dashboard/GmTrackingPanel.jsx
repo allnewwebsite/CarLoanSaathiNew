@@ -3,6 +3,7 @@ import { FileText, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
@@ -63,25 +64,21 @@ function useGmLeads(filters = {}) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const load = useCallback(async (next = {}) => {
-    setLoading(true);
+    const silent = next.silent === true;
+    if (!silent) setLoading(true);
     try {
-      const response = await api.get("/gm/leads", { params: { page: 1, limit: pageSize, ...filters, ...next } });
+      const { silent: _silent, ...params } = next;
+      const response = await api.get("/gm/leads", { params: { page: 1, limit: pageSize, ...filters, ...params } });
       setLeads(response.data?.data || []);
       setTotal(response.data?.total || 0);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters.search, filters.status, filters.salespersonId]);
   useEffect(() => {
     load();
-    const interval = window.setInterval(() => load(), 8000);
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
   }, [load]);
+  useRoleLeadRealtime({ onRefresh: load, pageSize });
   return { leads, total, loading, load };
 }
 
@@ -293,11 +290,22 @@ export function GmLeadDetailPage() {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    api.get(`/gm/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => { if (active) setLead(null); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+  const loadLead = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/gm/leads/${leadId}`);
+      setLead(response.data);
+    } catch {
+      setLead(null);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [leadId]);
+
+  useEffect(() => {
+    loadLead();
+  }, [loadLead]);
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
   if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;

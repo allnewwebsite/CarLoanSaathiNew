@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
-import { collection, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
+import { notificationQueryForUser } from "../hooks/useRealtimeRefresh.js";
 import { api } from "../services/api.js";
-import { db } from "../services/firebaseDb.js";
+import { subscribeRealtime } from "../services/realtimeManager.js";
 
 function formatDate(value) {
   if (!value) return "";
@@ -21,40 +21,40 @@ export function NotificationCenter() {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [filter, setFilter] = useState("");
+  const [toast, setToast] = useState("");
+  const seenIds = useRef(new Set());
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
-    setItems(response.data.data || []);
+    const nextItems = response.data.data || [];
+    setItems(nextItems);
     setUnread(response.data.unread || 0);
-  };
+    return nextItems;
+  }, [filter]);
 
   useEffect(() => {
-    load().catch(() => {});
+    load().then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
   }, [filter]);
 
   useEffect(() => {
     if (!user?.role) return undefined;
-    const constraints = [];
-    if (user.role === "super-admin") {
-      constraints.push(orderBy("createdAt", "desc"));
-    } else if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
-      constraints.push(where("dealershipId", "==", user.dealershipId), orderBy("createdAt", "desc"));
-    } else if (user.role === "bank-manager" && user.bankId) {
-      constraints.push(where("bankId", "==", user.bankId), orderBy("createdAt", "desc"));
-    } else {
-      constraints.push(where("recipientId", "==", user.email), orderBy("createdAt", "desc"));
-    }
-    constraints.push(limit(20));
-    const unsubscribe = onSnapshot(query(collection(db, "notifications"), ...constraints), (snapshot) => {
-      const nextItems = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const filtered = filter === "unread" ? nextItems.filter((item) => !item.read) : nextItems;
-      setItems(filtered);
-      setUnread(nextItems.filter((item) => !item.read).length);
-    }, () => {
-      load().catch(() => {});
+    return subscribeRealtime({
+      key: `notifications:${user.role}:${user.dealershipId || user.bankId || user.email || "admin"}:${filter || "all"}`,
+      queryFactory: () => notificationQueryForUser(user),
+      skipInitial: false,
+      onChange: async () => {
+        const previous = seenIds.current;
+        const nextItems = await load().catch(() => []);
+        const fresh = nextItems.find((item) => !previous.has(item.id));
+        nextItems.forEach((item) => previous.add(item.id));
+        if (fresh && !fresh.read) {
+          setToast(fresh.title || "New notification");
+          window.setTimeout(() => setToast(""), 3500);
+        }
+      },
+      onError: () => load().catch(() => {}),
     });
-    return unsubscribe;
-  }, [filter, user?.role, user?.email, user?.dealershipId, user?.bankId]);
+  }, [filter, load, user]);
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);
@@ -63,6 +63,7 @@ export function NotificationCenter() {
 
   return (
     <div className="relative">
+      {toast ? <div className="fixed right-4 top-20 z-[60] rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#0d47a1] shadow-sm">{toast}</div> : null}
       <button onClick={() => setOpen((value) => !value)} className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-[#0d47a1] hover:bg-slate-50">
         <Bell className="h-5 w-5" />
         {unread > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">{unread}</span>}

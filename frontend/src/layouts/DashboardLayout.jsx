@@ -1,5 +1,6 @@
 import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Settings, Shield, Users } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const navByRole = {
@@ -79,6 +80,7 @@ export function DashboardLayout() {
               <h1 className="text-lg font-semibold text-slate-900">Operating Dashboard</h1>
             </div>
             <div className="flex items-center gap-2">
+              <NotificationCenter />
               <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 <LogOut className="h-4 w-4" /> Logout
               </button>

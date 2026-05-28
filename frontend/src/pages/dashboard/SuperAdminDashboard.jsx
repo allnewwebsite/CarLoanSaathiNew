@@ -3,6 +3,7 @@ import { BarChart3, Building2, ClipboardCheck, Download, FileClock, Landmark, Se
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
+import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
@@ -142,8 +143,8 @@ function useAdminEcosystem() {
   const [analytics, setAnalytics] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const [ecosystem, analyticsResponse, auditResponse] = await Promise.all([
         api.get("/admin/ecosystem"),
@@ -153,11 +154,12 @@ function useAdminEcosystem() {
       setState((current) => ({ ...current, ...(ecosystem.data || {}), auditLogs: auditResponse.data || [] }));
       setAnalytics(analyticsResponse.data || {});
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
   return { ...state, analytics, loading, load };
 }
 
@@ -263,8 +265,8 @@ function useAdminPanelData(mode, search, leadFilter) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       if (mode === "dealerships") {
         const response = await api.get("/admin/approvals/dealerships", { params: { status: "approved", search } });
@@ -287,11 +289,12 @@ function useAdminPanelData(mode, search, leadFilter) {
         setRows(responseRows(response));
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [leadFilter, mode, search]);
 
   useEffect(() => { load(); }, [load]);
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
   return { rows, loading, load };
 }
 

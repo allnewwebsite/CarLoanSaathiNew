@@ -3,6 +3,7 @@ import { Search, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
@@ -73,17 +74,19 @@ function useExecutiveLeads({ search, status }) {
   const [loading, setLoading] = useState(true);
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const load = useCallback(async (nextPage = page) => {
-    setLoading(true);
+  const load = useCallback(async (nextPage = page, options = {}) => {
+    if (!options.silent) setLoading(true);
     try {
       const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search, status: status ? apiStatus(status) : "" } });
       setRows(responseRows(response));
       setTotal(response.data?.total || responseRows(response).length);
     } finally {
-      setLoading(false);
+      if (!options.silent) setLoading(false);
     }
   }, [page, search, status]);
   useEffect(() => { load(page); }, [load, page]);
+  const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, loading, page, onPage, load };
 }
@@ -201,11 +204,24 @@ export function LoanExecutiveLeadDetailPage() {
   const { leadId } = useParams();
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
-    api.get(`/bank/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => { if (active) setLead(null); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+
+  const loadLead = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/bank/leads/${leadId}`);
+      setLead(response.data);
+    } catch {
+      setLead(null);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [leadId]);
+
+  useEffect(() => {
+    loadLead();
+  }, [loadLead]);
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+
   if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   const documents = lead.documents || [];

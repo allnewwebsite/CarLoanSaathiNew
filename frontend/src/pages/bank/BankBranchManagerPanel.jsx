@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
@@ -90,17 +91,8 @@ function useBankLeads(search) {
   }, [page, search]);
 
   useEffect(() => { load(page); }, [load, page]);
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      load(page, { silent: true });
-    }, 15000);
-    const onFocus = () => load(page, { silent: true });
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [load, page]);
+  const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
   const onPage = (nextPage) => setParams({ page: String(nextPage) });
   return { rows, total, loading, page, onPage, load };
 }
@@ -288,14 +280,28 @@ export function BankBranchManagerPanel({ mode = "leads" }) {
 export function BankManagerLeadDetailPage() {
   const { leadId } = useParams();
   const [lead, setLead] = useState(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
-    api.get(`/bank/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => { if (active) setLead(null); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+
+  const loadLead = useCallback(async ({ silent = false } = {}) => {
+    setError("");
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/bank/leads/${leadId}`);
+      setLead(response.data);
+    } catch (err) {
+      setLead(null);
+      setError(err.response?.data?.message || err.message || "Lead not found.");
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [leadId]);
+
+  useEffect(() => { loadLead(); }, [loadLead]);
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+
   if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
-  if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
+  if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">{error || "Lead not found."}</section>;
 
   const documents = [...(lead.documents || [])];
   const rows = customerDocumentTypes.map((type) => {

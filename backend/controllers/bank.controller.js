@@ -26,6 +26,20 @@ function userEmail(req) {
   return req.user?.email || req.user?.uid;
 }
 
+function cleanText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function sameText(left, right) {
+  const cleanLeft = cleanText(left);
+  const cleanRight = cleanText(right);
+  return Boolean(cleanLeft && cleanRight && cleanLeft === cleanRight);
+}
+
+function anyMatch(values, targets) {
+  return values.some((value) => targets.some((target) => sameText(value, target)));
+}
+
 async function currentPartner(req) {
   const email = userEmail(req);
   if (req.user?.role === "loan-executive") {
@@ -64,40 +78,28 @@ async function currentPartner(req) {
 function partnerCanAccessLead(partner, lead) {
   if (!partner || !lead) return false;
   if (partner.roleType === "loan-executive") {
-    return lead.assignedExecutiveId === partner.id
-      || lead.assignedExecutiveId === partner.email
-      || lead.assignedExecutiveEmail === partner.email;
+    return anyMatch(
+      [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
+      [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
+    );
   }
 
   if (partner.roleType === "bank-manager") {
-    const partnerCity = partner.branchCity || partner.city || partner.operatingCity;
-    const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity;
-    const sameCity = !partnerCity || partnerCity === leadCity;
-    const sameBank = lead.bankId === partner.bankId
-      || lead.bankId === partner.bankPartnerId
-      || lead.assignedBankId === partner.bankId
-      || lead.assignedPartnerId === partner.bankPartnerId
-      || lead.assignedPartnerId === partner.partnerId
-      || lead.assignedBankId === partner.bankPartnerId
-      || lead.assignedBankId === partner.partnerId
-      || lead.assignedBankId === partner.bankName
-      || lead.bankPartner === partner.bankName
-      || lead.assignedBankName === partner.bankName
-      || lead.preferredBank === partner.bankName;
+    const partnerCity = partner.branchCity || partner.city || partner.operatingCity || partner.bankBranchLocation || partner.branchLocation;
+    const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
+    const sameCity = !cleanText(partnerCity) || !cleanText(leadCity) || sameText(partnerCity, leadCity);
+    const sameBank = anyMatch(
+      [lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],
+      [partner.bankId, partner.bankPartnerId, partner.partnerId, partner.id, partner.email, partner.bankName, partner.companyName],
+    );
     return sameCity && sameBank;
   }
 
   const supportedBanks = Array.isArray(partner.supportedBanks) ? partner.supportedBanks : [];
-  return lead.assignedPartnerId === partner.id
-    || lead.assignedPartnerId === partner.email
-    || lead.assignedBankId === partner.id
-    || lead.assignedBankId === partner.email
-    || lead.bankPartner === partner.bankName
-    || lead.bankPartner === partner.companyName
-    || lead.assignedBankName === partner.bankName
-    || lead.assignedBankName === partner.companyName
-    || supportedBanks.includes(lead.preferredBank)
-    || supportedBanks.includes(lead.bankPartner);
+  return anyMatch(
+    [lead.assignedPartnerId, lead.assignedBankId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],
+    [partner.id, partner.email, partner.bankName, partner.companyName, ...supportedBanks],
+  );
 }
 
 function bankIdentity(partner) {
@@ -139,6 +141,28 @@ function applyFilters(leads, query) {
   });
 }
 
+async function attachExecutiveMobile(partner, leads) {
+  const missing = leads.filter((lead) => !lead.assignedExecutiveMobile && (lead.assignedExecutiveId || lead.assignedExecutiveEmail));
+  if (!missing.length) return leads;
+  const executivesPage = await queryRecords("loanExecutives", {
+    where: partner.bankId || partner.bankPartnerId ? [{ field: "bankId", value: partner.bankId || partner.bankPartnerId }] : [],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 100,
+    maxLimit: 100,
+  }).catch(() => ({ data: [] }));
+  return leads.map((lead) => {
+    if (lead.assignedExecutiveMobile) return lead;
+    const executive = executivesPage.data.find((item) =>
+      anyMatch(
+        [item.id, item.email, item.officialEmail, item.jobId],
+        [lead.assignedExecutiveId, lead.assignedExecutiveEmail],
+      )
+    );
+    return executive?.mobile ? { ...lead, assignedExecutiveMobile: executive.mobile, executiveMobile: executive.mobile } : lead;
+  });
+}
+
 async function liveBankRegistrationForAccount(account) {
   if (!account?.email) return { approval: null, bankPartner: null, branchManager: null, live: false };
   const approvals = await listRecords("pendingBankApprovals");
@@ -154,35 +178,13 @@ async function liveBankRegistrationForAccount(account) {
 }
 
 async function assignedLeadsForPartner(partner, query = {}) {
-  const attachExecutiveMobile = async (leads) => {
-    const missing = leads.filter((lead) => !lead.assignedExecutiveMobile && (lead.assignedExecutiveId || lead.assignedExecutiveEmail));
-    if (!missing.length) return leads;
-    const executivesPage = await queryRecords("loanExecutives", {
-      where: partner.bankId || partner.bankPartnerId ? [{ field: "bankId", value: partner.bankId || partner.bankPartnerId }] : [],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 100,
-      maxLimit: 100,
-    }).catch(() => ({ data: [] }));
-    return leads.map((lead) => {
-      if (lead.assignedExecutiveMobile) return lead;
-      const executive = executivesPage.data.find((item) =>
-        item.id === lead.assignedExecutiveId
-        || item.email === lead.assignedExecutiveEmail
-        || item.officialEmail === lead.assignedExecutiveEmail
-        || item.email === lead.assignedExecutiveId
-      );
-      return executive?.mobile ? { ...lead, assignedExecutiveMobile: executive.mobile } : lead;
-    });
-  };
-
   if (partner.roleType === "loan-executive") {
     const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 } });
-    return attachExecutiveMobile(applyFilters(result.data, query));
+    return attachExecutiveMobile(partner, applyFilters(result.data, query));
   }
   const identity = bankIdentity(partner);
   const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 } });
-  return attachExecutiveMobile(applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
+  return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
 async function requireAssignedLead(req) {
@@ -602,27 +604,29 @@ export async function getBankExecutiveCases(req, res, next) {
 
 export async function getBankLead(req, res, next) {
   try {
-    const { lead } = await requireAssignedLead(req);
+    const { partner, lead } = await requireAssignedLead(req);
+    const [hydratedLead] = await attachExecutiveMobile(partner, [lead]);
+    const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
+    const leadDocuments = async (collection) => {
+      const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
+        where: [{ field: "leadId", value: leadId }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 50,
+        maxLimit: 50,
+      })));
+      const byId = new Map();
+      pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
+      return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
+    };
     const [documents, bankDocuments] = await Promise.all([
-      queryRecords("documents", {
-        where: [{ field: "leadId", value: lead.id }],
-        orderBy: "createdAt",
-        direction: "desc",
-        limit: 50,
-        maxLimit: 50,
-      }),
-      queryRecords("bankDocuments", {
-        where: [{ field: "leadId", value: lead.id }],
-        orderBy: "createdAt",
-        direction: "desc",
-        limit: 50,
-        maxLimit: 50,
-      }),
+      leadDocuments("documents"),
+      leadDocuments("bankDocuments"),
     ]);
     res.json({
-      ...lead,
-      documents: documents.data,
-      bankDocuments: bankDocuments.data,
+      ...hydratedLead,
+      documents,
+      bankDocuments,
     });
   } catch (error) {
     next(error);

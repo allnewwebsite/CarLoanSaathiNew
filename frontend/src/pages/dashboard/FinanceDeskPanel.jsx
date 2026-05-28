@@ -3,6 +3,7 @@ import { FileText, Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
@@ -94,27 +95,23 @@ function useDealerLeads(filters = {}) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const loadLeads = useCallback(async (next = {}) => {
-    setLoading(true);
+    const silent = next.silent === true;
+    if (!silent) setLoading(true);
     try {
-      const response = await api.get("/dealer/leads", { params: { page: 1, limit: pageSize, ...filters, ...next } });
+      const { silent: _silent, ...params } = next;
+      const response = await api.get("/dealer/leads", { params: { page: 1, limit: pageSize, ...filters, ...params } });
       const payload = Array.isArray(response.data) ? { data: response.data, total: response.data.length } : response.data;
       setLeads(payload.data || []);
       setTotal(payload.total || 0);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [filters.status, filters.salespersonId, filters.search]);
 
   useEffect(() => {
     loadLeads();
-    const interval = window.setInterval(() => loadLeads(), 8000);
-    const onFocus = () => loadLeads();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
   }, [loadLeads]);
+  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize });
   return { leads, total, loading, loadLeads };
 }
 
@@ -418,14 +415,22 @@ export function FinanceLeadDetailPage() {
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    api.get(`/dealer/leads/${leadId}`)
-      .then((response) => { if (active) setLead(response.data); })
-      .catch(() => { if (active) setLead(null); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+  const loadLead = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/dealer/leads/${leadId}`);
+      setLead(response.data);
+    } catch {
+      setLead(null);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [leadId]);
+
+  useEffect(() => {
+    loadLead();
+  }, [loadLead]);
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
   if (loading) return <section className="card p-5 text-sm text-slate-500">Loading lead...</section>;
   if (!lead) return <section className="card p-5 text-sm text-slate-500">Lead not found.</section>;
@@ -471,6 +476,7 @@ export function FinanceLeadDocumentsPage() {
     api.get(`/dealer/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => {});
     return () => { active = false; };
   }, [leadId]);
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadDocs });
 
   const upload = async (type) => {
     const file = files[type];
