@@ -21,7 +21,7 @@ const tone = {
 export function StatusBadge({ status }) {
   const normalized = normalizeStatus(status);
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone[normalized] || tone[LEAD_STATUSES.NEW]}`}>
+    <span className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold leading-4 ring-1 ${tone[normalized] || tone[LEAD_STATUSES.NEW]}`}>
       {statusLabel(normalized)}
     </span>
   );

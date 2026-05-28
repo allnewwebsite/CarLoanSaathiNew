@@ -158,17 +158,17 @@ export function DashboardLayout() {
       </aside>
       <main className={`min-w-0 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
-          <div className="flex min-h-[4.5rem] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-6">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-h-[4.5rem] items-center justify-between gap-3 px-3 py-3 sm:gap-4 sm:px-6 lg:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open sidebar" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 lg:hidden">
                 <Menu className="h-4 w-4" />
               </button>
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-semibold tracking-[0.01em] text-slate-950">{dashboardTitle}</h1>
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-base font-semibold tracking-[0.01em] text-slate-950 sm:text-xl">{dashboardTitle}</h1>
                 {headerMetadata.length ? (
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                     {headerMetadata.map(([label, value]) => (
-                      <span key={label} className="inline-flex min-w-0 items-center gap-1">
+                      <span key={label} className="inline-flex max-w-full min-w-0 items-center gap-1">
                         <span className="font-medium text-slate-500">{label}:</span>
                         <span className="truncate font-semibold text-slate-700">{value}</span>
                       </span>
@@ -177,9 +177,9 @@ export function DashboardLayout() {
                 ) : null}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <NotificationCenter />
-              <button onClick={handleLogout} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <button onClick={handleLogout} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:px-3">
                 <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
               </button>
             </div>

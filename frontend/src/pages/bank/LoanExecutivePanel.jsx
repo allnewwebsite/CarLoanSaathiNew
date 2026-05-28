@@ -122,9 +122,12 @@ function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMEN
   const submit = async () => {
     if (!selected.length) return;
     setBusy(true);
-    await api.patch(`/bank/leads/${lead.id}/status`, { status, pendingDocumentsRequested: selected, pendingDocumentReason: notes, remarks: notes });
-    setBusy(false);
-    onSaved();
+    try {
+      await api.patch(`/bank/leads/${lead.id}/status`, { status, pendingDocumentsRequested: selected, pendingDocumentReason: notes, remarks: notes });
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal title={status === LEAD_STATUSES.REQUEST_DOCUMENT ? "Request Documents" : "Request Pending Documents"} onClose={onClose}>
@@ -144,14 +147,20 @@ function TotalLeadsPage({ mode }) {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("search") || "");
   const [modal, setModal] = useState(null);
+  const [statusError, setStatusError] = useState("");
   const status = mode === "status" ? params.get("status") || LEAD_STATUSES.DISBURSED : "";
   const { rows, total, loading, page, onPage, load } = useExecutiveLeads({ search, status });
 
   const updateStatus = async (lead, nextStatus) => {
+    setStatusError("");
     if (nextStatus === "REJECTED_REASON") return setModal({ type: "reject", lead });
     if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus)) return setModal({ type: "docs", lead, status: nextStatus });
-    await api.patch(`/bank/leads/${lead.id}/status`, { status: nextStatus });
-    load(page);
+    try {
+      await api.patch(`/bank/leads/${lead.id}/status`, { status: nextStatus });
+      load(page);
+    } catch (error) {
+      setStatusError(error.response?.data?.message || error.message || "Status update failed. Please retry.");
+    }
   };
 
   const tableRows = rows.map((lead) => ({
@@ -199,6 +208,7 @@ function TotalLeadsPage({ mode }) {
         </div>
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
+      {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
       <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}

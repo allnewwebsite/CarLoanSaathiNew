@@ -896,7 +896,7 @@ export async function reassignBankLead(req, res, next) {
 export async function updateBankLeadStatus(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
-    const normalizedStatus = assertValidStatusTransition(lead.status, req.body.status);
+    const normalizedStatus = normalizeStatus(req.body.status);
     if (!bankStatuses.includes(normalizedStatus)) return res.status(400).json({ message: "Invalid bank lead status" });
     const pendingDocument = String(req.body.pendingDocument || "").trim();
     const requestedDocuments = Array.isArray(req.body.pendingDocumentsRequested)

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Building2, ClipboardCheck, Download, FileClock, Landmark, Search, Shield, Users } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -102,29 +103,8 @@ function Pagination({ page, total, onPage }) {
 }
 
 function DataTable({ title, headers, rows, loading, page, total, onPage, onExport }) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {onExport && <button onClick={onExport} className="inline-flex items-center gap-2 rounded-md bg-[#0d47a1] px-3 py-2 text-xs font-medium text-white"><Download className="h-3.5 w-3.5" /> Export</button>}
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs font-medium uppercase text-slate-500">
-            <tr>{headers.map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-slate-500">Loading...</td></tr> : null}
-            {!loading && rows.length ? rows.map((row) => (
-              <tr key={row.key} className="hover:bg-slate-50">{row.cells.map((cell, index) => <td key={`${row.key}-${index}`} className="px-4 py-3 text-slate-600">{cell}</td>)}</tr>
-            )) : null}
-            {!loading && !rows.length ? <tr><td colSpan={headers.length} className="px-4 py-8 text-center text-slate-500">No records found.</td></tr> : null}
-          </tbody>
-        </table>
-      </div>
-      {onPage && <Pagination page={page} total={total} onPage={onPage} />}
-    </section>
-  );
+  const action = onExport ? <button onClick={onExport} className="inline-flex items-center gap-2 rounded-md bg-[#0d47a1] px-3 py-2 text-xs font-medium text-white"><Download className="h-3.5 w-3.5" /> Export</button> : null;
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} action={action} />;
 }
 
 function useAdminEcosystem() {
