@@ -560,8 +560,8 @@ function accountActive(account) {
     && account?.active !== false
     && account?.accountActive !== false
     && account?.approved !== false
-    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed", "locked"].includes(String(account?.accountStatus || "").toLowerCase())
-    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed", "locked"].includes(String(account?.status || "").toLowerCase());
+    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed"].includes(String(account?.accountStatus || "").toLowerCase())
+    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed"].includes(String(account?.status || "").toLowerCase());
 }
 
 async function setFirebaseClaims(email, user) {
