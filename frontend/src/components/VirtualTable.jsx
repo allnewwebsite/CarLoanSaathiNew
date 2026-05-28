@@ -6,7 +6,7 @@ const Row = memo(function Row({ index, style, rows, columns, gridTemplateColumns
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50">
       {columns.map((column) => (
-        <div key={column.key} role="cell" className="truncate px-2.5 py-2 text-xs leading-5 text-slate-600">
+        <div key={column.key} role="cell" className="flex min-w-0 items-center truncate px-2 py-1 text-xs leading-4 text-slate-600">
           {column.render ? column.render(row) : row[column.key]}
         </div>
       ))}
@@ -14,16 +14,28 @@ const Row = memo(function Row({ index, style, rows, columns, gridTemplateColumns
   );
 });
 
-export function VirtualTable({ columns, rows, rowHeight = 40, height = 520, overscan = 8 }) {
-  const gridTemplateColumns = `repeat(${columns.length}, minmax(140px, 1fr))`;
-  const tableMinWidth = `${Math.max(columns.length * 150, 720)}px`;
+function columnWidth(label = "") {
+  if (/action/i.test(label)) return 460;
+  if (/email/i.test(label)) return 220;
+  if (/document/i.test(label)) return 130;
+  if (/status/i.test(label)) return 145;
+  if (/mobile/i.test(label)) return 145;
+  if (/amount|price/i.test(label)) return 150;
+  if (/date|time/i.test(label)) return 145;
+  if (/case/i.test(label)) return 125;
+  return 145;
+}
+
+export function VirtualTable({ columns, rows, rowHeight = 32, height = 520, overscan = 8 }) {
+  const gridTemplateColumns = columns.map((column) => `minmax(${columnWidth(column.label)}px, 1fr)`).join(" ");
+  const tableMinWidth = `${Math.max(columns.reduce((sum, column) => sum + columnWidth(column.label), 0), 720)}px`;
   return (
     <section className="card overflow-hidden">
       <div className="overflow-x-auto">
         <div role="table" className="hidden min-w-full text-left md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
           <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
-              {columns.map((column) => <div role="columnheader" key={column.key} className="min-h-10 overflow-hidden text-ellipsis border-r border-slate-200/70 px-2.5 py-2 leading-4 last:border-r-0" title={column.label}>{column.label}</div>)}
+              {columns.map((column) => <div role="columnheader" key={column.key} className="flex min-h-8 items-center overflow-hidden text-ellipsis px-2 py-1.5 leading-4" title={column.label}>{column.label}</div>)}
             </div>
           </div>
           <List

@@ -180,6 +180,26 @@ table tr {
   min-height: 2.5rem;
 }
 
+[role="table"] [role="cell"] > .flex.flex-wrap {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+[role="table"] [role="cell"] button,
+[role="table"] [role="cell"] a,
+[role="table"] [role="cell"] select {
+  min-height: 1.75rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+[role="table"] [role="row"] {
+  min-height: 2rem;
+}
+
 button,
 [role="button"],
 a,

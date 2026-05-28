@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -52,6 +52,13 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
+function formatRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 export function LoginPage({ portal = "dealer" }) {
   const config = portals[portal] || portals.dealer;
   const authPortal = config.authPortal || portal;
@@ -68,12 +75,35 @@ export function LoginPage({ portal = "dealer" }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [errorAction, setErrorAction] = useState(null);
+  const [lockedUntil, setLockedUntil] = useState("");
+  const [lockRemainingMs, setLockRemainingMs] = useState(0);
+
+  useEffect(() => {
+    if (!lockedUntil) {
+      setLockRemainingMs(0);
+      return undefined;
+    }
+    const expiresAt = new Date(lockedUntil).getTime();
+    if (!Number.isFinite(expiresAt)) {
+      setLockedUntil("");
+      return undefined;
+    }
+    const updateRemaining = () => {
+      const remaining = Math.max(0, expiresAt - Date.now());
+      setLockRemainingMs(remaining);
+      if (remaining <= 0) setLockedUntil("");
+    };
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(interval);
+  }, [lockedUntil]);
 
   const submit = async (event) => {
     event.preventDefault();
     setLoading(true);
     setError("");
     setErrorAction(null);
+    setLockedUntil("");
     setMessage("");
     setShowResend(false);
     if (!validEmail(email)) {
@@ -94,6 +124,7 @@ export function LoginPage({ portal = "dealer" }) {
       setError(resolved.message);
       setErrorAction(resolved.actionTo ? { label: resolved.actionLabel, to: resolved.actionTo } : null);
       setShowResend(resolved.showResend);
+      setLockedUntil(resolved.lockedUntil || "");
     } finally {
       setLoading(false);
     }
@@ -102,6 +133,7 @@ export function LoginPage({ portal = "dealer" }) {
   const resetPassword = async () => {
     setError("");
     setErrorAction(null);
+    setLockedUntil("");
     setMessage("");
     if (!validEmail(email)) {
       setError("Enter a valid email address before requesting a password reset.");
@@ -115,6 +147,7 @@ export function LoginPage({ portal = "dealer" }) {
       const resolved = resolveAuthError(err, portal, "reset");
       setError(resolved.message);
       setErrorAction(resolved.actionTo ? { label: resolved.actionLabel, to: resolved.actionTo } : null);
+      setLockedUntil(resolved.lockedUntil || "");
     } finally {
       setResetLoading(false);
     }
@@ -123,6 +156,7 @@ export function LoginPage({ portal = "dealer" }) {
   const resendVerification = async () => {
     setError("");
     setErrorAction(null);
+    setLockedUntil("");
     setMessage("");
     if (!validEmail(email) || !password) {
       setError("Enter your email and password before resending verification.");
@@ -136,6 +170,7 @@ export function LoginPage({ portal = "dealer" }) {
     } catch (err) {
       const resolved = resolveAuthError(err, portal, "verification");
       setError(resolved.message);
+      setLockedUntil(resolved.lockedUntil || "");
     } finally {
       setResendLoading(false);
     }
@@ -230,6 +265,11 @@ export function LoginPage({ portal = "dealer" }) {
               {error && (
                 <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
                   {error}
+                  {lockedUntil && lockRemainingMs > 0 ? (
+                    <span className="mt-1 block text-red-800">
+                      Try again in {formatRemaining(lockRemainingMs)}.
+                    </span>
+                  ) : null}
                 </div>
               )}
               {errorAction?.to && (

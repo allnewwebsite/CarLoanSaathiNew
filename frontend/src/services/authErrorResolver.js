@@ -19,6 +19,7 @@ function responseData(error) {
 function base(message, overrides = {}) {
   return {
     message,
+    lockedUntil: "",
     actionLabel: "",
     actionTo: "",
     showCreateAccount: false,
@@ -53,7 +54,10 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
   }
 
   if (code === "ACCOUNT_LOCKED" || error?.response?.status === 423) {
-    return base(data.message || "Account locked after repeated failed attempts. Try again later.", { showForgotPassword: false });
+    return base(data.message || "Account locked after repeated failed attempts.", {
+      lockedUntil: data.lockedUntil || "",
+      showForgotPassword: false,
+    });
   }
 
   if (code === "APPROVAL_PENDING" || code === "ACCOUNT_NOT_APPROVED" || /awaiting approval|pending approval|still pending/i.test(message)) {

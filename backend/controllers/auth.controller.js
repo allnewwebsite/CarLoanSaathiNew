@@ -183,20 +183,40 @@ function lockUntilDate() {
 }
 
 function accountLocked(account) {
-  return account?.lockedUntil && new Date(account.lockedUntil).getTime() > Date.now();
+  const lockedUntil = effectiveLockedUntil(account);
+  return lockedUntil && new Date(lockedUntil).getTime() > Date.now();
+}
+
+function effectiveLockedUntil(account = {}) {
+  if (!account?.lockedUntil) return null;
+  const storedLock = new Date(account.lockedUntil).getTime();
+  if (!Number.isFinite(storedLock)) return null;
+  const lastFailure = account.lastFailedLoginAt ? new Date(account.lastFailedLoginAt).getTime() : null;
+  if (!Number.isFinite(lastFailure)) return account.lockedUntil;
+  return new Date(Math.min(storedLock, lastFailure + ACCOUNT_LOCK_MINUTES * 60 * 1000)).toISOString();
+}
+
+function accountLockedPayload(account = {}) {
+  return {
+    code: "ACCOUNT_LOCKED",
+    message: "Account locked after repeated failed attempts.",
+    lockedUntil: effectiveLockedUntil(account),
+    lockMinutes: ACCOUNT_LOCK_MINUTES,
+  };
 }
 
 async function incrementFailedLogin(email, req, reason = "firebase-auth-failed") {
   const account = await getRecord("users", email);
   const attempts = Number(account?.failedLoginAttempts || 0) + 1;
+  const lockedUntil = attempts >= MAX_FAILED_LOGINS ? lockUntilDate() : null;
   const update = {
     failedLoginAttempts: attempts,
     lastFailedLoginAt: new Date().toISOString(),
-    ...(attempts >= MAX_FAILED_LOGINS ? { lockedUntil: lockUntilDate(), accountStatus: "locked" } : {}),
+    ...(lockedUntil ? { lockedUntil, accountStatus: "locked" } : {}),
   };
   if (account) await upsertRecord("users", email, update);
   await writeLoginActivity({ email, role: account?.role || null, status: "denied", reason, req });
-  return { attempts, locked: attempts >= MAX_FAILED_LOGINS };
+  return { attempts, locked: attempts >= MAX_FAILED_LOGINS, lockedUntil };
 }
 
 async function clearFailedLogin(email) {
@@ -379,7 +399,7 @@ function roleGuidance(role) {
 
 function inactiveAccountMessage(account = {}) {
   const status = String(account.accountStatus || account.status || "").toLowerCase();
-  if (accountLocked(account)) return { code: "ACCOUNT_LOCKED", message: "Account locked after repeated failed attempts. Try again later." };
+  if (accountLocked(account)) return accountLockedPayload(account);
   if (["suspended", "disabled", "removed", "inactive", "paused"].includes(status)) {
     return { code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." };
   }
@@ -596,7 +616,7 @@ export async function login(req, res, next) {
     const account = await accountForEmail(normalizedEmail, portal);
     if (accountLocked(account)) {
       await writeLoginActivity({ email: normalizedEmail, role: account?.role, status: "denied", reason: "account-locked", req });
-      return res.status(423).json({ message: "Account locked after repeated failed attempts. Try again later.", code: "ACCOUNT_LOCKED" });
+      return res.status(423).json(accountLockedPayload(account));
     }
     if (!account || !ROLE_ROUTES[account.role]) {
       const knownAccount = await accountForAnyPortal(normalizedEmail);
@@ -790,7 +810,14 @@ export async function recordLoginFailure(req, res, next) {
     const email = String(req.body.email || "").trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     const result = await incrementFailedLogin(email, req, req.body.reason || "firebase-auth-failed");
-    res.json({ recorded: true, locked: result.locked });
+    res.json({
+      recorded: true,
+      locked: result.locked,
+      code: result.locked ? "ACCOUNT_LOCKED" : "LOGIN_FAILURE_RECORDED",
+      message: result.locked ? "Account locked after repeated failed attempts." : "Login failure recorded.",
+      lockedUntil: result.lockedUntil,
+      lockMinutes: ACCOUNT_LOCK_MINUTES,
+    });
   } catch (error) {
     next(error);
   }

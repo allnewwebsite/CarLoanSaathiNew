@@ -6,7 +6,7 @@ const VirtualRow = memo(function VirtualRow({ index, style, rows, gridTemplateCo
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50" data-row-index={index}>
       {row.cells.map((cell, cellIndex) => (
-        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="min-w-0 overflow-hidden text-ellipsis px-2.5 py-2 text-xs leading-5 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
+        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="flex min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
           {cell}
         </div>
       ))}
@@ -16,6 +16,26 @@ const VirtualRow = memo(function VirtualRow({ index, style, rows, gridTemplateCo
 
 function isPriorityHeader(header = "") {
   return /customer|status|amount|bank|action|document/i.test(header);
+}
+
+function columnWidth(header = "") {
+  if (/action/i.test(header)) return 460;
+  if (/official email|email/i.test(header)) return 220;
+  if (/document/i.test(header)) return 130;
+  if (/status/i.test(header)) return 145;
+  if (/mobile/i.test(header)) return 145;
+  if (/amount|price/i.test(header)) return 150;
+  if (/date|time/i.test(header)) return 145;
+  if (/ifsc/i.test(header)) return 140;
+  if (/case/i.test(header)) return 125;
+  return 150;
+}
+
+function columnTemplate(header = "") {
+  const width = columnWidth(header);
+  if (/action/i.test(header)) return `minmax(${width}px, 1.35fr)`;
+  if (/official email|email/i.test(header)) return `minmax(${width}px, 1.2fr)`;
+  return `minmax(${width}px, 1fr)`;
 }
 
 function MobileRows({ headers, rows }) {
@@ -61,18 +81,18 @@ export function OperationalTable({
   pageSize = 10,
   virtualizeAt = 25,
   height = 520,
-  rowHeight = 40,
+  rowHeight = 32,
   action = null,
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
   const useVirtual = !loading && rows.length >= virtualizeAt;
-  const gridTemplateColumns = `repeat(${headers.length}, minmax(150px, 1fr))`;
-  const tableMinWidth = `${Math.max(headers.length * 160, 720)}px`;
+  const gridTemplateColumns = headers.map(columnTemplate).join(" ");
+  const tableMinWidth = `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`;
 
   return (
     <section className="card overflow-hidden">
       {(title || action) && (
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
           {title ? <h2 className="min-w-0 truncate text-base font-semibold text-slate-900">{title}</h2> : <span />}
           {action}
         </div>
@@ -81,7 +101,7 @@ export function OperationalTable({
         <div role="table" className="hidden min-w-full text-left text-xs md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
           <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
-              {headers.map((head) => <div role="columnheader" key={head} className="min-h-10 min-w-0 overflow-hidden text-ellipsis border-r border-slate-200/70 px-2.5 py-2 leading-4 last:border-r-0" title={head}>{head}</div>)}
+              {headers.map((head) => <div role="columnheader" key={head} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1.5 leading-4" title={head}>{head}</div>)}
             </div>
           </div>
 
@@ -104,7 +124,7 @@ export function OperationalTable({
             <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
               {rows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
-                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-10 min-w-0 items-center overflow-hidden text-ellipsis border-r border-slate-100 px-2.5 py-2 text-xs leading-5 text-slate-600 last:border-r-0" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
+                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
                 </div>
               ))}
             </div>
@@ -115,7 +135,7 @@ export function OperationalTable({
         {!loading && !rows.length ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
       </div>
       {onPage ? (
-        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-2">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">
           <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Prev</button>
           <span className="text-xs text-slate-500">Page {page} of {pages}</span>
           <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Next</button>
