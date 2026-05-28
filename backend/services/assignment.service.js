@@ -140,6 +140,8 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
     assignedPartnerId: partner.id,
     bankId: partner.bankId || partner.id,
     bankPartner: partner.name || partner.bankName,
+    assignedBankName: partner.name || partner.bankName,
+    assignedBankIfsc: partner.ifsc || partner.bankIfsc || partner.ifscCode || null,
     preferredBank: partner.bankName || partner.name || lead.preferredBank,
     assignmentStatus: "pending",
     branchCity: routingCity,

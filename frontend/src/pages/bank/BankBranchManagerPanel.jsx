@@ -24,6 +24,22 @@ function display(value) {
   return value || "-";
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function cleanEmail(value) {
+  return cleanText(value).toLowerCase();
+}
+
+function digits10(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 10);
+}
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
+}
+
 function caseId(lead) {
   return lead.caseId || lead.id;
 }
@@ -49,6 +65,7 @@ function dateTime(value) {
 
 function leadStatusLabel(lead) {
   const status = normalizeStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.UNDER_REVIEW);
+  if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
   if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
@@ -175,17 +192,35 @@ function TotalLeadsPage() {
 function ManageExecutivePage() {
   const { rows, loading, load } = useExecutives();
   const [form, setForm] = useState({ name: "", mobile: "", jobId: "", email: "" });
+  const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+  };
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.jobId)) nextErrors.jobId = "Field required";
+    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
+    return nextErrors;
+  };
 
   const submit = async (event) => {
     event.preventDefault();
     setMessage("");
     setError("");
+    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), jobId: cleanText(form.jobId), email: cleanEmail(form.email) };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
     setBusy(true);
     try {
-      await api.post("/bank/executives", form);
+      await api.post("/bank/executives", nextForm);
       setForm({ name: "", mobile: "", jobId: "", email: "" });
       setMessage("Executive added successfully.");
       await load();
@@ -221,10 +256,10 @@ function ManageExecutivePage() {
       <PageTitle title="Manage Executive" />
       <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm font-medium text-slate-700">Executive Name<input required className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
-          <label className="text-sm font-medium text-slate-700">Mobile Number<input required className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.mobile} maxLength={10} onChange={(event) => setForm((current) => ({ ...current, mobile: event.target.value.replace(/\D/g, "") }))} /></label>
-          <label className="text-sm font-medium text-slate-700">Job ID<input required className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.jobId} onChange={(event) => setForm((current) => ({ ...current, jobId: event.target.value }))} /></label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-3">Official Email<input required type="email" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value.toLowerCase() }))} /></label>
+          <label className="text-sm font-medium text-slate-700">Executive Name<input aria-invalid={Boolean(errors.name)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(event) => update("name", event.target.value.replace(/[<>]/g, ""))} />{errors.name ? <span className="mt-1 block text-xs font-medium text-red-600">{errors.name}</span> : null}</label>
+          <label className="text-sm font-medium text-slate-700">Mobile Number<input aria-invalid={Boolean(errors.mobile)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} />{errors.mobile ? <span className="mt-1 block text-xs font-medium text-red-600">{errors.mobile}</span> : null}</label>
+          <label className="text-sm font-medium text-slate-700">Job ID<input aria-invalid={Boolean(errors.jobId)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("jobId", event.target.value.replace(/[<>]/g, ""))} />{errors.jobId ? <span className="mt-1 block text-xs font-medium text-red-600">{errors.jobId}</span> : null}</label>
+          <label className="text-sm font-medium text-slate-700 md:col-span-3">Official Email<input aria-invalid={Boolean(errors.email)} type="email" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", event.target.value.trim().toLowerCase())} />{errors.email ? <span className="mt-1 block text-xs font-medium text-red-600">{errors.email}</span> : null}</label>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}

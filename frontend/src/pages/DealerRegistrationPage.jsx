@@ -204,7 +204,16 @@ function SectionCard({ number, title, children }) {
   );
 }
 
-export function DealerRegistrationPage() {
+export function DealerRegistrationPage({ audience = "dealer" }) {
+  const isFinanceAudience = audience === "finance";
+  const onboardingEyebrow = isFinanceAudience ? "Finance Head Registration" : "Dealer partner onboarding";
+  const onboardingTitle = isFinanceAudience ? "Finance Head Registration" : "Partner with CarLoanSaathi";
+  const onboardingSubtitle = isFinanceAudience
+    ? "For dealership finance managers responsible for customer loan processing and bank coordination."
+    : "India's dealership-to-bank automotive finance operating platform.";
+  const onboardingBody = isFinanceAudience
+    ? "Create the approved dealership account used by finance heads to submit customer loan cases, coordinate with partner banks, and track approvals from one secure dashboard."
+    : "Manage finance operations, route leads to partner banks, track approvals, monitor disbursement, and streamline dealership finance workflows from one centralized platform.";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [authEmail, setAuthEmail] = useState("");
@@ -239,11 +248,11 @@ export function DealerRegistrationPage() {
       <div className="mx-auto w-full max-w-7xl space-y-8">
         <section className="grid gap-6 rounded-lg border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[1.05fr_0.95fr] lg:p-6">
           <div className="flex flex-col justify-center">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Dealer partner onboarding</p>
-            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">Partner with CarLoanSaathi</h1>
-            <p className="mt-3 text-lg font-medium text-slate-700">India's dealership-to-bank automotive finance operating platform.</p>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">{onboardingEyebrow}</p>
+            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">{onboardingTitle}</h1>
+            <p className="mt-3 text-lg font-medium text-slate-700">{onboardingSubtitle}</p>
             <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">
-              Manage finance operations, route leads to partner banks, track approvals, monitor disbursement, and streamline dealership finance workflows from one centralized platform.
+              {onboardingBody}
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <label className="text-sm font-medium text-slate-700">Email Address<input type="email" className="field mt-1.5 h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} /></label>
@@ -328,8 +337,12 @@ export function DealerRegistrationPage() {
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
           <ShieldCheck className="mx-auto h-8 w-8 text-[#0d47a1]" />
-          <h2 className="mt-3 text-xl font-semibold text-slate-900">Ready to onboard your dealership?</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">Create your official email/password account first. Dashboard access starts only after Super Admin approval.</p>
+          <h2 className="mt-3 text-xl font-semibold text-slate-900">{isFinanceAudience ? "Ready to register the finance head account?" : "Ready to onboard your dealership?"}</h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
+            {isFinanceAudience
+              ? "Create the official dealership finance email/password account first. Dashboard access starts only after Super Admin approval."
+              : "Create your official email/password account first. Dashboard access starts only after Super Admin approval."}
+          </p>
           <div className="mx-auto mt-5 grid max-w-xl gap-3 sm:grid-cols-2">
             <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
             <div className="field flex h-11 items-center gap-2 rounded-md bg-white px-3">

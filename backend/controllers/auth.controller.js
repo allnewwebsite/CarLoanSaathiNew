@@ -208,6 +208,30 @@ async function accountForEmail(email, portal) {
   return candidates[0] || null;
 }
 
+async function accountPresentation(email, account = {}) {
+  const result = {};
+  if (["finance-desk", "gm-sm"].includes(account.role)) {
+    const dealershipId = account.dealershipId || email;
+    const dealership = await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId);
+    result.dealershipName = dealership?.dealershipName || dealership?.name || dealership?.dealershipBrand || "";
+    result.dealerCity = dealership?.city || dealership?.dealershipCity || "";
+  }
+  if (["bank-manager", "loan-executive"].includes(account.role)) {
+    const bankId = account.bankId || email;
+    const [branchManager, bankPartner, bankApproval, executive] = await Promise.all([
+      getRecord("branchManagers", email).catch(() => null),
+      getRecord("bankPartners", bankId).catch(() => null),
+      getRecord("pendingBankApprovals", bankId).catch(() => null),
+      account.role === "loan-executive" ? getRecord("loanExecutives", email).catch(() => null) : Promise.resolve(null),
+    ]);
+    const profile = branchManager || executive || bankPartner || bankApproval || {};
+    result.bankName = profile.bankName || profile.companyName || bankPartner?.bankName || bankPartner?.companyName || account.bankName || "";
+    result.bankIfsc = profile.ifsc || profile.bankIfsc || profile.ifscCode || bankPartner?.ifsc || "";
+    result.bankBranchLocation = profile.bankBranchLocation || profile.branchLocation || profile.branchCity || profile.city || account.branchId || "";
+  }
+  return result;
+}
+
 async function dealerRegistrationStatus(email) {
   const registrations = await listRecords("pendingDealerAccounts");
   const registration = registrations.find((item) => item.email === email);
@@ -443,6 +467,8 @@ export async function login(req, res, next) {
     await upsertRecord("users", normalizedEmail, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
+    const presentation = await accountPresentation(normalizedEmail, user);
+    Object.assign(user, presentation);
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
@@ -524,6 +550,7 @@ export async function session(req, res, next) {
       }
     }
 
+    const presentation = await accountPresentation(email, account);
     res.json({
       user: {
         uid: account.uid || account.email,
@@ -538,6 +565,7 @@ export async function session(req, res, next) {
         branchId: account.branchId || null,
         status: account.status || "active",
         emailVerified: true,
+        ...presentation,
       },
     });
   } catch (error) {

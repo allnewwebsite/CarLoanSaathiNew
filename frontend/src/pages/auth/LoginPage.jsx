@@ -5,22 +5,43 @@ import { useAuth } from "../../context/AuthContext.jsx";
 
 const portals = {
   dealer: {
-    eyebrow: "Dealer Portal",
-    title: "Dealer Portal Access",
-    subtitle: "Finance Desk and GM/SM authorized access only.",
+    eyebrow: "Dealership Portal",
+    title: "DEALERSHIP LOGIN",
+    subtitle: "For approved dealership owners and dealership administrators.",
     note: "Access is available only for approved dealership users.",
+    registrationPath: "/dealer/register",
+    authPortal: "dealer",
+  },
+  finance: {
+    eyebrow: "Finance Head Portal",
+    title: "FINANCE HEAD LOGIN",
+    subtitle: "For dealership finance managers responsible for customer loan processing and bank coordination.",
+    note: "Finance Head access uses the approved dealership account and remains protected by dealership RBAC.",
+    registrationPath: "/finance/register",
+    authPortal: "dealer",
   },
   bank: {
-    eyebrow: "Bank Partner Portal",
-    title: "Bank Portal Access",
-    subtitle: "Branch managers and loan executives authorized access only.",
+    eyebrow: "Bank Manager Portal",
+    title: "BANK MANAGER LOGIN",
+    subtitle: "For approved bank branch managers managing assigned loan workflows and executives.",
     note: "Your bank role is verified securely after email/password login.",
+    registrationPath: "/bank/register",
+    authPortal: "bank",
+  },
+  executive: {
+    eyebrow: "Loan Executive Portal",
+    title: "LOAN EXECUTIVE LOGIN",
+    subtitle: "For bank-side executives managing assigned customer loan applications.",
+    note: "Loan Executive access is issued and governed by the approved bank branch manager.",
+    registrationPath: "/executive/register",
+    authPortal: "bank",
   },
   admin: {
     eyebrow: "Private Super Admin",
-    title: "Restricted Super Admin Access",
+    title: "SUPER ADMIN LOGIN",
     subtitle: "Authorized CarLoanSaathi administration only.",
     note: "Only the configured Super Admin account can access this control center.",
+    authPortal: "admin",
   },
 };
 
@@ -58,14 +79,9 @@ function authMessage(error, portal, action = "login") {
   return message || "Unable to login. Please verify your email and password.";
 }
 
-function registrationPath(portal) {
-  if (portal === "bank") return "/bank-registration";
-  if (portal === "dealer") return "/dealer-registration";
-  return null;
-}
-
 export function LoginPage({ portal = "dealer" }) {
   const config = portals[portal] || portals.dealer;
+  const authPortal = config.authPortal || portal;
   const navigate = useNavigate();
   const { loginWithEmailPassword, sendPasswordReset, resendVerificationEmail } = useAuth();
   const [email, setEmail] = useState("");
@@ -96,11 +112,11 @@ export function LoginPage({ portal = "dealer" }) {
       return;
     }
     try {
-      const session = await loginWithEmailPassword({ email, password, portal });
+      const session = await loginWithEmailPassword({ email, password, portal: authPortal });
       if (!rememberMe) sessionStorage.setItem("cls_session_only", "true");
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
-      const nextMessage = authMessage(err, portal, "login");
+      const nextMessage = authMessage(err, authPortal, "login");
       setError(nextMessage);
       setShowResend(err.code === "EMAIL_NOT_VERIFIED" || err.response?.data?.code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(nextMessage));
     } finally {
@@ -120,7 +136,7 @@ export function LoginPage({ portal = "dealer" }) {
       await sendPasswordReset(email);
       setMessage("Password reset link sent successfully. Please check your inbox.");
     } catch (err) {
-      setError(authMessage(err, portal, "reset") || "Unable to send password reset email. Try again later.");
+      setError(authMessage(err, authPortal, "reset") || "Unable to send password reset email. Try again later.");
     } finally {
       setResetLoading(false);
     }
@@ -139,7 +155,7 @@ export function LoginPage({ portal = "dealer" }) {
       setMessage(result.alreadyVerified ? "Email already verified. Please login again." : "Verification email sent successfully. Please check your inbox.");
       setShowResend(false);
     } catch (err) {
-      setError(authMessage(err, portal, "verification") || "Unable to send verification email. Try again later.");
+      setError(authMessage(err, authPortal, "verification") || "Unable to send verification email. Try again later.");
     } finally {
       setResendLoading(false);
     }
@@ -235,8 +251,8 @@ export function LoginPage({ portal = "dealer" }) {
               </div>
 
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-              {registrationPath(portal) && /create account|registration|no .* account found/i.test(error) && (
-                <button type="button" onClick={() => navigate(registrationPath(portal))} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
+              {config.registrationPath && /create account|registration|no .* account found/i.test(error) && (
+                <button type="button" onClick={() => navigate(config.registrationPath)} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
                   Create Account
                 </button>
               )}

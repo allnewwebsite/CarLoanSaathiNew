@@ -33,6 +33,40 @@ function leadText(lead) {
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
+function sameText(left, right) {
+  const cleanLeft = String(left || "").trim().toLowerCase();
+  const cleanRight = String(right || "").trim().toLowerCase();
+  return Boolean(cleanLeft && cleanRight && cleanLeft === cleanRight);
+}
+
+async function enrichAdminLeadRows(leads = []) {
+  if (!leads.length) return leads;
+  const [bankPartners, bankApprovals] = await Promise.all([
+    listRecords("bankPartners").catch(() => []),
+    listRecords("pendingBankApprovals").catch(() => []),
+  ]);
+  const banks = [...bankPartners, ...bankApprovals];
+  return leads.map((lead) => {
+    const bank = banks.find((item) =>
+      sameText(item.id, lead.bankId)
+      || sameText(item.id, lead.assignedPartnerId)
+      || sameText(item.bankId, lead.bankId)
+      || sameText(item.email, lead.bankId)
+      || sameText(item.email, lead.assignedPartnerId)
+      || sameText(item.bankName, lead.assignedBankName)
+      || sameText(item.companyName, lead.assignedBankName)
+      || sameText(item.bankName, lead.bankPartner)
+      || sameText(item.companyName, lead.bankPartner)
+      || sameText(item.bankName, lead.preferredBank)
+    );
+    return {
+      ...lead,
+      assignedBankName: lead.assignedBankName || lead.bankPartner || bank?.bankName || bank?.companyName || null,
+      assignedBankIfsc: lead.assignedBankIfsc || bank?.ifsc || bank?.bankIfsc || bank?.ifscCode || null,
+    };
+  });
+}
+
 function filterLeads(leads, query) {
   const search = (query.search || "").trim().toLowerCase();
   return leads.filter((lead) => {
@@ -299,7 +333,8 @@ async function deleteMatchingRecords(collection, matcher) {
 
 export async function getAdminLeads(req, res, next) {
   try {
-    res.json(await queryAllLeads({ query: req.query }));
+    const page = await queryAllLeads({ query: req.query });
+    res.json({ ...page, data: await enrichAdminLeadRows(page.data) });
   } catch (error) {
     next(error);
   }

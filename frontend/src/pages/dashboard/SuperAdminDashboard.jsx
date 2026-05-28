@@ -13,6 +13,14 @@ function display(value) {
   return value || "-";
 }
 
+function assignmentDisplay(value, fallback = "Not Assigned") {
+  return value === undefined || value === null || value === "" ? fallback : value;
+}
+
+function bankIfscDisplay(lead) {
+  return lead.assignedBankIfsc || lead.bankIfsc || lead.ifsc || "IFSC Pending";
+}
+
 function caseId(lead) {
   return lead?.caseId || lead?.id || "-";
 }
@@ -41,6 +49,7 @@ function approvalRatio(leads) {
 
 function enterpriseLeadStatus(lead) {
   const status = leadStatus(lead);
+  if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
   if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
@@ -438,8 +447,8 @@ function AdminListPage({ mode }) {
     }
     return {
       title: "Total Leads",
-      headers: ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Bank Name", "Assigned Bank IFSC Code", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Documents"],
-      rows: records.map((lead) => ({ key: lead.id, cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city), display(lead.preferredBank || lead.bankPartner), `Rs. ${money.format(Number(lead.onRoadPrice || lead.carOnRoadPrice || 0))}`, `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, generatedDate(lead.createdAt), generatedTime(lead.createdAt), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), display(lead.assignedBankIfsc || lead.ifsc), display(lead.assignedExecutiveName), display(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), <button key="docs" onClick={() => navigate(`/admin/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>] })),
+      headers: ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Dealership Name", "Dealer City", "Case Generated Date", "Case Generated Time", "Assigned Bank Name", "Assigned Bank IFSC Code", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Last Updated", "Documents"],
+      rows: records.map((lead) => ({ key: lead.id, cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), display(lead.preferredBank || lead.bankPartner), `Rs. ${money.format(Number(lead.onRoadPrice || lead.carOnRoadPrice || lead.carPrice || 0))}`, `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, assignmentDisplay(lead.dealershipName || lead.dealerName || lead.dealerEmail, "Pending"), display(lead.dealershipCity || lead.city), generatedDate(lead.createdAt), generatedTime(lead.createdAt), assignmentDisplay(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), bankIfscDisplay(lead), assignmentDisplay(lead.assignedExecutiveName || lead.assignedExecutiveEmail), assignmentDisplay(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt), <button key="docs" onClick={() => navigate(`/admin/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>] })),
     };
   }, [leadFilter, mode, navigate, pageData.rows, updatingId]);
 

@@ -1,63 +1,234 @@
-import { Menu, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, Landmark, Menu, Users, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 
-const navItems = [
+const customerNav = [
   { label: "Home", to: "/#home" },
   { label: "Banks", to: "/#banks" },
   { label: "EMI Calculator", to: "/#emi-calculator" },
-  { label: "Apply Loan", to: "/#apply-now" },
-  { label: "Dealer Registration", to: "/dealer-registration" },
-  { label: "Bank Registration", to: "/bank-registration" },
-  { label: "Dealer Login", to: "/dealer-login" },
-  { label: "Bank Login", to: "/bank-login" },
+  { label: "Apply Loan", to: "/apply-loan" },
 ];
 
+const roleGroups = [
+  {
+    key: "dealerships",
+    label: "For Dealerships",
+    icon: Users,
+    items: [
+      { label: "Dealer Registration", to: "/dealer/register", description: "Create an approved dealership account." },
+      { label: "Finance Head Registration", to: "/finance/register", description: "For dealership finance managers." },
+      { label: "Dealer Login", to: "/dealer/login", description: "Dealership owner and admin access." },
+      { label: "Finance Head Login", to: "/finance/login", description: "Finance desk workflow access." },
+    ],
+  },
+  {
+    key: "banks",
+    label: "For Banks",
+    icon: Landmark,
+    items: [
+      { label: "Bank Registration", to: "/bank/register", description: "Register a branch for approval." },
+      { label: "Bank Login", to: "/bank/login", description: "Branch manager access." },
+    ],
+  },
+  {
+    key: "executives",
+    label: "For Executives",
+    icon: Users,
+    items: [
+      { label: "Loan Executive Registration", to: "/executive/register", description: "Bank-side executive onboarding guidance." },
+      { label: "Loan Executive Login", to: "/executive/login", description: "Assigned loan case access." },
+    ],
+  },
+];
+
+function NavTarget({ item, className = "", onClick }) {
+  if (item.to.includes("#")) {
+    return (
+      <a href={item.to} onClick={onClick} className={className}>
+        {item.label}
+      </a>
+    );
+  }
+  return (
+    <Link to={item.to} onClick={onClick} className={className}>
+      {item.label}
+    </Link>
+  );
+}
+
+function RoleDropdown({ group, open, onOpen, onClose }) {
+  const Icon = group.icon;
+  return (
+    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
+      <button
+        type="button"
+        className="inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#0d47a1] focus:outline-none focus:ring-2 focus:ring-[#0d47a1]/30"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => (open ? onClose() : onOpen())}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose();
+          if (event.key === "ArrowDown") onOpen();
+        }}
+      >
+        <Icon className="h-4 w-4" />
+        {group.label}
+        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      <div
+        className={`absolute right-0 top-11 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 transition duration-150 ${
+          open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
+        }`}
+        role="menu"
+      >
+        <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+          {group.label}
+        </p>
+        <div className="grid gap-1">
+          {group.items.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className="rounded-md px-3 py-2.5 transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+              role="menuitem"
+            >
+              <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-slate-500">{item.description}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileSection({ title, items, open, onToggle, onNavigate }) {
+  return (
+    <section className="border-b border-slate-100 py-2">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between rounded-md px-2 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        {title}
+        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      <div className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+        <div className="min-h-0">
+          <nav className="grid gap-1 pb-2">
+            {items.map((item) => (
+              <NavTarget
+                key={item.to}
+                item={item}
+                onClick={onNavigate}
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:text-[#0d47a1]"
+              />
+            ))}
+          </nav>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function PublicLayout() {
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState("");
+  const [mobileSections, setMobileSections] = useState({ customers: true, dealerships: false, banks: false, executives: false });
+  const headerRef = useRef(null);
+
+  useEffect(() => {
+    const close = (event) => {
+      if (headerRef.current && !headerRef.current.contains(event.target)) setOpenGroup("");
+    };
+    const escape = (event) => {
+      if (event.key === "Escape") {
+        setOpenGroup("");
+        setMobileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-white">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
-          <Link to="/#home" className="flex items-center gap-3">
-            <span className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d47a1]">
+      <header ref={headerRef} className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+        <div className="mx-auto grid h-14 w-full max-w-7xl grid-cols-[auto_auto] items-center gap-3 px-4 sm:h-16 sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:px-8">
+          <Link to="/#home" className="flex min-w-0 items-center gap-3">
+            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0d47a1]">
               <span className="absolute -top-1 h-4 w-7 rounded-t-lg border-2 border-[#ff6b4a] bg-white" />
               <span className="mt-3 h-4 w-8 rounded-md bg-white" />
               <span className="absolute bottom-2 left-2 h-1.5 w-1.5 rounded-full bg-[#ff6b4a]" />
               <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-[#ff6b4a]" />
             </span>
-            <span className="text-base font-semibold leading-none sm:text-lg">
+            <span className="truncate text-base font-semibold leading-none sm:text-lg">
               <span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span>
             </span>
           </Link>
-          <nav className="hidden items-center gap-5 lg:flex">
-            {navItems.map((item) => (
-              <a key={item.to} href={item.to} className="text-sm font-medium text-slate-700 transition hover:text-[#0d47a1]">
-                {item.label}
-              </a>
+
+          <nav className="hidden items-center justify-center gap-1 lg:flex" aria-label="Customer navigation">
+            {customerNav.map((item) => (
+              <NavTarget key={item.to} item={item} className="rounded-md px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#0d47a1]" />
             ))}
           </nav>
-          <button type="button" className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-800 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+
+          <div className="hidden items-center justify-end gap-1 lg:flex" aria-label="Business portal navigation">
+            {roleGroups.map((group) => (
+              <RoleDropdown
+                key={group.key}
+                group={group}
+                open={openGroup === group.key}
+                onOpen={() => setOpenGroup(group.key)}
+                onClose={() => setOpenGroup("")}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-800 lg:hidden"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open menu"
+          >
             <Menu className="h-5 w-5" />
           </button>
         </div>
       </header>
-      {open && (
+
+      {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button className="absolute inset-0 bg-[#071426]/55" onClick={() => setOpen(false)} aria-label="Close menu overlay" />
-          <aside className="absolute right-0 top-0 h-full w-[80vw] max-w-xs overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-xl transition-transform">
+          <button className="absolute inset-0 bg-[#071426]/55 transition-opacity" onClick={() => setMobileOpen(false)} aria-label="Close menu overlay" />
+          <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-xl transition-transform">
             <div className="flex items-center justify-between">
               <p className="min-w-0 truncate text-lg font-semibold"><span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span></p>
-              <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-900" onClick={() => setOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button>
+              <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-900" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button>
             </div>
-            <nav className="mt-8 grid gap-2">
-              {navItems.map((item) => (
-                <a key={item.to} href={item.to} onClick={() => setOpen(false)} className="rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-[#0d47a1]">
-                  {item.label}
-                </a>
+            <div className="mt-6">
+              <MobileSection
+                title="Customers"
+                items={customerNav}
+                open={mobileSections.customers}
+                onToggle={() => setMobileSections((current) => ({ ...current, customers: !current.customers }))}
+                onNavigate={() => setMobileOpen(false)}
+              />
+              {roleGroups.map((group) => (
+                <MobileSection
+                  key={group.key}
+                  title={group.label.replace("For ", "")}
+                  items={group.items}
+                  open={mobileSections[group.key]}
+                  onToggle={() => setMobileSections((current) => ({ ...current, [group.key]: !current[group.key] }))}
+                  onNavigate={() => setMobileOpen(false)}
+                />
               ))}
-            </nav>
+            </div>
           </aside>
         </div>
       )}

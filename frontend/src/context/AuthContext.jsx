@@ -30,7 +30,12 @@ function sessionFromResponse(response) {
     accountApproved: sessionUser.accountApproved === true,
     accountActive: sessionUser.accountActive !== false,
     dealershipId: sessionUser.dealershipId || null,
+    dealershipName: sessionUser.dealershipName || null,
+    dealerCity: sessionUser.dealerCity || null,
     bankId: sessionUser.bankId || null,
+    bankName: sessionUser.bankName || null,
+    bankIfsc: sessionUser.bankIfsc || null,
+    bankBranchLocation: sessionUser.bankBranchLocation || null,
     branchId: sessionUser.branchId || null,
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };

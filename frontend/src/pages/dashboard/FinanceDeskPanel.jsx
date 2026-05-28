@@ -32,6 +32,27 @@ function display(value) {
   return value || "-";
 }
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function cleanEmail(value) {
+  return cleanText(value).toLowerCase();
+}
+
+function digits10(value) {
+  return String(value || "").replace(/\D/g, "").slice(0, 10);
+}
+
+function numericAmount(value) {
+  const clean = String(value || "").replace(/[^\d]/g, "");
+  return clean ? String(Number(clean)) : "";
+}
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
+}
+
 function moneyValue(value) {
   return `Rs. ${money.format(Number(value || 0))}`;
 }
@@ -52,6 +73,7 @@ function caseId(lead) {
 
 function financeStatus(lead) {
   const status = normalizeStatus(lead?.status);
+  if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead?.rejectionReason ? "Rejected With Reason" : "Rejected";
   if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
@@ -62,6 +84,7 @@ function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   const tone = {
     Disbursed: "bg-slate-800 text-white",
+    "New Lead": "bg-slate-100 text-slate-700",
     "Rejected With Reason": "bg-rose-50 text-rose-700",
     Rejected: "bg-rose-50 text-rose-700",
     "Pending Documents": "bg-amber-50 text-amber-700",
@@ -204,6 +227,7 @@ function AddLeadScreen() {
   const { salespersons } = useSalespersons();
   const [banks, setBanks] = useState([]);
   const [form, setForm] = useState(emptyLead);
+  const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -213,29 +237,44 @@ function AddLeadScreen() {
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
     setMessage("");
   };
-  const validate = () => {
-    if (!form.fullName.trim()) return "Customer Name is required";
-    if (!/^[6-9]\d{9}$/.test(form.mobile)) return "Enter a valid 10-digit mobile number";
-    if (!form.city.trim()) return "Customer City is required";
-    if (!form.preferredBank) return "Preferred Bank is required";
-    if (!Number(form.carPrice)) return "Car On-Road Price is required";
-    if (!Number(form.loanAmount)) return "Required Loan Amount is required";
-    if (Number(form.loanAmount) > Number(form.carPrice)) return "Required Loan Amount cannot exceed Car On-Road Price";
-    if (!form.salespersonId) return "Select Salesperson is required";
-    return "";
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.fullName)) nextErrors.fullName = "Field required";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.city)) nextErrors.city = "Field required";
+    if (!nextForm.preferredBank) nextErrors.preferredBank = "Field required";
+    if (!Number(nextForm.carPrice) || Number(nextForm.carPrice) < 0) nextErrors.carPrice = "Field required";
+    if (!Number(nextForm.loanAmount) || Number(nextForm.loanAmount) < 0) nextErrors.loanAmount = "Field required";
+    if (Number(nextForm.loanAmount) > Number(nextForm.carPrice)) nextErrors.loanAmount = "Required Loan Amount cannot exceed Car On-Road Price";
+    if (!nextForm.salespersonId) nextErrors.salespersonId = "Field required";
+    return nextErrors;
+  };
+  const validateField = (field) => {
+    const nextErrors = validate(form);
+    setErrors((current) => ({ ...current, [field]: nextErrors[field] || "" }));
   };
   const submit = async (event) => {
     event.preventDefault();
-    const error = validate();
-    if (error) return setMessage(error);
+    const nextForm = {
+      ...form,
+      fullName: cleanText(form.fullName),
+      city: cleanText(form.city),
+      carPrice: numericAmount(form.carPrice),
+      loanAmount: numericAmount(form.loanAmount),
+    };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return setMessage("Fix highlighted fields.");
     setSubmitting(true);
     try {
       const response = await api.post("/dealer/leads", {
-        ...form,
-        carPrice: Number(form.carPrice),
-        loanAmount: Number(form.loanAmount),
+        ...nextForm,
+        status: LEAD_STATUSES.NEW,
+        carPrice: Number(nextForm.carPrice),
+        loanAmount: Number(nextForm.loanAmount),
       });
       navigate(`/finance/leads/${response.data.leadId}/documents`, { state: { created: true } });
     } catch (error) {
@@ -251,13 +290,13 @@ function AddLeadScreen() {
       <form onSubmit={submit} className="card p-5">
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Customer Name"><input className="field mt-1.5" value={form.fullName} onChange={(e) => update("fullName", e.target.value)} /></Field>
-          <Field label="Mobile Number"><input className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onChange={(e) => update("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></Field>
-          <Field label="Customer City"><input className="field mt-1.5" value={form.city} onChange={(e) => update("city", e.target.value)} /></Field>
-          <Field label="Preferred Bank"><select className="field mt-1.5" value={form.preferredBank} onChange={(e) => update("preferredBank", e.target.value)}><option value="">Select bank</option>{banks.map((bank) => <option key={bank.name}>{bank.name}</option>)}</select></Field>
-          <Field label="Car On-Road Price"><input className="field mt-1.5" type="number" value={form.carPrice} onChange={(e) => update("carPrice", e.target.value)} /></Field>
-          <Field label="Required Loan Amount"><input className="field mt-1.5" type="number" value={form.loanAmount} onChange={(e) => update("loanAmount", e.target.value)} /></Field>
-          <Field label="Select Salesperson"><select className="field mt-1.5" value={form.salespersonId} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Preferred Bank" error={errors.preferredBank}><select aria-invalid={Boolean(errors.preferredBank)} className="field mt-1.5" value={form.preferredBank} onBlur={() => validateField("preferredBank")} onChange={(e) => update("preferredBank", e.target.value)}><option value="">Select bank</option>{banks.map((bank) => <option key={bank.name}>{bank.name}</option>)}</select></Field>
+          <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
+          <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
+          <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
           <div className="flex items-end">
             <button disabled={submitting} className="h-10 rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? "Creating..." : "Submit Lead"}</button>
           </div>
@@ -271,15 +310,31 @@ function AddLeadScreen() {
 function SalespersonManagementScreen() {
   const { salespersons, loading, loadSalespersons } = useSalespersons({ includeInactive: true });
   const [form, setForm] = useState(emptySalesperson);
+  const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+  };
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.jobId)) nextErrors.jobId = "Field required";
+    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
+    return nextErrors;
+  };
   const add = async (event) => {
     event.preventDefault();
     setMessage("");
+    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), jobId: cleanText(form.jobId), email: cleanEmail(form.email) };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
     setSaving(true);
     try {
-      await api.post("/dealer/salespersons", form);
+      await api.post("/dealer/salespersons", nextForm);
       setForm(emptySalesperson);
       await loadSalespersons();
       setMessage("Salesperson added");
@@ -310,10 +365,10 @@ function SalespersonManagementScreen() {
         <h2 className="text-lg font-semibold text-slate-900">Add Salesperson</h2>
         {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="mt-4 grid gap-3">
-          <Field label="Salesperson Name"><input className="field mt-1.5" value={form.name} onChange={(e) => update("name", e.target.value)} /></Field>
-          <Field label="Mobile Number"><input className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onChange={(e) => update("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></Field>
-          <Field label="Job ID"><input className="field mt-1.5" value={form.jobId} onChange={(e) => update("jobId", e.target.value)} /></Field>
-          <Field label="Mail ID"><input className="field mt-1.5" type="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></Field>
+          <Field label="Salesperson Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => setErrors(validate(form))} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Job ID" error={errors.jobId}><input aria-invalid={Boolean(errors.jobId)} className="field mt-1.5" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mail ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
           <button disabled={saving} className="h-10 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? "Saving..." : "Add Salesperson"}</button>
         </div>
       </form>
@@ -405,8 +460,8 @@ function SectionTitle({ title, subtitle }) {
   );
 }
 
-function Field({ label, children }) {
-  return <label className="text-sm font-medium text-slate-700">{label}{children}</label>;
+function Field({ label, children, error }) {
+  return <label className="text-sm font-medium text-slate-700">{label}{children}{error ? <span className="mt-1 block text-xs font-medium text-red-600">{error}</span> : null}</label>;
 }
 
 export function FinanceLeadDetailPage() {

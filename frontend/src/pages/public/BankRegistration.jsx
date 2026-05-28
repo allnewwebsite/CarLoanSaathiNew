@@ -113,7 +113,7 @@ function UploadBox({ doc, bankUid, value, onChange }) {
   );
 }
 
-export function BankRegistration({ mode = "landing" }) {
+export function BankRegistration({ mode = "landing", audience = "bank" }) {
   const { registerBankPartner, startBankRegistrationWithEmail, checkBankRegistrationWithEmail } = useAuth();
   const navigate = useNavigate();
   const [session, setSession] = useState(() => {
@@ -247,6 +247,41 @@ export function BankRegistration({ mode = "landing" }) {
             ].map(([label, value]) => <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-xs uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-1 text-sm font-semibold text-slate-900">{value}</p></div>)}
           </div>
           <p className="mt-5 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Pending Super Admin Verification</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (mode === "landing" && audience === "executive") {
+    return (
+      <main className="w-full bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
+        <section className="mx-auto grid max-w-6xl gap-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="flex min-h-80 flex-col justify-center">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Loan Executive Registration</p>
+            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 md:text-4xl">Bank-side Executive Access</h1>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+              For bank-side executives managing assigned customer loan applications.
+            </p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+              Loan executive accounts are created and governed by the approved bank branch manager from the bank dashboard, preserving the existing approval workflow and RBAC model.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Link to="/executive/login" className="inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">Loan Executive Login</Link>
+              <Link to="/bank/register" className="inline-flex h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700">Register Bank Branch</Link>
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Executive Access Workflow</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-900">Secure bank-managed onboarding</h2>
+            <div className="mt-4 space-y-2">
+              {["Bank branch approval", "Branch manager creates executive", "Executive receives role-based access", "Assigned leads become visible"].map((step, index) => (
+                <div key={step} className="flex items-center gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                  <span className="flex h-6 w-8 items-center justify-center rounded-md bg-slate-50 text-xs">{index + 1}</span>
+                  {step}
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       </main>
     );

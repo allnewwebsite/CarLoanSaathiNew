@@ -85,6 +85,11 @@ export function DashboardLayout() {
   const currentTarget = `${location.pathname}${location.search}`;
   const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search), [currentTarget, location.pathname, location.search]);
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const headerEyebrow = user?.role === "bank-manager"
+    ? `${user.bankName || "Bank Branch"} — ${user.bankIfsc || "IFSC Pending"}`
+    : ["finance-desk", "gm-sm"].includes(user?.role)
+      ? `${user.dealershipName || "Dealership"} ${user.role === "finance-desk" ? "Finance Desk" : "GM / SM"}`.toUpperCase()
+      : user?.roleLabel || "Workspace";
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
@@ -126,7 +131,7 @@ export function DashboardLayout() {
                 <ToggleIcon className="h-4 w-4" />
               </button>
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{user?.roleLabel || "Workspace"}</p>
+                <p className="truncate text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{headerEyebrow}</p>
                 <h1 className="truncate text-lg font-semibold text-slate-900">Operating Dashboard</h1>
               </div>
             </div>

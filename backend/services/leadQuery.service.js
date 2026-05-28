@@ -17,6 +17,7 @@ const LEAD_FIELDS = [
   "bankPartner",
   "assignedBankId",
   "assignedBankName",
+  "assignedBankIfsc",
   "assignedPartnerId",
   "assignedExecutiveId",
   "assignedExecutiveEmail",
@@ -43,7 +44,9 @@ const LEAD_FIELDS = [
   "statusUpdatedAt",
   "dealershipId",
   "dealershipEmail",
+  "dealershipName",
   "dealerEmail",
+  "dealerName",
   "bankId",
 ];
 
