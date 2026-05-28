@@ -53,6 +53,26 @@ function sessionFromResponse(response) {
   };
 }
 
+function jwtRole(token) {
+  try {
+    const payload = token?.split(".")?.[1];
+    if (!payload) return "";
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")))?.role || "";
+  } catch {
+    return "";
+  }
+}
+
+function logAuthDecision(label, { session, token, redirectTo } = {}) {
+  console.info("[CLS auth]", label, {
+    email: session?.email || "",
+    backendRole: session?.role || "",
+    jwtRole: jwtRole(token),
+    redirectTo: redirectTo || session?.redirectTo || "",
+    storedRole: getStoredUser()?.role || "",
+  });
+}
+
 function registrationAccountError(message, code) {
   const error = new Error(message);
   error.code = code;
@@ -69,6 +89,7 @@ export function AuthProvider({ children }) {
 
   const applySession = (session, token, options = {}) => {
     storeAuthSession(session, token, { rememberMe: authPersistenceMode() === "local", ...options });
+    logAuthDecision("session-applied", { session, token });
     setUser(session);
     setIsAuthenticated(true);
     setAuthStatus(session.passwordExpired ? AUTH_STATES.PASSWORD_EXPIRED : AUTH_STATES.AUTHENTICATED);
@@ -161,6 +182,7 @@ export function AuthProvider({ children }) {
       throw error;
     }
     const session = sessionFromResponse(response);
+    logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token, { rememberMe });
     return session;
   };

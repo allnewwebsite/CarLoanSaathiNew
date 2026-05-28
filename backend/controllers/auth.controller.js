@@ -277,18 +277,17 @@ async function accountForEmail(email, portal) {
   if (portal === "admin" || email === adminEmail) {
     if (email !== adminEmail) return null;
     const adminUser = await getRecord("users", email);
-    return adminUser?.role === "super-admin" ? adminUser : null;
+    return adminUser?.role === "super-admin" ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
   }
   const allowed = PORTAL_ROLES[portal] || [];
-  const users = await listRecords("users");
-  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item));
-  if (approvedUser) return approvedUser;
   const candidates = [];
   if (allowed.includes("finance-desk")) {
     const financeDesks = await listRecords("financeDesks");
     const desk = financeDesks.find((item) => item.officialEmail === email || item.email === email || item.dealershipEmail === email || item.id === email);
     if (desk) candidates.push({
       role: "finance-desk",
+      accountSource: "financeDesks",
+      accountSourceId: desk.id || desk.email || email,
       dealershipId: desk.dealershipEmail || desk.dealershipId || desk.id,
       status: desk.status || "active",
       active: desk.active !== false,
@@ -308,6 +307,8 @@ async function accountForEmail(email, portal) {
     if (dealership?.active !== false && dealership?.accountActive !== false && !["pending", "rejected", "suspended"].includes(String(dealership.status || "").toLowerCase())) {
       candidates.push({
         role: "finance-desk",
+        accountSource: directDealership ? "dealerships" : "dealerships:list",
+        accountSourceId: dealership.id || dealership.loginEmail || email,
         dealershipId: dealership.loginEmail || dealership.id || email,
         status: "active",
         active: true,
@@ -322,6 +323,8 @@ async function accountForEmail(email, portal) {
     const manager = managers.find((item) => item.email === email && /gm|showroom|manager/i.test(item.role || ""));
     if (manager) candidates.push({
       role: "gm-sm",
+      accountSource: "dealershipManagers",
+      accountSourceId: manager.id || manager.email || email,
       dealershipId: manager.dealershipEmail || manager.dealershipId,
       status: manager.status || "active",
       active: manager.active !== false,
@@ -336,6 +339,8 @@ async function accountForEmail(email, portal) {
     const manager = managers.find((item) => item.email === email || item.officialEmail === email || item.id === email);
     if (manager) candidates.push({
       role: "bank-manager",
+      accountSource: "branchManagers",
+      accountSourceId: manager.id || manager.email || email,
       bankId: manager.bankPartnerId || manager.bankId || manager.bankName,
       branchId: manager.branchId || manager.branchCity || manager.bankBranchLocation,
       status: manager.status || "active",
@@ -354,6 +359,8 @@ async function accountForEmail(email, portal) {
     );
     if (approvedBankAccount) candidates.push({
       role: "bank-manager",
+      accountSource: "pendingBankAccounts",
+      accountSourceId: approvedBankAccount.id || approvedBankAccount.email || email,
       bankId: approvedBankAccount.bankId || approvedBankAccount.bankData?.bankId || approvedBankAccount.email,
       branchId: approvedBankAccount.branchId || approvedBankAccount.bankData?.bankBranchLocation || approvedBankAccount.bankData?.branchLocation,
       status: "active",
@@ -371,6 +378,8 @@ async function accountForEmail(email, portal) {
     );
     if (approvedBankRequest) candidates.push({
       role: "bank-manager",
+      accountSource: "pendingBankApprovals",
+      accountSourceId: approvedBankRequest.id || approvedBankRequest.email || email,
       bankId: approvedBankRequest.bankId || approvedBankRequest.email || approvedBankRequest.officialEmail || email,
       branchId: approvedBankRequest.bankBranchLocation || approvedBankRequest.branchLocation || approvedBankRequest.city,
       status: "active",
@@ -386,6 +395,8 @@ async function accountForEmail(email, portal) {
     const executive = executives.find((item) => item.email === email || item.officialEmail === email || item.id === email);
     if (executive) candidates.push({
       role: "loan-executive",
+      accountSource: "loanExecutives",
+      accountSourceId: executive.id || executive.email || email,
       bankId: executive.bankPartnerId || executive.bankId || executive.bankName,
       branchId: executive.branchId || executive.branchCity || executive.bankBranchLocation,
       status: executive.status || "active",
@@ -396,7 +407,11 @@ async function accountForEmail(email, portal) {
       firstLoginRequired: executive.firstLoginRequired === true,
     });
   }
-  return candidates[0] || null;
+  if (candidates.length) return candidates[0];
+
+  const users = await listRecords("users");
+  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item));
+  return approvedUser ? { ...approvedUser, accountSource: "users", accountSourceId: approvedUser.id || email } : null;
 }
 
 function portalForRole(role) {
@@ -687,6 +702,15 @@ export async function login(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "inactive", req });
       return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
     }
+    logInfo("Auth account resolved", {
+      requestId: req.requestId,
+      email: normalizedEmail,
+      portal,
+      resolvedRole: account.role,
+      accountSource: account.accountSource || "unknown",
+      accountSourceId: account.accountSourceId || null,
+      redirectTo: ROLE_ROUTES[account.role],
+    });
     if (portal === "dealer" && !account.dealershipId && account.role !== "super-admin") {
       logWarn("Auth login denied: missing dealership id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealership-id-missing", req });
@@ -731,6 +755,8 @@ export async function login(req, res, next) {
       dealershipId: account.dealershipId || null,
       bankId: account.bankId || null,
       branchId: account.branchId || null,
+      accountSource: account.accountSource || "users",
+      accountSourceId: account.accountSourceId || null,
       status: account.status || "active",
       firstLoginRequired: firstLoginRequiredFor(account),
       passwordChangedAt: lifecycle.passwordChangedAt,
@@ -754,6 +780,14 @@ export async function login(req, res, next) {
     setAuthCookie(res, token);
     const forcedPasswordPath = passwordChangeRouteForRole(user.role);
     const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
+    logInfo("Auth login success", {
+      requestId: req.requestId,
+      email: normalizedEmail,
+      jwtRole: user.role,
+      accountSource: user.accountSource,
+      redirectTo,
+      sessionId,
+    });
     res.json({
       token,
       user,
