@@ -341,24 +341,27 @@ function roleGuidance(role) {
 function inactiveAccountMessage(account = {}) {
   const status = String(account.accountStatus || account.status || "").toLowerCase();
   if (accountLocked(account)) return { code: "ACCOUNT_LOCKED", message: "Account locked after repeated failed attempts. Try again later." };
-  if (["suspended", "disabled", "removed", "inactive", "paused"].includes(status) || account.active === false || account.accountActive === false) {
+  if (["suspended", "disabled", "removed", "inactive", "paused"].includes(status)) {
     return { code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." };
   }
-  if (["pending", ""].includes(status) || account.approved === false || account.accountApproved === false) {
+  if (status === "rejected") {
+    return { code: "ACCOUNT_REJECTED", message: "Your account registration was rejected. Contact support for next steps." };
+  }
+  if (["pending", "", "not-submitted"].includes(status) || account.approved === false || account.accountApproved === false || account.active === false || account.accountActive === false) {
     return { code: "APPROVAL_PENDING", message: "Your account exists but is awaiting approval from Super Admin." };
   }
-  return { code: "ACCOUNT_NOT_ACTIVE", message: "Your account is not active. Contact support." };
+  return { code: "APPROVAL_PENDING", message: "Your account exists but is awaiting approval from Super Admin." };
 }
 
 async function accountForAnyPortal(email) {
-  const directUser = await getRecord("users", email).catch(() => null);
-  if (directUser?.role) return directUser;
   const [dealerAccount, bankAccount, adminAccount] = await Promise.all([
     accountForEmail(email, "dealer").catch(() => null),
     accountForEmail(email, "bank").catch(() => null),
     accountForEmail(email, "admin").catch(() => null),
   ]);
-  return dealerAccount || bankAccount || adminAccount || null;
+  if (dealerAccount || bankAccount || adminAccount) return dealerAccount || bankAccount || adminAccount;
+  const directUser = await getRecord("users", email).catch(() => null);
+  return directUser?.role ? directUser : null;
 }
 
 function wrongPortalPayload(account = {}) {
@@ -721,7 +724,10 @@ export async function validatePasswordReset(req, res, next) {
     }
     const account = await getRecord("users", email);
     if (!account) return res.status(404).json({ message: "No account found with this email address." });
-    if (!accountActive(account)) return res.status(403).json({ message: "Your account is not active. Contact Super Admin.", code: "ACCOUNT_NOT_ACTIVE" });
+    if (!accountActive(account)) {
+      const inactive = inactiveAccountMessage(account);
+      return res.status(403).json(inactive);
+    }
     res.json({ ok: true });
   } catch (error) {
     next(error);
