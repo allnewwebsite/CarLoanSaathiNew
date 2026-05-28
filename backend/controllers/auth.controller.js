@@ -50,7 +50,7 @@ const ROLE_GUIDANCE = {
   },
 };
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 5);
-const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 30);
+const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 2);
 const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 8);
 const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS || 3);
 const PASSWORD_VALID_DAYS = Number(process.env.PASSWORD_VALID_DAYS || 90);
