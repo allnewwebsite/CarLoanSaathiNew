@@ -167,6 +167,59 @@ function requestLoginEmail(request) {
   return normalizeEmail(request.loginEmail || request.primaryGoogleEmail || request.dealership?.loginEmail || request.financeDesk?.officialEmail || request.dealership?.officialDealershipEmail);
 }
 
+function firestoreNotFound(error) {
+  return error?.code === 5
+    || error?.code === "not-found"
+    || /not[-_ ]found|no document to update/i.test(String(error?.message || ""));
+}
+
+async function updateRecordIfExists(collection, id, payload) {
+  if (!id) return null;
+  const existing = await getRecord(collection, id).catch((error) => {
+    if (firestoreNotFound(error)) return null;
+    throw error;
+  });
+  if (!existing) return null;
+  try {
+    return await updateRecord(collection, existing.id, payload);
+  } catch (error) {
+    if (firestoreNotFound(error)) return null;
+    throw error;
+  }
+}
+
+async function resolveDealershipApprovalRequest(id) {
+  const directApproval = await getRecord("pendingDealershipApprovals", id).catch((error) => {
+    if (firestoreNotFound(error)) return null;
+    throw error;
+  });
+  if (directApproval) return directApproval;
+
+  const pendingAccount = await getRecord("pendingDealerAccounts", id).catch((error) => {
+    if (firestoreNotFound(error)) return null;
+    throw error;
+  });
+  if (!pendingAccount) return null;
+
+  const approvals = await listRecords("pendingDealershipApprovals");
+  const loginEmail = normalizeEmail(pendingAccount.email || pendingAccount.loginEmail || pendingAccount.primaryGoogleEmail);
+  const approval = approvals.find((item) =>
+    item.pendingDealerAccountId === pendingAccount.id
+    || item.pendingDealerRegistrationId === pendingAccount.id
+    || item.onboardingRequestId === pendingAccount.onboardingRequestId
+    || item.id === pendingAccount.approvalRequestId
+    || normalizeEmail(item.loginEmail) === loginEmail
+    || normalizeEmail(item.primaryGoogleEmail) === loginEmail
+  );
+  return approval || {
+    ...pendingAccount,
+    id: pendingAccount.approvalRequestId || pendingAccount.id,
+    pendingDealerAccountId: pendingAccount.id,
+    loginEmail,
+    status: pendingAccount.approvalStatus || pendingAccount.status || "pending",
+  };
+}
+
 async function activateDealerAccessFromRequest({ request, req, now }) {
   const loginEmail = requestLoginEmail(request);
   if (!loginEmail) return null;
@@ -277,7 +330,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     || item.approvalRequestId === request.approvalRequestId
   );
   if (pendingAccount) {
-    await updateRecord("pendingDealerAccounts", pendingAccount.id, {
+    await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, {
       registrationSubmitted: true,
       registrationCompleted: true,
       approvalStatus: "approved",
@@ -296,7 +349,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     || item.primaryGoogleEmail === loginEmail
   );
   if (approval) {
-    await updateRecord("pendingDealershipApprovals", approval.id, {
+    await updateRecordIfExists("pendingDealershipApprovals", approval.id, {
       status: "approved",
       approvalStatus: "approved",
       gstinVerified: true,
@@ -313,7 +366,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     || item.loginEmail === loginEmail
   );
   if (queueItem) {
-    await updateRecord("dealerApprovalQueue", queueItem.id, {
+    await updateRecordIfExists("dealerApprovalQueue", queueItem.id, {
       status: "approved",
       approvalStatus: "approved",
       approvedAt: now,
@@ -421,11 +474,14 @@ export async function getApprovalLogs(req, res, next) {
 
 export async function approveDealershipApproval(req, res, next) {
   try {
-    const request = await getRecord("pendingDealershipApprovals", req.params.id);
+    const request = await resolveDealershipApprovalRequest(req.params.id);
     if (!request) return res.status(404).json({ message: "Dealership approval request not found" });
-    if (request.status !== "pending") return res.status(400).json({ message: "Application is not pending" });
+    const requestStatus = String(request.status || request.approvalStatus || "pending").toLowerCase();
+    if (requestStatus === "approved") return res.status(409).json({ message: "Dealership is already approved" });
+    if (requestStatus !== "pending") return res.status(400).json({ message: "Application is not pending" });
     const now = new Date().toISOString();
-    const loginEmail = request.loginEmail;
+    const loginEmail = requestLoginEmail(request);
+    if (!loginEmail) return res.status(400).json({ message: "Dealership login email is missing" });
     const dealership = {
       ...(request.dealership || {}),
       loginEmail,
@@ -453,7 +509,7 @@ export async function approveDealershipApproval(req, res, next) {
     await upsertRecord("financeDesk", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
     await upsertRecord("financeDesks", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
     await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true });
-    const updated = await updateRecord("pendingDealershipApprovals", request.id, {
+    const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
       status: "approved",
       approvalStatus: "approved",
       gstinVerified: true,
@@ -461,19 +517,19 @@ export async function approveDealershipApproval(req, res, next) {
       approvedAt: now,
       approvedBy: req.user?.email || "super-admin",
     });
-    if (request.onboardingRequestId) await updateRecord("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
-    if (pendingAccountId) await updateRecord("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     if (!pendingAccountId && loginEmail) {
       const pendingAccount = (await listRecords("pendingDealerAccounts")).find((item) => item.email === loginEmail);
-      if (pendingAccount) await updateRecord("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+      if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     }
     const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === (request.pendingDealerAccountId || request.pendingDealerRegistrationId));
-    if (queueItem) await updateRecord("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
-    res.json({ message: "Dealership approved", request: updated });
+    res.json({ message: "Dealership approved", request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now } });
   } catch (error) {
     next(error);
   }
@@ -483,17 +539,18 @@ export async function rejectDealershipApproval(req, res, next) {
   try {
     const reason = String(req.body.reason || "").trim();
     if (!reason) return res.status(400).json({ message: "Rejection reason is required" });
-    const request = await getRecord("pendingDealershipApprovals", req.params.id);
+    const request = await resolveDealershipApprovalRequest(req.params.id);
     if (!request) return res.status(404).json({ message: "Dealership approval request not found" });
-    const updated = await updateRecord("pendingDealershipApprovals", request.id, { status: "rejected", rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
-    if (request.onboardingRequestId) await updateRecord("onboardingRequests", request.onboardingRequestId, { status: "Rejected", active: false, rejectionReason: reason });
-    if (request.pendingDealerAccountId || request.pendingDealerRegistrationId) await updateRecord("pendingDealerAccounts", request.pendingDealerAccountId || request.pendingDealerRegistrationId, { registrationSubmitted: true, approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin" });
+    const now = new Date().toISOString();
+    const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, { status: "rejected", rejectedAt: now, rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
+    if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Rejected", active: false, rejectionReason: reason });
+    if (request.pendingDealerAccountId || request.pendingDealerRegistrationId) await updateRecordIfExists("pendingDealerAccounts", request.pendingDealerAccountId || request.pendingDealerRegistrationId, { registrationSubmitted: true, approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === (request.pendingDealerAccountId || request.pendingDealerRegistrationId));
-    if (queueItem) await updateRecord("dealerApprovalQueue", queueItem.id, { status: "rejected", approvalStatus: "rejected", rejectionReason: reason, rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin" });
+    if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "rejected", approvalStatus: "rejected", rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "dealership-rejected", title: "Dealership rejected", message: reason, recipientRole: "finance-desk", recipientId: request.loginEmail, dealerEmail: request.loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, priority: "high", meta: { dealershipName: request.dealershipName, reason } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
-    res.json({ message: "Dealership rejected", request: updated });
+    res.json({ message: "Dealership rejected", request: updated || { ...request, status: "rejected", rejectionReason: reason, rejectedAt: now } });
   } catch (error) {
     next(error);
   }
@@ -502,12 +559,12 @@ export async function rejectDealershipApproval(req, res, next) {
 export async function suspendDealershipApproval(req, res, next) {
   try {
     const reason = String(req.body.reason || "Suspended by Super Admin").trim();
-    const request = await getRecord("pendingDealershipApprovals", req.params.id);
+    const request = await resolveDealershipApprovalRequest(req.params.id);
     if (!request) return res.status(404).json({ message: "Dealership approval request not found" });
-    const loginEmail = request.loginEmail || request.primaryGoogleEmail;
+    const loginEmail = requestLoginEmail(request);
     const now = new Date().toISOString();
 
-    const updated = await updateRecord("pendingDealershipApprovals", request.id, {
+    const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
       status: "suspended",
       approvalStatus: "suspended",
       suspensionReason: reason,
@@ -523,14 +580,14 @@ export async function suspendDealershipApproval(req, res, next) {
     if (request.generalManager?.email) {
       await upsertRecord("users", request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", approved: true, active: false, accountActive: false, dealershipId: loginEmail, status: "suspended" });
     }
-    if (request.onboardingRequestId) await updateRecord("onboardingRequests", request.onboardingRequestId, { status: "Suspended", active: false, accountActive: false, suspensionReason: reason });
+    if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Suspended", active: false, accountActive: false, suspensionReason: reason });
     const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
-    if (pendingAccountId) await updateRecord("pendingDealerAccounts", pendingAccountId, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
+    if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === pendingAccountId);
-    if (queueItem) await updateRecord("dealerApprovalQueue", queueItem.id, { status: "suspended", approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
+    if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "suspended", approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
-    res.json({ message: "Dealership suspended", request: updated });
+    res.json({ message: "Dealership suspended", request: updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now } });
   } catch (error) {
     next(error);
   }
@@ -670,13 +727,13 @@ export async function approveBankApproval(req, res, next) {
     for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
       await upsertRecord("bankCityMappings", `${bankId}:${city}`, { bankPartnerId: bankId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
     }
-    const updated = await updateRecord("pendingBankApprovals", request.id, { status: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, { status: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId } });
-    res.json({ message: "Bank approved", request: updated });
+    res.json({ message: "Bank approved", request: updated || { ...request, status: "approved", approvedAt: now } });
   } catch (error) {
     next(error);
   }
@@ -689,13 +746,14 @@ export async function rejectBankApproval(req, res, next) {
     const request = await getRecord("pendingBankApprovals", req.params.id);
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
-    const updated = await updateRecord("pendingBankApprovals", request.id, { status: "rejected", rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
+    const now = new Date().toISOString();
+    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, { status: "rejected", rejectedAt: now, rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
     const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: new Date().toISOString(), rejectedBy: req.user?.email || "super-admin" });
+    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "bank-rejected", title: "Bank branch rejected", message: reason, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankEmail, phoneNumber: request.mobile, priority: "high", meta: { bankName: request.bankName || request.companyName, reason } });
     await writeAuditLog({ req, actionType: "BANK_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
-    res.json({ message: "Bank rejected", request: updated });
+    res.json({ message: "Bank rejected", request: updated || { ...request, status: "rejected", rejectedAt: now, rejectionReason: reason } });
   } catch (error) {
     next(error);
   }
@@ -708,7 +766,7 @@ export async function suspendBankApproval(req, res, next) {
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
     const now = new Date().toISOString();
     const bankId = request.email;
-    const updated = await updateRecord("pendingBankApprovals", request.id, {
+    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, {
       status: "suspended",
       approvalStatus: "suspended",
       suspensionReason: reason,
@@ -721,10 +779,10 @@ export async function suspendBankApproval(req, res, next) {
       await upsertRecord("users", bankId, { uid: bankId, email: bankId, role: "bank-manager", approved: true, active: false, accountActive: false, status: "suspended" });
     }
     const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === request.email || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecord("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
+    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
-    res.json({ message: "Bank suspended", request: updated });
+    res.json({ message: "Bank suspended", request: updated || { ...request, status: "suspended", suspendedAt: now, suspensionReason: reason } });
   } catch (error) {
     next(error);
   }
