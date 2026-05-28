@@ -2,7 +2,7 @@ const PORTAL_LOGIN_PATHS = {
   dealer: "/dealer/login",
   finance: "/finance/login",
   bank: "/bank/login",
-  executive: "/executive/login",
+  executive: "/loan-executive/login",
   admin: "/admin/login",
 };
 

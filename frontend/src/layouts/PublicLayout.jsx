@@ -36,7 +36,7 @@ const roleGroups = [
     icon: Users,
     items: [
       { label: "Loan Executive Registration", to: "/executive/register", description: "Bank-side executive onboarding guidance." },
-      { label: "Loan Executive Login", to: "/executive/login", description: "Assigned loan case access." },
+      { label: "Loan Executive Login", to: "/loan-executive/login", description: "Assigned loan case access." },
     ],
   },
 ];

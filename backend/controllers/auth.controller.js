@@ -39,7 +39,7 @@ const ROLE_GUIDANCE = {
   "loan-executive": {
     roleLabel: "Loan Executive",
     portalLabel: "Executive Portal",
-    redirectTo: "/executive/login",
+    redirectTo: "/loan-executive/login",
     actionLabel: "Go to Executive Login",
   },
   "super-admin": {
@@ -820,6 +820,62 @@ export async function restoreSession(req, res, next) {
   }
 }
 
+export async function refreshSession(req, res, next) {
+  try {
+    const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    if (!email) return res.status(401).json({ message: "Invalid session", code: "INVALID_SESSION" });
+    const account = await getRecord("users", email);
+    if (!account?.role || !ROLE_ROUTES[account.role]) {
+      return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
+    }
+    if (!accountActive(account)) {
+      const inactive = inactiveAccountMessage(account);
+      return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
+    }
+    if (req.user.sessionId) {
+      const sessionRecord = await getRecord("userSessions", req.user.sessionId).catch(() => null);
+      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role) {
+        return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
+      }
+    }
+    const lifecycle = passwordLifecyclePatch(account);
+    await persistPasswordLifecycleIfMissing(email, account, lifecycle);
+    const user = {
+      uid: account.uid || account.email || email,
+      email,
+      role: account.role,
+      approved: account.approved === true,
+      active: account.active !== false,
+      accountStatus: account.accountStatus || account.status || "active",
+      emailVerified: true,
+      accountApproved: ["bank-manager", "loan-executive"].includes(account.role) ? account.accountApproved !== false : account.accountApproved === true || account.role === "super-admin",
+      accountActive: account.accountActive !== false,
+      dealershipId: account.dealershipId || null,
+      bankId: account.bankId || null,
+      branchId: account.branchId || null,
+      status: account.status || "active",
+      firstLoginRequired: firstLoginRequiredFor(account),
+      passwordChangedAt: lifecycle.passwordChangedAt,
+      passwordExpiresAt: lifecycle.passwordExpiresAt,
+      passwordExpired: lifecycle.passwordExpired,
+      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
+      sessionId: req.user.sessionId || null,
+      lastLoginAt: account.lastLoginAt || null,
+    };
+    Object.assign(user, await accountPresentation(email, user));
+    const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
+    setAuthCookie(res, token);
+    const forcedPasswordPath = passwordChangeRouteForRole(user.role);
+    res.json({
+      token,
+      user,
+      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function recordLoginFailure(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -995,7 +1051,20 @@ export async function completeForcedPasswordChange(req, res, next) {
       }
     }
     await writeLoginActivity({ email, role: account.role, status: "password-changed", req });
-    res.json({ ok: true, firstLoginRequired: false, passwordChangedAt: now, passwordExpiresAt });
+    const user = {
+      ...account,
+      uid: account.uid || account.email || email,
+      email,
+      firstLoginRequired: false,
+      passwordChangedAt: now,
+      passwordExpiresAt,
+      passwordExpired: false,
+      passwordDaysRemaining: PASSWORD_VALID_DAYS,
+      sessionId: req.user?.sessionId || null,
+    };
+    const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
+    setAuthCookie(res, token);
+    res.json({ ok: true, token, user, redirectTo: ROLE_ROUTES[account.role], firstLoginRequired: false, passwordChangedAt: now, passwordExpiresAt });
   } catch (error) {
     next(error);
   }

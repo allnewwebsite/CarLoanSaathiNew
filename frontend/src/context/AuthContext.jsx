@@ -15,7 +15,7 @@ import {
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
-import { AUTH_STATES, authPersistenceMode, clearAuthStorage, getStoredToken, getStoredUser, storeAuthSession } from "../services/authSessionManager.js";
+import { AUTH_STATES, authPersistenceMode, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
@@ -74,7 +74,7 @@ export function AuthProvider({ children }) {
     setAuthStatus(session.passwordExpired ? AUTH_STATES.PASSWORD_EXPIRED : AUTH_STATES.AUTHENTICATED);
   };
 
-  const clearLocalSession = async ({ signOutFirebase = true } = {}) => {
+  const clearLocalSession = async ({ signOutFirebase = true, broadcast = true, reason = "local-clear" } = {}) => {
     teardownRealtimeSubscriptions();
     clearAuthStorage();
     setFirebaseUser(null);
@@ -88,6 +88,7 @@ export function AuthProvider({ children }) {
         // Local session is already cleared.
       }
     }
+    if (broadcast) publishAuthEvent("logout", { reason });
   };
 
   const restoreSessionFromFirebase = async (currentUser = auth.currentUser, { silent = true } = {}) => {
@@ -106,7 +107,7 @@ export function AuthProvider({ children }) {
       return session;
     } catch (error) {
       setAuthStatus(AUTH_STATES.FAILED);
-      await clearLocalSession({ signOutFirebase: true });
+      await clearLocalSession({ signOutFirebase: true, reason: "restore-failed" });
       if (!silent) throw error;
       return null;
     } finally {
@@ -156,7 +157,7 @@ export function AuthProvider({ children }) {
     try {
       response = await api.post("/auth/login", { idToken, portal, targetPortal });
     } catch (error) {
-      await clearLocalSession({ signOutFirebase: true });
+      await clearLocalSession({ signOutFirebase: true, reason: "login-backend-rejected" });
       throw error;
     }
     const session = sessionFromResponse(response);
@@ -197,8 +198,13 @@ export function AuthProvider({ children }) {
     const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
     await reauthenticateWithCredential(currentUser, credential);
     await updatePassword(currentUser, newPassword);
-    const idToken = await currentUser.getIdToken(true);
-    const response = await api.post("/auth/password/change-complete", {}, { headers: { Authorization: `Bearer ${idToken}` } });
+    await currentUser.getIdToken(true);
+    const response = await api.post("/auth/password/change-complete");
+    if (response.data?.token && response.data?.user) {
+      const session = sessionFromResponse(response);
+      applySession(session, response.data.token, { rememberMe: authPersistenceMode() === "local" });
+      return session;
+    }
     const refreshed = await validateSession({ silent: false, showLoading: false });
     return refreshed || response.data;
   };
@@ -222,7 +228,7 @@ export function AuthProvider({ children }) {
         const restored = await restoreSessionFromFirebase(auth.currentUser, { silent: true });
         if (restored) return restored;
       }
-      await clearLocalSession({ signOutFirebase: true });
+      await clearLocalSession({ signOutFirebase: true, reason: "session-invalid" });
       if (!silent) throw error;
       return null;
     } finally {
@@ -261,6 +267,21 @@ export function AuthProvider({ children }) {
     window.addEventListener("cls:auth-session-cleared", onSessionCleared);
     return () => window.removeEventListener("cls:auth-session-cleared", onSessionCleared);
   }, []);
+
+  useEffect(() => {
+    const onTokenRefreshed = (event) => {
+      if (!event.detail?.user || !event.detail?.token) return;
+      const session = sessionFromResponse({ data: event.detail });
+      applySession(session, event.detail.token, { rememberMe: authPersistenceMode() === "local" });
+    };
+    window.addEventListener("cls:auth-token-refreshed", onTokenRefreshed);
+    return () => window.removeEventListener("cls:auth-token-refreshed", onTokenRefreshed);
+  }, []);
+
+  useEffect(() => subscribeAuthEvents((event) => {
+    if (event?.type !== "logout") return;
+    clearLocalSession({ signOutFirebase: true, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
+  }), []);
 
   const createRegistrationAccount = async ({ email, password }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -387,7 +408,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Local cleanup must still happen even if the log request fails.
     }
-    await clearLocalSession();
+    await clearLocalSession({ reason: "manual-logout" });
   };
 
   const value = useMemo(() => ({

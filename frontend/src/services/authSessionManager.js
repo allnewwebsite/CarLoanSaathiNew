@@ -11,6 +11,7 @@ export const AUTH_STATES = {
 const TOKEN_KEY = "cls_token";
 const USER_KEY = "cls_user";
 const PERSISTENCE_KEY = "cls_auth_persistence";
+const AUTH_CHANNEL = "cls_auth_channel";
 
 export function authPersistenceMode() {
   if (sessionStorage.getItem(PERSISTENCE_KEY) === "session") return "session";
@@ -44,6 +45,12 @@ export function storeAuthSession(session, token, { rememberMe = true } = {}) {
   secondary.removeItem(PERSISTENCE_KEY);
 }
 
+export function updateStoredToken(token) {
+  if (!token) return;
+  const storage = authPersistenceMode() === "session" ? sessionStorage : localStorage;
+  storage.setItem(TOKEN_KEY, token);
+}
+
 export function clearAuthStorage() {
   for (const storage of [localStorage, sessionStorage]) {
     storage.removeItem(TOKEN_KEY);
@@ -51,6 +58,38 @@ export function clearAuthStorage() {
     storage.removeItem(PERSISTENCE_KEY);
     storage.removeItem("cls_session_only");
   }
+}
+
+export function publishAuthEvent(type, payload = {}) {
+  const event = { type, payload, at: Date.now() };
+  localStorage.setItem(AUTH_CHANNEL, JSON.stringify(event));
+  localStorage.removeItem(AUTH_CHANNEL);
+  if ("BroadcastChannel" in window) {
+    const channel = new BroadcastChannel(AUTH_CHANNEL);
+    channel.postMessage(event);
+    channel.close();
+  }
+}
+
+export function subscribeAuthEvents(callback) {
+  const onStorage = (event) => {
+    if (event.key !== AUTH_CHANNEL || !event.newValue) return;
+    try {
+      callback(JSON.parse(event.newValue));
+    } catch {
+      // Ignore malformed cross-tab messages.
+    }
+  };
+  window.addEventListener("storage", onStorage);
+  let channel = null;
+  if ("BroadcastChannel" in window) {
+    channel = new BroadcastChannel(AUTH_CHANNEL);
+    channel.onmessage = (event) => callback(event.data);
+  }
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    if (channel) channel.close();
+  };
 }
 
 export function passwordExpiryWarning(user) {

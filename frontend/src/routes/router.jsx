@@ -51,7 +51,8 @@ export const router = createBrowserRouter([
       { path: "/bank/register", element: <BankRegistration /> },
       { path: "/bank/login", element: <LoginPage portal="bank" /> },
       { path: "/executive/register", element: <BankRegistration audience="executive" /> },
-      { path: "/executive/login", element: <LoginPage portal="executive" /> },
+      { path: "/executive/login", element: <Navigate to="/loan-executive/login" replace /> },
+      { path: "/loan-executive/login", element: <LoginPage portal="executive" /> },
       { path: "/admin/login", element: <LoginPage portal="admin" /> },
       { path: "/dealer-registration", element: <DealerRegistrationPage /> },
       { path: "/dealer-registration/form", element: <DealerRegistrationFormPage /> },
@@ -172,7 +173,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/loan-executive",
-    element: <ProtectedRoute roles={[ROLES.LOAN_EXECUTIVE]} loginPath="/executive/login" />,
+    element: <ProtectedRoute roles={[ROLES.LOAN_EXECUTIVE]} loginPath="/loan-executive/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/loan-executive/leads" replace /> },
       { path: "assigned", element: <Navigate to="/loan-executive/leads" replace /> },

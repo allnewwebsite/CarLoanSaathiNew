@@ -607,7 +607,7 @@ export async function createBankExecutive(req, res, next) {
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId } });
     res.status(201).json({
       ...executive,
-      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,
+      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/loan-executive/login`,
       temporaryPassword,
     });
   } catch (error) {
@@ -699,7 +699,7 @@ export async function resetBankExecutivePassword(req, res, next) {
     await updateExecutiveLinkedRecords(executive.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: partner.email || partner.id });
     await revokeUserSessions(executive.email, "bank-executive-password-reset");
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_PASSWORD_RESET", targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId } });
-    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`, executive });
+    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/loan-executive/login`, executive });
   } catch (error) {
     next(error);
   }

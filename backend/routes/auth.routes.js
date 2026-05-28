@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { approvePendingGoogleAccount, completeForcedPasswordChange, forceLogoutUser, getLoginActivity, login, logout, lookupAccountForLogin, recordLoginFailure, rejectPendingGoogleAccount, restoreSession, session, validatePasswordReset } from "../controllers/auth.controller.js";
+import { approvePendingGoogleAccount, completeForcedPasswordChange, forceLogoutUser, getLoginActivity, login, logout, lookupAccountForLogin, recordLoginFailure, refreshSession, rejectPendingGoogleAccount, restoreSession, session, validatePasswordReset } from "../controllers/auth.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { authRateLimit, passwordResetRateLimit } from "../middleware/securityMiddleware.js";
@@ -9,6 +9,7 @@ const router = Router();
 
 router.post("/login", authRateLimit, login);
 router.post("/session/restore", authRateLimit, restoreSession);
+router.post("/session/refresh", authenticate, refreshSession);
 router.post("/account-lookup", authRateLimit, lookupAccountForLogin);
 router.post("/login-failure", authRateLimit, recordLoginFailure);
 router.post("/password-reset/validate", passwordResetRateLimit, validatePasswordReset);

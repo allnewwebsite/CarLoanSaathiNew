@@ -231,7 +231,7 @@ function ManageExecutivePage() {
         name: response.data?.name || response.data?.fullName || nextForm.name,
         email: response.data?.email || nextForm.email,
         temporaryPassword: response.data?.temporaryPassword || "",
-        portalLogin: response.data?.portalLogin || `${window.location.origin}/executive/login`,
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/loan-executive/login`,
       });
       await load();
     } catch (err) {
@@ -273,7 +273,7 @@ function ManageExecutivePage() {
         name: response.data?.executive?.name || executive.name || executive.fullName,
         email: executive.email || executive.officialEmail,
         temporaryPassword: response.data?.temporaryPassword || "",
-        portalLogin: response.data?.portalLogin || `${window.location.origin}/executive/login`,
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/loan-executive/login`,
       });
       setMessage("Temporary password generated.");
     } catch (err) {

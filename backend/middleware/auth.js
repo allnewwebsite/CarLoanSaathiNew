@@ -60,6 +60,29 @@ async function verifiedAccountFromEmail(email) {
   return account;
 }
 
+function passwordChangeRequired(account = {}) {
+  if (!["finance-desk", "gm-sm", "loan-executive"].includes(account.role)) return false;
+  if (account.firstLoginRequired === true && !account.passwordChangedAt) return true;
+  if (!account.passwordExpiresAt) return false;
+  return new Date(account.passwordExpiresAt).getTime() <= Date.now();
+}
+
+function authUrlAllowedDuringPasswordChange(req) {
+  return [
+    "/api/auth/session",
+    "/api/auth/session/refresh",
+    "/api/auth/password/change-complete",
+    "/api/auth/logout",
+  ].some((path) => String(req.originalUrl || "").startsWith(path));
+}
+
+function passwordChangePathForRole(role) {
+  if (role === "loan-executive") return "/loan-executive/change-password";
+  if (role === "gm-sm") return "/gm/change-password";
+  if (role === "finance-desk") return "/finance/change-password";
+  return "/change-password";
+}
+
 async function firebaseEmailVerified(email) {
   if (!firebaseAdmin || !email) return true;
   try {
@@ -83,36 +106,9 @@ export async function authenticate(req, res, next) {
 
     if (firebaseAdmin) {
       try {
-        const decoded = await firebaseAdmin.auth().verifyIdToken(token);
-        const email = String(decoded.email || "").trim().toLowerCase();
-        if (!email) {
-          observeAuthFailure(req, "missing_email");
-          return res.status(401).json({ message: "Authenticated account email is required" });
-        }
-        if (decoded.email_verified !== true) {
-          observeAuthFailure(req, "email_not_verified");
-          return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
-        }
-        let account;
-        try {
-          account = await verifiedAccountFromEmail(email);
-        } catch (error) {
-          observeAuthFailure(req, error.code || "account_not_active");
-          return res.status(error.status || 403).json({ message: error.message, code: error.code || "ACCOUNT_INACTIVE", lockedUntil: error.code === "ACCOUNT_LOCKED" ? (await getRecord("users", email).catch(() => null))?.lockedUntil : undefined });
-        }
-        req.user = {
-          uid: account.uid || decoded.uid || email,
-          email,
-          role: account.role,
-          dealershipId: account.dealershipId || null,
-          bankId: account.bankId || null,
-          branchId: account.branchId || null,
-          approved: account.approved === true,
-          active: account.active !== false,
-          accountApproved: account.accountApproved === true,
-          accountActive: account.accountActive !== false,
-        };
-        return next();
+        await firebaseAdmin.auth().verifyIdToken(token);
+        observeAuthFailure(req, "jwt_required");
+        return res.status(401).json({ message: "Backend session token is required", code: "JWT_REQUIRED" });
       } catch {
         // Fall through to JWT for service-issued tokens.
       }
@@ -135,11 +131,17 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "session_revoked");
       return res.status(401).json({ message: "Session revoked. Please login again.", code: "SESSION_REVOKED" });
     }
+    if (tokenUser.role && tokenUser.role !== account.role) {
+      observeAuthFailure(req, "session_role_changed");
+      return res.status(401).json({ message: "Account role changed. Please login again.", code: "SESSION_ROLE_CHANGED" });
+    }
     if (tokenUser.sessionId) {
       const session = await getRecord("userSessions", tokenUser.sessionId).catch(() => null);
       const expired = session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now();
       const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
-      if (!session || session.revoked === true || expired || inactive) {
+      const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
+      const roleChanged = session && session.role && session.role !== account.role;
+      if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged) {
         observeAuthFailure(req, "session_invalid");
         return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
       }
@@ -166,6 +168,14 @@ export async function authenticate(req, res, next) {
       emailVerified: true,
       sessionId: tokenUser.sessionId || null,
     };
+    if (passwordChangeRequired(account) && !authUrlAllowedDuringPasswordChange(req)) {
+      observeAuthFailure(req, "password_change_required");
+      return res.status(403).json({
+        message: "Password change is required before continuing.",
+        code: "PASSWORD_CHANGE_REQUIRED",
+        redirectTo: passwordChangePathForRole(account.role),
+      });
+    }
     if (!(await dealerAccountIsActive(req.user))) {
       observeAuthFailure(req, "dealer_account_inactive");
       return res.status(403).json({ message: "Dealer account is inactive or deleted", code: "DEALER_ACCOUNT_INACTIVE" });

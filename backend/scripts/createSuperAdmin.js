@@ -10,7 +10,7 @@ function fail(message) {
 
 async function sendVerificationEmail(email, password) {
   const apiKey = process.env.FIREBASE_WEB_API_KEY;
-  const continueUrl = process.env.FIREBASE_ACTION_CONTINUE_URL || process.env.CLIENT_ORIGIN || "http://localhost:5173/super-admin";
+  const continueUrl = process.env.FIREBASE_ACTION_CONTINUE_URL || process.env.CLIENT_ORIGIN || "http://localhost:5173/admin/login";
   const printVerificationLink = async (reason = "") => {
     const link = await firebaseAdmin.auth().generateEmailVerificationLink(email, {
       url: continueUrl,
