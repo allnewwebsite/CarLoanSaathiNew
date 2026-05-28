@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createDealerLead, createDealerSalesperson, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, registerDealerOnboarding, removeDealerSalesperson, startDealerRegistration, updateDealerProfile } from "../controllers/dealer.controller.js";
+import { createDealerLead, createDealerSalesperson, createDealerStaff, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, registerDealerOnboarding, removeDealerSalesperson, resetDealerStaffPassword, startDealerRegistration, updateDealerProfile, updateDealerStaffLifecycle } from "../controllers/dealer.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
@@ -18,6 +18,10 @@ router.post("/leads", createDealerLead);
 router.get("/salespersons", getDealerSalespersons);
 router.post("/salespersons", createDealerSalesperson);
 router.delete("/salespersons/:id", removeDealerSalesperson);
+router.get("/staff", getDealerStaff);
+router.post("/staff", createDealerStaff);
+router.post("/staff/:id/lifecycle", updateDealerStaffLifecycle);
+router.post("/staff/:id/reset-password", resetDealerStaffPassword);
 router.get("/earnings", getDealerEarnings);
 router.get("/profile", getDealerProfile);
 router.patch("/profile", updateDealerProfile);

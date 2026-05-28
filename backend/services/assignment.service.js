@@ -136,7 +136,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
   };
 
   await updateRecord("leads", lead.id, {
-    status: LEAD_STATUSES.ASSIGNED,
+    status: LEAD_STATUSES.NEW,
     assignedPartnerId: partner.id,
     bankId: partner.bankId || partner.id,
     bankPartner: partner.name || partner.bankName,
@@ -403,7 +403,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     assignedExecutiveName: executive.name || executive.fullName || executive.email,
     assignedExecutiveMobile: executive.mobile || null,
     assignmentStatus: "pending",
-    status: LEAD_STATUSES.ASSIGNED,
+    status: LEAD_STATUSES.NEW,
     assignmentTimestamp: now,
     slaAcceptDeadlineAt: responseDeadlineAt,
     assignmentHistory: [...(lead.assignmentHistory || []), {

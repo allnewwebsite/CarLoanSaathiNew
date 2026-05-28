@@ -73,11 +73,16 @@ api.interceptors.response.use(
       const baseURL = error.config?.baseURL || "";
       const url = error.config?.url || "";
       error.message = `API route not found: ${baseURL}${url}`;
-    } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED"].includes(error.response?.data?.code)) {
+    } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED", "SESSION_REVOKED", "SESSION_EXPIRED"].includes(error.response?.data?.code)) {
+      const stored = JSON.parse(localStorage.getItem("cls_user") || "null");
       localStorage.removeItem("cls_user");
       clearSessionToken();
       if (typeof window !== "undefined") {
-        const target = error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank-login" : "/dealer-login";
+        const target = stored?.role === "loan-executive"
+          ? "/executive/login"
+          : stored?.role === "bank-manager" || error.response?.data?.code === "BANK_ACCOUNT_INACTIVE"
+            ? "/bank-login"
+            : "/dealer-login";
         if (!window.location.pathname.includes(target.replace("/", ""))) window.location.assign(target);
       }
     }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
-import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { StatusBadge } from "../../components/StatusBadge.jsx";
+import { LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
@@ -10,11 +11,14 @@ const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 const statusOptions = [
+  { label: "New", value: LEAD_STATUSES.NEW },
+  { label: "Contacted", value: LEAD_STATUSES.CONTACTED },
+  { label: "Request Document", value: LEAD_STATUSES.REQUEST_DOCUMENT },
+  { label: "Document Received", value: LEAD_STATUSES.DOCUMENT_RECEIVED },
+  { label: "Request Pending Documents", value: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS },
+  { label: "All Documents Received", value: LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED },
+  { label: "Under Bank Process", value: LEAD_STATUSES.UNDER_BANK_PROCESS },
   { label: "Disbursed", value: LEAD_STATUSES.DISBURSED },
-  { label: "Rejected", value: LEAD_STATUSES.REJECTED },
-  { label: "Bank Process", value: LEAD_STATUSES.UNDER_REVIEW },
-  { label: "Loan Rejected With Reason", value: "REJECTED_REASON" },
-  { label: "Pending Documents", value: LEAD_STATUSES.DOCS_PENDING },
 ];
 
 function display(value) {
@@ -44,16 +48,22 @@ function dateTime(value) {
   return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function statusLabel(lead) {
-  const status = normalizeStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.UNDER_REVIEW);
-  if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
+function executiveStatusLabel(lead) {
+  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? `Loan Rejected: ${lead.rejectionReason || lead.loanRejectionReason}` : "Rejected";
-  if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
-  return "Bank Process";
+  return leadStatusLabel(status);
 }
 
 function apiStatus(value) {
   return value === "REJECTED_REASON" ? LEAD_STATUSES.REJECTED : value;
+}
+
+function workflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
 }
 
 function responseRows(response) {
@@ -104,7 +114,7 @@ function RejectModal({ lead, onClose, onSaved }) {
   return <Modal title="Loan Rejected With Reason" onClose={onClose}><textarea className="min-h-28 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason" value={reason} onChange={(event) => setReason(event.target.value)} /><button disabled={busy || !reason.trim()} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save Rejection</button></Modal>;
 }
 
-function PendingDocsModal({ lead, onClose, onSaved }) {
+function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, onClose, onSaved }) {
   const [selected, setSelected] = useState([]);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -112,12 +122,12 @@ function PendingDocsModal({ lead, onClose, onSaved }) {
   const submit = async () => {
     if (!selected.length) return;
     setBusy(true);
-    await api.patch(`/bank/leads/${lead.id}/status`, { status: LEAD_STATUSES.DOCS_PENDING, pendingDocumentsRequested: selected, pendingDocumentReason: notes, remarks: notes });
+    await api.patch(`/bank/leads/${lead.id}/status`, { status, pendingDocumentsRequested: selected, pendingDocumentReason: notes, remarks: notes });
     setBusy(false);
     onSaved();
   };
   return (
-    <Modal title="Request Pending Documents" onClose={onClose}>
+    <Modal title={status === LEAD_STATUSES.REQUEST_DOCUMENT ? "Request Documents" : "Request Pending Documents"} onClose={onClose}>
       <div className="grid gap-2 sm:grid-cols-2">{docs.map((doc) => <label key={doc} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={selected.includes(doc)} onChange={() => toggle(doc)} />{doc}</label>)}</div>
       <textarea className="mt-3 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Additional Notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
       <button disabled={busy || !selected.length} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Submit Request</button>
@@ -139,7 +149,7 @@ function TotalLeadsPage({ mode }) {
 
   const updateStatus = async (lead, nextStatus) => {
     if (nextStatus === "REJECTED_REASON") return setModal({ type: "reject", lead });
-    if (nextStatus === LEAD_STATUSES.DOCS_PENDING) return setModal({ type: "docs", lead });
+    if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus)) return setModal({ type: "docs", lead, status: nextStatus });
     await api.patch(`/bank/leads/${lead.id}/status`, { status: nextStatus });
     load(page);
   };
@@ -154,7 +164,7 @@ function TotalLeadsPage({ mode }) {
         display(lead.city || lead.dealershipCity),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         display(lead.preferredBank || lead.bankPartner),
-        statusLabel(lead),
+        <StatusBadge key="status" status={workflowStatus(lead.status)} />,
         dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
         ...(status === "REJECTED_REASON" ? [display(lead.rejectionReason || lead.loanRejectionReason), dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
@@ -169,8 +179,8 @@ function TotalLeadsPage({ mode }) {
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         dateValue(lead.createdAt),
         timeValue(lead.createdAt),
-        <select key="status" className="h-8 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#0d47a1]" value={normalizeStatus(lead.status)} onChange={(event) => updateStatus(lead, event.target.value)}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>,
-        <button key="pending" onClick={() => setModal({ type: "docs", lead })} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">Request Pending Document</button>,
+        <select key="status" className="h-9 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#0d47a1]" value={workflowStatus(lead.status)} onChange={(event) => updateStatus(lead, event.target.value)}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>,
+        <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">Request Pending Docs</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
   }));
@@ -189,9 +199,9 @@ function TotalLeadsPage({ mode }) {
         </div>
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Pending Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
-      {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
+      {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
     </section>
   );
 }
@@ -204,6 +214,9 @@ export function LoanExecutiveLeadDetailPage() {
   const { leadId } = useParams();
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sanctionFile, setSanctionFile] = useState(null);
+  const [uploadingSanction, setUploadingSanction] = useState(false);
+  const [message, setMessage] = useState("");
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -225,6 +238,28 @@ export function LoanExecutiveLeadDetailPage() {
   if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   const documents = lead.documents || [];
+  const bankDocuments = lead.bankDocuments || [];
+  const sanctionDocument = bankDocuments.find((item) => String(item.documentType || item.type || "").toLowerCase().includes("sanction"));
+  const sanctionUrl = sanctionDocument?.url || sanctionDocument?.fileUrl || lead.sanctionLetterUrl;
+  const canShowSanction = normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED;
+  const uploadSanction = async () => {
+    if (!sanctionFile) return;
+    setUploadingSanction(true);
+    setMessage("");
+    try {
+      const form = new FormData();
+      form.append("document", sanctionFile);
+      form.append("documentType", "sanction-letter");
+      await api.post(`/bank/leads/${lead.id}/documents`, form, { headers: { "Content-Type": "multipart/form-data" } });
+      setSanctionFile(null);
+      setMessage("Sanction letter uploaded.");
+      await loadLead({ silent: true });
+    } catch {
+      setMessage("Sanction letter upload failed. Please retry.");
+    } finally {
+      setUploadingSanction(false);
+    }
+  };
   const rows = docs.map((type) => {
     const doc = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
     const url = doc?.url || doc?.fileUrl || doc?.downloadUrl;
@@ -233,8 +268,33 @@ export function LoanExecutiveLeadDetailPage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Customer Documents" />
-      <div className="grid gap-3 md:grid-cols-4">{[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Current Status", statusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}</div>
+      <div className="grid gap-3 md:grid-cols-4">{[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Current Status", executiveStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}</div>
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Zoom", "Download", "Uploaded Timestamp"]} rows={rows} loading={false} />
+      {canShowSanction ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Sanction Letter</h2>
+              <p className="mt-1 text-sm text-slate-500">Upload the final bank sanction or disbursement letter for this case.</p>
+            </div>
+            {sanctionUrl ? (
+              <div className="flex flex-wrap gap-2">
+                <a href={sanctionUrl} target="_blank" rel="noreferrer" className="rounded-md border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">View Sanction Letter</a>
+                <a href={sanctionUrl} download className="rounded-md border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">Download</a>
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setSanctionFile(event.target.files?.[0] || null)} className="block w-full rounded-md border border-slate-200 text-sm text-slate-600 file:mr-3 file:h-10 file:border-0 file:bg-slate-50 file:px-3 file:text-sm file:font-medium file:text-slate-700 sm:max-w-md" />
+            <button onClick={uploadSanction} disabled={!sanctionFile || uploadingSanction} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-50">
+              <UploadCloud className="h-4 w-4" />
+              {sanctionUrl ? "Replace File" : "Upload Sanction Letter"}
+            </button>
+          </div>
+          {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
+          {sanctionDocument?.uploadedAt || lead.sanctionLetterUploadedAt ? <p className="mt-2 text-xs text-slate-500">Uploaded: {dateTime(sanctionDocument?.uploadedAt || lead.sanctionLetterUploadedAt)} by {display(sanctionDocument?.uploadedBy || lead.sanctionLetterUploadedBy)}</p> : null}
+        </section>
+      ) : null}
     </section>
   );
 }

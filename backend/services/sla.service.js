@@ -67,9 +67,10 @@ export async function updateSlaForLead(lead, status) {
 
 export function mapLeadStatusToSla(status) {
   const normalized = normalizeStatus(status);
-  if (normalized === LEAD_STATUSES.ACCEPTED) return "accepted";
-  if (normalized === LEAD_STATUSES.UNDER_REVIEW) return "in-progress";
-  if (normalized === LEAD_STATUSES.DOCS_PENDING) return "document-requested";
+  if (normalized === LEAD_STATUSES.CONTACTED || normalized === LEAD_STATUSES.ACCEPTED) return "accepted";
+  if (normalized === LEAD_STATUSES.UNDER_BANK_PROCESS || normalized === LEAD_STATUSES.UNDER_REVIEW) return "in-progress";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalized)) return "document-requested";
+  if (normalized === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "in-progress";
   if (normalized === LEAD_STATUSES.APPROVED || normalized === LEAD_STATUSES.DISBURSED) return "approved";
   if (normalized === LEAD_STATUSES.REJECTED) return "rejected";
   return "pending";

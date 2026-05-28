@@ -44,7 +44,7 @@ function PasswordInput({ label, value, onChange, visible, onToggle, autoComplete
 
 export function ExecutiveChangePasswordPage() {
   const navigate = useNavigate();
-  const { changeCurrentPassword } = useAuth();
+  const { changeCurrentPassword, user } = useAuth();
   const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [visible, setVisible] = useState({ currentPassword: false, newPassword: false, confirmPassword: false });
   const [error, setError] = useState("");
@@ -76,7 +76,7 @@ export function ExecutiveChangePasswordPage() {
     setError("");
     try {
       await changeCurrentPassword(form);
-      navigate("/loan-executive/leads", { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
       setError(err.code === "auth/wrong-password" || err.code === "auth/invalid-credential"
         ? "Current temporary password is incorrect."
@@ -89,9 +89,9 @@ export function ExecutiveChangePasswordPage() {
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Loan Executive Security</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isExecutive ? "Loan Executive Security" : "Dealership Staff Security"}</p>
         <h1 className="mt-3 text-2xl font-semibold text-slate-950">Change Temporary Password</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">For security, change the temporary password issued by your bank manager before opening assigned cases.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">For security, change the temporary password issued by your {isExecutive ? "bank manager" : "dealership admin"} before opening your dashboard.</p>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
           <PasswordInput label="Current Temporary Password" value={form.currentPassword} onChange={(value) => update("currentPassword", value)} visible={visible.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} autoComplete="current-password" error={fieldErrors.currentPassword} />
@@ -114,3 +114,5 @@ export function ExecutiveChangePasswordPage() {
     </main>
   );
 }
+  const isExecutive = user?.role === "loan-executive";
+  const destination = user?.role === "gm-sm" ? "/gm/total-leads" : isExecutive ? "/loan-executive/leads" : "/finance/total-leads";

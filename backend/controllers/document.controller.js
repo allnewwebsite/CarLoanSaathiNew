@@ -136,7 +136,7 @@ export async function updateDocumentStatus(req, res, next) {
     const needsDocumentFollowup = [DOCUMENT_STATUSES.PENDING, DOCUMENT_STATUSES.REQUESTED, DOCUMENT_STATUSES.REJECTED].includes(nextStatus);
     if (needsDocumentFollowup) {
       await updateRecord("leads", document.leadId, {
-        status: LEAD_STATUSES.DOCS_PENDING,
+        status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
         pendingDocuments: [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), document.type].filter(Boolean))],
         pendingDocumentReason: req.body.note || `${document.type || "Document"} needs attention`,
       });

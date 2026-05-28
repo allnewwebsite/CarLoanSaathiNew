@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { jwtSecret } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
-import { getRecord } from "../services/firestore.service.js";
+import { getRecord, updateRecord } from "../services/firestore.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 
 function cookieValue(req, name) {
@@ -47,7 +47,7 @@ async function verifiedAccountFromEmail(email) {
     && Boolean(account.role)
     && account.active !== false
     && account.accountActive !== false
-    && !["pending", "rejected", "suspended", "deleted", "inactive"].includes(String(account.accountStatus || account.status || "").toLowerCase());
+    && !["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed", "locked"].includes(String(account.accountStatus || account.status || "").toLowerCase());
   if (!active) {
     const error = new Error("Account is inactive or pending approval");
     error.status = 403;
@@ -116,6 +116,23 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ message: "Invalid session" });
     }
     const account = await verifiedAccountFromEmail(email);
+    if (account.sessionRevokedAt && tokenUser.iat && new Date(account.sessionRevokedAt).getTime() > tokenUser.iat * 1000) {
+      observeAuthFailure(req, "session_revoked");
+      return res.status(401).json({ message: "Session revoked. Please login again.", code: "SESSION_REVOKED" });
+    }
+    if (tokenUser.sessionId) {
+      const session = await getRecord("userSessions", tokenUser.sessionId).catch(() => null);
+      const expired = session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now();
+      const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
+      if (!session || session.revoked === true || expired || inactive) {
+        observeAuthFailure(req, "session_invalid");
+        return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
+      }
+      updateRecord("userSessions", session.id, {
+        lastSeenAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      }).catch(() => {});
+    }
     if (!(await firebaseEmailVerified(email))) {
       observeAuthFailure(req, "email_not_verified");
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
@@ -132,6 +149,7 @@ export async function authenticate(req, res, next) {
       accountApproved: account.accountApproved === true || account.role === "super-admin",
       accountActive: account.accountActive !== false,
       emailVerified: true,
+      sessionId: tokenUser.sessionId || null,
     };
     if (!(await dealerAccountIsActive(req.user))) {
       observeAuthFailure(req, "dealer_account_inactive");

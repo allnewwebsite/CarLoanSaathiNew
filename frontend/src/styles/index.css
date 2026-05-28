@@ -148,10 +148,55 @@ input.field {
 
 table th {
   font-weight: 500 !important;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
 }
 
 table td {
   color: #4b5563;
+}
+
+table th,
+table td {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+button,
+[role="button"],
+a,
+input,
+select,
+textarea {
+  min-height: 2.25rem;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(13, 71, 161, 0.35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  table th,
+  table td {
+    max-width: 14rem;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    white-space: normal;
+  }
+
+  header [class*="NotificationCenter"],
+  header button {
+    flex-shrink: 0;
+  }
 }
 
 [class*="font-black"],

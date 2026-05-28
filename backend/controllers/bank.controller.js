@@ -4,7 +4,7 @@ import { createNotification } from "../services/notification.service.js";
 import { reassignLeadToNextBranchExecutive, retrieveAndReassignLead } from "../services/assignment.service.js";
 import { updateSlaForLead } from "../services/sla.service.js";
 import { addTimelineEvent, getTimelineForLead, TIMELINE_EVENTS } from "../services/timeline.service.js";
-import { deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
+import { createShortLivedDocumentUrl, deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
@@ -12,8 +12,16 @@ import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.servi
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
+import { revokeUserSessions } from "./auth.controller.js";
 
 const bankStatuses = [
+  LEAD_STATUSES.NEW,
+  LEAD_STATUSES.CONTACTED,
+  LEAD_STATUSES.REQUEST_DOCUMENT,
+  LEAD_STATUSES.DOCUMENT_RECEIVED,
+  LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
+  LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+  LEAD_STATUSES.UNDER_BANK_PROCESS,
   LEAD_STATUSES.ASSIGNED,
   LEAD_STATUSES.ACCEPTED,
   LEAD_STATUSES.UNDER_REVIEW,
@@ -144,7 +152,7 @@ function applyFilters(leads, query) {
     const slaOk = !query.sla || (query.sla === "due" ? Boolean(lead.slaDueToday) : true);
     const executiveOk = !executive || String(lead.assignedExecutiveName || lead.assignedExecutiveId || "").toLowerCase() === executive;
     const dealershipOk = !dealership || String(lead.dealershipName || lead.dealerEmail || "").toLowerCase() === dealership;
-    const pendingDocsOk = !query.pendingDocs || normalizeStatus(lead.status) === LEAD_STATUSES.DOCS_PENDING;
+    const pendingDocsOk = !query.pendingDocs || [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status));
     return statusOk && dateOk && searchOk && slaOk && executiveOk && dealershipOk && pendingDocsOk;
   });
 }
@@ -642,6 +650,61 @@ export async function removeBankExecutive(req, res, next) {
   }
 }
 
+async function updateExecutiveLinkedRecords(email, patch) {
+  const account = await getRecord("users", email).catch(() => null);
+  if (account) await upsertRecord("users", email, { ...account, ...patch });
+  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  if (executive) await upsertRecord("loanExecutives", email, { ...executive, ...patch });
+}
+
+export async function updateBankExecutiveLifecycle(req, res, next) {
+  try {
+    const partner = await currentPartner(req);
+    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can update executives" });
+    const identity = bankIdentity(partner);
+    const executive = await getRecord("loanExecutives", req.params.executiveId);
+    if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
+    const action = String(req.body.action || "").trim();
+    const now = new Date().toISOString();
+    let patch = {};
+    if (action === "suspend") patch = { active: false, accountActive: false, accountStatus: "suspended", status: "suspended", suspendedAt: now, suspendedBy: partner.email || partner.id };
+    else if (action === "activate") patch = { active: true, accountActive: true, accountStatus: "active", status: "active", activatedAt: now, activatedBy: partner.email || partner.id };
+    else if (action === "disable") patch = { active: false, accountActive: false, accountStatus: "disabled", status: "disabled", disabledAt: now, disabledBy: partner.email || partner.id };
+    else if (action === "remove") patch = { active: false, accountActive: false, accountStatus: "removed", status: "removed", removedAt: now, removedByManagerId: partner.email || partner.id };
+    else if (action === "transfer") {
+      const branch = String(req.body.branch || "").trim();
+      if (!branch) return res.status(400).json({ message: "Branch is required" });
+      patch = { bankBranchLocation: branch, branchCity: req.body.city || branch, city: req.body.city || branch, branchTransferredAt: now, branchTransferredBy: partner.email || partner.id };
+    } else return res.status(400).json({ message: "Invalid executive action" });
+    await updateExecutiveLinkedRecords(executive.email, patch);
+    if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(executive.email, `bank-executive-${action}`);
+    await writeAuditLog({ req, actionType: `BANK_EXECUTIVE_${action.toUpperCase()}`, targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId, action } });
+    res.json({ message: "Executive updated", executive: { ...executive, ...patch } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetBankExecutivePassword(req, res, next) {
+  try {
+    const partner = await currentPartner(req);
+    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can reset executive passwords" });
+    const identity = bankIdentity(partner);
+    const executive = await getRecord("loanExecutives", req.params.executiveId);
+    if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    const temporaryPassword = generateTemporaryPassword();
+    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(executive.email);
+    await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: temporaryPassword });
+    await updateExecutiveLinkedRecords(executive.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: partner.email || partner.id });
+    await revokeUserSessions(executive.email, "bank-executive-password-reset");
+    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_PASSWORD_RESET", targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId } });
+    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`, executive });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getBankExecutiveCases(req, res, next) {
   try {
     const partner = await currentPartner(req);
@@ -685,10 +748,16 @@ export async function getBankLead(req, res, next) {
       leadDocuments("documents"),
       leadDocuments("bankDocuments"),
     ]);
+    const hydrateDocumentUrls = async (rows) => Promise.all(rows.map(async (document) => ({
+      ...document,
+      url: document.url || document.fileUrl || document.downloadUrl || await createShortLivedDocumentUrl(document.storagePath || document.filePath),
+    })));
+    const hydratedDocuments = await hydrateDocumentUrls(documents);
+    const hydratedBankDocuments = await hydrateDocumentUrls(bankDocuments);
     res.json({
       ...hydratedLead,
-      documents,
-      bankDocuments,
+      documents: hydratedDocuments,
+      bankDocuments: hydratedBankDocuments,
     });
   } catch (error) {
     next(error);
@@ -703,7 +772,7 @@ export async function getBankAnalytics(req, res, next) {
     const today = new Date().toISOString().slice(0, 10);
     res.json({
       assignedLeads: leads.length,
-      pendingLeads: leads.filter((lead) => [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW].includes(normalizeStatus(lead.status || lead.assignmentStatus))).length,
+      pendingLeads: leads.filter((lead) => [LEAD_STATUSES.NEW, LEAD_STATUSES.CONTACTED, LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status || lead.assignmentStatus))).length,
       approvedLeads: leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(normalizeStatus(lead.status))).length,
       rejectedLeads: leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED).length,
       slaDueToday: leads.filter((lead) => (lead.assignmentTimestamp || lead.createdAt || "").startsWith(today)).length,
@@ -721,7 +790,7 @@ export async function getBankNotifications(req, res, next) {
     const rows = leads
       .filter((lead) => {
         const status = normalizeStatus(lead.status);
-        return [LEAD_STATUSES.DOCS_PENDING, LEAD_STATUSES.APPROVED, LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.ASSIGNED].includes(status)
+        return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.APPROVED, LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.ASSIGNED].includes(status)
           || slaLabelForLead(lead) === "Overdue";
       })
       .slice(0, 40)
@@ -865,7 +934,7 @@ export async function updateBankLeadStatus(req, res, next) {
         utrNumber: req.body.utrNumber,
         disbursementRemarks: req.body.remarks,
       } : {}),
-      ...(normalizedStatus === LEAD_STATUSES.DOCS_PENDING ? {
+      ...([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? {
         pendingDocuments: requestedDocuments.length
           ? [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), ...requestedDocuments])]
           : lead.pendingDocuments,
@@ -893,7 +962,7 @@ export async function updateBankLeadStatus(req, res, next) {
           ? TIMELINE_EVENTS.REJECTION
           : normalizedStatus === LEAD_STATUSES.DISBURSED
             ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-            : normalizedStatus === LEAD_STATUSES.DOCS_PENDING
+            : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
               ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
               : TIMELINE_EVENTS.STATUS_CHANGED,
       title: `Status: ${statusLabel}`,
@@ -903,14 +972,14 @@ export async function updateBankLeadStatus(req, res, next) {
       branchId: partner.branchId || null,
       metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocumentReason },
     });
-    await createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : normalizedStatus === LEAD_STATUSES.DOCS_PENDING ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } });
+    await createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } });
     await writeAuditLog({
       req,
       actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
         ? AUDIT_ACTIONS.DISBURSED
         : normalizedStatus === LEAD_STATUSES.REJECTED
           ? AUDIT_ACTIONS.REJECTED
-          : normalizedStatus === LEAD_STATUSES.DOCS_PENDING
+          : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
             ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
             : AUDIT_ACTIONS.STATUS_UPDATED,
       oldValue: lead.status,
@@ -969,6 +1038,16 @@ export async function uploadBankLeadDocument(req, res, next) {
       ...uploaded,
     });
     const isSanction = String(document.documentType || "").includes("sanction");
+    if (isSanction) {
+      await updateRecord("leads", lead.id, {
+        sanctionLetterUrl: uploaded?.url || null,
+        sanctionLetterStoragePath: uploaded?.storagePath || null,
+        sanctionLetterDocumentId: document.id,
+        sanctionLetterUploadedAt: document.createdAt || new Date().toISOString(),
+        sanctionLetterUploadedBy: partner.email || req.user?.email || null,
+        updatedAt: new Date().toISOString(),
+      });
+    }
     await addTimelineEvent({
       leadId: lead.id,
       eventType: isSanction ? TIMELINE_EVENTS.SANCTION_LETTER_UPLOADED : TIMELINE_EVENTS.DOCUMENT_UPLOADED,

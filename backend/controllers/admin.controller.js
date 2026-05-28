@@ -993,7 +993,7 @@ export async function assignAdminLead(req, res, next) {
     const lead = await updateRecord("leads", req.params.id, {
       bankPartner,
       preferredBank: bankPartner,
-      status: LEAD_STATUSES.ASSIGNED,
+      status: LEAD_STATUSES.NEW,
       assignmentStatus: "pending",
       assignmentTimestamp: now,
       assignedAt: now,

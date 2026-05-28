@@ -26,6 +26,7 @@ const LoanExecutivePanel = lazyPage(() => import("../pages/bank/LoanExecutivePan
 const LoanExecutiveLeadDetailPage = lazyPage(() => import("../pages/bank/LoanExecutivePanel.jsx"), "LoanExecutiveLeadDetailPage");
 const LoginPage = lazyPage(() => import("../pages/auth/LoginPage.jsx"), "LoginPage");
 const ExecutiveChangePasswordPage = lazyPage(() => import("../pages/auth/ExecutiveChangePasswordPage.jsx"), "ExecutiveChangePasswordPage");
+const LoginActivityPage = lazyPage(() => import("../pages/security/LoginActivityPage.jsx"), "LoginActivityPage");
 const FinanceDeskPanel = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceDeskPanel");
 const FinanceLeadDetailPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDetailPage");
 const FinanceLeadDocumentsPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDocumentsPage");
@@ -102,6 +103,8 @@ export const router = createBrowserRouter([
           { path: "dashboard", element: <Navigate to="/finance/total-leads" replace /> },
           { path: "total-leads", element: <FinanceDeskPanel mode="total" /> },
           { path: "add-lead", element: <FinanceDeskPanel mode="add" /> },
+          { path: "manage-staff", element: <FinanceDeskPanel mode="staff" /> },
+          { path: "manage-team", element: <Navigate to="/finance/manage-staff" replace /> },
           { path: "cases", element: <FinanceDeskPanel mode="cases" /> },
           { path: "status", element: <FinanceDeskPanel mode="status" /> },
           { path: "leads/:leadId/documents", element: <FinanceLeadDocumentsPage /> },
@@ -119,6 +122,20 @@ export const router = createBrowserRouter([
           { path: "settings", element: <Navigate to="/finance/cases" replace /> },
         ],
       },
+    ],
+  },
+  {
+    path: "/change-password",
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.LOAN_EXECUTIVE]} loginPath="/dealer/login" />,
+    children: [
+      { index: true, element: <ExecutiveChangePasswordPage /> },
+    ],
+  },
+  {
+    path: "/security",
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/dealer/login" />,
+    children: [
+      { path: "login-activity", element: <DashboardLayout />, children: [{ index: true, element: <LoginActivityPage /> }] },
     ],
   },
   {
@@ -160,9 +177,9 @@ export const router = createBrowserRouter([
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutivePanel mode="leads" /> }] },
       { path: "leads/:leadId", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutiveLeadDetailPage /> }] },
       { path: "status", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutivePanel mode="status" /> }] },
-      { path: "documents", element: <Navigate to="/loan-executive/status?status=DOCS_PENDING" replace /> },
-      { path: "review", element: <Navigate to="/loan-executive/status?status=UNDER_REVIEW" replace /> },
-      { path: "approved", element: <Navigate to="/loan-executive/status?status=UNDER_REVIEW" replace /> },
+      { path: "documents", element: <Navigate to="/loan-executive/status?status=REQUEST_PENDING_DOCUMENTS" replace /> },
+      { path: "review", element: <Navigate to="/loan-executive/status?status=UNDER_BANK_PROCESS" replace /> },
+      { path: "approved", element: <Navigate to="/loan-executive/status?status=UNDER_BANK_PROCESS" replace /> },
       { path: "rejected", element: <Navigate to="/loan-executive/status?status=REJECTED" replace /> },
       { path: "disbursed", element: <Navigate to="/loan-executive/status?status=DISBURSED" replace /> },
       { path: "timeline", element: <Navigate to="/loan-executive/leads" replace /> },

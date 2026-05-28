@@ -26,6 +26,7 @@ const emptyLead = {
 };
 
 const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
+const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "finance-head", branch: "", city: "" };
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
 function display(value) {
@@ -76,7 +77,7 @@ function financeStatus(lead) {
   if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead?.rejectionReason ? "Rejected With Reason" : "Rejected";
-  if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
   return "Bank Process";
 }
 
@@ -200,11 +201,183 @@ function leadRows(leads, mode = "total") {
 
 export function FinanceDeskPanel({ mode = "total" }) {
   if (mode === "add") return <AddLeadScreen />;
+  if (mode === "staff") return <StaffManagementScreen />;
   if (mode === "salespersons") return <SalespersonManagementScreen />;
   if (mode === "active-salespersons") return <ActiveSalespersonsScreen />;
   if (mode === "cases") return <AllCasesScreen />;
   if (mode === "status") return <StatusScreen />;
   return <TotalLeadsScreen />;
+}
+
+function StaffManagementScreen() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState(emptyStaff);
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [credentials, setCredentials] = useState(null);
+
+  const loadStaff = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/dealer/staff");
+      setRows(response.data || []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadStaff(); }, [loadStaff]);
+
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+  };
+
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.fullName)) nextErrors.fullName = "Field required";
+    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.employeeId)) nextErrors.employeeId = "Field required";
+    if (!nextForm.role) nextErrors.role = "Field required";
+    return nextErrors;
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    const nextForm = {
+      fullName: cleanText(form.fullName),
+      email: cleanEmail(form.email),
+      mobile: digits10(form.mobile),
+      employeeId: cleanText(form.employeeId),
+      role: form.role,
+      branch: cleanText(form.branch),
+      city: cleanText(form.city),
+    };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    setBusy(true);
+    try {
+      const response = await api.post("/dealer/staff", nextForm);
+      setForm(emptyStaff);
+      setMessage("Employee created successfully.");
+      setCredentials({
+        name: response.data?.fullName || nextForm.fullName,
+        role: response.data?.roleLabel || (nextForm.role === "finance-head" ? "Finance Head" : "GM / SM"),
+        email: response.data?.email || nextForm.email,
+        temporaryPassword: response.data?.temporaryPassword || "",
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/dealer/login`,
+      });
+      await loadStaff();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Unable to create employee");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const lifecycle = async (staff, action) => {
+    const label = staff.fullName || staff.email;
+    let payload = { action };
+    if (action === "transfer") {
+      const branch = window.prompt("Enter new branch/location", staff.branch || staff.city || "");
+      if (!branch) return;
+      payload = { action, branch, city: branch };
+    } else if (action !== "activate" && !window.confirm(`${action === "remove" ? "Remove" : action === "suspend" ? "Suspend" : "Disable"} ${label}?`)) return;
+    try {
+      await api.post(`/dealer/staff/${staff.id}/lifecycle`, payload);
+      setMessage(`Employee ${action} completed.`);
+      await loadStaff();
+    } catch (err) {
+      setError(err.response?.data?.message || `Unable to ${action} employee`);
+    }
+  };
+
+  const resetPassword = async (staff) => {
+    if (!window.confirm(`Reset password for ${staff.fullName || staff.email}? Existing sessions will be revoked.`)) return;
+    try {
+      const response = await api.post(`/dealer/staff/${staff.id}/reset-password`);
+      setCredentials({
+        name: response.data?.employee?.fullName || staff.fullName,
+        role: staff.roleLabel,
+        email: staff.email,
+        temporaryPassword: response.data?.temporaryPassword || "",
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/dealer/login`,
+      });
+      setMessage("Temporary password generated.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to reset password");
+    }
+  };
+
+  const tableRows = rows.map((staff) => ({
+    key: staff.id,
+    cells: [
+      display(staff.fullName),
+      display(staff.roleLabel),
+      display(staff.mobile),
+      display(staff.email),
+      display(staff.employeeId),
+      display(staff.branch || staff.city),
+      display(staff.status),
+      <div key="actions" className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => window.alert(`${staff.fullName}\n${staff.email}\n${staff.mobile}\n${staff.roleLabel}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => lifecycle(staff, "suspend")} className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">Suspend</button>
+        <button type="button" onClick={() => lifecycle(staff, "activate")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700">Activate</button>
+        <button type="button" onClick={() => resetPassword(staff)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Reset Password</button>
+        <button type="button" onClick={() => lifecycle(staff, "transfer")} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Transfer Branch</button>
+        <button type="button" onClick={() => lifecycle(staff, "remove")} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>
+      </div>,
+    ],
+  }));
+
+  return (
+    <section className="space-y-4">
+      <SectionTitle title="Manage Staff" subtitle="Create dealership Finance Head, GM, and SM accounts with temporary password security." />
+      {credentials ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Employee Created Successfully</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">{credentials.name}</h2>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                <p><span className="font-semibold">Role:</span> {credentials.role}</p>
+                <p><span className="font-semibold">Portal Login:</span> {credentials.portalLogin}</p>
+                <p><span className="font-semibold">Official Email:</span> {credentials.email}</p>
+                <p><span className="font-semibold">Temporary Password:</span> {credentials.temporaryPassword}</p>
+              </div>
+              <p className="mt-3 text-sm font-medium text-emerald-800">Please ask employee to change password after first login.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`Portal Login: ${credentials.portalLogin}\nRole: ${credentials.role}\nEmail: ${credentials.email}\nTemporary Password: ${credentials.temporaryPassword}`)} className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700">Copy Credentials</button>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(credentials.portalLogin)} className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700">Copy Portal URL</button>
+              <button type="button" onClick={() => setCredentials(null)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Full Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5 h-10 rounded-md" value={form.fullName} onBlur={() => setErrors(validate(form))} onChange={(event) => update("fullName", event.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Official Email" error={errors.email}><input aria-invalid={Boolean(errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5 h-10 rounded-md" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} /></Field>
+          <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Role" error={errors.role}><select aria-invalid={Boolean(errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onBlur={() => setErrors(validate(form))} onChange={(event) => update("role", event.target.value)}><option value="finance-head">Finance Head</option><option value="gm">GM</option><option value="sm">SM</option></select></Field>
+          <Field label="Branch / Location"><input className="field mt-1.5 h-10 rounded-md" value={form.branch} onChange={(event) => update("branch", event.target.value.replace(/[<>]/g, ""))} /></Field>
+        </div>
+        {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
+        {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
+        <button disabled={busy} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create Employee</button>
+      </form>
+      <Table headers={["Employee Name", "Role", "Mobile Number", "Official Email", "Employee ID", "Branch / Location", "Status", "Actions"]} rows={tableRows} loading={loading} />
+    </section>
+  );
 }
 
 function TotalLeadsScreen() {

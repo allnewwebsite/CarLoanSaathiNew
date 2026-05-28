@@ -56,6 +56,12 @@ function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
     NEW: "New Lead",
+    CONTACTED: "Bank Processing",
+    REQUEST_DOCUMENT: "Pending Documents",
+    DOCUMENT_RECEIVED: "Pending Documents",
+    REQUEST_PENDING_DOCUMENTS: "Pending Documents",
+    ALL_DOCUMENTS_RECEIVED: "Bank Processing",
+    UNDER_BANK_PROCESS: "Bank Processing",
     ASSIGNED: "Bank Processing",
     ACCEPTED: "Bank Processing",
     UNDER_REVIEW: "Bank Processing",
@@ -91,8 +97,8 @@ function statusValuesForQuery(status) {
   const value = String(status || "").trim();
   if (!value) return [];
   const normalized = normalizeStatus(value);
-  if (value === "Bank Processing") return [LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
-  if (value === "Pending Documents") return [LEAD_STATUSES.DOCS_PENDING];
+  if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
+  if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
   if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];
   if (value === "Rejected With Reason") return [LEAD_STATUSES.REJECTED];
   return [normalized];
@@ -201,7 +207,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
 export async function countOpenExecutiveLeads(executiveId) {
   if (!executiveId) return 0;
   let total = 0;
-  for (const status of [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING]) {
+  for (const status of [LEAD_STATUSES.NEW, LEAD_STATUSES.CONTACTED, LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING]) {
     total += await countRecords("leads", {
       where: [
         { field: "assignedExecutiveId", value: executiveId },

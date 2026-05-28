@@ -23,6 +23,12 @@ function belongsToDealership(lead, dealershipEmail) {
 function financeStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
+    [LEAD_STATUSES.CONTACTED]: "Bank Processing",
+    [LEAD_STATUSES.REQUEST_DOCUMENT]: "Pending Documents",
+    [LEAD_STATUSES.DOCUMENT_RECEIVED]: "Pending Documents",
+    [LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS]: "Pending Documents",
+    [LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED]: "Bank Processing",
+    [LEAD_STATUSES.UNDER_BANK_PROCESS]: "Bank Processing",
     [LEAD_STATUSES.ASSIGNED]: "Bank Processing",
     [LEAD_STATUSES.ACCEPTED]: "Bank Processing",
     [LEAD_STATUSES.UNDER_REVIEW]: "Bank Processing",

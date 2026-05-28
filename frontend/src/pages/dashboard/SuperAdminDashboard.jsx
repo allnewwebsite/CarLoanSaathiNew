@@ -52,7 +52,10 @@ function enterpriseLeadStatus(lead) {
   if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
-  if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
+  if (status === LEAD_STATUSES.CONTACTED) return "Contacted";
+  if (status === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "All Documents Received";
+  if (status === LEAD_STATUSES.UNDER_BANK_PROCESS) return "Under Bank Process";
   return "Bank Process";
 }
 
@@ -265,9 +268,9 @@ function generatedTime(value) {
 const STATUS_FILTERS = [
   { label: "Disbursed", value: LEAD_STATUSES.DISBURSED },
   { label: "Rejected", value: LEAD_STATUSES.REJECTED },
-  { label: "Bank Process", value: LEAD_STATUSES.UNDER_REVIEW },
+  { label: "Under Bank Process", value: LEAD_STATUSES.UNDER_BANK_PROCESS },
   { label: "Loan Rejected With Reason", value: "REJECTED_REASON" },
-  { label: "Pending Documents", value: LEAD_STATUSES.DOCS_PENDING },
+  { label: "Pending Documents", value: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS },
 ];
 
 function useAdminPanelData(mode, search, leadFilter) {

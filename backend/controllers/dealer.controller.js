@@ -9,6 +9,8 @@ import { sanitizeFirestoreData } from "../utils/firestoreSanitizer.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logInfo } from "../services/logger.service.js";
+import crypto from "node:crypto";
+import { revokeUserSessions } from "./auth.controller.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -53,6 +55,25 @@ function required(value, label) {
     throw error;
   }
   return text;
+}
+
+function generateTemporaryPassword() {
+  const digits = crypto.randomInt(1000, 10000);
+  const suffix = "abcdefghijkmnopqrstuvwxyz".charAt(crypto.randomInt(0, 24));
+  return `CLS@${digits}${suffix}`;
+}
+
+function normalizeStaffRole(value) {
+  const role = String(value || "").trim().toLowerCase();
+  if (["finance-head", "finance head", "finance-desk", "finance desk"].includes(role)) return "finance-desk";
+  if (["gm", "sm", "gm-sm", "general manager", "sales manager"].includes(role)) return "gm-sm";
+  return "";
+}
+
+function staffRoleLabel(role, original) {
+  if (role === "finance-desk") return "Finance Head";
+  const clean = String(original || "").trim().toUpperCase();
+  return clean === "SM" ? "SM" : clean === "GM" ? "GM" : "GM / SM";
 }
 
 async function liveDealerRegistrationForAccount(account) {
@@ -366,6 +387,12 @@ function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
     NEW: "New Lead",
+    CONTACTED: "Bank Processing",
+    REQUEST_DOCUMENT: "Pending Documents",
+    DOCUMENT_RECEIVED: "Pending Documents",
+    REQUEST_PENDING_DOCUMENTS: "Pending Documents",
+    ALL_DOCUMENTS_RECEIVED: "Bank Processing",
+    UNDER_BANK_PROCESS: "Bank Processing",
     ASSIGNED: "Bank Processing",
     ACCEPTED: "Bank Processing",
     UNDER_REVIEW: "Bank Processing",
@@ -688,6 +715,202 @@ export async function getDealerSalespersons(req, res, next) {
         active: person.active !== false,
       }));
     res.json(salespersons);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getDealerStaff(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const staff = (await listRecords("dealerStaff"))
+      .filter((item) => item.dealershipId === dealershipEmail)
+      .map((item) => ({
+        id: item.id,
+        fullName: item.fullName || item.name,
+        email: item.email,
+        mobile: item.mobile,
+        employeeId: item.employeeId,
+        role: item.role,
+        roleLabel: item.roleLabel,
+        branch: item.branch,
+        city: item.city,
+        status: item.active === false ? "inactive" : item.status || "active",
+        active: item.active !== false,
+      }));
+    res.json(staff);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createDealerStaff(req, res, next) {
+  try {
+    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    const fullName = required(req.body.fullName || req.body.name, "Full name");
+    const email = required(req.body.email || req.body.officialEmail, "Official email").toLowerCase();
+    const mobile = required(req.body.mobile, "Mobile number");
+    const employeeId = required(req.body.employeeId || req.body.jobId, "Employee ID");
+    const role = normalizeStaffRole(req.body.role);
+    if (!role) return res.status(400).json({ message: "Select Finance Head, GM, or SM role" });
+    if (!/^[6-9]\d{9}$/.test(mobile)) return res.status(400).json({ message: "Enter a valid 10-digit mobile number" });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid official email" });
+
+    const existingStaff = (await listRecords("dealerStaff")).filter((item) => item.dealershipId === dealershipEmail && item.active !== false);
+    if (existingStaff.some((item) => item.email === email)) return res.status(409).json({ message: "Official email already exists for this dealership" });
+    if (existingStaff.some((item) => item.mobile === mobile)) return res.status(409).json({ message: "Mobile number already exists for this dealership" });
+    if (existingStaff.some((item) => String(item.employeeId || "").toLowerCase() === employeeId.toLowerCase())) return res.status(409).json({ message: "Employee ID already exists for this dealership" });
+    const existingUser = await getRecord("users", email).catch(() => null);
+    if (existingUser?.active !== false) return res.status(409).json({ message: "An active account already exists with this email" });
+
+    const now = new Date().toISOString();
+    const city = String(req.body.city || req.body.branch || dealership.city || dealership.registeredCity || "").trim();
+    const branch = String(req.body.branch || city || dealership.dealershipName || "").trim();
+    const dealershipName = dealership.dealershipName || dealership.name || "";
+    const temporaryPassword = generateTemporaryPassword();
+    let firebaseUser;
+    try {
+      firebaseUser = await firebaseAdmin.auth().createUser({
+        email,
+        password: temporaryPassword,
+        displayName: fullName,
+        emailVerified: true,
+        disabled: false,
+      });
+    } catch (firebaseError) {
+      if (firebaseError.code === "auth/email-already-exists") return res.status(409).json({ message: "Firebase Auth account already exists for this email" });
+      throw firebaseError;
+    }
+
+    const roleLabel = staffRoleLabel(role, req.body.role);
+    const staffPayload = {
+      id: email,
+      uid: firebaseUser.uid,
+      fullName,
+      name: fullName,
+      email,
+      officialEmail: email,
+      mobile,
+      employeeId,
+      role,
+      roleLabel,
+      dealershipId: dealershipEmail,
+      dealershipEmail,
+      dealershipName,
+      branch,
+      city,
+      createdByDealerAdmin: true,
+      createdByDealerAdminId: dealerEmail(req),
+      firstLoginRequired: true,
+      passwordChangedAt: null,
+      status: "active",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+      createdAt: now,
+    };
+    await upsertRecord("dealerStaff", email, staffPayload);
+    if (role === "finance-desk") {
+      await upsertRecord("financeDesks", email, {
+        ...staffPayload,
+        headName: fullName,
+        officialEmail: email,
+      });
+    } else {
+      await upsertRecord("dealershipManagers", email, {
+        ...staffPayload,
+        dealershipEmail,
+      });
+    }
+    await upsertRecord("users", email, {
+      uid: firebaseUser.uid,
+      email,
+      role,
+      approved: true,
+      active: true,
+      accountApproved: true,
+      accountActive: true,
+      dealershipId: dealershipEmail,
+      dealershipName,
+      branch,
+      city,
+      firstLoginRequired: true,
+      passwordChangedAt: null,
+      createdByDealerAdmin: true,
+      createdByDealerAdminId: dealerEmail(req),
+      status: "active",
+    });
+    await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
+      role,
+      approved: true,
+      active: true,
+      dealershipId: dealershipEmail,
+    });
+    await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
+    res.status(201).json({
+      ...staffPayload,
+      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/dealer/login`,
+      temporaryPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateStaffLinkedRecords(email, patch) {
+  const account = await getRecord("users", email).catch(() => null);
+  if (account) await upsertRecord("users", email, { ...account, ...patch });
+  const staff = await getRecord("dealerStaff", email).catch(() => null);
+  if (staff) await upsertRecord("dealerStaff", email, { ...staff, ...patch });
+  const financeDesk = await getRecord("financeDesks", email).catch(() => null);
+  if (financeDesk) await upsertRecord("financeDesks", email, { ...financeDesk, ...patch });
+  const manager = await getRecord("dealershipManagers", email).catch(() => null);
+  if (manager) await upsertRecord("dealershipManagers", email, { ...manager, ...patch });
+}
+
+export async function updateDealerStaffLifecycle(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const staff = await getRecord("dealerStaff", req.params.id);
+    if (!staff || staff.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Employee not found" });
+    const action = String(req.body.action || "").trim();
+    const now = new Date().toISOString();
+    let patch = {};
+    if (action === "suspend") patch = { active: false, accountActive: false, accountStatus: "suspended", status: "suspended", suspendedAt: now, suspendedBy: dealerEmail(req) };
+    else if (action === "activate") patch = { active: true, accountActive: true, accountStatus: "active", status: "active", activatedAt: now, activatedBy: dealerEmail(req) };
+    else if (action === "disable") patch = { active: false, accountActive: false, accountStatus: "disabled", status: "disabled", disabledAt: now, disabledBy: dealerEmail(req) };
+    else if (action === "remove") patch = { active: false, accountActive: false, accountStatus: "removed", status: "removed", removedAt: now, removedBy: dealerEmail(req) };
+    else if (action === "transfer") {
+      const branch = required(req.body.branch, "Branch");
+      const city = String(req.body.city || branch).trim();
+      patch = { branch, city, branchTransferredAt: now, branchTransferredBy: dealerEmail(req) };
+    } else {
+      return res.status(400).json({ message: "Invalid employee action" });
+    }
+    await updateStaffLinkedRecords(staff.email, patch);
+    if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(staff.email, `dealer-staff-${action}`);
+    await writeAuditLog({ req, actionType: `DEALER_STAFF_${action.toUpperCase()}`, targetEntity: "dealerStaff", targetId: staff.email, meta: { dealershipId: dealershipEmail, action } });
+    res.json({ message: "Employee updated", employee: { ...staff, ...patch } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resetDealerStaffPassword(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const staff = await getRecord("dealerStaff", req.params.id);
+    if (!staff || staff.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Employee not found" });
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    const temporaryPassword = generateTemporaryPassword();
+    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(staff.email);
+    await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: temporaryPassword });
+    await updateStaffLinkedRecords(staff.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: dealerEmail(req) });
+    await revokeUserSessions(staff.email, "dealer-staff-password-reset");
+    await writeAuditLog({ req, actionType: "DEALER_STAFF_PASSWORD_RESET", targetEntity: "dealerStaff", targetId: staff.email, meta: { dealershipId: dealershipEmail } });
+    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/dealer/login`, employee: staff });
   } catch (error) {
     next(error);
   }

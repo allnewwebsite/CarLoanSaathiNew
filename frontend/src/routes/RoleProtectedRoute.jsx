@@ -19,8 +19,8 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   if ([ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
     return <Navigate to="/bank-registration/pending" replace />;
   }
-  if (user.role === ROLES.LOAN_EXECUTIVE && user.firstLoginRequired === true && window.location.pathname !== "/loan-executive/change-password") {
-    return <Navigate to="/loan-executive/change-password" replace />;
+  if ([ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.LOAN_EXECUTIVE].includes(user.role) && user.firstLoginRequired === true && !["/change-password", "/loan-executive/change-password"].includes(window.location.pathname)) {
+    return <Navigate to={user.role === ROLES.LOAN_EXECUTIVE ? "/loan-executive/change-password" : "/change-password"} replace />;
   }
   if (allowedRoles.length && !allowedRoles.includes(user.role)) {
     return <Navigate to={ROLE_ROUTES[user.role] || loginPathForRole(user.role)} replace />;

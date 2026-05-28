@@ -1,7 +1,9 @@
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 import { jwtSecret, superAdminEmail } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { writeAuditLog } from "../services/audit.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/total-leads",
@@ -17,6 +19,8 @@ const PORTAL_ROLES = {
 };
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 5);
 const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 30);
+const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 8);
+const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS || 3);
 const SESSION_COOKIE_NAME = "cls_session";
 
 function authCookieEnabled() {
@@ -50,7 +54,57 @@ async function writeLoginActivity({ email, role = null, status, reason = "", req
     reason,
     ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
     userAgent: req.headers["user-agent"] || "",
+    createdAt: new Date().toISOString(),
   });
+}
+
+function browserFromAgent(agent = "") {
+  if (/Edg\//i.test(agent)) return "Edge";
+  if (/Chrome\//i.test(agent)) return "Chrome";
+  if (/Firefox\//i.test(agent)) return "Firefox";
+  if (/Safari\//i.test(agent)) return "Safari";
+  return "Unknown";
+}
+
+function deviceFromAgent(agent = "") {
+  if (/Mobile|Android|iPhone/i.test(agent)) return "Mobile";
+  if (/iPad|Tablet/i.test(agent)) return "Tablet";
+  if (/Windows/i.test(agent)) return "Windows";
+  if (/Macintosh|Mac OS/i.test(agent)) return "Mac";
+  if (/Linux/i.test(agent)) return "Linux";
+  return "Unknown";
+}
+
+async function createUserSession({ req, user }) {
+  const now = new Date().toISOString();
+  const sessionId = crypto.randomUUID();
+  const userAgent = req.headers["user-agent"] || "";
+  const activeSessions = (await listRecords("userSessions")).filter((session) => session.email === user.email && session.revoked !== true);
+  const sorted = activeSessions.sort((left, right) => String(right.loginAt || "").localeCompare(String(left.loginAt || "")));
+  const revoke = sorted.slice(Math.max(MAX_CONCURRENT_SESSIONS - 1, 0));
+  await Promise.all(revoke.map((session) => updateRecord("userSessions", session.id, {
+    revoked: true,
+    revokedAt: now,
+    revokedReason: "concurrent-session-limit",
+  }).catch(() => null)));
+  await createRecord("userSessions", {
+    id: sessionId,
+    sessionId,
+    email: user.email,
+    role: user.role,
+    dealershipId: user.dealershipId || null,
+    bankId: user.bankId || null,
+    branchId: user.branchId || null,
+    ipAddress: req.ip || req.headers["x-forwarded-for"] || "",
+    userAgent,
+    browser: browserFromAgent(userAgent),
+    device: deviceFromAgent(userAgent),
+    loginAt: now,
+    lastSeenAt: now,
+    expiresAt: new Date(Date.now() + SESSION_TIMEOUT_HOURS * 60 * 60 * 1000).toISOString(),
+    revoked: false,
+  });
+  return sessionId;
 }
 
 function lockUntilDate() {
@@ -84,6 +138,18 @@ async function clearFailedLogin(email) {
   });
 }
 
+export async function revokeUserSessions(email, reason = "admin-revoked") {
+  const now = new Date().toISOString();
+  const sessions = (await listRecords("userSessions")).filter((session) => session.email === email && session.revoked !== true);
+  await Promise.all(sessions.map((session) => updateRecord("userSessions", session.id, {
+    revoked: true,
+    revokedAt: now,
+    revokedReason: reason,
+  }).catch(() => null)));
+  const account = await getRecord("users", email).catch(() => null);
+  if (account) await upsertRecord("users", email, { sessionRevokedAt: now });
+}
+
 async function createPendingGoogleAccount({ decoded, portal, reason }) {
   const email = String(decoded.email || "").toLowerCase();
   const existing = (await listRecords("pendingGoogleAccounts")).find((item) => item.email === email && item.status === "pending");
@@ -115,7 +181,16 @@ async function accountForEmail(email, portal) {
   if (allowed.includes("finance-desk")) {
     const financeDesks = await listRecords("financeDesks");
     const desk = financeDesks.find((item) => item.officialEmail === email || item.email === email || item.dealershipEmail === email || item.id === email);
-    if (desk) candidates.push({ role: "finance-desk", dealershipId: desk.dealershipEmail || desk.id, status: desk.status || "active", active: desk.active !== false });
+    if (desk) candidates.push({
+      role: "finance-desk",
+      dealershipId: desk.dealershipEmail || desk.dealershipId || desk.id,
+      status: desk.status || "active",
+      active: desk.active !== false,
+      approved: desk.approved !== false,
+      accountApproved: desk.accountApproved !== false,
+      accountActive: desk.accountActive !== false,
+      firstLoginRequired: desk.firstLoginRequired === true,
+    });
     const directDealership = await getRecord("dealerships", email) || await getRecord("approvedDealerships", email);
     const dealerships = directDealership ? [] : await listRecords("dealerships");
     const dealership = directDealership || dealerships.find((item) =>
@@ -139,7 +214,16 @@ async function accountForEmail(email, portal) {
   if (allowed.includes("gm-sm")) {
     const managers = await listRecords("dealershipManagers");
     const manager = managers.find((item) => item.email === email && /gm|showroom|manager/i.test(item.role || ""));
-    if (manager) candidates.push({ role: "gm-sm", dealershipId: manager.dealershipEmail, status: manager.status || "active", active: manager.active !== false });
+    if (manager) candidates.push({
+      role: "gm-sm",
+      dealershipId: manager.dealershipEmail || manager.dealershipId,
+      status: manager.status || "active",
+      active: manager.active !== false,
+      approved: manager.approved !== false,
+      accountApproved: manager.accountApproved !== false,
+      accountActive: manager.accountActive !== false,
+      firstLoginRequired: manager.firstLoginRequired === true,
+    });
   }
   if (allowed.includes("bank-manager")) {
     const managers = await listRecords("branchManagers");
@@ -352,8 +436,8 @@ function accountActive(account) {
     && account?.active !== false
     && account?.accountActive !== false
     && account?.approved !== false
-    && !["pending", "rejected", "suspended", "inactive", "paused"].includes(String(account?.accountStatus || "").toLowerCase())
-    && !["pending", "rejected", "suspended", "inactive", "paused"].includes(String(account?.status || "").toLowerCase());
+    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed", "locked"].includes(String(account?.accountStatus || "").toLowerCase())
+    && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed", "locked"].includes(String(account?.status || "").toLowerCase());
 }
 
 async function setFirebaseClaims(email, user) {
@@ -469,17 +553,18 @@ export async function login(req, res, next) {
     await upsertRecord("users", normalizedEmail, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
+    const sessionId = await createUserSession({ req, user });
+    user.sessionId = sessionId;
     const presentation = await accountPresentation(normalizedEmail, user);
     Object.assign(user, presentation);
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
+    const forcedPasswordPath = user.role === "loan-executive" ? "/loan-executive/change-password" : "/change-password";
     res.json({
       token,
       user,
-      redirectTo: user.role === "loan-executive" && user.firstLoginRequired === true
-        ? "/loan-executive/change-password"
-        : ROLE_ROUTES[user.role],
+      redirectTo: user.firstLoginRequired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
     });
   } catch (error) {
     next(error);
@@ -587,22 +672,29 @@ export async function completeForcedPasswordChange(req, res, next) {
     const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
     if (!email) return res.status(401).json({ message: "Invalid session" });
     const account = await getRecord("users", email);
-    if (!account || account.role !== "loan-executive") return res.status(403).json({ message: "Only loan executives can complete this password change" });
+    if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     await upsertRecord("users", email, {
       ...account,
       firstLoginRequired: false,
       passwordChangedAt: now,
     });
-    const executive = await getRecord("loanExecutives", email).catch(() => null);
-    if (executive) {
-      await upsertRecord("loanExecutives", email, {
-        ...executive,
-        firstLoginRequired: false,
-        passwordChangedAt: now,
-      });
+    const linkedCollections = account.role === "loan-executive"
+      ? ["loanExecutives"]
+      : account.role === "finance-desk"
+        ? ["financeDesks", "dealerStaff"]
+        : ["dealershipManagers", "dealerStaff"];
+    for (const collection of linkedCollections) {
+      const record = await getRecord(collection, email).catch(() => null);
+      if (record) {
+        await upsertRecord(collection, email, {
+          ...record,
+          firstLoginRequired: false,
+          passwordChangedAt: now,
+        });
+      }
     }
-    await writeLoginActivity({ email, role: "loan-executive", status: "password-changed", req });
+    await writeLoginActivity({ email, role: account.role, status: "password-changed", req });
     res.json({ ok: true, firstLoginRequired: false, passwordChangedAt: now });
   } catch (error) {
     next(error);
@@ -612,8 +704,49 @@ export async function completeForcedPasswordChange(req, res, next) {
 export async function logout(req, res, next) {
   try {
     await writeLoginActivity({ email: req.user?.email || req.user?.uid, role: req.user?.role, status: "logout", req });
+    if (req.user?.sessionId) {
+      await updateRecord("userSessions", req.user.sessionId, {
+        revoked: true,
+        revokedAt: new Date().toISOString(),
+        revokedReason: "user-logout",
+      }).catch(() => null);
+    }
     clearAuthCookie(res);
     res.json({ message: "Logged out" });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getLoginActivity(req, res, next) {
+  try {
+    const email = String(req.query.email || req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    const role = req.user?.role;
+    const canViewRequested = req.user?.role === "super-admin"
+      || String(req.user?.email || "").toLowerCase() === email;
+    if (!canViewRequested) return res.status(403).json({ message: "Access denied" });
+    const activities = (await listRecords("loginActivity"))
+      .filter((item) => item.email === email)
+      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+      .slice(0, 100);
+    const sessions = (await listRecords("userSessions"))
+      .filter((item) => item.email === email)
+      .sort((left, right) => String(right.loginAt || "").localeCompare(String(left.loginAt || "")))
+      .slice(0, 50);
+    res.json({ role, activities, sessions });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function forceLogoutUser(req, res, next) {
+  try {
+    if (req.user?.role !== "super-admin") return res.status(403).json({ message: "Only Super Admin can force logout users from this endpoint" });
+    const email = String(req.body.email || "").trim().toLowerCase();
+    if (!email) return res.status(400).json({ message: "Email is required" });
+    await revokeUserSessions(email, "admin-force-logout");
+    await writeAuditLog({ req, actionType: "FORCE_LOGOUT", targetEntity: "user", targetId: email, meta: { email } });
+    res.json({ message: "Employee sessions revoked" });
   } catch (error) {
     next(error);
   }

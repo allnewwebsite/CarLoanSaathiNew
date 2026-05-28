@@ -42,7 +42,7 @@ function statusLabel(lead) {
   const status = normalizeStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.UNDER_REVIEW);
   if (status === LEAD_STATUSES.DISBURSED || status === LEAD_STATUSES.CLOSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return "Rejected With Reason";
-  if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
   return "Bank Process";
 }
 

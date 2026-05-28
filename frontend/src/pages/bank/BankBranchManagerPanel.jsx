@@ -68,7 +68,10 @@ function leadStatusLabel(lead) {
   if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
-  if (status === LEAD_STATUSES.DOCS_PENDING) return "Pending Documents";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
+  if (status === LEAD_STATUSES.CONTACTED) return "Contacted";
+  if (status === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "All Documents Received";
+  if (status === LEAD_STATUSES.UNDER_BANK_PROCESS) return "Under Bank Process";
   return "Bank Process";
 }
 
@@ -246,6 +249,38 @@ function ManageExecutivePage() {
     await load();
   };
 
+  const lifecycle = async (executive, action) => {
+    let payload = { action };
+    if (action === "transfer") {
+      const branch = window.prompt("Enter new branch/location", executive.branchCity || executive.bankBranchLocation || "");
+      if (!branch) return;
+      payload = { action, branch, city: branch };
+    } else if (action !== "activate" && !window.confirm(`${action === "remove" ? "Remove" : action === "suspend" ? "Suspend" : "Disable"} ${executive.name || executive.email}?`)) return;
+    try {
+      await api.post(`/bank/executives/${executive.id}/lifecycle`, payload);
+      setMessage(`Executive ${action} completed.`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || `Unable to ${action} executive`);
+    }
+  };
+
+  const resetPassword = async (executive) => {
+    if (!window.confirm(`Reset password for ${executive.name || executive.email}? Existing sessions will be revoked.`)) return;
+    try {
+      const response = await api.post(`/bank/executives/${executive.id}/reset-password`);
+      setCredentials({
+        name: response.data?.executive?.name || executive.name || executive.fullName,
+        email: executive.email || executive.officialEmail,
+        temporaryPassword: response.data?.temporaryPassword || "",
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/executive/login`,
+      });
+      setMessage("Temporary password generated.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to reset password");
+    }
+  };
+
   const tableRows = rows.map((executive) => ({
     key: executive.id,
     cells: [
@@ -254,7 +289,14 @@ function ManageExecutivePage() {
       display(executive.email || executive.officialEmail),
       display(executive.jobId),
       display(executive.status),
-      <button key="remove" disabled={executive.active === false} onClick={() => remove(executive)} className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Remove</button>,
+      <div key="actions" className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => window.alert(`${executive.name || executive.fullName}\n${executive.email || executive.officialEmail}\n${executive.mobile}\n${executive.jobId}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => lifecycle(executive, "suspend")} className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">Suspend</button>
+        <button type="button" onClick={() => lifecycle(executive, "activate")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700">Activate</button>
+        <button type="button" onClick={() => resetPassword(executive)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Reset Password</button>
+        <button type="button" onClick={() => lifecycle(executive, "transfer")} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Transfer Branch</button>
+        <button type="button" disabled={executive.active === false} onClick={() => remove(executive)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Remove</button>
+      </div>,
     ],
   }));
 
