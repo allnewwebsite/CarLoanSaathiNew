@@ -147,13 +147,13 @@ export function AuthProvider({ children }) {
     return { sent: true };
   };
 
-  const validateSession = async ({ silent = true } = {}) => {
+  const validateSession = async ({ silent = true, showLoading = false } = {}) => {
     const token = storedToken();
     if (!token) {
       setSessionChecking(false);
       return null;
     }
-    setSessionChecking(true);
+    if (showLoading) setSessionChecking(true);
     try {
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
@@ -166,7 +166,7 @@ export function AuthProvider({ children }) {
       if (!silent) throw error;
       return null;
     } finally {
-      setSessionChecking(false);
+      if (showLoading) setSessionChecking(false);
     }
   };
 
@@ -175,7 +175,7 @@ export function AuthProvider({ children }) {
       setSessionChecking(false);
       return undefined;
     }
-    validateSession();
+    validateSession({ showLoading: true });
     const interval = window.setInterval(() => {
       const current = JSON.parse(localStorage.getItem("cls_user") || "null");
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();

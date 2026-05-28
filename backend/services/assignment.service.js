@@ -116,6 +116,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
     branchCity: routingCity,
     executiveId: executive?.id || null,
     executiveName: executive?.name || executive?.fullName || null,
+    executiveMobile: executive?.mobile || null,
     status: "pending",
     reason,
     assignmentTimestamp: now,
@@ -129,6 +130,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
     branchCity: routingCity,
     executiveId: executive?.id || null,
     executiveName: executive?.name || executive?.fullName || null,
+    executiveMobile: executive?.mobile || null,
     timestamp: now,
     reason,
   };
@@ -143,7 +145,9 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
     branchCity: routingCity,
     bankBranchCity: routingCity,
     assignedExecutiveId: executive?.id || null,
+    assignedExecutiveEmail: executive?.email || executive?.officialEmail || null,
     assignedExecutiveName: executive?.name || executive?.fullName || null,
+    assignedExecutiveMobile: executive?.mobile || null,
     lastAssignedPartner: partner.id,
     assignmentTimestamp: now,
     slaAcceptDeadlineAt: responseDeadlineAt,
@@ -174,13 +178,15 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       partnerName: partner.name || partner.bankName,
       executiveId: executive?.id || null,
       executiveName: executive?.name || executive?.fullName || null,
+      executiveMobile: executive?.mobile || null,
     },
     leadId: lead.id,
     meta: {
       caseId: lead.caseId,
       dealershipId: lead.dealershipId || lead.dealershipEmail || lead.dealerEmail,
       bankId: partner.bankId || partner.id,
-      assignedExecutiveId: executive?.id || null,
+        assignedExecutiveId: executive?.id || null,
+        assignedExecutiveMobile: executive?.mobile || null,
     },
   });
   await createRecord("slaTracking", {
@@ -225,7 +231,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       actorRole: "system",
       branchId: partner.branchId || null,
       dealershipId: lead.dealershipEmail || lead.dealerEmail || null,
-      metadata: { executiveId: executive.id, executiveName: executive.name || executive.fullName, routingCity },
+      metadata: { executiveId: executive.id, executiveName: executive.name || executive.fullName, executiveMobile: executive.mobile || null, routingCity },
     });
   }
   await addTimelineEvent({
@@ -265,6 +271,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       dealershipName: lead.dealershipName,
       bankName: partner.name || partner.bankName,
       executiveName: executive?.name || executive?.fullName,
+      executiveMobile: executive?.mobile || null,
       loanAmount: lead.loanAmount,
     },
   });
@@ -392,6 +399,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     assignedExecutiveId: executive.id,
     assignedExecutiveEmail: executive.email || null,
     assignedExecutiveName: executive.name || executive.fullName || executive.email,
+    assignedExecutiveMobile: executive.mobile || null,
     assignmentStatus: "pending",
     status: LEAD_STATUSES.ASSIGNED,
     assignmentTimestamp: now,
@@ -399,6 +407,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     assignmentHistory: [...(lead.assignmentHistory || []), {
       executiveId: executive.id,
       executiveName: executive.name || executive.fullName || executive.email,
+      executiveMobile: executive.mobile || null,
       branchCity,
       timestamp: now,
       reason,
@@ -418,6 +427,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     await updateRecord("leadAssignments", activeAssignment.id, {
       executiveId: executive.id,
       executiveName: executive.name || executive.fullName || executive.email,
+      executiveMobile: executive.mobile || null,
       status: "pending",
       assignmentTimestamp: now,
       responseDeadlineAt,

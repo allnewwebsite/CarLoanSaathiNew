@@ -154,13 +154,35 @@ async function liveBankRegistrationForAccount(account) {
 }
 
 async function assignedLeadsForPartner(partner, query = {}) {
+  const attachExecutiveMobile = async (leads) => {
+    const missing = leads.filter((lead) => !lead.assignedExecutiveMobile && (lead.assignedExecutiveId || lead.assignedExecutiveEmail));
+    if (!missing.length) return leads;
+    const executivesPage = await queryRecords("loanExecutives", {
+      where: partner.bankId || partner.bankPartnerId ? [{ field: "bankId", value: partner.bankId || partner.bankPartnerId }] : [],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+    }).catch(() => ({ data: [] }));
+    return leads.map((lead) => {
+      if (lead.assignedExecutiveMobile) return lead;
+      const executive = executivesPage.data.find((item) =>
+        item.id === lead.assignedExecutiveId
+        || item.email === lead.assignedExecutiveEmail
+        || item.officialEmail === lead.assignedExecutiveEmail
+        || item.email === lead.assignedExecutiveId
+      );
+      return executive?.mobile ? { ...lead, assignedExecutiveMobile: executive.mobile } : lead;
+    });
+  };
+
   if (partner.roleType === "loan-executive") {
     const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 } });
-    return applyFilters(result.data, query);
+    return attachExecutiveMobile(applyFilters(result.data, query));
   }
   const identity = bankIdentity(partner);
   const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 } });
-  return applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query);
+  return attachExecutiveMobile(applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
 async function requireAssignedLead(req) {

@@ -78,18 +78,29 @@ function useBankLeads(search) {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
 
-  const load = useCallback(async (nextPage = page) => {
-    setLoading(true);
+  const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search } });
       setRows(responseRows(response));
       setTotal(response.data?.total || responseRows(response).length);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [page, search]);
 
   useEffect(() => { load(page); }, [load, page]);
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      load(page, { silent: true });
+    }, 15000);
+    const onFocus = () => load(page, { silent: true });
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load, page]);
   const onPage = (nextPage) => setParams({ page: String(nextPage) });
   return { rows, total, loading, page, onPage, load };
 }
