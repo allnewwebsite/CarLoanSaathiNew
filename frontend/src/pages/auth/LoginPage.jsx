@@ -245,9 +245,6 @@ export function LoginPage({ portal = "dealer" }) {
                   <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-[#0d47a1]" />
                   Remember Me
                 </label>
-                <button type="button" disabled={resetLoading} onClick={resetPassword} className="text-xs font-semibold text-[#0d47a1] disabled:opacity-60">
-                  {resetLoading ? "Sending..." : "Forgot Password"}
-                </button>
               </div>
 
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
@@ -265,6 +262,9 @@ export function LoginPage({ portal = "dealer" }) {
 
               <button type="submit" disabled={loading || resetLoading || resendLoading} className="flex h-11 w-full items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-semibold text-white disabled:opacity-70">
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
+              </button>
+              <button type="button" disabled={resetLoading} onClick={resetPassword} className="flex w-full justify-center text-xs font-semibold text-[#0d47a1] disabled:opacity-60">
+                {resetLoading ? "Sending password reset link..." : "Forgot Password?"}
               </button>
             </form>
 

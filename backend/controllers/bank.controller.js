@@ -11,6 +11,7 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
+import crypto from "node:crypto";
 
 const bankStatuses = [
   LEAD_STATUSES.ASSIGNED,
@@ -107,8 +108,15 @@ function bankIdentity(partner) {
   return {
     bankId,
     bankName: partner.bankName || partner.companyName || partner.name || bankId,
+    bankIfsc: partner.ifsc || partner.bankIfsc || partner.ifscCode || null,
     bankLocation: partner.bankBranchLocation || partner.branchLocation || partner.branchCity || partner.city || partner.operatingCity,
   };
+}
+
+function generateTemporaryPassword() {
+  const digits = crypto.randomInt(1000, 10000);
+  const suffix = "abcdefghijkmnopqrstuvwxyz".charAt(crypto.randomInt(0, 24));
+  return `CLS@${digits}${suffix}`;
 }
 
 function executiveBelongsToBank(executive, identity) {
@@ -513,8 +521,25 @@ export async function createBankExecutive(req, res, next) {
     if (duplicate?.email === email || duplicate?.officialEmail === email || duplicate?.id === email) return res.status(409).json({ message: "Official email already exists for an executive" });
 
     const now = new Date().toISOString();
+    const temporaryPassword = generateTemporaryPassword();
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    let firebaseUser;
+    try {
+      firebaseUser = await firebaseAdmin.auth().createUser({
+        email,
+        password: temporaryPassword,
+        displayName: name,
+        emailVerified: true,
+        disabled: false,
+      });
+    } catch (firebaseError) {
+      if (firebaseError.code === "auth/email-already-exists") return res.status(409).json({ message: "Firebase Auth account already exists for this email" });
+      throw firebaseError;
+    }
+
     const payload = {
       id: email,
+      uid: firebaseUser.uid,
       name,
       fullName: name,
       email,
@@ -524,18 +549,27 @@ export async function createBankExecutive(req, res, next) {
       bankPartnerId: identity.bankId,
       bankId: identity.bankId,
       bankName: identity.bankName,
+      bankIfsc: identity.bankIfsc,
+      ifsc: identity.bankIfsc,
       bankLocation: identity.bankLocation,
       bankBranchLocation: identity.bankLocation,
+      branch: identity.bankLocation,
       branchCity: identity.bankLocation,
+      city: identity.bankLocation,
       createdByManagerId: partner.email || partner.id,
+      createdByManager: true,
+      firstLoginRequired: true,
+      passwordChangedAt: null,
       status: "active",
       active: true,
+      approved: true,
+      accountApproved: true,
       accountActive: true,
       createdAt: now,
     };
     await upsertRecord("loanExecutives", email, payload);
     await upsertRecord("users", email, {
-      uid: email,
+      uid: firebaseUser.uid,
       email,
       role: "loan-executive",
       approved: true,
@@ -543,12 +577,31 @@ export async function createBankExecutive(req, res, next) {
       accountApproved: true,
       accountActive: true,
       bankId: identity.bankId,
+      bankName: identity.bankName,
+      bankIfsc: identity.bankIfsc,
       branchId: identity.bankLocation,
+      branch: identity.bankLocation,
+      city: identity.bankLocation,
+      firstLoginRequired: true,
+      passwordChangedAt: null,
+      createdByManager: true,
+      createdByManagerId: partner.email || partner.id,
       status: "active",
+    });
+    await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
+      role: "loan-executive",
+      approved: true,
+      active: true,
+      bankId: identity.bankId,
+      branchId: identity.bankLocation || null,
     });
     const executive = await getRecord("loanExecutives", email);
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId } });
-    res.status(201).json(executive);
+    res.status(201).json({
+      ...executive,
+      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,
+      temporaryPassword,
+    });
   } catch (error) {
     next(error);
   }

@@ -203,6 +203,7 @@ async function accountForEmail(email, portal) {
       approved: executive.approved !== false,
       accountApproved: executive.accountApproved !== false,
       accountActive: executive.accountActive !== false,
+      firstLoginRequired: executive.firstLoginRequired === true,
     });
   }
   return candidates[0] || null;
@@ -462,6 +463,7 @@ export async function login(req, res, next) {
       bankId: account.bankId || null,
       branchId: account.branchId || null,
       status: account.status || "active",
+      firstLoginRequired: account.firstLoginRequired === true,
       lastLoginAt: new Date().toISOString(),
     };
     await upsertRecord("users", normalizedEmail, user);
@@ -472,7 +474,13 @@ export async function login(req, res, next) {
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
-    res.json({ token, user, redirectTo: ROLE_ROUTES[user.role] });
+    res.json({
+      token,
+      user,
+      redirectTo: user.role === "loan-executive" && user.firstLoginRequired === true
+        ? "/loan-executive/change-password"
+        : ROLE_ROUTES[user.role],
+    });
   } catch (error) {
     next(error);
   }
@@ -564,10 +572,38 @@ export async function session(req, res, next) {
         bankId: account.bankId || null,
         branchId: account.branchId || null,
         status: account.status || "active",
+        firstLoginRequired: account.firstLoginRequired === true,
         emailVerified: true,
         ...presentation,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function completeForcedPasswordChange(req, res, next) {
+  try {
+    const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    if (!email) return res.status(401).json({ message: "Invalid session" });
+    const account = await getRecord("users", email);
+    if (!account || account.role !== "loan-executive") return res.status(403).json({ message: "Only loan executives can complete this password change" });
+    const now = new Date().toISOString();
+    await upsertRecord("users", email, {
+      ...account,
+      firstLoginRequired: false,
+      passwordChangedAt: now,
+    });
+    const executive = await getRecord("loanExecutives", email).catch(() => null);
+    if (executive) {
+      await upsertRecord("loanExecutives", email, {
+        ...executive,
+        firstLoginRequired: false,
+        passwordChangedAt: now,
+      });
+    }
+    await writeLoginActivity({ email, role: "loan-executive", status: "password-changed", req });
+    res.json({ ok: true, firstLoginRequired: false, passwordChangedAt: now });
   } catch (error) {
     next(error);
   }

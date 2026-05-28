@@ -195,6 +195,7 @@ function ManageExecutivePage() {
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [credentials, setCredentials] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const update = (field, value) => {
@@ -220,9 +221,15 @@ function ManageExecutivePage() {
     if (Object.keys(nextErrors).length) return;
     setBusy(true);
     try {
-      await api.post("/bank/executives", nextForm);
+      const response = await api.post("/bank/executives", nextForm);
       setForm({ name: "", mobile: "", jobId: "", email: "" });
       setMessage("Executive added successfully.");
+      setCredentials({
+        name: response.data?.name || response.data?.fullName || nextForm.name,
+        email: response.data?.email || nextForm.email,
+        temporaryPassword: response.data?.temporaryPassword || "",
+        portalLogin: response.data?.portalLogin || `${window.location.origin}/executive/login`,
+      });
       await load();
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Unable to add executive");
@@ -254,6 +261,27 @@ function ManageExecutivePage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Manage Executive" />
+      {credentials ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Executive Created Successfully</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">{credentials.name}</h2>
+              <div className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                <p><span className="font-semibold">Portal Login:</span> {credentials.portalLogin}</p>
+                <p><span className="font-semibold">Email:</span> {credentials.email}</p>
+                <p><span className="font-semibold">Temporary Password:</span> {credentials.temporaryPassword}</p>
+              </div>
+              <p className="mt-3 text-sm font-medium text-emerald-800">Please ask executive to change password after first login.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => navigator.clipboard?.writeText(`Portal Login: ${credentials.portalLogin}\nEmail: ${credentials.email}\nTemporary Password: ${credentials.temporaryPassword}`)} className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700">Copy Credentials</button>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(credentials.portalLogin)} className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700">Copy Portal URL</button>
+              <button type="button" onClick={() => setCredentials(null)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <label className="text-sm font-medium text-slate-700">Executive Name<input aria-invalid={Boolean(errors.name)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(event) => update("name", event.target.value.replace(/[<>]/g, ""))} />{errors.name ? <span className="mt-1 block text-xs font-medium text-red-600">{errors.name}</span> : null}</label>

@@ -1,11 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  updatePassword,
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
@@ -37,6 +40,7 @@ function sessionFromResponse(response) {
     bankIfsc: sessionUser.bankIfsc || null,
     bankBranchLocation: sessionUser.bankBranchLocation || null,
     branchId: sessionUser.branchId || null,
+    firstLoginRequired: sessionUser.firstLoginRequired === true,
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };
 }
@@ -152,6 +156,22 @@ export function AuthProvider({ children }) {
     if (currentUser.emailVerified) return { alreadyVerified: true };
     await sendEmailVerification(currentUser, actionCodeSettings());
     return { sent: true };
+  };
+
+  const changeCurrentPassword = async ({ currentPassword, newPassword }) => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.email) {
+      const error = new Error("Login again before changing your password.");
+      error.code = "AUTH_REQUIRED";
+      throw error;
+    }
+    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+    await updatePassword(currentUser, newPassword);
+    const idToken = await currentUser.getIdToken(true);
+    const response = await api.post("/auth/password/change-complete", {}, { headers: { Authorization: `Bearer ${idToken}` } });
+    const refreshed = await validateSession({ silent: false, showLoading: false });
+    return refreshed || response.data;
   };
 
   const validateSession = async ({ silent = true, showLoading = false } = {}) => {
@@ -331,6 +351,7 @@ export function AuthProvider({ children }) {
     authReady,
     loginWithEmailPassword,
     sendPasswordReset,
+    changeCurrentPassword,
     resendVerificationEmail,
     logout,
     validateSession,

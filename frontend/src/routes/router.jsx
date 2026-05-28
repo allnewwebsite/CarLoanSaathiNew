@@ -25,6 +25,7 @@ const BankManagerLeadDetailPage = lazyPage(() => import("../pages/bank/BankBranc
 const LoanExecutivePanel = lazyPage(() => import("../pages/bank/LoanExecutivePanel.jsx"), "LoanExecutivePanel");
 const LoanExecutiveLeadDetailPage = lazyPage(() => import("../pages/bank/LoanExecutivePanel.jsx"), "LoanExecutiveLeadDetailPage");
 const LoginPage = lazyPage(() => import("../pages/auth/LoginPage.jsx"), "LoginPage");
+const ExecutiveChangePasswordPage = lazyPage(() => import("../pages/auth/ExecutiveChangePasswordPage.jsx"), "ExecutiveChangePasswordPage");
 const FinanceDeskPanel = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceDeskPanel");
 const FinanceLeadDetailPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDetailPage");
 const FinanceLeadDocumentsPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDocumentsPage");
@@ -151,10 +152,11 @@ export const router = createBrowserRouter([
   },
   {
     path: "/loan-executive",
-    element: <ProtectedRoute roles={[ROLES.LOAN_EXECUTIVE]} loginPath="/bank-login" />,
+    element: <ProtectedRoute roles={[ROLES.LOAN_EXECUTIVE]} loginPath="/executive/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/loan-executive/leads" replace /> },
       { path: "assigned", element: <Navigate to="/loan-executive/leads" replace /> },
+      { path: "change-password", element: <ExecutiveChangePasswordPage /> },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutivePanel mode="leads" /> }] },
       { path: "leads/:leadId", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutiveLeadDetailPage /> }] },
       { path: "status", element: <DashboardLayout />, children: [{ index: true, element: <LoanExecutivePanel mode="status" /> }] },
