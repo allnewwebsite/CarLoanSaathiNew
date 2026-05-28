@@ -93,7 +93,11 @@ export async function addTimelineEvent({
     actorName: actorName || actor || "System",
     actorRole: actorRole || type || "system",
     branchId: branchId || metadata.branchId || meta.branchId || null,
-    dealershipId: dealershipId || metadata.dealershipId || meta.dealershipId || null,
+    dealershipId: dealershipId || metadata.dealershipId || meta.dealershipId || lead?.dealershipId || lead?.dealershipEmail || null,
+    dealershipEmail: lead?.dealershipEmail || lead?.dealerEmail || metadata.dealershipEmail || meta.dealershipEmail || null,
+    bankId: lead?.bankId || metadata.bankId || meta.bankId || null,
+    assignedExecutiveId: lead?.assignedExecutiveId || metadata.assignedExecutiveId || meta.assignedExecutiveId || null,
+    assignedExecutiveEmail: lead?.assignedExecutiveEmail || metadata.assignedExecutiveEmail || meta.assignedExecutiveEmail || null,
     metadata: { ...meta, ...metadata },
     visibility: visibility || ["finance-desk", "gm-sm", "bank-manager", "loan-executive", "super-admin"],
   });

@@ -8,7 +8,7 @@ CarLoanSaathi is a closed dealership-to-bank automotive finance ecosystem.
 - `Finance Desk Panel`: main operational workspace for lead creation, document upload, salesperson management, bank submission, follow-ups, EMI, sanction, and disbursement tracking.
 - `Bank Branch Manager Panel`: branch queue monitoring, executive performance, SLA tracking, workload balancing, manual reassignment, and escalation control.
 - `Loan Executive Panel`: assigned-case processing, document verification, approvals, rejections, sanction upload, remarks, and disbursement updates.
-- `Super Admin Panel`: hidden `/super-admin` login for `hydarkdevil@gmail.com`, with global controls for dealers, banks, branches, executives, routing, analytics, fraud, settings, and overrides.
+- `Super Admin Panel`: hidden `/super-admin` login for the configured `SUPER_ADMIN_EMAIL`, with global controls for dealers, banks, branches, executives, routing, analytics, fraud, settings, and overrides.
 
 ## Public Routes
 

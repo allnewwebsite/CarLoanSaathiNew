@@ -65,6 +65,14 @@ export const registrationRateLimit = rateLimit({
   message: { message: "Too many registration attempts. Try again later." },
 });
 
+export const publicLeadRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: numberEnv("PUBLIC_LEAD_RATE_LIMIT_MAX", 8),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many loan applications from this network. Try again later." },
+});
+
 export const monitoringRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: numberEnv("MONITORING_RATE_LIMIT_MAX", 60),

@@ -83,6 +83,15 @@ service cloud.firestore {
         || assignedExecutive(data);
     }
 
+    function canReadTimeline(data) {
+      return canReadLead(data)
+        || (
+          data.leadId != null
+          && exists(/databases/$(database)/documents/leads/$(data.leadId))
+          && canReadLead(get(/databases/$(database)/documents/leads/$(data.leadId)).data)
+        );
+    }
+
     function immutableUserSecurityFields() {
       return request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
@@ -132,7 +141,7 @@ service cloud.firestore {
     }
 
     match /leadTimeline/{timelineId} {
-      allow read: if canReadLead(resource.data);
+      allow read: if canReadTimeline(resource.data);
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
     }

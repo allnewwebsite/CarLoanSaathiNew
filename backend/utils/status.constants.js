@@ -48,6 +48,24 @@ export const VALID_TRANSITIONS = Object.freeze({
   CLOSED: [],
 });
 
+export const DOCUMENT_STATUSES = Object.freeze({
+  UPLOADED: "Uploaded",
+  APPROVED: "Approved",
+  PENDING: "Pending",
+  REQUESTED: "Requested",
+  REJECTED: "Rejected",
+});
+
+export const ALLOWED_DOCUMENT_STATUSES = Object.values(DOCUMENT_STATUSES);
+
+export const VALID_DOCUMENT_TRANSITIONS = Object.freeze({
+  Uploaded: ["Approved", "Pending", "Requested", "Rejected"],
+  Pending: ["Uploaded", "Approved", "Requested", "Rejected"],
+  Requested: ["Uploaded", "Approved", "Pending", "Rejected"],
+  Rejected: ["Uploaded", "Approved", "Pending", "Requested"],
+  Approved: ["Pending", "Requested", "Rejected"],
+});
+
 export function normalizeStatus(status) {
   if (!status) return LEAD_STATUSES.NEW;
   return ALLOWED_LEAD_STATUSES.includes(status) ? status : LEGACY_STATUS_TO_STANDARD[status] || status;
@@ -64,6 +82,23 @@ export function assertValidStatusTransition(currentStatus, nextStatus) {
   if (current === next) return next;
   if (!VALID_TRANSITIONS[current]?.includes(next)) {
     const error = new Error(`Invalid status transition from ${current} to ${next}`);
+    error.status = 400;
+    throw error;
+  }
+  return next;
+}
+
+export function assertValidDocumentStatusTransition(currentStatus, nextStatus) {
+  const current = ALLOWED_DOCUMENT_STATUSES.includes(currentStatus) ? currentStatus : DOCUMENT_STATUSES.UPLOADED;
+  const next = String(nextStatus || "").trim();
+  if (!ALLOWED_DOCUMENT_STATUSES.includes(next)) {
+    const error = new Error("Invalid document status");
+    error.status = 400;
+    throw error;
+  }
+  if (current === next) return next;
+  if (!VALID_DOCUMENT_TRANSITIONS[current]?.includes(next)) {
+    const error = new Error(`Invalid document status transition from ${current} to ${next}`);
     error.status = 400;
     throw error;
   }

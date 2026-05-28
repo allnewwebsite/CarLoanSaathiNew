@@ -9,13 +9,20 @@ const requiredInProduction = [
 ];
 
 const weakValues = new Set(["change-me", "changeme", "replace-with-a-secure-secret", "replace-with-64-plus-character-random-secret", "secret", "password"]);
+const defaultDevelopmentSecrets = new Set(["development-secret", "dev-secret", "local-secret"]);
 
 export function validateEnv() {
-  if (process.env.JWT_SECRET && (process.env.JWT_SECRET.length < 32 || weakValues.has(process.env.JWT_SECRET))) {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is required");
+  }
+  if (process.env.JWT_SECRET.length < 32 || weakValues.has(process.env.JWT_SECRET) || defaultDevelopmentSecrets.has(process.env.JWT_SECRET)) {
     throw new Error("JWT_SECRET must be a strong random value with at least 32 characters");
   }
   if (process.env.FIREBASE_PRIVATE_KEY && !String(process.env.FIREBASE_PRIVATE_KEY).includes("BEGIN PRIVATE KEY")) {
     throw new Error("FIREBASE_PRIVATE_KEY must be the escaped service account private key from a secure environment variable");
+  }
+  if (!superAdminEmail()) {
+    throw new Error("SUPER_ADMIN_EMAIL must be configured");
   }
   if (process.env.NODE_ENV !== "production") return;
   const missing = requiredInProduction.filter((key) => !process.env[key]);
@@ -29,4 +36,12 @@ export function allowedOrigins() {
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
+}
+
+export function superAdminEmail() {
+  return String(process.env.SUPER_ADMIN_EMAIL || "").trim().toLowerCase();
+}
+
+export function jwtSecret() {
+  return process.env.JWT_SECRET;
 }

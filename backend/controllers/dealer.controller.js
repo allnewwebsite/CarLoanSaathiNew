@@ -8,6 +8,7 @@ import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { sanitizeFirestoreData } from "../utils/firestoreSanitizer.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
+import { logInfo } from "../services/logger.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -593,8 +594,8 @@ export async function registerDealerOnboarding(req, res, next) {
 
 export async function createDealerLead(req, res, next) {
   try {
-    console.info("Finance Desk lead incoming payload", sanitizeFirestoreData(req.body) || {});
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
+    logInfo("Finance Desk lead creation requested", { requestId: req.requestId, dealershipId: dealershipEmail });
     const dealerBrand = dealership.dealershipBrand || dealership.brand || req.body.selectedBrand || req.body.carBrand;
     const payload = normalizeFinanceDeskLead({ ...req.body, selectedBrand: dealerBrand, carBrand: dealerBrand });
     const dealershipCity = dealership.city || dealership.registeredCity || payload.dealershipCity || payload.city;
@@ -629,7 +630,6 @@ export async function createDealerLead(req, res, next) {
       salespersonJobId: salesperson.jobId,
       assignedSalesperson: salesperson.name,
     });
-    console.info("Finance Desk lead sanitized payload", leadPayload);
     const lead = await createRecord("leads", leadPayload);
     await writeAuditLog({
       req,
@@ -638,7 +638,7 @@ export async function createDealerLead(req, res, next) {
       leadId: lead.id,
       meta: { caseId: lead.caseId, dealershipId: lead.dealershipId, salespersonId: lead.salespersonId },
     });
-    console.info("Finance Desk lead created", { leadId: lead.id });
+    logInfo("Finance Desk lead created", { requestId: req.requestId, leadId: lead.id, caseId: lead.caseId, dealershipId: lead.dealershipId });
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.LEAD_CREATED,
@@ -650,8 +650,7 @@ export async function createDealerLead(req, res, next) {
       metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName, routingCity: dealershipCity },
     });
     const assignment = await assignLeadRoundRobin(lead);
-    console.info("Finance Desk lead assignment result", { leadId: lead.id, assignmentId: assignment?.id || null });
-    console.info("Finance Desk lead SLA start", { leadId: lead.id, startedAt: lead.assignmentTimestamp || new Date().toISOString() });
+    logInfo("Finance Desk lead assignment completed", { requestId: req.requestId, leadId: lead.id, assignmentId: assignment?.id || null });
     res.status(201).json({ leadId: lead.id, caseId: lead.caseId, assignmentId: assignment?.id || null, message: "Dealer lead submitted", lead });
   } catch (error) {
     if (error?.issues) {

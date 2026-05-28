@@ -20,7 +20,7 @@ const portals = {
     eyebrow: "Private Super Admin",
     title: "Restricted Super Admin Access",
     subtitle: "Authorized CarLoanSaathi administration only.",
-    note: "Only hydarkdevil@gmail.com can access this control center.",
+    note: "Only the configured Super Admin account can access this control center.",
   },
 };
 
@@ -42,6 +42,7 @@ function authMessage(error, portal, action = "login") {
   if (code === "auth/user-not-found" || error.response?.status === 404) return "No account found with this email address.";
   if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
     if (portal === "dealer") return "No dealer account found. Create account from Dealer Registration, or use Forgot Password if this email is already registered.";
+    if (portal === "bank") return "No bank account found. Create account from Bank Registration, or use Forgot Password if this email is already registered.";
     return "Incorrect email or password.";
   }
   if (code === "auth/weak-password") return "Password is too weak.";
@@ -50,11 +51,17 @@ function authMessage(error, portal, action = "login") {
     return "This domain is blocked by Firebase API key restrictions. Add this website in Google Cloud API key restrictions.";
   }
   if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
-    return action === "reset"
-      ? "Unable to send password reset email. Try again later."
-      : "Unable to login right now. Please try again later.";
+    if (action === "reset") return "Unable to send password reset email. Try again later.";
+    if (action === "verification") return "Unable to send verification email. Try again later.";
+    return "Unable to login right now. Please try again later.";
   }
   return message || "Unable to login. Please verify your email and password.";
+}
+
+function registrationPath(portal) {
+  if (portal === "bank") return "/bank-registration";
+  if (portal === "dealer") return "/dealer-registration";
+  return null;
 }
 
 export function LoginPage({ portal = "dealer" }) {
@@ -228,8 +235,8 @@ export function LoginPage({ portal = "dealer" }) {
               </div>
 
               {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-              {portal === "dealer" && /create account|dealer registration/i.test(error) && (
-                <button type="button" onClick={() => navigate("/dealer-registration")} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
+              {registrationPath(portal) && /create account|registration|no .* account found/i.test(error) && (
+                <button type="button" onClick={() => navigate(registrationPath(portal))} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
                   Create Account
                 </button>
               )}

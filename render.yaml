@@ -32,6 +32,8 @@ services:
         value: "5"
       - key: REGISTRATION_RATE_LIMIT_MAX
         value: "15"
+      - key: PUBLIC_LEAD_RATE_LIMIT_MAX
+        value: "8"
       - key: UPLOAD_RATE_LIMIT_MAX
         value: "30"
       - key: MAX_FAILED_LOGINS

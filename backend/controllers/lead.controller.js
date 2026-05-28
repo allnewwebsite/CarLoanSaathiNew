@@ -10,6 +10,19 @@ import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LAB
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analyticsEngine.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
+import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
+import { logSecurity } from "../services/logger.service.js";
+
+const suspiciousCityPattern = /test|asdf|fake|demo/i;
+
+function publicApplicationRisk(payload, req) {
+  const reasons = [];
+  if (Number(payload.loanAmount) > Number(payload.carPrice) * 0.95) reasons.push("high_ltv");
+  if (suspiciousCityPattern.test(payload.city)) reasons.push("suspicious_city");
+  if (String(payload.fullName || "").split(/\s+/).length < 2) reasons.push("single_token_name");
+  if ((req.headers["user-agent"] || "").length < 10) reasons.push("missing_user_agent");
+  return reasons;
+}
 
 async function canAccessLead(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -121,6 +134,79 @@ export async function createPublicLead(req, res, next) {
       message: "Lead submitted successfully",
       assignmentId: assignment?.id || null,
       lead,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createPublicLeadIntake(req, res, next) {
+  try {
+    const payload = publicLeadSchema.parse(req.body);
+    const riskReasons = publicApplicationRisk(payload, req);
+    const caseId = await generateLeadCaseId();
+    const lead = await createRecord("leads", {
+      ...payload,
+      email: payload.email || null,
+      caseId,
+      status: LEAD_STATUSES.NEW,
+      intakeSource: "public-apply-loan",
+      source: "Public Apply Loan",
+      publicIntake: true,
+      intakeStatus: riskReasons.length ? "review-required" : "new",
+      riskFlags: riskReasons,
+      requestId: req.requestId || null,
+      userAgentHash: req.headers["user-agent"] ? Buffer.from(String(req.headers["user-agent"])).toString("base64url").slice(0, 24) : null,
+    });
+    await addTimelineEvent({
+      leadId: lead.id,
+      eventType: TIMELINE_EVENTS.LEAD_CREATED,
+      title: "Public Application Received",
+      description: "Public loan application received for finance intake",
+      actorName: "Public Applicant",
+      actorRole: "public",
+      dealershipId: lead.dealershipId || null,
+      metadata: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
+      visibility: ["finance-desk", "gm-sm", "super-admin"],
+    });
+    await writeAuditLog({
+      req,
+      actorId: "public-applicant",
+      actorRole: "public",
+      actionType: AUDIT_ACTIONS.LEAD_CREATED,
+      newValue: { caseId, intakeStatus: lead.intakeStatus },
+      leadId: lead.id,
+      sourcePortal: "public",
+      meta: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
+    });
+    await recordOperationalEvent({
+      type: "public_lead_intake_created",
+      severity: riskReasons.length ? ALERT_SEVERITY.MEDIUM : ALERT_SEVERITY.LOW,
+      component: "lead-intake",
+      message: "Public loan application received",
+      entityId: lead.id,
+      requestId: req.requestId,
+      meta: { caseId, riskFlags: riskReasons },
+    });
+    if (riskReasons.length) {
+      logSecurity("Suspicious public loan application", { requestId: req.requestId, leadId: lead.id, riskFlags: riskReasons });
+      emitOperationalAlert({
+        type: "suspicious_public_application",
+        severity: ALERT_SEVERITY.MEDIUM,
+        component: "lead-intake",
+        title: "Suspicious public loan application",
+        message: `Public application ${caseId} requires review`,
+        entityId: lead.id,
+        requestId: req.requestId,
+        meta: { caseId, riskFlags: riskReasons },
+      }).catch(() => {});
+    }
+    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
+    res.status(201).json({
+      leadId: lead.id,
+      caseId: lead.caseId,
+      message: "Application submitted successfully",
+      intakeStatus: lead.intakeStatus,
     });
   } catch (error) {
     next(error);

@@ -9,18 +9,20 @@
    - Any SMTP, Render, Vercel, or third-party token
 2. Delete old Firebase Admin service account keys in Google Cloud IAM.
 3. Create a new Firebase Admin key and store it only in Render environment variables.
-4. Invalidate old app sessions by changing `JWT_SECRET`.
+4. Invalidate old app sessions by changing `JWT_SECRET`; startup fails when this secret is missing or weak.
 5. Review GitHub secret scanning alerts and mark them resolved only after rotation.
 
 History cleanup must be done in the GitHub repository that received the alert. Use `git filter-repo` or BFG Repo-Cleaner, then force-push only after coordinating with collaborators.
 
 ## Backend Architecture
 
+- `backend/config/env.js`: startup validation for strong JWT secret, Super Admin email, and production Firebase settings.
 - `backend/config/firebaseAdmin.js`: ENV-only Firebase Admin singleton.
 - `backend/middleware/auth.js`: verifies Firebase/JWT session, email verification, account status, and role context.
 - `backend/middleware/requireRole.js`: centralized role authorization.
 - `backend/middleware/roleGuard.js`: array-style RBAC and ownership helper.
 - `backend/middleware/securityMiddleware.js`: Helmet, CORS, HTTPS enforcement, and rate limits.
+- `backend/routes/lead.routes.js`: separates public loan intake (`/api/leads/public`) from authenticated finance-desk lead creation (`/api/leads/create`).
 - `backend/services/audit.service.js`: enterprise audit event writer.
 - `backend/services/notification.service.js`: in-app notification and notification log service.
 - `backend/services/storage.service.js`: private document uploads and short-lived signed URLs.
@@ -35,6 +37,12 @@ History cleanup must be done in the GitHub repository that received the alert. U
 6. Logout clears Firebase auth, local storage, session cache, and auth context.
 
 Forgot password first calls `/api/auth/password-reset/validate`; Firebase reset email is sent only after backend confirms the account exists, is active, and has verified email.
+
+## Public Loan Intake Governance
+
+Public applications must use `/api/leads/public`. This endpoint is rate-limited, App Check protected when `ENFORCE_APP_CHECK=true`, honeypot checked, schema validated, PII-safe logged, audited, and written as controlled intake with `publicIntake=true`.
+
+Authenticated finance-desk creation remains on `/api/leads/create` and remains protected by `authenticate` plus `finance-desk` RBAC. Public intake must never create users, grant roles, assign executives, or bypass dealership/bank tenant isolation.
 
 ## Firestore Rules
 
@@ -125,7 +133,7 @@ No public super-admin registration exists.
 Set backend env vars:
 
 ```bash
-SUPER_ADMIN_EMAIL=hydarkdevil@gmail.com
+SUPER_ADMIN_EMAIL=<your-super-admin-email>
 SUPER_ADMIN_PASSWORD=replace-with-strong-one-time-password
 FIREBASE_WEB_API_KEY=<firebase-web-api-key>
 FIREBASE_ACTION_CONTINUE_URL=<frontend-super-admin-login-url>
@@ -137,7 +145,7 @@ Run:
 npm run create-super-admin
 ```
 
-The script blocks duplicate Firebase Auth users and creates `users/hydarkdevil@gmail.com` with `role: super-admin`.
+The script blocks duplicate Firebase Auth users and creates `users/<your-super-admin-email>` with `role: super-admin`.
 
 ## GitHub Protection
 

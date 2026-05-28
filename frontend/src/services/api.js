@@ -1,4 +1,6 @@
 import axios from "axios";
+import { getToken } from "firebase/app-check";
+import { appCheck } from "./firebase.js";
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 
@@ -48,9 +50,17 @@ function clearSessionToken() {
   localStorage.removeItem("cls_token");
 }
 
-api.interceptors.request.use((config) => {
+api.interceptors.request.use(async (config) => {
   const token = getSessionToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (appCheck) {
+    try {
+      const appCheckToken = await getToken(appCheck, false);
+      if (appCheckToken?.token) config.headers["X-Firebase-AppCheck"] = appCheckToken.token;
+    } catch {
+      // Backend decides whether App Check is mandatory.
+    }
+  }
   return config;
 });
 

@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { jwtSecret } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord } from "../services/firestore.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
@@ -108,7 +109,7 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    const tokenUser = jwt.verify(token, process.env.JWT_SECRET || "development-secret");
+    const tokenUser = jwt.verify(token, jwtSecret());
     const email = String(tokenUser.email || tokenUser.uid || "").trim().toLowerCase();
     if (!email) {
       observeAuthFailure(req, "invalid_session_email");

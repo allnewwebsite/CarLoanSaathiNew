@@ -3,7 +3,8 @@ import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.
 import { createNotification } from "../services/notification.service.js";
 import { createShortLivedDocumentUrl, uploadLeadDocument } from "../services/storage.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
-import { LEAD_STATUSES } from "../utils/status.constants.js";
+import { assertValidDocumentStatusTransition, DOCUMENT_STATUSES, LEAD_STATUSES } from "../utils/status.constants.js";
+import { ALERT_SEVERITY, recordOperationalEvent } from "../services/observability.service.js";
 
 function canUploadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -126,12 +127,13 @@ export async function updateDocumentStatus(req, res, next) {
     const lead = existingDocument.leadId ? await getRecord("leads", existingDocument.leadId) : null;
     if (!lead) return res.status(404).json({ message: "Lead not found" });
     if (!(await canReviewCustomerDocument(req, lead))) return res.status(403).json({ message: "Document access denied" });
+    const nextStatus = assertValidDocumentStatusTransition(existingDocument.status, req.body.status);
     const document = await updateRecord("documents", req.params.id, {
-      status: req.body.status,
+      status: nextStatus,
       note: req.body.note,
       reviewedBy: req.user?.email,
     });
-    const needsDocumentFollowup = ["Pending", "Requested", "Rejected"].includes(req.body.status);
+    const needsDocumentFollowup = [DOCUMENT_STATUSES.PENDING, DOCUMENT_STATUSES.REQUESTED, DOCUMENT_STATUSES.REJECTED].includes(nextStatus);
     if (needsDocumentFollowup) {
       await updateRecord("leads", document.leadId, {
         status: LEAD_STATUSES.DOCS_PENDING,
@@ -155,18 +157,27 @@ export async function updateDocumentStatus(req, res, next) {
       req,
       actionType: needsDocumentFollowup ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED : "DOCUMENT_STATUS_UPDATED",
       oldValue: existingDocument.status,
-      newValue: req.body.status,
+      newValue: nextStatus,
       leadId: document.leadId,
       meta: { documentId: document.id, documentType: document.type, note: req.body.note, caseId: lead.caseId },
     });
+    await recordOperationalEvent({
+      type: "document_status_changed",
+      severity: ALERT_SEVERITY.LOW,
+      component: "documents",
+      message: "Document status changed",
+      entityId: document.id,
+      requestId: req.requestId,
+      meta: { leadId: document.leadId, previousStatus: existingDocument.status, nextStatus },
+    });
     await addTimelineEvent({
       leadId: document.leadId,
-      eventType: req.body.status === "Pending" || req.body.status === "Requested" ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED : TIMELINE_EVENTS.STATUS_CHANGED,
-      title: `Document ${req.body.status || "Updated"}`,
+      eventType: nextStatus === DOCUMENT_STATUSES.PENDING || nextStatus === DOCUMENT_STATUSES.REQUESTED ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED : TIMELINE_EVENTS.STATUS_CHANGED,
+      title: `Document ${nextStatus}`,
       description: req.body.note || document.type || "Document status updated",
       actorName: req.user?.email || "user",
       actorRole: req.user?.role || "user",
-      metadata: { documentId: document.id, documentStatus: req.body.status, documentType: document.type },
+      metadata: { documentId: document.id, documentStatus: nextStatus, documentType: document.type },
     });
     res.json(document);
   } catch (error) {

@@ -82,7 +82,7 @@ function statusValuesForQuery(status) {
   const value = String(status || "").trim();
   if (!value) return [];
   const normalized = normalizeStatus(value);
-  if (value === "Bank Processing") return [LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED];
+  if (value === "Bank Processing") return [LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
   if (value === "Pending Documents") return [LEAD_STATUSES.DOCS_PENDING];
   if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];
   if (value === "Rejected With Reason") return [LEAD_STATUSES.REJECTED];
@@ -141,8 +141,10 @@ export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS 
 
 export async function queryExecutiveLeads({ executiveId, executiveEmail, query = {}, fields = LEAD_FIELDS }) {
   const { limit, cursor } = paginationParams(query);
-  const result = await queryRecords("leads", {
-    where: queryWhere([{ field: "assignedExecutiveId", value: executiveId || executiveEmail }], query),
+  const identity = String(executiveId || executiveEmail || "").trim();
+  const email = String(executiveEmail || "").trim();
+  const idResult = await queryRecords("leads", {
+    where: queryWhere([{ field: "assignedExecutiveId", value: identity }], query),
     orderBy: "createdAt",
     direction: "desc",
     limit,
@@ -151,12 +153,25 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
     searchFields: SEARCH_FIELDS,
     fields,
   });
-  let data = result.data;
-  if (executiveEmail && executiveId !== executiveEmail) {
-    data = data.filter((lead) => lead.assignedExecutiveId === executiveId || lead.assignedExecutiveEmail === executiveEmail);
+  let rows = idResult.data;
+  let nextCursor = idResult.nextCursor;
+  if (email && email !== identity) {
+    const emailResult = await queryRecords("leads", {
+      where: queryWhere([{ field: "assignedExecutiveEmail", value: email }], query),
+      orderBy: "createdAt",
+      direction: "desc",
+      limit,
+      search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+      searchFields: SEARCH_FIELDS,
+      fields,
+    });
+    const byId = new Map(rows.map((lead) => [lead.id, lead]));
+    for (const lead of emailResult.data) byId.set(lead.id, lead);
+    rows = [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, limit);
+    nextCursor = idResult.nextCursor || emailResult.nextCursor;
   }
-  data = localFilters(data, query);
-  return pageResponse({ data, limit, nextCursor: result.nextCursor });
+  const data = localFilters(rows, query);
+  return pageResponse({ data, limit, nextCursor });
 }
 
 export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {

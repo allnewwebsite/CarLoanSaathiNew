@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { firebaseAdmin, firestore } from "../firebase/admin.js";
 
-const DEFAULT_ADMIN_EMAIL = "hydarkdevil@gmail.com";
+const DEFAULT_ADMIN_EMAIL = "";
 
 function fail(message) {
   console.error(message);
@@ -81,7 +81,7 @@ async function main() {
 
   const email = String(process.env.SUPER_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
   const password = String(process.env.SUPER_ADMIN_PASSWORD || "");
-  if (email !== DEFAULT_ADMIN_EMAIL) fail(`Super admin email must be ${DEFAULT_ADMIN_EMAIL}.`);
+  if (!email) fail("SUPER_ADMIN_EMAIL is required.");
   if (password.length < 8) fail("SUPER_ADMIN_PASSWORD must be at least 8 characters.");
 
   try {

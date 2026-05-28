@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
+import { jwtSecret, superAdminEmail } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 
-const ADMIN_EMAIL = "hydarkdevil@gmail.com";
 const ROLE_ROUTES = {
   "finance-desk": "/finance/total-leads",
   "gm-sm": "/gm/total-leads",
@@ -101,8 +101,9 @@ async function createPendingGoogleAccount({ decoded, portal, reason }) {
 }
 
 async function accountForEmail(email, portal) {
-  if (portal === "admin" || email === ADMIN_EMAIL) {
-    if (email !== ADMIN_EMAIL) return null;
+  const adminEmail = superAdminEmail();
+  if (portal === "admin" || email === adminEmail) {
+    if (email !== adminEmail) return null;
     const adminUser = await getRecord("users", email);
     return adminUser?.role === "super-admin" ? adminUser : null;
   }
@@ -415,7 +416,7 @@ export async function login(req, res, next) {
         actionLabel: "Create Dealer Account",
       });
     }
-    if (account.role === "super-admin" && normalizedEmail !== ADMIN_EMAIL) {
+    if (account.role === "super-admin" && normalizedEmail !== superAdminEmail()) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "super-admin-restricted", req });
       return res.status(403).json({ message: "ACCESS DENIED" });
     }
@@ -442,7 +443,7 @@ export async function login(req, res, next) {
     await upsertRecord("users", normalizedEmail, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
-    const token = jwt.sign(user, process.env.JWT_SECRET || "development-secret", { expiresIn: "7d" });
+    const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
     res.json({ token, user, redirectTo: ROLE_ROUTES[user.role] });

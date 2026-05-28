@@ -6,6 +6,7 @@
     "create-super-admin": "npm --prefix backend run create-super-admin",
     "maintenance": "npm --prefix backend run maintenance",
     "backfill:metrics": "npm --prefix backend run backfill:metrics",
+    "backfill:executive-assignments": "npm --prefix backend run backfill:executive-assignments",
     "load:seed": "npm --prefix backend run load:seed",
     "security:scan": "node scripts/scan-secrets.js",
     "security:authz-audit": "node scripts/audit-authorization.js",

@@ -1,6 +1,7 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadQueryScoped, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
+import { logWarn } from "./logger.service.js";
 
 const memoryStore = {
   leads: [],
@@ -193,6 +194,47 @@ function selectFields(record, fields = []) {
   }, { id: record.id });
 }
 
+function isMissingCompositeIndexError(error) {
+  return Number(error?.code) === 9
+    || String(error?.message || "").includes("FAILED_PRECONDITION")
+    || String(error?.message || "").includes("requires an index");
+}
+
+async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, search, searchFields, fields, maxLimit }) {
+  logWarn("Firestore composite index missing; using scoped fallback query", {
+    collection,
+    orderBy,
+    direction,
+    limit: safeLimit,
+    where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+  });
+  let ref = firestore.collection(collection);
+  for (const clause of where) {
+    ref = ref.where(clause.field, clause.op || "==", clause.value);
+  }
+  const fallbackLimit = Math.min(Math.max(safeLimit * 5, safeLimit), maxLimit);
+  const snapshot = await ref.limit(fallbackLimit).get();
+  let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  rows = applySearch(rows, search, searchFields);
+  rows = rows.sort((left, right) => {
+    const leftValue = String(left[orderBy] || "");
+    const rightValue = String(right[orderBy] || "");
+    return direction === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
+  });
+  if (parsedCursor) {
+    const index = rows.findIndex((row) => row.id === parsedCursor.id);
+    if (index >= 0) rows = rows.slice(index + 1);
+  }
+  rows = rows.slice(0, safeLimit);
+  if (collection === "leads") rows = await withLeadCaseIds(rows, rows.map((row) => ({ ref: firestore.collection(collection).doc(row.id) })));
+  return {
+    data: rows.map((record) => selectFields(record, fields)),
+    limit: safeLimit,
+    nextCursor: null,
+    indexFallback: true,
+  };
+}
+
 export async function queryRecords(collection, {
   where = [],
   orderBy = "createdAt",
@@ -230,17 +272,25 @@ export async function queryRecords(collection, {
     };
   }
 
-  const snapshot = await withQueryMonitoring({ collection, operation: "query", where, limit: safeLimit }, async () => {
-    let ref = firestore.collection(collection);
-    for (const clause of where) {
-      ref = ref.where(clause.field, clause.op || "==", clause.value);
+  let snapshot;
+  try {
+    snapshot = await withQueryMonitoring({ collection, operation: "query", where, limit: safeLimit }, async () => {
+      let ref = firestore.collection(collection);
+      for (const clause of where) {
+        ref = ref.where(clause.field, clause.op || "==", clause.value);
+      }
+      ref = ref.orderBy(orderBy, direction);
+      if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
+      if (fields.length && typeof ref.select === "function") ref = ref.select(...fields.filter((field) => field !== "id"));
+      ref = ref.limit(safeLimit + 1);
+      return ref.get();
+    });
+  } catch (error) {
+    if (collection === "leads" && isMissingCompositeIndexError(error) && where.length) {
+      return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, search, searchFields, fields, maxLimit });
     }
-    ref = ref.orderBy(orderBy, direction);
-    if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
-    if (fields.length && typeof ref.select === "function") ref = ref.select(...fields.filter((field) => field !== "id"));
-    ref = ref.limit(safeLimit + 1);
-    return ref.get();
-  });
+    throw error;
+  }
   let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   rows = applySearch(rows, search, searchFields);
   const hasMore = rows.length > safeLimit;

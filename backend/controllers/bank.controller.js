@@ -9,6 +9,8 @@ import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
+import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
+import { paginationParams, pageResponse } from "../utils/pagination.js";
 
 const bankStatuses = [
   LEAD_STATUSES.ASSIGNED,
@@ -170,6 +172,25 @@ async function requireAssignedLead(req) {
   }
   const lead = await getRecord("leads", req.params.id);
   if (!lead || !partnerCanAccessLead(partner, lead)) {
+    recordOperationalEvent({
+      type: "bank_cross_tenant_access_blocked",
+      severity: ALERT_SEVERITY.HIGH,
+      component: "bank-rbac",
+      message: "Blocked bank lead access outside tenant scope",
+      entityId: req.params.id,
+      requestId: req.requestId,
+      meta: { actor: partner.email || partner.id, roleType: partner.roleType, bankId: partner.bankId || partner.bankPartnerId },
+    }).catch(() => {});
+    emitOperationalAlert({
+      type: "bank_cross_tenant_access_blocked",
+      severity: ALERT_SEVERITY.HIGH,
+      component: "bank-rbac",
+      title: "Blocked cross-tenant bank lead access",
+      message: "Bank user attempted to access a lead outside assigned scope",
+      entityId: req.params.id,
+      requestId: req.requestId,
+      meta: { actor: partner.email || partner.id, roleType: partner.roleType },
+    }).catch(() => {});
     const error = new Error("Lead not assigned to this bank partner");
     error.status = 403;
     throw error;
@@ -371,7 +392,19 @@ export async function getBankLeads(req, res, next) {
     if (partner.roleType === "loan-executive") {
       return res.json(await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query }));
     }
-    return res.json(await queryBankLeads({ bankId: bankIdentity(partner).bankId, query: req.query }));
+    const { limit } = paginationParams(req.query);
+    const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: Math.min(Math.max(limit * 3, limit), 100) });
+    const data = scopedLeads.slice(0, limit);
+    await recordOperationalEvent({
+      type: "bank_leads_scoped",
+      severity: ALERT_SEVERITY.LOW,
+      component: "bank-rbac",
+      message: "Bank manager lead list tenant scoped",
+      entityId: partner.email || partner.id,
+      requestId: req.requestId,
+      meta: { returned: data.length, bankId: bankIdentity(partner).bankId, branchId: partner.branchId || partner.branchCity || partner.bankBranchLocation },
+    });
+    return res.json(pageResponse({ data, limit, nextCursor: null, total: scopedLeads.length }));
   } catch (error) {
     next(error);
   }

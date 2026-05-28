@@ -8,7 +8,7 @@ export const QUERY_LIMITS = Object.freeze({
   slowQueryMs: Number(process.env.FIRESTORE_SLOW_QUERY_MS || 1200),
 });
 
-const leadScopeFields = new Set(["dealershipId", "bankId", "assignedExecutiveId", "caseId"]);
+const leadScopeFields = new Set(["dealershipId", "bankId", "assignedExecutiveId", "assignedExecutiveEmail", "caseId"]);
 
 export function clampQueryLimit(limit, fallback = QUERY_LIMITS.defaultLimit) {
   const parsed = Number(limit || fallback);

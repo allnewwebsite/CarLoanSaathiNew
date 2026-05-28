@@ -227,8 +227,9 @@ export function ApplyLoanForm({ initialSelection }) {
         loanAmount: Number(form.loanAmount),
         employmentType: form.employmentType,
         preferredBank: form.preferredBank,
+        website: "",
       };
-      const response = await api.post("/leads/create", payload);
+      const response = await api.post("/leads/public", payload);
       setSuccess(`Application submitted successfully. Case ID: ${response.data.caseId || response.data.leadId}`);
       setForm({ ...emptyForm });
       setBrandSlug("");

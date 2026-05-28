@@ -18,11 +18,12 @@ const money = z.coerce.number().positive().finite();
 const publicLeadBaseSchema = z.object({
   fullName: cleanText(2),
   mobile: z.string().trim().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number"),
+  email: z.string().trim().email().max(160).optional().or(z.literal("")),
   city: cleanText(2),
   selectedBrand: cleanText(1),
   selectedModel: cleanText(1),
-  carPrice: money,
-  loanAmount: money,
+  carPrice: money.max(20000000),
+  loanAmount: money.max(20000000),
   employmentType: cleanText(2),
   preferredBank: cleanText(2),
 });
