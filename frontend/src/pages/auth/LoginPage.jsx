@@ -87,8 +87,7 @@ export function LoginPage({ portal = "dealer" }) {
       return;
     }
     try {
-      const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal });
-      if (!rememberMe) sessionStorage.setItem("cls_session_only", "true");
+      const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal, rememberMe });
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
       const resolved = resolveAuthError(err, portal, "login");

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { getToken } from "firebase/app-check";
 import { appCheck } from "./firebase.js";
+import { clearAuthStorage, getStoredToken, getStoredUser } from "./authSessionManager.js";
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 
@@ -33,25 +34,8 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-function getSessionToken() {
-  const sessionToken = sessionStorage.getItem("cls_token");
-  if (sessionToken) return sessionToken;
-
-  const legacyToken = localStorage.getItem("cls_token");
-  if (legacyToken) {
-    sessionStorage.setItem("cls_token", legacyToken);
-    localStorage.removeItem("cls_token");
-  }
-  return legacyToken;
-}
-
-function clearSessionToken() {
-  sessionStorage.removeItem("cls_token");
-  localStorage.removeItem("cls_token");
-}
-
 api.interceptors.request.use(async (config) => {
-  const token = getSessionToken();
+  const token = getStoredToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   if (appCheck) {
     try {
@@ -73,10 +57,9 @@ api.interceptors.response.use(
       const baseURL = error.config?.baseURL || "";
       const url = error.config?.url || "";
       error.message = `API route not found: ${baseURL}${url}`;
-    } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED", "SESSION_REVOKED", "SESSION_EXPIRED"].includes(error.response?.data?.code)) {
-      const stored = JSON.parse(localStorage.getItem("cls_user") || "null");
-      localStorage.removeItem("cls_user");
-      clearSessionToken();
+    } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED", "SESSION_REVOKED"].includes(error.response?.data?.code)) {
+      const stored = getStoredUser();
+      clearAuthStorage();
       if (typeof window !== "undefined") {
         const target = stored?.role === "loan-executive"
           ? "/executive/login"

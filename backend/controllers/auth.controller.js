@@ -53,6 +53,7 @@ const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 5);
 const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 30);
 const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 8);
 const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS || 3);
+const PASSWORD_VALID_DAYS = Number(process.env.PASSWORD_VALID_DAYS || 90);
 const SESSION_COOKIE_NAME = "cls_session";
 
 function authCookieEnabled() {
@@ -76,6 +77,44 @@ function setAuthCookie(res, token) {
 
 function clearAuthCookie(res) {
   res.clearCookie(SESSION_COOKIE_NAME, { ...authCookieOptions(), maxAge: undefined });
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function firstLoginRequiredFor(account = {}) {
+  return account.firstLoginRequired === true && !account.passwordChangedAt;
+}
+
+function passwordLifecyclePatch(account = {}, now = new Date()) {
+  if (firstLoginRequiredFor(account)) {
+    return {
+      passwordChangedAt: account.passwordChangedAt || null,
+      passwordExpiresAt: account.passwordExpiresAt || null,
+      passwordExpired: false,
+      passwordDaysRemaining: null,
+    };
+  }
+  const changedAt = account.passwordChangedAt || now.toISOString();
+  const expiresAt = account.passwordExpiresAt || addDays(new Date(changedAt), PASSWORD_VALID_DAYS).toISOString();
+  const remainingMs = new Date(expiresAt).getTime() - now.getTime();
+  const daysRemaining = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+  return {
+    passwordChangedAt: changedAt,
+    passwordExpiresAt: expiresAt,
+    passwordExpired: remainingMs <= 0,
+    passwordDaysRemaining: Math.max(daysRemaining, 0),
+  };
+}
+
+async function persistPasswordLifecycleIfMissing(email, account, lifecycle) {
+  if (!email || firstLoginRequiredFor(account)) return;
+  if (account.passwordChangedAt && account.passwordExpiresAt) return;
+  await upsertRecord("users", email, {
+    passwordChangedAt: lifecycle.passwordChangedAt,
+    passwordExpiresAt: lifecycle.passwordExpiresAt,
+  }).catch(() => null);
 }
 
 async function writeLoginActivity({ email, role = null, status, reason = "", req }) {
@@ -626,6 +665,8 @@ export async function login(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "admin-role-required", req });
       return res.status(403).json({ message: "ACCESS DENIED" });
     }
+    const lifecycle = passwordLifecyclePatch(account);
+    await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
     const user = {
       uid: normalizedEmail,
       email: normalizedEmail,
@@ -640,7 +681,11 @@ export async function login(req, res, next) {
       bankId: account.bankId || null,
       branchId: account.branchId || null,
       status: account.status || "active",
-      firstLoginRequired: account.firstLoginRequired === true,
+      firstLoginRequired: firstLoginRequiredFor(account),
+      passwordChangedAt: lifecycle.passwordChangedAt,
+      passwordExpiresAt: lifecycle.passwordExpiresAt,
+      passwordExpired: lifecycle.passwordExpired,
+      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
     };
     await upsertRecord("users", normalizedEmail, user);
@@ -654,10 +699,86 @@ export async function login(req, res, next) {
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
     const forcedPasswordPath = user.role === "loan-executive" ? "/loan-executive/change-password" : "/change-password";
+    const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
     res.json({
       token,
       user,
-      redirectTo: user.firstLoginRequired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
+      redirectTo,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function restoreSession(req, res, next) {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ message: "Firebase authentication token is required" });
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+    const normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    if (!normalizedEmail) return res.status(400).json({ message: "Account email is required" });
+    if (decoded.email_verified !== true) {
+      await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-email-not-verified", req });
+      return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
+    }
+
+    const account = await accountForAnyPortal(normalizedEmail);
+    if (!account?.role || !ROLE_ROUTES[account.role]) {
+      await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-account-not-approved", req });
+      return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
+    }
+    if (!accountActive(account)) {
+      const inactive = inactiveAccountMessage(account);
+      await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: `restore-${inactive.code.toLowerCase()}`, req });
+      return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
+    }
+    if (["finance-desk", "gm-sm"].includes(account.role) && !(await approvedDealerAccess(normalizedEmail, account))) {
+      await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-dealer-approval-pending", req });
+      return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
+    }
+    if (["bank-manager", "loan-executive"].includes(account.role) && !account.bankId) {
+      await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-bank-id-missing", req });
+      return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
+    }
+
+    const lifecycle = passwordLifecyclePatch(account);
+    await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
+    const user = {
+      uid: normalizedEmail,
+      email: normalizedEmail,
+      role: account.role,
+      approved: true,
+      active: true,
+      accountStatus: "active",
+      emailVerified: true,
+      accountApproved: true,
+      accountActive: true,
+      dealershipId: account.dealershipId || null,
+      bankId: account.bankId || null,
+      branchId: account.branchId || null,
+      status: account.status || "active",
+      firstLoginRequired: firstLoginRequiredFor(account),
+      passwordChangedAt: lifecycle.passwordChangedAt,
+      passwordExpiresAt: lifecycle.passwordExpiresAt,
+      passwordExpired: lifecycle.passwordExpired,
+      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
+      lastLoginAt: new Date().toISOString(),
+    };
+    await upsertRecord("users", normalizedEmail, user);
+    await clearFailedLogin(normalizedEmail);
+    await setFirebaseClaims(normalizedEmail, user);
+    const sessionId = await createUserSession({ req, user });
+    user.sessionId = sessionId;
+    Object.assign(user, await accountPresentation(normalizedEmail, user));
+    const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
+    await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "session-restored", req });
+    setAuthCookie(res, token);
+    const forcedPasswordPath = user.role === "loan-executive" ? "/loan-executive/change-password" : "/change-password";
+    res.json({
+      token,
+      user,
+      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
     });
   } catch (error) {
     next(error);
@@ -772,6 +893,8 @@ export async function session(req, res, next) {
     }
 
     const presentation = await accountPresentation(email, account);
+    const lifecycle = passwordLifecyclePatch(account);
+    await persistPasswordLifecycleIfMissing(email, account, lifecycle);
     res.json({
       user: {
         uid: account.uid || account.email,
@@ -785,7 +908,11 @@ export async function session(req, res, next) {
         bankId: account.bankId || null,
         branchId: account.branchId || null,
         status: account.status || "active",
-        firstLoginRequired: account.firstLoginRequired === true,
+        firstLoginRequired: firstLoginRequiredFor(account),
+        passwordChangedAt: lifecycle.passwordChangedAt,
+        passwordExpiresAt: lifecycle.passwordExpiresAt,
+        passwordExpired: lifecycle.passwordExpired,
+        passwordDaysRemaining: lifecycle.passwordDaysRemaining,
         emailVerified: true,
         ...presentation,
       },
@@ -802,10 +929,12 @@ export async function completeForcedPasswordChange(req, res, next) {
     const account = await getRecord("users", email);
     if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
+    const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
     await upsertRecord("users", email, {
       ...account,
       firstLoginRequired: false,
       passwordChangedAt: now,
+      passwordExpiresAt,
     });
     const linkedCollections = account.role === "loan-executive"
       ? ["loanExecutives"]
@@ -819,11 +948,12 @@ export async function completeForcedPasswordChange(req, res, next) {
           ...record,
           firstLoginRequired: false,
           passwordChangedAt: now,
+          passwordExpiresAt,
         });
       }
     }
     await writeLoginActivity({ email, role: account.role, status: "password-changed", req });
-    res.json({ ok: true, firstLoginRequired: false, passwordChangedAt: now });
+    res.json({ ok: true, firstLoginRequired: false, passwordChangedAt: now, passwordExpiresAt });
   } catch (error) {
     next(error);
   }

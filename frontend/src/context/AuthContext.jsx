@@ -6,12 +6,16 @@ import {
   reauthenticateWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
+  setPersistence,
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
+import { AUTH_STATES, authPersistenceMode, clearAuthStorage, getStoredToken, getStoredUser, storeAuthSession } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
@@ -41,32 +45,12 @@ function sessionFromResponse(response) {
     bankBranchLocation: sessionUser.bankBranchLocation || null,
     branchId: sessionUser.branchId || null,
     firstLoginRequired: sessionUser.firstLoginRequired === true,
+    passwordChangedAt: sessionUser.passwordChangedAt || null,
+    passwordExpiresAt: sessionUser.passwordExpiresAt || null,
+    passwordDaysRemaining: Number.isFinite(Number(sessionUser.passwordDaysRemaining)) ? Number(sessionUser.passwordDaysRemaining) : null,
+    passwordExpired: sessionUser.passwordExpired === true,
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };
-}
-
-function storedToken() {
-  const sessionToken = sessionStorage.getItem("cls_token");
-  if (sessionToken) return sessionToken;
-  const legacyToken = localStorage.getItem("cls_token");
-  if (legacyToken) {
-    sessionStorage.setItem("cls_token", legacyToken);
-    localStorage.removeItem("cls_token");
-  }
-  return legacyToken;
-}
-
-function clearStoredToken() {
-  sessionStorage.removeItem("cls_token");
-  localStorage.removeItem("cls_token");
-}
-
-function storeAuthSession(session, token) {
-  localStorage.setItem("cls_user", JSON.stringify(session));
-  if (token) {
-    sessionStorage.setItem("cls_token", token);
-    localStorage.removeItem("cls_token");
-  }
 }
 
 function registrationAccountError(message, code) {
@@ -76,43 +60,79 @@ function registrationAccountError(message, code) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem("cls_user");
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [user, setUser] = useState(() => getStoredUser());
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(storedToken()));
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredToken()));
   const [authReady, setAuthReady] = useState(false);
-  const [sessionChecking, setSessionChecking] = useState(Boolean(storedToken()));
+  const [sessionChecking, setSessionChecking] = useState(Boolean(getStoredToken() || getStoredUser()));
+  const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
 
-  const clearLocalSession = async () => {
+  const applySession = (session, token, options = {}) => {
+    storeAuthSession(session, token, { rememberMe: authPersistenceMode() === "local", ...options });
+    setUser(session);
+    setIsAuthenticated(true);
+    setAuthStatus(session.passwordExpired ? AUTH_STATES.PASSWORD_EXPIRED : AUTH_STATES.AUTHENTICATED);
+  };
+
+  const clearLocalSession = async ({ signOutFirebase = true } = {}) => {
     teardownRealtimeSubscriptions();
-    localStorage.removeItem("cls_user");
-    clearStoredToken();
+    clearAuthStorage();
     setFirebaseUser(null);
     setIsAuthenticated(false);
     setUser(null);
+    setAuthStatus(AUTH_STATES.UNAUTHORIZED);
+    if (signOutFirebase) {
+      try {
+        await signOut(auth);
+      } catch {
+        // Local session is already cleared.
+      }
+    }
+  };
+
+  const restoreSessionFromFirebase = async (currentUser = auth.currentUser, { silent = true } = {}) => {
+    if (!currentUser) return null;
+    setSessionChecking(true);
     try {
-      await signOut(auth);
-    } catch {
-      // Local session is already cleared.
+      await currentUser.reload();
+      if (currentUser.emailVerified !== true) {
+        setAuthStatus(AUTH_STATES.UNAUTHORIZED);
+        return null;
+      }
+      const idToken = await currentUser.getIdToken(true);
+      const response = await api.post("/auth/session/restore", { idToken });
+      const session = sessionFromResponse(response);
+      applySession(session, response.data.token, { rememberMe: authPersistenceMode() === "local" });
+      return session;
+    } catch (error) {
+      setAuthStatus(AUTH_STATES.FAILED);
+      if (!silent) throw error;
+      return null;
+    } finally {
+      setSessionChecking(false);
     }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setFirebaseUser(currentUser || null);
-      setIsAuthenticated(Boolean(storedToken()));
-      if (!storedToken()) setUser(null);
       setAuthReady(true);
+      const token = getStoredToken();
+      if (!currentUser && !token) {
+        setUser(null);
+        setIsAuthenticated(false);
+        setAuthStatus(AUTH_STATES.UNAUTHORIZED);
+      }
+      if (currentUser && !token) restoreSessionFromFirebase(currentUser);
     });
     return unsubscribe;
   }, []);
 
-  const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal }) => {
+  const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
     try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (error) {
       const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
@@ -131,9 +151,7 @@ export function AuthProvider({ children }) {
     const idToken = await credential.user.getIdToken(true);
     const response = await api.post("/auth/login", { idToken, portal, targetPortal });
     const session = sessionFromResponse(response);
-    storeAuthSession(session, response.data.token);
-    setUser(session);
-    setIsAuthenticated(true);
+    applySession(session, response.data.token, { rememberMe });
     return session;
   };
 
@@ -177,21 +195,25 @@ export function AuthProvider({ children }) {
   };
 
   const validateSession = async ({ silent = true, showLoading = false } = {}) => {
-    const token = storedToken();
+    const token = getStoredToken();
     if (!token) {
+      if (auth.currentUser) return restoreSessionFromFirebase(auth.currentUser, { silent });
       setSessionChecking(false);
+      setAuthStatus(AUTH_STATES.UNAUTHORIZED);
       return null;
     }
     if (showLoading) setSessionChecking(true);
     try {
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
-      storeAuthSession(session, token);
-      setUser(session);
-      setIsAuthenticated(true);
+      applySession(session, token);
       return session;
     } catch (error) {
-      await clearLocalSession();
+      if (auth.currentUser && authPersistenceMode() === "local") {
+        const restored = await restoreSessionFromFirebase(auth.currentUser, { silent: true });
+        if (restored) return restored;
+      }
+      await clearLocalSession({ signOutFirebase: true });
       if (!silent) throw error;
       return null;
     } finally {
@@ -200,13 +222,14 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    if (!storedToken()) {
+    if (!authReady) return undefined;
+    if (!getStoredToken()) {
       setSessionChecking(false);
       return undefined;
     }
     validateSession({ showLoading: true });
     const interval = window.setInterval(() => {
-      const current = JSON.parse(localStorage.getItem("cls_user") || "null");
+      const current = getStoredUser();
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
     }, 60000);
     const onFocus = () => validateSession();
@@ -215,7 +238,7 @@ export function AuthProvider({ children }) {
       window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [authReady]);
 
   const createRegistrationAccount = async ({ email, password }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -350,6 +373,7 @@ export function AuthProvider({ children }) {
     firebaseUser,
     isAuthenticated,
     loading: !authReady || sessionChecking,
+    authStatus,
     authReady,
     loginWithEmailPassword,
     sendPasswordReset,
@@ -362,7 +386,7 @@ export function AuthProvider({ children }) {
     checkBankRegistrationWithEmail,
     startDealerRegistrationWithEmail,
     checkDealerRegistrationWithEmail,
-  }), [authReady, firebaseUser, isAuthenticated, sessionChecking, user]);
+  }), [authReady, authStatus, firebaseUser, isAuthenticated, sessionChecking, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
