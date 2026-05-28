@@ -7,7 +7,7 @@ export function requireRole(...allowedRoles) {
       observeAuthFailure(req, "role_required");
       return res.status(403).json({ message: "Unauthorized", code: "ROLE_REQUIRED" });
     }
-    if (user.approved !== true || user.active === false || user.accountActive === false) {
+    if (user.approved !== true || user.active === false || user.accountApproved === false || user.accountActive === false) {
       observeAuthFailure(req, "account_not_active");
       return res.status(403).json({ message: "Unauthorized", code: "ACCOUNT_NOT_ACTIVE" });
     }

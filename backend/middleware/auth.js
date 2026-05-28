@@ -48,12 +48,13 @@ async function verifiedAccountFromEmail(email) {
     && Boolean(account.role)
     && !locked
     && account.active !== false
+    && account.accountApproved !== false
     && account.accountActive !== false
     && !["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed"].includes(String(account.accountStatus || account.status || "").toLowerCase());
   if (!active) {
     const error = new Error("Account is inactive or pending approval");
-    error.status = 403;
-    error.code = "ACCOUNT_INACTIVE";
+    error.status = locked ? 423 : 403;
+    error.code = locked ? "ACCOUNT_LOCKED" : "ACCOUNT_INACTIVE";
     throw error;
   }
   return account;
@@ -92,7 +93,13 @@ export async function authenticate(req, res, next) {
           observeAuthFailure(req, "email_not_verified");
           return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
         }
-        const account = await verifiedAccountFromEmail(email);
+        let account;
+        try {
+          account = await verifiedAccountFromEmail(email);
+        } catch (error) {
+          observeAuthFailure(req, error.code || "account_not_active");
+          return res.status(error.status || 403).json({ message: error.message, code: error.code || "ACCOUNT_INACTIVE", lockedUntil: error.code === "ACCOUNT_LOCKED" ? (await getRecord("users", email).catch(() => null))?.lockedUntil : undefined });
+        }
         req.user = {
           uid: account.uid || decoded.uid || email,
           email,
@@ -117,7 +124,13 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "invalid_session_email");
       return res.status(401).json({ message: "Invalid session" });
     }
-    const account = await verifiedAccountFromEmail(email);
+    let account;
+    try {
+      account = await verifiedAccountFromEmail(email);
+    } catch (error) {
+      observeAuthFailure(req, error.code || "account_not_active");
+      return res.status(error.status || 403).json({ message: error.message, code: error.code || "ACCOUNT_INACTIVE" });
+    }
     if (account.sessionRevokedAt && tokenUser.iat && new Date(account.sessionRevokedAt).getTime() > tokenUser.iat * 1000) {
       observeAuthFailure(req, "session_revoked");
       return res.status(401).json({ message: "Session revoked. Please login again.", code: "SESSION_REVOKED" });
@@ -160,6 +173,6 @@ export async function authenticate(req, res, next) {
     return next();
   } catch (error) {
     observeAuthFailure(req, "invalid_or_expired_token");
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({ message: "Invalid or expired token", code: "INVALID_SESSION" });
   }
 }

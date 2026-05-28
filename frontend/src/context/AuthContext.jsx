@@ -22,7 +22,7 @@ import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 const AuthContext = createContext(null);
 
 function actionCodeSettings() {
-  const url = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL || `${window.location.origin}/dealer-login`;
+  const url = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL || `${window.location.origin}/dealer/login`;
   return { url, handleCodeInApp: false };
 }
 
@@ -106,6 +106,7 @@ export function AuthProvider({ children }) {
       return session;
     } catch (error) {
       setAuthStatus(AUTH_STATES.FAILED);
+      await clearLocalSession({ signOutFirebase: true });
       if (!silent) throw error;
       return null;
     } finally {
@@ -151,7 +152,13 @@ export function AuthProvider({ children }) {
     }
     setFirebaseUser(credential.user);
     const idToken = await credential.user.getIdToken(true);
-    const response = await api.post("/auth/login", { idToken, portal, targetPortal });
+    let response;
+    try {
+      response = await api.post("/auth/login", { idToken, portal, targetPortal });
+    } catch (error) {
+      await clearLocalSession({ signOutFirebase: true });
+      throw error;
+    }
     const session = sessionFromResponse(response);
     applySession(session, response.data.token, { rememberMe });
     return session;
@@ -241,6 +248,19 @@ export function AuthProvider({ children }) {
       window.removeEventListener("focus", onFocus);
     };
   }, [authReady]);
+
+  useEffect(() => {
+    const onSessionCleared = () => {
+      teardownRealtimeSubscriptions();
+      setFirebaseUser(null);
+      setIsAuthenticated(false);
+      setUser(null);
+      setAuthStatus(AUTH_STATES.UNAUTHORIZED);
+      setSessionChecking(false);
+    };
+    window.addEventListener("cls:auth-session-cleared", onSessionCleared);
+    return () => window.removeEventListener("cls:auth-session-cleared", onSessionCleared);
+  }, []);
 
   const createRegistrationAccount = async ({ email, password }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();

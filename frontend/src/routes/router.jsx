@@ -52,6 +52,7 @@ export const router = createBrowserRouter([
       { path: "/bank/login", element: <LoginPage portal="bank" /> },
       { path: "/executive/register", element: <BankRegistration audience="executive" /> },
       { path: "/executive/login", element: <LoginPage portal="executive" /> },
+      { path: "/admin/login", element: <LoginPage portal="admin" /> },
       { path: "/dealer-registration", element: <DealerRegistrationPage /> },
       { path: "/dealer-registration/form", element: <DealerRegistrationFormPage /> },
       { path: "/dealer-registration/pending", element: <DealerRegistrationPendingPage /> },
@@ -65,20 +66,21 @@ export const router = createBrowserRouter([
       { path: "/services", element: <ServicesPage /> },
       { path: "/marketplace", element: <MarketplacePage /> },
       { path: "/partners", element: <PartnerProgramPage /> },
-      { path: "/dealer-login", element: <LoginPage portal="dealer" /> },
-      { path: "/bank-login", element: <LoginPage portal="bank" /> },
-      { path: "/super-admin", element: <LoginPage portal="admin" /> },
-      { path: "/login", element: <Navigate to="/dealer-login" replace /> },
+      { path: "/dealer-login", element: <Navigate to="/dealer/login" replace /> },
+      { path: "/bank-login", element: <Navigate to="/bank/login" replace /> },
+      { path: "/super-admin", element: <Navigate to="/admin/login" replace /> },
+      { path: "/login", element: <Navigate to="/dealer/login" replace /> },
       { path: "/register", element: <Navigate to="/dealer-registration" replace /> },
-      { path: "/otp", element: <Navigate to="/dealer-login" replace /> },
-      { path: "/role-selection", element: <Navigate to="/dealer-login" replace /> },
+      { path: "/otp", element: <Navigate to="/dealer/login" replace /> },
+      { path: "/role-selection", element: <Navigate to="/dealer/login" replace /> },
     ],
   },
   {
     path: "/gm",
-    element: <ProtectedRoute roles={[ROLES.GM_SM]} loginPath="/dealer-login" />,
+    element: <ProtectedRoute roles={[ROLES.GM_SM]} loginPath="/dealer/login" />,
     children: [
       { path: "dashboard", element: <DashboardLayout />, children: [{ index: true, element: <Navigate to="/gm/total-leads" replace /> }] },
+      { path: "change-password", element: <ExecutiveChangePasswordPage /> },
       { path: "total-leads", element: <DashboardLayout />, children: [{ index: true, element: <GmTrackingPanel mode="total" /> }] },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <Navigate to="/gm/cases" replace /> }] },
       { path: "leads/:leadId", element: <DashboardLayout />, children: [{ index: true, element: <GmLeadDetailPage /> }] },
@@ -95,12 +97,13 @@ export const router = createBrowserRouter([
   },
   {
     path: "/finance",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer-login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer/login" />,
     children: [
       {
         element: <DashboardLayout />,
         children: [
           { path: "dashboard", element: <Navigate to="/finance/total-leads" replace /> },
+          { path: "change-password", element: <ExecutiveChangePasswordPage /> },
           { path: "total-leads", element: <FinanceDeskPanel mode="total" /> },
           { path: "add-lead", element: <FinanceDeskPanel mode="add" /> },
           { path: "manage-staff", element: <FinanceDeskPanel mode="staff" /> },
@@ -140,14 +143,14 @@ export const router = createBrowserRouter([
   },
   {
     path: "/dealer",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer-login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/finance/dashboard" replace /> },
     ],
   },
   {
     path: "/bank-manager",
-    element: <ProtectedRoute roles={[ROLES.BANK_MANAGER]} loginPath="/bank-login" />,
+    element: <ProtectedRoute roles={[ROLES.BANK_MANAGER]} loginPath="/bank/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="leads" /> }] },
@@ -190,7 +193,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin",
-    element: <ProtectedRoute roles={[ROLES.SUPER_ADMIN]} loginPath="/super-admin" />,
+    element: <ProtectedRoute roles={[ROLES.SUPER_ADMIN]} loginPath="/admin/login" />,
     children: [
       {
         element: <DashboardLayout />,
@@ -228,6 +231,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  { path: "/bank/*", element: <Navigate to="/bank-login" replace /> },
-  { path: "/app/*", element: <Navigate to="/dealer-login" replace /> },
+  { path: "/bank/*", element: <Navigate to="/bank/login" replace /> },
+  { path: "/app/*", element: <Navigate to="/dealer/login" replace /> },
 ]);

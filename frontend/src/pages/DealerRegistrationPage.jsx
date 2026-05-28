@@ -396,7 +396,7 @@ export function DealerRegistrationApprovedPage() {
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Your dealership account has been approved successfully by CarLoanSaathi.
         </p>
-        <Link to="/dealer-login" className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">
+        <Link to="/dealer/login" className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">
           Login to Dealer Portal
         </Link>
       </section>
@@ -466,7 +466,7 @@ export function DealerRegistrationPendingPage() {
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => navigate("/dealer-login")} className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">
+          <button type="button" onClick={() => navigate("/dealer/login")} className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">
             Login to Dealer Portal
           </button>
         </section>

@@ -53,19 +53,34 @@ api.interceptors.response.use(
   (error) => {
     if (error.code === "ECONNABORTED") {
       error.message = "Request timed out. Please try again.";
+    } else if (error.code === "ERR_NETWORK" || !error.response) {
+      error.message = "Could not reach CarLoanSaathi secure service. Check your connection and try again.";
     } else if (error.response?.status === 404) {
       const baseURL = error.config?.baseURL || "";
       const url = error.config?.url || "";
       error.message = `API route not found: ${baseURL}${url}`;
-    } else if ([401, 403].includes(error.response?.status) && ["DEALER_ACCOUNT_INACTIVE", "BANK_ACCOUNT_INACTIVE", "ACCOUNT_DELETED", "SESSION_REVOKED"].includes(error.response?.data?.code)) {
+    } else if ([401, 403, 423].includes(error.response?.status) && [
+      "ACCOUNT_DELETED",
+      "ACCOUNT_INACTIVE",
+      "ACCOUNT_LOCKED",
+      "ACCOUNT_NOT_ACTIVE",
+      "BANK_ACCOUNT_INACTIVE",
+      "DEALER_ACCOUNT_INACTIVE",
+      "INVALID_SESSION",
+      "SESSION_EXPIRED",
+      "SESSION_REVOKED",
+    ].includes(error.response?.data?.code)) {
       const stored = getStoredUser();
       clearAuthStorage();
       if (typeof window !== "undefined") {
         const target = stored?.role === "loan-executive"
           ? "/executive/login"
           : stored?.role === "bank-manager" || error.response?.data?.code === "BANK_ACCOUNT_INACTIVE"
-            ? "/bank-login"
-            : "/dealer-login";
+            ? "/bank/login"
+            : stored?.role === "super-admin"
+              ? "/admin/login"
+              : "/dealer/login";
+        window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
         if (!window.location.pathname.includes(target.replace("/", ""))) window.location.assign(target);
       }
     }

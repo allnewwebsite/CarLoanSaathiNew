@@ -6,10 +6,10 @@ import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from
 import { writeAuditLog } from "../services/audit.service.js";
 
 const ROLE_ROUTES = {
-  "finance-desk": "/finance/total-leads",
-  "gm-sm": "/gm/total-leads",
+  "finance-desk": "/finance/dashboard",
+  "gm-sm": "/gm/dashboard",
   "bank-manager": "/bank-manager/dashboard",
-  "loan-executive": "/loan-executive/dashboard",
+  "loan-executive": "/loan-executive/leads",
   "super-admin": "/admin/dashboard",
 };
 const PORTAL_ROLES = {
@@ -21,19 +21,19 @@ const ROLE_GUIDANCE = {
   "finance-desk": {
     roleLabel: "Finance Head",
     portalLabel: "Dealer Portal",
-    redirectTo: "/finance/login",
-    actionLabel: "Go to Finance Head Login",
+    redirectTo: "/dealer/login",
+    actionLabel: "Go to Dealer Login",
   },
   "gm-sm": {
     roleLabel: "GM / SM",
     portalLabel: "Dealer Portal",
-    redirectTo: "/dealer-login",
+    redirectTo: "/dealer/login",
     actionLabel: "Go to Dealer Login",
   },
   "bank-manager": {
     roleLabel: "Bank Manager",
     portalLabel: "Bank Portal",
-    redirectTo: "/bank-login",
+    redirectTo: "/bank/login",
     actionLabel: "Go to Bank Manager Login",
   },
   "loan-executive": {
@@ -45,7 +45,7 @@ const ROLE_GUIDANCE = {
   "super-admin": {
     roleLabel: "Super Admin",
     portalLabel: "Super Admin Portal",
-    redirectTo: "/super-admin",
+    redirectTo: "/admin/login",
     actionLabel: "Go to Super Admin Login",
   },
 };
@@ -55,6 +55,20 @@ const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 8);
 const MAX_CONCURRENT_SESSIONS = Number(process.env.MAX_CONCURRENT_SESSIONS || 3);
 const PASSWORD_VALID_DAYS = Number(process.env.PASSWORD_VALID_DAYS || 90);
 const SESSION_COOKIE_NAME = "cls_session";
+
+function normalizePortal(portal = "dealer") {
+  if (portal === "finance") return "dealer";
+  if (portal === "executive") return "bank";
+  if (portal === "super-admin") return "admin";
+  return PORTAL_ROLES[portal] ? portal : "dealer";
+}
+
+function passwordChangeRouteForRole(role) {
+  if (role === "loan-executive") return "/loan-executive/change-password";
+  if (role === "gm-sm") return "/gm/change-password";
+  if (role === "finance-desk") return "/finance/change-password";
+  return "/change-password";
+}
 
 function authCookieEnabled() {
   return process.env.ENABLE_AUTH_COOKIES === "true";
@@ -603,7 +617,8 @@ async function setFirebaseClaims(email, user) {
 
 export async function login(req, res, next) {
   try {
-    const { idToken, portal = "dealer" } = req.body;
+    const { idToken } = req.body;
+    const portal = normalizePortal(req.body.portal);
     if (!idToken) return res.status(400).json({ message: "Firebase authentication token is required" });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
@@ -718,7 +733,7 @@ export async function login(req, res, next) {
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
-    const forcedPasswordPath = user.role === "loan-executive" ? "/loan-executive/change-password" : "/change-password";
+    const forcedPasswordPath = passwordChangeRouteForRole(user.role);
     const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
     res.json({
       token,
@@ -794,7 +809,7 @@ export async function restoreSession(req, res, next) {
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "session-restored", req });
     setAuthCookie(res, token);
-    const forcedPasswordPath = user.role === "loan-executive" ? "/loan-executive/change-password" : "/change-password";
+    const forcedPasswordPath = passwordChangeRouteForRole(user.role);
     res.json({
       token,
       user,
@@ -826,7 +841,7 @@ export async function recordLoginFailure(req, res, next) {
 export async function lookupAccountForLogin(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
-    const portal = PORTAL_ROLES[req.body.portal] ? req.body.portal : "dealer";
+    const portal = normalizePortal(req.body.portal);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
 

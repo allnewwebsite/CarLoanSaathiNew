@@ -225,7 +225,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
             <ShieldCheck className="mx-auto h-10 w-10 text-[#0d47a1]" />
             <h1 className="mt-4 text-2xl font-semibold text-slate-900">Bank Account Verified Successfully</h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">Your bank partner account has been approved successfully by CarLoanSaathi.</p>
-            <button type="button" onClick={() => navigate("/bank-login")} className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">Login to Bank Portal</button>
+            <button type="button" onClick={() => navigate("/bank/login")} className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">Login to Bank Portal</button>
           </section>
         </main>
       );

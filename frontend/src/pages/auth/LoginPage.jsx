@@ -100,6 +100,7 @@ export function LoginPage({ portal = "dealer" }) {
 
   const submit = async (event) => {
     event.preventDefault();
+    if (loading || resetLoading || resendLoading) return;
     setLoading(true);
     setError("");
     setErrorAction(null);
