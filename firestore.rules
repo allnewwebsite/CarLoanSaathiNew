@@ -22,6 +22,10 @@ service cloud.firestore {
       return signedIn() ? request.auth.token.bankId : null;
     }
 
+    function branchId() {
+      return signedIn() ? request.auth.token.branchId : null;
+    }
+
     function isSuperAdmin() {
       return role() == "super-admin";
     }
@@ -60,6 +64,22 @@ service cloud.firestore {
         && data.bankId == bankId();
     }
 
+    function sameBranch(data) {
+      return branchId() == null
+        || (
+          data.branchId == null
+          && data.bankBranchCity == null
+          && data.branchCity == null
+          && data.routingCity == null
+          && data.city == null
+        )
+        || data.branchId == branchId()
+        || data.bankBranchCity == branchId()
+        || data.branchCity == branchId()
+        || data.routingCity == branchId()
+        || data.city == branchId();
+    }
+
     function assignedExecutive(data) {
       return approved()
         && (
@@ -72,14 +92,14 @@ service cloud.firestore {
     function canReadLead(data) {
       return isSuperAdmin()
         || ((isFinanceDesk() || isGmSm()) && sameDealership(data))
-        || (isBankManager() && sameBank(data))
+        || (isBankManager() && sameBank(data) && sameBranch(data))
         || (isLoanExecutive() && assignedExecutive(data));
     }
 
     function canReadDocument(data) {
       return isSuperAdmin()
         || sameDealership(data)
-        || sameBank(data)
+        || (sameBank(data) && sameBranch(data))
         || assignedExecutive(data);
     }
 
@@ -135,7 +155,12 @@ service cloud.firestore {
         && request.resource.data.dealershipId == dealershipId()
         && request.resource.data.uploadedBy == email();
       allow update: if isLoanExecutive()
-        && assignedExecutive(resource.data);
+        && assignedExecutive(resource.data)
+        && request.resource.data.leadId == resource.data.leadId
+        && request.resource.data.dealershipId == resource.data.dealershipId
+        && request.resource.data.bankId == resource.data.bankId
+        && request.resource.data.assignedExecutiveId == resource.data.assignedExecutiveId
+        && request.resource.data.assignedExecutiveEmail == resource.data.assignedExecutiveEmail;
       allow delete: if false;
       allow read, write: if isSuperAdmin();
     }
@@ -151,7 +176,7 @@ service cloud.firestore {
         || (approved() && resource.data.userId == request.auth.uid)
         || (approved() && resource.data.recipientId == email())
         || ((isFinanceDesk() || isGmSm()) && resource.data.dealershipId == dealershipId())
-        || (isBankManager() && resource.data.bankId == bankId())
+        || (isBankManager() && resource.data.bankId == bankId() && sameBranch(resource.data))
         || (isLoanExecutive()
           && (
             resource.data.assignedExecutiveId == request.auth.uid
@@ -200,7 +225,7 @@ service cloud.firestore {
 
     match /loanExecutives/{executiveId} {
       allow read: if isSuperAdmin()
-        || (isBankManager() && sameBank(resource.data))
+        || (isBankManager() && sameBank(resource.data) && sameBranch(resource.data))
         || (isLoanExecutive() && (request.auth.uid == executiveId || resource.data.email == email()));
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
@@ -208,7 +233,7 @@ service cloud.firestore {
 
     match /bankPartners/{partnerId} {
       allow read: if isSuperAdmin()
-        || (isBankManager() && sameBank(resource.data));
+        || (isBankManager() && sameBank(resource.data) && sameBranch(resource.data));
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
     }
@@ -297,7 +322,7 @@ service cloud.firestore {
     match /slaMetrics/{id} {
       allow read: if isSuperAdmin()
         || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data))
-        || (isBankManager() && sameBank(resource.data))
+        || (isBankManager() && sameBank(resource.data) && sameBranch(resource.data))
         || (isLoanExecutive() && assignedExecutive(resource.data));
       allow write: if false;
     }
