@@ -91,6 +91,26 @@ export function DashboardLayout() {
       ? `${user.dealershipName || "Dealership"} ${user.role === "finance-desk" ? "Finance Desk" : "GM / SM"}`.toUpperCase()
       : user?.roleLabel || "Workspace";
 
+  const dashboardTitle = user?.role === "bank-manager"
+    ? "BANK MANAGER DASHBOARD"
+    : user?.role === "finance-desk"
+      ? "FINANCE DESK DASHBOARD"
+      : user?.role === "gm-sm"
+        ? "GM / SM DASHBOARD"
+        : user?.role === "loan-executive"
+          ? "LOAN EXECUTIVE DASHBOARD"
+          : user?.role === "super-admin"
+            ? "SUPER ADMIN DASHBOARD"
+            : "OPERATING DASHBOARD";
+  const headerMetadata = user?.role === "bank-manager"
+    ? [
+        ["Bank Name", user.bankName || "Bank Branch"],
+        ["IFSC Code", user.bankIfsc || "IFSC Pending"],
+      ]
+    : ["finance-desk", "gm-sm"].includes(user?.role)
+      ? [["Dealership", user.dealershipName || "Dealership"]]
+      : [];
+
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
       {mobileOpen ? <button aria-label="Close sidebar overlay" className="fixed inset-0 z-30 bg-slate-900/30 opacity-100 transition-opacity duration-200 ease-out lg:hidden" onClick={() => setMobileOpen(false)} /> : null}
@@ -114,25 +134,46 @@ export function DashboardLayout() {
             );
           })}
         </div>
-        <div className={`shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:px-2" : ""}`}>
-          <p className={`text-xs font-medium uppercase tracking-[0.12em] text-slate-500 ${collapsed ? "lg:hidden" : ""}`}>Session</p>
-          <p className={`hidden text-center text-xs font-semibold text-slate-500 ${collapsed ? "lg:block" : ""}`}>{user?.email?.slice(0, 1)?.toUpperCase() || "U"}</p>
-          <p className={`mt-1 break-words text-sm font-medium leading-5 text-slate-900 transition-[max-height,opacity,transform] duration-200 ease-out ${collapsed ? "lg:max-h-0 lg:-translate-x-1 lg:opacity-0" : "lg:max-h-20 lg:translate-x-0 lg:opacity-100"}`}>{user?.email}</p>
+        <div className="shrink-0 space-y-3">
+          <button
+            type="button"
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className={`hidden h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-[background-color,color,transform,width,padding] duration-200 ease-out hover:bg-slate-50 hover:text-[#0d47a1] focus:outline-none focus:ring-2 focus:ring-[#0d47a1]/25 lg:inline-flex ${collapsed ? "lg:w-full lg:justify-center lg:px-2" : "lg:w-fit"}`}
+          >
+            <ToggleIcon className="h-4 w-4 shrink-0" />
+            <span className={`whitespace-nowrap transition-[opacity,transform,width] duration-200 ease-out ${collapsed ? "lg:w-0 lg:-translate-x-1 lg:opacity-0" : "lg:w-auto lg:translate-x-0 lg:opacity-100"}`}>
+              Collapse
+            </span>
+          </button>
+          <div className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:px-2" : ""}`}>
+            <p className={`text-xs font-medium uppercase tracking-[0.12em] text-slate-500 ${collapsed ? "lg:hidden" : ""}`}>Session</p>
+            <p className={`hidden text-center text-xs font-semibold text-slate-500 ${collapsed ? "lg:block" : ""}`}>{user?.email?.slice(0, 1)?.toUpperCase() || "U"}</p>
+            <p className={`mt-1 break-words text-sm font-medium leading-5 text-slate-900 transition-[max-height,opacity,transform] duration-200 ease-out ${collapsed ? "lg:max-h-0 lg:-translate-x-1 lg:opacity-0" : "lg:max-h-20 lg:translate-x-0 lg:opacity-100"}`}>{user?.email}</p>
+          </div>
         </div>
       </aside>
       <main className={`min-w-0 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
-          <div className="flex min-h-16 items-center justify-between gap-4 px-4 sm:px-6 lg:px-6">
+          <div className="flex min-h-[4.5rem] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-6">
             <div className="flex min-w-0 items-center gap-3">
               <button type="button" onClick={() => setMobileOpen(true)} aria-label="Open sidebar" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 lg:hidden">
                 <Menu className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} className="hidden h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 lg:inline-flex">
-                <ToggleIcon className="h-4 w-4" />
-              </button>
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{headerEyebrow}</p>
-                <h1 className="truncate text-lg font-semibold text-slate-900">Operating Dashboard</h1>
+                <h1 className="truncate text-xl font-semibold tracking-[0.01em] text-slate-950">{dashboardTitle}</h1>
+                {headerMetadata.length ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                    {headerMetadata.map(([label, value]) => (
+                      <span key={label} className="inline-flex min-w-0 items-center gap-1">
+                        <span className="font-medium text-slate-500">{label}:</span>
+                        <span className="truncate font-semibold text-slate-700">{value}</span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
             <div className="flex items-center gap-2">
