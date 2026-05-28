@@ -30,10 +30,14 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function authMessage(error, portal) {
+function authMessage(error, portal, action = "login") {
   const code = error.response?.data?.code || error.code || "";
   const message = error.response?.data?.message || error.message || "";
-  if (/resetting password/i.test(message)) return "Verify your email before resetting password.";
+  if (/resetting password/i.test(message)) {
+    return action === "reset"
+      ? "Verify your email before resetting password."
+      : "Please verify your email address before logging in.";
+  }
   if (code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(message)) return "Please verify your email address before logging in.";
   if (code === "auth/user-not-found" || error.response?.status === 404) return "No account found with this email address.";
   if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
@@ -45,7 +49,11 @@ function authMessage(error, portal) {
   if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
     return "This domain is blocked by Firebase API key restrictions. Add this website in Google Cloud API key restrictions.";
   }
-  if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") return "Unable to send password reset email. Try again later.";
+  if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
+    return action === "reset"
+      ? "Unable to send password reset email. Try again later."
+      : "Unable to login right now. Please try again later.";
+  }
   return message || "Unable to login. Please verify your email and password.";
 }
 
@@ -85,7 +93,7 @@ export function LoginPage({ portal = "dealer" }) {
       if (!rememberMe) sessionStorage.setItem("cls_session_only", "true");
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
-      const nextMessage = authMessage(err, portal);
+      const nextMessage = authMessage(err, portal, "login");
       setError(nextMessage);
       setShowResend(err.code === "EMAIL_NOT_VERIFIED" || err.response?.data?.code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(nextMessage));
     } finally {
@@ -105,7 +113,7 @@ export function LoginPage({ portal = "dealer" }) {
       await sendPasswordReset(email);
       setMessage("Password reset link sent successfully. Please check your inbox.");
     } catch (err) {
-      setError(authMessage(err, portal) || "Unable to send password reset email. Try again later.");
+      setError(authMessage(err, portal, "reset") || "Unable to send password reset email. Try again later.");
     } finally {
       setResetLoading(false);
     }
@@ -124,7 +132,7 @@ export function LoginPage({ portal = "dealer" }) {
       setMessage(result.alreadyVerified ? "Email already verified. Please login again." : "Verification email sent successfully. Please check your inbox.");
       setShowResend(false);
     } catch (err) {
-      setError(authMessage(err, portal) || "Unable to send verification email. Try again later.");
+      setError(authMessage(err, portal, "verification") || "Unable to send verification email. Try again later.");
     } finally {
       setResendLoading(false);
     }
@@ -232,7 +240,7 @@ export function LoginPage({ portal = "dealer" }) {
                 </button>
               )}
 
-              <button disabled={loading || resetLoading || resendLoading} className="flex h-11 w-full items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-semibold text-white disabled:opacity-70">
+              <button type="submit" disabled={loading || resetLoading || resendLoading} className="flex h-11 w-full items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-semibold text-white disabled:opacity-70">
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
               </button>
             </form>
