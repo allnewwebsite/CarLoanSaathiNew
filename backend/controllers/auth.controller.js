@@ -4,6 +4,7 @@ import { jwtSecret, superAdminEmail } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { writeAuditLog } from "../services/audit.service.js";
+import { logError, logInfo, logWarn } from "../services/logger.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
@@ -39,7 +40,7 @@ const ROLE_GUIDANCE = {
   "loan-executive": {
     roleLabel: "Loan Executive",
     portalLabel: "Executive Portal",
-    redirectTo: "/loan-executive/login",
+    redirectTo: "/executive/login",
     actionLabel: "Go to Executive Login",
   },
   "super-admin": {
@@ -616,24 +617,32 @@ async function setFirebaseClaims(email, user) {
 }
 
 export async function login(req, res, next) {
+  let authPhase = "start";
+  let normalizedEmail = "";
   try {
     const { idToken } = req.body;
     const portal = normalizePortal(req.body.portal);
+    authPhase = "validate-request";
     if (!idToken) return res.status(400).json({ message: "Firebase authentication token is required" });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    authPhase = "verify-firebase-token";
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
-    const normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    logInfo("Auth login token verified", { requestId: req.requestId, email: normalizedEmail, portal });
+    authPhase = "validate-firebase-email";
     if (!normalizedEmail) return res.status(400).json({ message: "Account email is required" });
     if (decoded.email_verified !== true) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "email-not-verified", req });
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
+    authPhase = "resolve-account";
     const account = await accountForEmail(normalizedEmail, portal);
     if (accountLocked(account)) {
       await writeLoginActivity({ email: normalizedEmail, role: account?.role, status: "denied", reason: "account-locked", req });
       return res.status(423).json(accountLockedPayload(account));
     }
     if (!account || !ROLE_ROUTES[account.role]) {
+      authPhase = "resolve-known-account";
       const knownAccount = await accountForAnyPortal(normalizedEmail);
       const knownPortal = portalForRole(knownAccount?.role);
       if (knownAccount?.role && knownPortal && knownPortal !== portal) {
@@ -646,6 +655,7 @@ export async function login(req, res, next) {
         return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
       }
       if (portal === "dealer") {
+        authPhase = "dealer-registration-status";
         const registration = await dealerRegistrationStatus(normalizedEmail);
         await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: registration ? "dealer-approval-pending" : "dealer-registration-required", req });
         return res.status(403).json({
@@ -657,6 +667,7 @@ export async function login(req, res, next) {
         });
       }
       if (portal === "bank") {
+        authPhase = "bank-registration-status";
         const registration = await bankRegistrationStatus(normalizedEmail);
         const gate = bankLoginGate(registration);
         await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: gate.reason, req });
@@ -671,15 +682,18 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Your account is awaiting CarLoanSaathi administrator approval." });
     }
     if (!accountActive(account)) {
+      authPhase = "account-active-check";
       const inactive = inactiveAccountMessage(account);
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "inactive", req });
       return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
     }
     if (portal === "dealer" && !account.dealershipId && account.role !== "super-admin") {
+      logWarn("Auth login denied: missing dealership id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealership-id-missing", req });
       return res.status(403).json({ message: "Your dealership account is pending Super Admin approval." });
     }
     if (portal === "bank" && !account.bankId) {
+      logWarn("Auth login denied: missing bank id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "bank-id-missing", req });
       return res.status(403).json({ message: "Your bank account is pending Super Admin approval." });
     }
@@ -700,8 +714,10 @@ export async function login(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "admin-role-required", req });
       return res.status(403).json({ message: "ACCESS DENIED" });
     }
+    authPhase = "password-lifecycle";
     const lifecycle = passwordLifecyclePatch(account);
     await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
+    authPhase = "persist-user-session";
     const user = {
       uid: normalizedEmail,
       email: normalizedEmail,
@@ -726,10 +742,13 @@ export async function login(req, res, next) {
     await upsertRecord("users", normalizedEmail, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
+    authPhase = "create-user-session";
     const sessionId = await createUserSession({ req, user });
     user.sessionId = sessionId;
+    authPhase = "account-presentation";
     const presentation = await accountPresentation(normalizedEmail, user);
     Object.assign(user, presentation);
+    authPhase = "sign-jwt";
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
@@ -741,6 +760,14 @@ export async function login(req, res, next) {
       redirectTo,
     });
   } catch (error) {
+    logError("Auth login failed", {
+      requestId: req.requestId,
+      phase: authPhase,
+      email: normalizedEmail,
+      message: error.message,
+      code: error.code,
+      status: error.status || 500,
+    });
     next(error);
   }
 }

@@ -59,6 +59,32 @@ function authEndpoint(url = "") {
     || String(url).startsWith("/auth/password-reset");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+export async function ensureApiReady({ onStatus, maxWaitMs = 65000 } = {}) {
+  const started = Date.now();
+  let attempt = 0;
+  while (Date.now() - started < maxWaitMs) {
+    attempt += 1;
+    try {
+      onStatus?.(attempt === 1 ? "Checking secure login service..." : "Server is waking up. Please wait 30-60 seconds.");
+      const response = await axios.get(`${apiBaseUrl()}/health`, {
+        timeout: attempt === 1 ? 6000 : 10000,
+        headers: { "X-CLS-Warmup": "true" },
+      });
+      if (["ok", "degraded"].includes(response.data?.status) || response.status === 200) return response.data;
+    } catch (error) {
+      if (error.response?.status && error.response.status < 500) throw error;
+    }
+    await sleep(Math.min(2000 + attempt * 500, 5000));
+  }
+  const error = new Error("Server is waking up. Please wait 30-60 seconds and try again.");
+  error.code = "BACKEND_WARMUP_TIMEOUT";
+  throw error;
+}
+
 async function refreshSessionToken() {
   const token = getStoredToken();
   if (!token) return null;
@@ -121,7 +147,7 @@ api.interceptors.response.use(
       publishAuthEvent("logout", { reason: error.response?.data?.code || "session-refresh-failed" });
       if (typeof window !== "undefined") {
         const target = stored?.role === "loan-executive"
-          ? "/loan-executive/login"
+          ? "/executive/login"
           : stored?.role === "bank-manager"
             ? "/bank/login"
             : stored?.role === "super-admin"
@@ -151,7 +177,7 @@ api.interceptors.response.use(
       clearAuthStorage();
       if (typeof window !== "undefined") {
         const target = stored?.role === "loan-executive"
-          ? "/loan-executive/login"
+          ? "/executive/login"
           : stored?.role === "bank-manager" || error.response?.data?.code === "BANK_ACCOUNT_INACTIVE"
             ? "/bank/login"
             : stored?.role === "super-admin"

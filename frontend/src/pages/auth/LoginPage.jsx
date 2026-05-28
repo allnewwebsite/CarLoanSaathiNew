@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { ensureApiReady } from "../../services/api.js";
 import { resolveAuthError } from "../../services/authErrorResolver.js";
 
 const portals = {
@@ -118,6 +119,8 @@ export function LoginPage({ portal = "dealer" }) {
       return;
     }
     try {
+      await ensureApiReady({ onStatus: setMessage });
+      setMessage("");
       const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal, rememberMe });
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {

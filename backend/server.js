@@ -62,6 +62,14 @@ app.get("/health", async (_req, res, next) => {
     next(error);
   }
 });
+app.get("/api/health", async (_req, res, next) => {
+  try {
+    const health = await productionHealth({ deep: false });
+    res.set("Cache-Control", "no-store").json(health);
+  } catch (error) {
+    next(error);
+  }
+});
 app.get("/health/deep", monitoringRateLimit, requireMonitoringAccess, async (_req, res, next) => {
   try {
     const health = await productionHealth({ deep: true });

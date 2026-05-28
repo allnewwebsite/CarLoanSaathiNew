@@ -2,7 +2,7 @@ const PORTAL_LOGIN_PATHS = {
   dealer: "/dealer/login",
   finance: "/finance/login",
   bank: "/bank/login",
-  executive: "/loan-executive/login",
+  executive: "/executive/login",
   admin: "/admin/login",
 };
 
@@ -34,6 +34,7 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
   const code = data.code || error?.response?.data?.code || error?.code || "";
   const firebaseCode = error?.code || "";
   const message = data.message || error?.response?.data?.message || error?.message || "";
+  const requestId = data.requestId || error?.response?.data?.requestId || "";
 
   if (code === "WRONG_PORTAL") {
     return base(data.message || "This email belongs to a different portal.", {
@@ -83,6 +84,7 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
 
   if (code === "auth/weak-password") return base("Password is too weak.");
   if (code === "auth/too-many-requests") return base("Too many attempts. Try again later.", { showForgotPassword: false });
+  if (code === "BACKEND_WARMUP_TIMEOUT") return base("Server is waking up. Please wait 30-60 seconds and try again.", { showForgotPassword: false });
 
   if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
     return base("This website is blocked by Firebase API key restrictions. Add this domain in Google Cloud API key restrictions.", { showForgotPassword: false });
@@ -92,6 +94,10 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
     if (action === "reset") return base("We could not reach the secure password reset service. Check your connection and try again.", { showForgotPassword: false });
     if (action === "verification") return base("We could not reach the verification service. Check your connection and try again.", { showForgotPassword: false });
     return base("We could not reach the secure login service. Check your connection and try again.", { showForgotPassword: false });
+  }
+
+  if (error?.response?.status >= 500) {
+    return base(`Secure login service failed on the server.${requestId ? ` Request ID: ${requestId}` : ""} Please share this ID with support or check Render backend logs.`);
   }
 
   return base(message || "Login could not be completed. Please verify your email and password.");

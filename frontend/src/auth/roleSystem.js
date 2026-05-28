@@ -18,7 +18,7 @@ export const ROLE_LOGIN_ROUTES = {
   [ROLES.FINANCE_DESK]: "/dealer/login",
   [ROLES.GM_SM]: "/dealer/login",
   [ROLES.BANK_MANAGER]: "/bank/login",
-  [ROLES.LOAN_EXECUTIVE]: "/loan-executive/login",
+  [ROLES.LOAN_EXECUTIVE]: "/executive/login",
   [ROLES.SUPER_ADMIN]: "/admin/login",
 };
 
