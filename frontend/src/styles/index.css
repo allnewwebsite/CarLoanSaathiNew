@@ -172,10 +172,12 @@ table td {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: middle;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
 }
 
 table tr {
-  min-height: 3rem;
+  min-height: 2.5rem;
 }
 
 button,

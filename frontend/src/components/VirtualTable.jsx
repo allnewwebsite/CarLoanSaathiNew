@@ -6,7 +6,7 @@ const Row = memo(function Row({ index, style, rows, columns, gridTemplateColumns
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50">
       {columns.map((column) => (
-        <div key={column.key} role="cell" className="truncate px-3 py-3 text-sm text-slate-600">
+        <div key={column.key} role="cell" className="truncate px-2.5 py-2 text-xs leading-5 text-slate-600">
           {column.render ? column.render(row) : row[column.key]}
         </div>
       ))}
@@ -14,7 +14,7 @@ const Row = memo(function Row({ index, style, rows, columns, gridTemplateColumns
   );
 });
 
-export function VirtualTable({ columns, rows, rowHeight = 48, height = 520, overscan = 8 }) {
+export function VirtualTable({ columns, rows, rowHeight = 40, height = 520, overscan = 8 }) {
   const gridTemplateColumns = `repeat(${columns.length}, minmax(140px, 1fr))`;
   const tableMinWidth = `${Math.max(columns.length * 150, 720)}px`;
   return (
@@ -23,7 +23,7 @@ export function VirtualTable({ columns, rows, rowHeight = 48, height = 520, over
         <div role="table" className="hidden min-w-full text-left md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
           <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
-              {columns.map((column) => <div role="columnheader" key={column.key} className="min-h-12 overflow-hidden text-ellipsis border-r border-slate-200/70 px-3 py-3 last:border-r-0" title={column.label}>{column.label}</div>)}
+              {columns.map((column) => <div role="columnheader" key={column.key} className="min-h-10 overflow-hidden text-ellipsis border-r border-slate-200/70 px-2.5 py-2 leading-4 last:border-r-0" title={column.label}>{column.label}</div>)}
             </div>
           </div>
           <List

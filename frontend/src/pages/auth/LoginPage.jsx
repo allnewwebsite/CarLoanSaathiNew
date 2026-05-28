@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { resolveAuthError } from "../../services/authErrorResolver.js";
 
 const portals = {
   dealer: {
@@ -51,34 +52,6 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 }
 
-function authMessage(error, portal, action = "login") {
-  const code = error.response?.data?.code || error.code || "";
-  const message = error.response?.data?.message || error.message || "";
-  if (/resetting password/i.test(message)) {
-    return action === "reset"
-      ? "Verify your email before resetting password."
-      : "Please verify your email address before logging in.";
-  }
-  if (code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(message)) return "Please verify your email address before logging in.";
-  if (code === "auth/user-not-found" || error.response?.status === 404) return "No account found with this email address.";
-  if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
-    if (portal === "dealer") return "No dealer account found. Create account from Dealer Registration, or use Forgot Password if this email is already registered.";
-    if (portal === "bank") return "No bank account found. Create account from Bank Registration, or use Forgot Password if this email is already registered.";
-    return "Incorrect email or password.";
-  }
-  if (code === "auth/weak-password") return "Password is too weak.";
-  if (code === "auth/too-many-requests") return "Too many attempts. Try again later.";
-  if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
-    return "This domain is blocked by Firebase API key restrictions. Add this website in Google Cloud API key restrictions.";
-  }
-  if (error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") {
-    if (action === "reset") return "Unable to send password reset email. Try again later.";
-    if (action === "verification") return "Unable to send verification email. Try again later.";
-    return "Unable to login right now. Please try again later.";
-  }
-  return message || "Unable to login. Please verify your email and password.";
-}
-
 export function LoginPage({ portal = "dealer" }) {
   const config = portals[portal] || portals.dealer;
   const authPortal = config.authPortal || portal;
@@ -94,11 +67,13 @@ export function LoginPage({ portal = "dealer" }) {
   const [showResend, setShowResend] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [errorAction, setErrorAction] = useState(null);
 
   const submit = async (event) => {
     event.preventDefault();
     setLoading(true);
     setError("");
+    setErrorAction(null);
     setMessage("");
     setShowResend(false);
     if (!validEmail(email)) {
@@ -112,13 +87,14 @@ export function LoginPage({ portal = "dealer" }) {
       return;
     }
     try {
-      const session = await loginWithEmailPassword({ email, password, portal: authPortal });
+      const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal });
       if (!rememberMe) sessionStorage.setItem("cls_session_only", "true");
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
-      const nextMessage = authMessage(err, authPortal, "login");
-      setError(nextMessage);
-      setShowResend(err.code === "EMAIL_NOT_VERIFIED" || err.response?.data?.code === "EMAIL_NOT_VERIFIED" || /verify your email/i.test(nextMessage));
+      const resolved = resolveAuthError(err, portal, "login");
+      setError(resolved.message);
+      setErrorAction(resolved.actionTo ? { label: resolved.actionLabel, to: resolved.actionTo } : null);
+      setShowResend(resolved.showResend);
     } finally {
       setLoading(false);
     }
@@ -126,6 +102,7 @@ export function LoginPage({ portal = "dealer" }) {
 
   const resetPassword = async () => {
     setError("");
+    setErrorAction(null);
     setMessage("");
     if (!validEmail(email)) {
       setError("Enter a valid email address before requesting a password reset.");
@@ -136,7 +113,9 @@ export function LoginPage({ portal = "dealer" }) {
       await sendPasswordReset(email);
       setMessage("Password reset link sent successfully. Please check your inbox.");
     } catch (err) {
-      setError(authMessage(err, authPortal, "reset") || "Unable to send password reset email. Try again later.");
+      const resolved = resolveAuthError(err, portal, "reset");
+      setError(resolved.message);
+      setErrorAction(resolved.actionTo ? { label: resolved.actionLabel, to: resolved.actionTo } : null);
     } finally {
       setResetLoading(false);
     }
@@ -144,6 +123,7 @@ export function LoginPage({ portal = "dealer" }) {
 
   const resendVerification = async () => {
     setError("");
+    setErrorAction(null);
     setMessage("");
     if (!validEmail(email) || !password) {
       setError("Enter your email and password before resending verification.");
@@ -155,7 +135,8 @@ export function LoginPage({ portal = "dealer" }) {
       setMessage(result.alreadyVerified ? "Email already verified. Please login again." : "Verification email sent successfully. Please check your inbox.");
       setShowResend(false);
     } catch (err) {
-      setError(authMessage(err, authPortal, "verification") || "Unable to send verification email. Try again later.");
+      const resolved = resolveAuthError(err, portal, "verification");
+      setError(resolved.message);
     } finally {
       setResendLoading(false);
     }
@@ -247,10 +228,14 @@ export function LoginPage({ portal = "dealer" }) {
                 </label>
               </div>
 
-              {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p>}
-              {config.registrationPath && /create account|registration|no .* account found/i.test(error) && (
-                <button type="button" onClick={() => navigate(config.registrationPath)} className="flex h-10 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
-                  Create Account
+              {error && (
+                <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+                  {error}
+                </div>
+              )}
+              {errorAction?.to && (
+                <button type="button" onClick={() => navigate(errorAction.to)} className="flex h-9 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-[#0d47a1]">
+                  {errorAction.label || "Continue"}
                 </button>
               )}
               {message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">{message}</p>}

@@ -17,6 +17,38 @@ const PORTAL_ROLES = {
   bank: ["bank-manager", "loan-executive"],
   admin: ["super-admin"],
 };
+const ROLE_GUIDANCE = {
+  "finance-desk": {
+    roleLabel: "Finance Head",
+    portalLabel: "Dealer Portal",
+    redirectTo: "/finance/login",
+    actionLabel: "Go to Finance Head Login",
+  },
+  "gm-sm": {
+    roleLabel: "GM / SM",
+    portalLabel: "Dealer Portal",
+    redirectTo: "/dealer-login",
+    actionLabel: "Go to Dealer Login",
+  },
+  "bank-manager": {
+    roleLabel: "Bank Manager",
+    portalLabel: "Bank Portal",
+    redirectTo: "/bank-login",
+    actionLabel: "Go to Bank Manager Login",
+  },
+  "loan-executive": {
+    roleLabel: "Loan Executive",
+    portalLabel: "Executive Portal",
+    redirectTo: "/executive/login",
+    actionLabel: "Go to Executive Login",
+  },
+  "super-admin": {
+    roleLabel: "Super Admin",
+    portalLabel: "Super Admin Portal",
+    redirectTo: "/super-admin",
+    actionLabel: "Go to Super Admin Login",
+  },
+};
 const MAX_FAILED_LOGINS = Number(process.env.MAX_FAILED_LOGINS || 5);
 const ACCOUNT_LOCK_MINUTES = Number(process.env.ACCOUNT_LOCK_MINUTES || 30);
 const SESSION_TIMEOUT_HOURS = Number(process.env.SESSION_TIMEOUT_HOURS || 8);
@@ -293,6 +325,56 @@ async function accountForEmail(email, portal) {
   return candidates[0] || null;
 }
 
+function portalForRole(role) {
+  return Object.entries(PORTAL_ROLES).find(([, roles]) => roles.includes(role))?.[0] || null;
+}
+
+function roleGuidance(role) {
+  return ROLE_GUIDANCE[role] || {
+    roleLabel: "registered",
+    portalLabel: "assigned",
+    redirectTo: "/",
+    actionLabel: "Go to Correct Login",
+  };
+}
+
+function inactiveAccountMessage(account = {}) {
+  const status = String(account.accountStatus || account.status || "").toLowerCase();
+  if (accountLocked(account)) return { code: "ACCOUNT_LOCKED", message: "Account locked after repeated failed attempts. Try again later." };
+  if (["suspended", "disabled", "removed", "inactive", "paused"].includes(status) || account.active === false || account.accountActive === false) {
+    return { code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." };
+  }
+  if (["pending", ""].includes(status) || account.approved === false || account.accountApproved === false) {
+    return { code: "APPROVAL_PENDING", message: "Your account exists but is awaiting approval from Super Admin." };
+  }
+  return { code: "ACCOUNT_NOT_ACTIVE", message: "Your account is not active. Contact support." };
+}
+
+async function accountForAnyPortal(email) {
+  const directUser = await getRecord("users", email).catch(() => null);
+  if (directUser?.role) return directUser;
+  const [dealerAccount, bankAccount, adminAccount] = await Promise.all([
+    accountForEmail(email, "dealer").catch(() => null),
+    accountForEmail(email, "bank").catch(() => null),
+    accountForEmail(email, "admin").catch(() => null),
+  ]);
+  return dealerAccount || bankAccount || adminAccount || null;
+}
+
+function wrongPortalPayload(account = {}) {
+  const guidance = roleGuidance(account.role);
+  return {
+    code: "WRONG_PORTAL",
+    role: account.role,
+    roleLabel: guidance.roleLabel,
+    correctPortal: portalForRole(account.role),
+    portalLabel: guidance.portalLabel,
+    redirectTo: guidance.redirectTo,
+    actionLabel: guidance.actionLabel,
+    message: `This email is registered as a ${guidance.roleLabel} account. Please login through the ${guidance.portalLabel}.`,
+  };
+}
+
 async function accountPresentation(email, account = {}) {
   const result = {};
   if (["finance-desk", "gm-sm"].includes(account.role)) {
@@ -475,6 +557,17 @@ export async function login(req, res, next) {
       return res.status(423).json({ message: "Account locked after repeated failed attempts. Try again later.", code: "ACCOUNT_LOCKED" });
     }
     if (!account || !ROLE_ROUTES[account.role]) {
+      const knownAccount = await accountForAnyPortal(normalizedEmail);
+      const knownPortal = portalForRole(knownAccount?.role);
+      if (knownAccount?.role && knownPortal && knownPortal !== portal) {
+        await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: "wrong-portal", req });
+        return res.status(403).json(wrongPortalPayload(knownAccount));
+      }
+      if (knownAccount?.role && knownPortal === portal && !accountActive(knownAccount)) {
+        const inactive = inactiveAccountMessage(knownAccount);
+        await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: inactive.code.toLowerCase(), req });
+        return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
+      }
       if (portal === "dealer") {
         const registration = await dealerRegistrationStatus(normalizedEmail);
         await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: registration ? "dealer-approval-pending" : "dealer-registration-required", req });
@@ -501,12 +594,9 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Your account is awaiting CarLoanSaathi administrator approval." });
     }
     if (!accountActive(account)) {
+      const inactive = inactiveAccountMessage(account);
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "inactive", req });
-      return res.status(403).json({
-        message: portal === "dealer" ? "Please create your dealership account from Dealer Registration before using Dealer Login." : portal === "bank" ? "Please create your bank account from Bank Registration before using Bank Login." : "Your account is pending approval or inactive.",
-        redirectTo: portal === "dealer" ? "/dealer-registration" : portal === "bank" ? "/bank-registration" : undefined,
-        actionLabel: portal === "dealer" ? "Create Dealer Account" : portal === "bank" ? "Create Bank Account" : undefined,
-      });
+      return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
     }
     if (portal === "dealer" && !account.dealershipId && account.role !== "super-admin") {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealership-id-missing", req });
@@ -577,6 +667,38 @@ export async function recordLoginFailure(req, res, next) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     const result = await incrementFailedLogin(email, req, req.body.reason || "firebase-auth-failed");
     res.json({ recorded: true, locked: result.locked });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function lookupAccountForLogin(req, res, next) {
+  try {
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const portal = PORTAL_ROLES[req.body.portal] ? req.body.portal : "dealer";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
+    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+
+    let firebaseUser = null;
+    try {
+      firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+    } catch (error) {
+      if (error.code === "auth/user-not-found") return res.json({ exists: false, code: "NO_ACCOUNT", message: "No account found for this email." });
+      throw error;
+    }
+
+    const account = await accountForAnyPortal(email);
+    if (!account?.role) {
+      return res.json({ exists: true, code: "ACCOUNT_NOT_APPROVED", message: "Your account exists but is awaiting approval from Super Admin." });
+    }
+
+    const accountPortal = portalForRole(account.role);
+    if (accountPortal && accountPortal !== portal) return res.json({ exists: true, ...wrongPortalPayload(account) });
+    if (firebaseUser.disabled === true) {
+      return res.json({ exists: true, code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." });
+    }
+    if (!accountActive(account)) return res.json({ exists: true, ...inactiveAccountMessage(account) });
+    return res.json({ exists: true, code: "ACCOUNT_FOUND", role: account.role, correctPortal: accountPortal });
   } catch (error) {
     next(error);
   }

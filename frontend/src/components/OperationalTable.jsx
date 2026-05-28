@@ -6,7 +6,7 @@ const VirtualRow = memo(function VirtualRow({ index, style, rows, gridTemplateCo
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50" data-row-index={index}>
       {row.cells.map((cell, cellIndex) => (
-        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="min-w-0 overflow-hidden text-ellipsis px-3 py-3 text-sm leading-5 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
+        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="min-w-0 overflow-hidden text-ellipsis px-2.5 py-2 text-xs leading-5 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
           {cell}
         </div>
       ))}
@@ -61,7 +61,7 @@ export function OperationalTable({
   pageSize = 10,
   virtualizeAt = 25,
   height = 520,
-  rowHeight = 48,
+  rowHeight = 40,
   action = null,
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
@@ -78,10 +78,10 @@ export function OperationalTable({
         </div>
       )}
       <div className="overflow-x-auto overscroll-x-contain">
-        <div role="table" className="hidden min-w-full text-left text-sm md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
+        <div role="table" className="hidden min-w-full text-left text-xs md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
           <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
-              {headers.map((head) => <div role="columnheader" key={head} className="min-h-12 min-w-0 overflow-hidden text-ellipsis border-r border-slate-200/70 px-3 py-3 leading-4 last:border-r-0" title={head}>{head}</div>)}
+              {headers.map((head) => <div role="columnheader" key={head} className="min-h-10 min-w-0 overflow-hidden text-ellipsis border-r border-slate-200/70 px-2.5 py-2 leading-4 last:border-r-0" title={head}>{head}</div>)}
             </div>
           </div>
 
@@ -104,7 +104,7 @@ export function OperationalTable({
             <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
               {rows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
-                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-12 min-w-0 items-center overflow-hidden text-ellipsis border-r border-slate-100 px-3 py-3 text-sm leading-5 text-slate-600 last:border-r-0" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
+                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-10 min-w-0 items-center overflow-hidden text-ellipsis border-r border-slate-100 px-2.5 py-2 text-xs leading-5 text-slate-600 last:border-r-0" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
                 </div>
               ))}
             </div>
@@ -115,10 +115,10 @@ export function OperationalTable({
         {!loading && !rows.length ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
       </div>
       {onPage ? (
-        <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-3 py-3">
-          <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm disabled:opacity-50">Prev</button>
-          <span className="text-sm text-slate-500">Page {page} of {pages}</span>
-          <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-sm disabled:opacity-50">Next</button>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-2">
+          <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Prev</button>
+          <span className="text-xs text-slate-500">Page {page} of {pages}</span>
+          <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Next</button>
         </div>
       ) : null}
     </section>

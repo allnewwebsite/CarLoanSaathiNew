@@ -109,12 +109,14 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  const loginWithEmailPassword = async ({ email, password, portal = "dealer" }) => {
+  const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
     try {
       credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (error) {
+      const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
+      if (lookup?.data) error.accountLookup = lookup.data;
       await api.post("/auth/login-failure", { email: normalizedEmail, reason: error.code || "firebase-auth-failed" }).catch(() => {});
       throw error;
     }
@@ -127,7 +129,7 @@ export function AuthProvider({ children }) {
     }
     setFirebaseUser(credential.user);
     const idToken = await credential.user.getIdToken(true);
-    const response = await api.post("/auth/login", { idToken, portal });
+    const response = await api.post("/auth/login", { idToken, portal, targetPortal });
     const session = sessionFromResponse(response);
     storeAuthSession(session, response.data.token);
     setUser(session);
