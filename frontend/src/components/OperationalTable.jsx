@@ -85,7 +85,8 @@ export function OperationalTable({
   action = null,
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
-  const useVirtual = !loading && rows.length >= virtualizeAt;
+  const hasRows = rows.length > 0;
+  const useVirtual = !loading && hasRows && rows.length >= virtualizeAt;
   const gridTemplateColumns = headers.map(columnTemplate).join(" ");
   const tableMinWidth = `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`;
 
@@ -105,10 +106,10 @@ export function OperationalTable({
             </div>
           </div>
 
-          {loading && <div className="px-3 py-8 text-center text-slate-500">Loading...</div>}
-          {!loading && !rows.length && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
+          {loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">Loading...</div>}
+          {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
 
-          {!loading && rows.length > 0 && useVirtual && (
+          {hasRows && useVirtual && (
             <List
               defaultHeight={Math.min(height, Math.max(rowHeight, rows.length * rowHeight))}
               rowCount={rows.length}
@@ -120,8 +121,8 @@ export function OperationalTable({
             />
           )}
 
-          {!loading && rows.length > 0 && !useVirtual && (
-            <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
+          {hasRows && !useVirtual && (
+            <div role="rowgroup" className={`divide-y divide-slate-100 bg-white ${loading ? "opacity-70" : ""}`}>
               {rows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
                   {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
@@ -129,10 +130,13 @@ export function OperationalTable({
               ))}
             </div>
           )}
+
+          {loading && hasRows && <div className="px-3 py-2 text-left text-sm font-medium text-slate-500">Updating records…</div>}
         </div>
-        {!loading && rows.length > 0 ? <MobileRows headers={headers} rows={rows} /> : null}
-        {loading ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">Loading...</div> : null}
-        {!loading && !rows.length ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
+        {hasRows ? <MobileRows headers={headers} rows={rows} /> : null}
+        {loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">Loading...</div> : null}
+        {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
+        {loading && hasRows ? <div className="px-3 py-2 text-sm font-medium text-slate-500 md:hidden">Updating records…</div> : null}
       </div>
       {onPage ? (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">
