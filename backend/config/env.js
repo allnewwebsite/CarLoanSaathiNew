@@ -32,10 +32,18 @@ export function validateEnv() {
 }
 
 export function allowedOrigins() {
-  return (process.env.CLIENT_ORIGIN || "http://localhost:5173")
+  const configuredOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173")
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
+
+  const safeDefaults = [
+    "https://carloansaathi.com",
+    "https://www.carloansaathi.com",
+    "https://carloansaathi-apkaapnasaathi.onrender.com",
+  ];
+
+  return Array.from(new Set([...configuredOrigins, ...safeDefaults]));
 }
 
 export function superAdminEmail() {

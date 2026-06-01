@@ -4,17 +4,26 @@ import { appCheck } from "./firebase.js";
 import { clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
+const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
+
+function normalizeApiUrl(url) {
+  const trimmed = String(url || "").trim().replace(/\/+$|\s+/g, "");
+  if (!trimmed) return trimmed;
+  if (trimmed.endsWith("/api")) return trimmed;
+  return `${trimmed.replace(/\/+$/, "")}/api`;
+}
 
 function apiBaseUrl() {
-  const configured = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
-  if (typeof window === "undefined") return configured;
+  let configured = import.meta.env.VITE_API_BASE_URL || DEFAULT_LOCAL_API_BASE_URL;
+  if (typeof window === "undefined") return normalizeApiUrl(configured);
 
+  configured = normalizeApiUrl(configured);
   const hostname = window.location.hostname.toLowerCase();
   const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
   const isPrivateNetwork = /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
-  const isDefaultLocalApi = configured.includes("localhost") || configured.includes("127.0.0.1");
+  const hasCustomApiBase = Boolean(import.meta.env.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes("api.example.com"));
 
-  if (configured && configured !== "http://localhost:8080/api" && !configured.includes("api.example.com")) {
+  if (hasCustomApiBase) {
     return configured;
   }
 
@@ -22,7 +31,7 @@ function apiBaseUrl() {
     return PRODUCTION_API_BASE_URL;
   }
 
-  if (isDefaultLocalApi && (isLocalHost || isPrivateNetwork)) {
+  if ((configured.includes("localhost") || configured.includes("127.0.0.1")) && (isLocalHost || isPrivateNetwork)) {
     return configured.replace(/https?:\/\/(localhost|127\.0\.0\.1):8080/, `${window.location.protocol}//${window.location.hostname}:8080`);
   }
 
