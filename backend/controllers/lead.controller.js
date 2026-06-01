@@ -10,7 +10,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analyticsEngine.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
-import { logSecurity } from "../services/logger.service.js";
+import { logInfo, logSecurity } from "../services/logger.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -211,20 +211,30 @@ export async function createPublicLeadIntake(req, res, next) {
 }
 
 export async function getLeads(req, res, next) {
+  const startedAt = Date.now();
   try {
-    if (req.user?.role === "super-admin") return res.json(await queryAllLeads({ query: req.query }));
-    if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
+    let payload;
+    if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
+    else if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
       const dealershipId = req.user?.dealershipId || req.user?.email || req.user?.uid;
-      return res.json(await queryDealershipLeads({ dealershipId, query: req.query }));
-    }
-    if (req.user?.role === "bank-manager") {
+      payload = await queryDealershipLeads({ dealershipId, query: req.query });
+    } else if (req.user?.role === "bank-manager") {
       const bankId = req.user?.bankId || req.user?.bankName || req.user?.email || req.user?.uid;
-      return res.json(await queryBankLeads({ bankId, query: req.query }));
+      payload = await queryBankLeads({ bankId, query: req.query });
+    } else if (req.user?.role === "loan-executive") {
+      payload = await queryExecutiveLeads({ executiveId: req.user?.uid, executiveEmail: req.user?.email, query: req.query });
+    } else {
+      return res.status(403).json({ message: "Lead access denied" });
     }
-    if (req.user?.role === "loan-executive") {
-      return res.json(await queryExecutiveLeads({ executiveId: req.user?.uid, executiveEmail: req.user?.email, query: req.query }));
-    }
-    return res.status(403).json({ message: "Lead access denied" });
+    logInfo("Lead query completed", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      durationMs: Date.now() - startedAt,
+      warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+      dataCount: Array.isArray(payload?.data) ? payload.data.length : undefined,
+    });
+    return res.json(payload);
   } catch (error) {
     next(error);
   }

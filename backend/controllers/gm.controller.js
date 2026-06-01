@@ -1,4 +1,5 @@
 import { getRecord, queryRecords } from "../services/firestore.service.js";
+import { logInfo } from "../services/logger.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 
@@ -49,10 +50,22 @@ async function gmLeads(req) {
 }
 
 export async function getGmLeads(req, res, next) {
+  const startedAt = Date.now();
   try {
     const dealershipEmail = await dealershipEmailForGm(req);
-    if (!dealershipEmail) return res.json({ data: [], limit: 20, nextCursor: null, hasMore: false });
-    res.json(await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query }));
+    if (!dealershipEmail) {
+      return res.json({ data: [], limit: 20, nextCursor: null, hasMore: false });
+    }
+    const page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+    logInfo("GM lead query completed", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      durationMs: Date.now() - startedAt,
+      warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+      dataCount: Array.isArray(page?.data) ? page.data.length : undefined,
+    });
+    res.json(page);
   } catch (error) {
     next(error);
   }

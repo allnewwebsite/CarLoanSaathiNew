@@ -10,6 +10,7 @@ import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LAB
 import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
+import { logInfo } from "../services/logger.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
@@ -442,11 +443,22 @@ export async function getBankRegistrationStatus(req, res, next) {
 }
 
 export async function getBankLeads(req, res, next) {
+  const startedAt = Date.now();
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
+    let response;
     if (partner.roleType === "loan-executive") {
-      return res.json(await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query }));
+      response = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query });
+      logInfo("Bank executive lead query completed", {
+        requestId: req.requestId,
+        path: req.originalUrl,
+        role: req.user?.role,
+        durationMs: Date.now() - startedAt,
+        warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+        dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
+      });
+      return res.json(response);
     }
     const { limit } = paginationParams(req.query);
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: Math.min(Math.max(limit * 3, limit), 100) });
@@ -460,7 +472,16 @@ export async function getBankLeads(req, res, next) {
       requestId: req.requestId,
       meta: { returned: data.length, bankId: bankIdentity(partner).bankId, branchId: partner.branchId || partner.branchCity || partner.bankBranchLocation },
     });
-    return res.json(pageResponse({ data, limit, nextCursor: null, total: scopedLeads.length }));
+    const page = pageResponse({ data, limit, nextCursor: null, total: scopedLeads.length });
+    logInfo("Bank manager lead query completed", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      durationMs: Date.now() - startedAt,
+      warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+      dataCount: data.length,
+    });
+    return res.json(page);
   } catch (error) {
     next(error);
   }

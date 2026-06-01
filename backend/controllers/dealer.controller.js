@@ -720,9 +720,19 @@ export async function createDealerLead(req, res, next) {
 }
 
 export async function getDealerLeads(req, res, next) {
+  const startedAt = Date.now();
   try {
     const { dealershipEmail } = await financeDeskContext(req);
-    res.json(await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query }));
+    const page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+    logInfo("Dealer lead query completed", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      durationMs: Date.now() - startedAt,
+      warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+      dataCount: Array.isArray(page?.data) ? page.data.length : undefined,
+    });
+    res.json(page);
   } catch (error) {
     next(error);
   }

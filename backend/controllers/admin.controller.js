@@ -9,6 +9,7 @@ import { getAuditLogs, writeAuditLog } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
+import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 
@@ -385,9 +386,19 @@ async function deleteMatchingRecords(collection, matcher) {
 }
 
 export async function getAdminLeads(req, res, next) {
+  const startedAt = Date.now();
   try {
     const page = await queryAllLeads({ query: req.query });
-    res.json({ ...page, data: await enrichAdminLeadRows(page.data) });
+    const response = { ...page, data: await enrichAdminLeadRows(page.data) };
+    logInfo("Admin lead query completed", {
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      durationMs: Date.now() - startedAt,
+      warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
+      dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
+    });
+    res.json(response);
   } catch (error) {
     next(error);
   }
