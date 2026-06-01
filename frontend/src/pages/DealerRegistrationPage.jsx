@@ -857,7 +857,8 @@ export function DealerRegistrationFormPage() {
             <SectionCard number="6" title="Business & Loan Capacity">
               <StandardSelect label="Monthly Car Sales Capacity *" value={form.monthlyCarSalesCapacity} options={salesCapacity} onChange={(value) => update("monthlyCarSalesCapacity", value)} placeholder="Select monthly capacity" />
               <label className={labelClass}>Expected Monthly Loan Applications *<input required type="number" className={fieldClass} value={form.expectedMonthlyLoanApplications} onChange={(e) => update("expectedMonthlyLoanApplications", e.target.value)} /></label>
-                <label className={labelClass}>Current Partner Banks<input className={fieldClass} value={form.existingBankTieUps} onChange={(e) => update("existingBankTieUps", e.target.value)} placeholder="None, or list current bank relationships" /></label>
+              <label className={labelClass}>Current Partner Banks<input className={fieldClass} value={form.existingBankTieUps} onChange={(e) => update("existingBankTieUps", e.target.value)} placeholder="None, or list current bank relationships" /></label>
+            </SectionCard>
             <SectionCard number="7" title="Document Uploads">
               <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal leading-6 text-slate-600">
                 Optional during registration. You can upload dealership verification documents later after testing the required details.
