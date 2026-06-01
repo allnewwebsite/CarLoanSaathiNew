@@ -39,9 +39,34 @@ const port = process.env.PORT || 8080;
 initBackendMonitoring();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+const portalWarmupPaths = [/^\/api\/(bank|gm|dealer|admin)(\/|$)/i];
+let firstPortalRequestLogged = false;
+
 app.use(requestContext);
 app.use(monitoringRequestHandler);
 app.use(attachApiResponse);
+app.use((req, _res, next) => {
+  const warmupHeader = String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true";
+  if (portalWarmupPaths.some((pattern) => pattern.test(req.path))) {
+    if (!firstPortalRequestLogged) {
+      firstPortalRequestLogged = true;
+      logInfo("First portal request received", {
+        requestId: req.requestId,
+        path: req.originalUrl,
+        method: req.method,
+        warmup: warmupHeader,
+      });
+    }
+    if (warmupHeader) {
+      logInfo("Portal warmup request", {
+        requestId: req.requestId,
+        path: req.originalUrl,
+        method: req.method,
+      });
+    }
+  }
+  next();
+});
 app.use(requireHttps);
 app.use(securityHeaders);
 app.use(cors(corsOptions()));
@@ -66,6 +91,24 @@ app.get("/api/health", async (_req, res, next) => {
   try {
     const health = await productionHealth({ deep: false });
     res.set("Cache-Control", "no-store").json(health);
+  } catch (error) {
+    next(error);
+  }
+});
+app.get("/api/warmup", async (req, res, next) => {
+  try {
+    const route = String(req.query.route || "").trim();
+    const warmupHeader = String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true";
+    const health = await productionHealth({ deep: false });
+    if (warmupHeader || route) {
+      logInfo("Backend warmup endpoint hit", {
+        requestId: req.requestId,
+        path: req.originalUrl,
+        route: route || null,
+        warmup: warmupHeader,
+      });
+    }
+    res.set("Cache-Control", "no-store").json({ status: health.status, route: route || null, health });
   } catch (error) {
     next(error);
   }

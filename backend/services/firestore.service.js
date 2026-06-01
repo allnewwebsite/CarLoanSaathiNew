@@ -200,7 +200,7 @@ function isMissingCompositeIndexError(error) {
     || String(error?.message || "").includes("requires an index");
 }
 
-async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, search, searchFields, fields, maxLimit }) {
+async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset = 0, search, searchFields, fields, maxLimit }) {
   logWarn("Firestore composite index missing; using scoped fallback query", {
     collection,
     orderBy,
@@ -225,6 +225,7 @@ async function fallbackIndexedQuery({ collection, where, orderBy, direction, saf
     const index = rows.findIndex((row) => row.id === parsedCursor.id);
     if (index >= 0) rows = rows.slice(index + 1);
   }
+  if (offset) rows = rows.slice(offset);
   rows = rows.slice(0, safeLimit);
   if (collection === "leads") rows = await withLeadCaseIds(rows, rows.map((row) => ({ ref: firestore.collection(collection).doc(row.id) })));
   return {
@@ -241,6 +242,7 @@ export async function queryRecords(collection, {
   direction = "desc",
   limit = 20,
   cursor = null,
+  page = null,
   search = "",
   searchFields = [],
   fields = [],
@@ -249,6 +251,8 @@ export async function queryRecords(collection, {
 } = {}) {
   const safeLimit = Math.min(clampQueryLimit(limit, 20), maxLimit);
   const parsedCursor = parseCursor(cursor);
+  const pageNumber = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : null;
+  const offset = !parsedCursor && pageNumber && pageNumber > 1 ? (pageNumber - 1) * safeLimit : 0;
   if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: Boolean(allowGlobal) });
 
   if (!firestore) {
@@ -263,6 +267,7 @@ export async function queryRecords(collection, {
       const index = rows.findIndex((row) => row.id === parsedCursor.id);
       if (index >= 0) rows = rows.slice(index + 1);
     }
+    if (offset) rows = rows.slice(offset);
     const page = rows.slice(0, safeLimit);
     return {
       data: page.map((record) => selectFields(record, fields)),
@@ -281,13 +286,14 @@ export async function queryRecords(collection, {
       }
       ref = ref.orderBy(orderBy, direction);
       if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
+      else if (offset) ref = ref.offset(offset);
       if (fields.length && typeof ref.select === "function") ref = ref.select(...fields.filter((field) => field !== "id"));
       ref = ref.limit(safeLimit + 1);
       return ref.get();
     });
   } catch (error) {
     if (collection === "leads" && isMissingCompositeIndexError(error) && where.length) {
-      return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, search, searchFields, fields, maxLimit });
+      return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit });
     }
     throw error;
   }

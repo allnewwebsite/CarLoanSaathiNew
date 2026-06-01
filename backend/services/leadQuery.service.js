@@ -123,13 +123,14 @@ function queryWhere(baseWhere = [], query = {}) {
 }
 
 export async function queryDealershipLeads({ dealershipId, query = {}, fields = LEAD_FIELDS }) {
-  const { limit, cursor } = paginationParams(query);
+  const { limit, cursor, page } = paginationParams(query);
   const result = await queryRecords("leads", {
     where: queryWhere([{ field: "dealershipId", value: dealershipId }], query),
     orderBy: "createdAt",
     direction: "desc",
     limit,
     cursor,
+    page,
     search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
@@ -139,13 +140,14 @@ export async function queryDealershipLeads({ dealershipId, query = {}, fields = 
 }
 
 export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS }) {
-  const { limit, cursor } = paginationParams(query);
+  const { limit, cursor, page } = paginationParams(query);
   const result = await queryRecords("leads", {
     where: queryWhere([{ field: "bankId", value: bankId }], query),
     orderBy: "createdAt",
     direction: "desc",
     limit,
     cursor,
+    page,
     search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
@@ -155,7 +157,7 @@ export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS 
 }
 
 export async function queryExecutiveLeads({ executiveId, executiveEmail, query = {}, fields = LEAD_FIELDS }) {
-  const { limit, cursor } = paginationParams(query);
+  const { limit, cursor, page } = paginationParams(query);
   const identity = String(executiveId || executiveEmail || "").trim();
   const email = String(executiveEmail || "").trim();
   const idResult = await queryRecords("leads", {
@@ -190,7 +192,7 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
 }
 
 export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
-  const { limit, cursor } = paginationParams(query);
+  const { limit, cursor, page } = paginationParams(query);
   const where = queryWhere([], query);
   const result = await queryRecords("leads", {
     where,
@@ -198,6 +200,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     direction: "desc",
     limit,
     cursor,
+    page,
     search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
