@@ -1,7 +1,6 @@
 import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
-import { assignLeadRoundRobin } from "../services/assignment.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
@@ -45,6 +44,13 @@ function owned(leads, email, dealershipEmail = email) {
 
 function salespersonIdFrom(value) {
   return String(value || "").trim();
+}
+
+function branchIdsFromRequest(value) {
+  const items = Array.isArray(value)
+    ? value
+    : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  return [...new Set(items)];
 }
 
 function required(value, label) {
@@ -357,6 +363,10 @@ function normalizeFinanceDeskLead(body) {
     loanAmount: body.loanAmount || body.requiredLoanAmount,
     employmentType: body.employmentType || "Not specified",
     preferredBank: body.preferredBank,
+    bankBranchId: body.bankBranchId || body.branchId || body.ifscCode || "",
+    bankName: body.bankName || body.preferredBank || "",
+    branchName: body.branchName || "",
+    ifscCode: body.ifscCode || "",
     assignedSalesperson: body.assignedSalesperson || body.salespersonName || "Finance desk direct",
     remarks: body.remarks,
     documents: body.documents,
@@ -379,6 +389,7 @@ function readableLeadError(error) {
     loanAmount: "Missing loan amount",
     assignedSalesperson: "Missing assigned salesperson",
     preferredBank: "Missing preferred bank",
+    bankBranchId: "Select a tied-up bank branch",
   };
   return messages[field] || issue.message || "Failed to create lead";
 }
@@ -631,6 +642,21 @@ export async function createDealerLead(req, res, next) {
     if (!salesperson || salesperson.dealershipId !== dealershipEmail || salesperson.active === false) {
       return res.status(400).json({ message: "Select an active salesperson from this dealership" });
     }
+
+    const branchIds = branchIdsFromRequest(req.body.bankBranchId || req.body.branchId || req.body.ifscCode || payload.bankBranchId);
+    const dealerBranchIds = Array.isArray(dealership.dealershipBankPartners) ? dealership.dealershipBankPartners : [];
+    if (!branchIds.length) {
+      return res.status(400).json({ message: "Select a tied-up bank branch for this lead" });
+    }
+    const branchId = branchIds[0];
+    if (!dealerBranchIds.includes(branchId)) {
+      return res.status(400).json({ message: "Selected bank branch is not tied up with this dealership" });
+    }
+    const branch = await getRecord("branches", branchId) || (await listRecords("branches")).find((item) => item.ifscCode === branchId || item.id === branchId);
+    if (!branch || branch.active === false) {
+      return res.status(400).json({ message: "Selected bank branch is not available" });
+    }
+
     const now = new Date().toISOString();
     const caseId = await generateLeadCaseId();
     const leadPayload = sanitizeFirestoreData({
@@ -656,6 +682,14 @@ export async function createDealerLead(req, res, next) {
       salespersonName: salesperson.name,
       salespersonJobId: salesperson.jobId,
       assignedSalesperson: salesperson.name,
+      bankId: branch.bankPartnerId || branch.bankId || branch.bankPartner || branch.id,
+      bankName: branch.bankName || branch.bankName || branch.bankPartner || "",
+      branchId: branch.id,
+      branchName: branch.branchName || branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "",
+      ifscCode: branch.ifscCode || branch.ifsc || "",
+      bankIfsc: branch.ifscCode || branch.ifsc || "",
+      bankBranchLocation: branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "",
+      preferredBank: branch.bankName || branch.bankName || payload.preferredBank,
     });
     const lead = await createRecord("leads", leadPayload);
     await writeAuditLog({
@@ -674,11 +708,9 @@ export async function createDealerLead(req, res, next) {
       actorName: email,
       actorRole: req.user?.role || "finance-desk",
       dealershipId: dealershipEmail,
-      metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName, routingCity: dealershipCity },
+      metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName, routingCity: dealershipCity, bankName: lead.bankName, branchName: lead.branchName, ifscCode: lead.ifscCode },
     });
-    const assignment = await assignLeadRoundRobin(lead);
-    logInfo("Finance Desk lead assignment completed", { requestId: req.requestId, leadId: lead.id, assignmentId: assignment?.id || null });
-    res.status(201).json({ leadId: lead.id, caseId: lead.caseId, assignmentId: assignment?.id || null, message: "Dealer lead submitted", lead });
+    res.status(201).json({ leadId: lead.id, caseId: lead.caseId, message: "Dealer lead submitted", lead });
   } catch (error) {
     if (error?.issues) {
       return res.status(400).json({ message: readableLeadError(error) });
@@ -739,6 +771,50 @@ export async function getDealerStaff(req, res, next) {
         active: item.active !== false,
       }));
     res.json(staff);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getDealerBankTieUps(req, res, next) {
+  try {
+    const { dealership, dealershipEmail } = await financeDeskContext(req);
+    const branchIds = Array.isArray(dealership.dealershipBankPartners) ? dealership.dealershipBankPartners : [];
+    const branches = (await listRecords("branches")).filter((branch) => branchIds.includes(branch.id) || branchIds.includes(branch.ifscCode));
+    res.json({ branchTieUps: branches.map((branch) => ({
+      id: branch.id,
+      bankId: branch.bankPartnerId || branch.bankId || branch.bankPartner || null,
+      bankName: branch.bankName || branch.bankPartner || "",
+      branchName: branch.branchName || branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "",
+      ifscCode: branch.ifscCode || branch.ifsc || "",
+      active: branch.active !== false,
+      approved: branch.approved !== false,
+    })) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateDealerBankTieUps(req, res, next) {
+  try {
+    const { email, dealershipEmail, dealership } = await financeDeskContext(req);
+    const branchIds = branchIdsFromRequest(req.body.dealershipBankPartners || req.body.bankBranchIds || req.body.bankBranchId || []);
+    const branches = await listRecords("branches");
+    const invalid = branchIds.filter((id) => !branches.some((branch) => branch.id === id || branch.ifscCode === id));
+    if (invalid.length) return res.status(400).json({ message: "One or more selected bank branches are invalid" });
+    const payload = {
+      email,
+      dealershipEmail,
+      dealershipBankPartners: branchIds,
+    };
+    const profiles = await listRecords("dealerProfiles");
+    const existing = profiles.find((item) => item.email === email);
+    const profile = existing
+      ? await updateRecord("dealerProfiles", existing.id, payload)
+      : await createRecord("dealerProfiles", payload);
+    await upsertRecord("dealers", dealershipEmail, { ...(dealership || {}), ...payload });
+    await upsertRecord("dealerships", dealershipEmail, { ...(dealership || {}), ...payload });
+    res.json({ message: "Bank branch tie-ups updated", branchIds });
   } catch (error) {
     next(error);
   }
@@ -1002,6 +1078,7 @@ export async function getDealerProfile(req, res, next) {
         dealershipCity: dealership.city || dealership.registeredCity || desk?.city || "",
         dealershipBrand: dealership.dealershipBrand || dealership.brand || "",
         ...dealership,
+        dealershipBankPartners: dealership.dealershipBankPartners || [],
         financeDesk: desk || null,
       });
     }
@@ -1023,9 +1100,10 @@ export async function getDealerProfile(req, res, next) {
 
 export async function updateDealerProfile(req, res, next) {
   try {
-    const { email, dealershipEmail } = await financeDeskContext(req);
+    const { email, dealershipEmail, dealership } = await financeDeskContext(req);
     const profiles = await listRecords("dealerProfiles");
     const existing = profiles.find((item) => item.email === email);
+    const bankPartners = branchIdsFromRequest(req.body.dealershipBankPartners || req.body.bankBranchIds || req.body.bankBranchId || []);
     const payload = {
       email,
       dealershipEmail,
@@ -1033,13 +1111,16 @@ export async function updateDealerProfile(req, res, next) {
       contactPerson: String(req.body.contactPerson || "").trim(),
       city: String(req.body.city || "").trim(),
       mobile: String(req.body.mobile || "").trim(),
+      dealershipBankPartners: bankPartners,
     };
     const profile = existing
       ? await updateRecord("dealerProfiles", existing.id, payload)
       : await createRecord("dealerProfiles", payload);
-    await upsertRecord("dealers", dealershipEmail, payload);
+    await upsertRecord("dealers", dealershipEmail, { ...(dealership || {}), ...payload });
+    await upsertRecord("dealerships", dealershipEmail, { ...(dealership || {}), ...payload });
     res.json({ message: "Dealer profile saved", profile });
   } catch (error) {
     next(error);
   }
 }
+

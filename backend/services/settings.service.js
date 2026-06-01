@@ -2,8 +2,8 @@ import { listRecords, upsertRecord } from "./firestore.service.js";
 
 export const defaultWorkflowSettings = {
   id: "workflow",
-  roundRobinEnabled: true,
-  autoReassignmentEnabled: true,
+  roundRobinEnabled: false,
+  autoReassignmentEnabled: false,
   slaEngineEnabled: true,
   slaAcceptMinutes: 30,
   idleReassignMinutes: 240,

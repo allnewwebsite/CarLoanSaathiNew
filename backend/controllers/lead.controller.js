@@ -1,6 +1,5 @@
 import { createRecord, getRecord, updateRecord } from "../services/firestore.service.js";
 import { leadSchema, publicLeadSchema } from "../validations/lead.validation.js";
-import { assignLeadRoundRobin, retrieveAndReassignLead } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { updateSlaForLead } from "../services/sla.service.js";
@@ -90,7 +89,6 @@ export async function createLead(req, res, next) {
       dealershipId: lead.dealershipEmail,
       metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName },
     });
-    await assignLeadRoundRobin(lead);
     queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
     res.status(201).json(lead);
   } catch (error) {
@@ -126,13 +124,12 @@ export async function createPublicLead(req, res, next) {
       leadId: lead.id,
       meta: { caseId, dealershipId: lead.dealershipId },
     });
-    const assignment = await assignLeadRoundRobin(lead);
     queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
     res.status(201).json({
       leadId: lead.id,
       caseId: lead.caseId,
       message: "Lead submitted successfully",
-      assignmentId: assignment?.id || null,
+      assignmentId: null,
       lead,
     });
   } catch (error) {
@@ -254,9 +251,7 @@ export async function updateLeadStatus(req, res, next) {
     });
     await updateSlaForLead(lead, nextStatus);
     await ensureCommissionForLead(lead, nextStatus);
-    if (nextStatus === LEAD_STATUSES.REJECTED && req.body.finalRejection !== true) {
-      await retrieveAndReassignLead(req.params.id, "partner-rejected", req.user?.email || "system");
-    }
+    // Branch tie-up workflow does not perform automatic reassignment on rejection.
     const statusLabel = STATUS_LABELS[normalizeStatus(nextStatus)] || nextStatus;
     await addTimelineEvent({
       leadId: req.params.id,

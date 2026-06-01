@@ -193,6 +193,25 @@ export async function getBanks() {
   return mergeCatalog(fallbackBanks, normalizeFirestoreList(records), "name");
 }
 
+export async function getBranches() {
+  const records = await listRecords("branches");
+  return normalizeFirestoreList(records)
+    .filter((branch) => branch.active !== false && branch.status !== "inactive")
+    .map((branch) => ({
+      id: branch.id || branch.ifsc || branch.ifscCode || branch.branchLocation || "",
+      bankId: branch.bankPartnerId || branch.bankId || branch.bankPartner || branch.id || "",
+      bankName: branch.bankName || branch.bankPartner || "",
+      branchName: branch.branchName || branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "",
+      ifscCode: branch.ifscCode || branch.ifsc || branch.bankIfsc || "",
+      branchLocation: branch.bankBranchLocation || branch.branchLocation || branch.branchCity || branch.city || "",
+      city: branch.city || branch.branchCity || branch.bankBranchLocation || branch.branchLocation || "",
+      state: branch.state || "",
+      active: branch.active !== false,
+      approved: branch.approved !== false,
+    }))
+    .filter((branch) => branch.id);
+}
+
 export async function getHomeContent() {
   const records = await listRecords("homeContent");
   if (records.length) return records[0];

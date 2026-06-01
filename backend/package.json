@@ -10,6 +10,7 @@
     "maintenance": "node scripts/runMaintenance.js",
     "backfill:metrics": "node scripts/backfillMetrics.js",
     "backfill:executive-assignments": "node scripts/backfillExecutiveAssignments.js",
+    "migrate:lead-branches": "node scripts/migrateLegacyLeadBranches.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {

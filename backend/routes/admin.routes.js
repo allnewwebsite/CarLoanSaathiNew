@@ -1,6 +1,5 @@
 import { Router } from "express";
 import {
-  assignAdminLead,
   approveBankApproval,
   approveDealershipApproval,
   deleteBankPermanently,
@@ -18,7 +17,6 @@ import {
   getPendingBankApprovals,
   getPendingDealershipApprovals,
   processAdminSlaBreaches,
-  reassignAdminLead,
   rejectBankApproval,
   rejectDealershipApproval,
   suspendBankApproval,
@@ -58,8 +56,6 @@ router.post("/approvals/banks/:id/suspend", suspendBankApproval);
 router.get("/approvals/logs", getApprovalLogs);
 router.get("/leads", getAdminLeads);
 router.patch("/leads/:id/status", updateAdminLeadStatus);
-router.patch("/leads/:id/assign", assignAdminLead);
-router.patch("/leads/:id/reassign", reassignAdminLead);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);
 router.get("/analytics/overview", getAnalyticsOverview);

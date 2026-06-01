@@ -1,4 +1,4 @@
-import { getBanks, getBrands, getCarsByBrand, getHomeContent } from "../services/catalog.service.js";
+import { getBanks, getBranches, getBrands, getCarsByBrand, getHomeContent } from "../services/catalog.service.js";
 
 export async function listBrands(_req, res, next) {
   try {
@@ -19,6 +19,14 @@ export async function listCarsByBrand(req, res, next) {
 export async function listBanks(_req, res, next) {
   try {
     res.json(await getBanks());
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listBranches(_req, res, next) {
+  try {
+    res.json(await getBranches());
   } catch (error) {
     next(error);
   }

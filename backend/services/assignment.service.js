@@ -63,6 +63,9 @@ async function selectBranchExecutive({ lead, partner, city }) {
 }
 
 export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reason = "new-lead" } = {}) {
+  // Legacy assignment engine has been disabled in favor of dealership-selected branch routing.
+  return null;
+
   const settings = await getWorkflowSettings();
   if (settings.roundRobinEnabled === false) return null;
   const routingCity = routingCityForLead(lead);

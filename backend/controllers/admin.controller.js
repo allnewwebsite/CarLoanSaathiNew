@@ -1,10 +1,10 @@
 import { createRecord, deleteRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
-import { processSlaBreaches, retrieveAndReassignLead } from "../services/assignment.service.js";
+import { processSlaBreaches } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { freezePartner } from "../services/partner.service.js";
 import { getWorkflowSettings, updateWorkflowSettings } from "../services/settings.service.js";
-import { createSlaLog, updateSlaForLead } from "../services/sla.service.js";
+import { updateSlaForLead } from "../services/sla.service.js";
 import { getAuditLogs, writeAuditLog } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
@@ -694,14 +694,13 @@ export async function approveBankApproval(req, res, next) {
     const now = new Date().toISOString();
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     if (!bankEmail) return res.status(400).json({ message: "Bank manager email is missing on this approval request" });
-    const bankId = request.bankId || bankEmail;
-    const bankName = request.bankName || request.companyName;
-    const branchLocation = request.bankBranchLocation || request.branchLocation || request.city;
-    await upsertRecord("bankPartners", bankId, { ...request, id: bankId, email: bankEmail, officialEmail: bankEmail, bankId, bankName, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    await upsertRecord("banks", bankId, { id: bankId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, status: "active", active: true, approved: true });
-    await upsertRecord("branches", `${bankId}:${branchLocation}`, { bankPartnerId: bankId, bankName, bankBranchLocation: branchLocation, branchLocation, city: branchLocation, branchCity: branchLocation, state: "Haryana", status: "active", active: true });
-    await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: bankId, bankId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-    await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
+    const branchId = request.ifsc || `${bankId}:${branchLocation}`;
+    const partnerId = branchId;
+    await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc: request.ifsc, ifscCode: request.ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    await upsertRecord("banks", partnerId, { id: partnerId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, ifsc: request.ifsc, bankIfsc: request.ifsc, status: "active", active: true, approved: true });
+    await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: request.ifsc || "", ifsc: request.ifsc || "", state: "Haryana", status: "active", active: true });
+    await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+    await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
     if (firebaseAdmin) {
       try {
         const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
@@ -710,8 +709,8 @@ export async function approveBankApproval(req, res, next) {
           approved: true,
           active: true,
           dealershipId: null,
-          bankId,
-          branchId: branchLocation || null,
+          bankId: partnerId,
+          branchId: partnerId || null,
         });
       } catch {
         // Firebase account may be created later; login will repair claims.
@@ -720,19 +719,19 @@ export async function approveBankApproval(req, res, next) {
     for (const executive of Array.isArray(request.executives) ? request.executives : []) {
       const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
       if (executiveEmail) {
-        await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: bankId, bankId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-        await upsertRecord("users", executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, status: "active" });
+        await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+        await upsertRecord("users", executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
       }
     }
     for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
-      await upsertRecord("bankCityMappings", `${bankId}:${city}`, { bankPartnerId: bankId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
+      await upsertRecord("bankCityMappings", `${partnerId}:${city}`, { bankPartnerId: partnerId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
     }
     const updated = await updateRecordIfExists("pendingBankApprovals", request.id, { status: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId, branchId: branchLocation, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
-    await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
-    await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId } });
+    await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: partnerId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
+    await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId: partnerId } });
     res.json({ message: "Bank approved", request: updated || { ...request, status: "approved", approvedAt: now } });
   } catch (error) {
     next(error);
@@ -970,25 +969,6 @@ export async function updateAdminLeadStatus(req, res, next) {
   }
 }
 
-export async function reassignAdminLead(req, res, next) {
-  try {
-    const assignment = await retrieveAndReassignLead(req.params.id, req.body.reason || "manual-reassignment", req.user?.email || "admin");
-    await addTimelineEvent({
-      leadId: req.params.id,
-      eventType: TIMELINE_EVENTS.LEAD_REASSIGNED,
-      title: "Manual Reassignment",
-      description: req.body.reason || "Manual reassignment requested by Super Admin",
-      actorName: req.user?.email || "super-admin",
-      actorRole: "super-admin",
-      metadata: { assignmentId: assignment?.id || null, reason: req.body.reason || "manual-reassignment" },
-    });
-    await writeAuditLog({ req, actionType: "REASSIGNMENT", newValue: req.body.reason || "manual-reassignment", leadId: req.params.id });
-    res.json({ message: "Lead reassignment requested", assignment });
-  } catch (error) {
-    next(error);
-  }
-}
-
 export async function updateAdminWorkflowSettings(req, res, next) {
   try {
     const settings = await updateWorkflowSettings(req.body);
@@ -1038,53 +1018,6 @@ export async function processAdminSlaBreaches(_req, res, next) {
   try {
     const processed = await processSlaBreaches();
     res.json({ message: "SLA processor completed", processed });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function assignAdminLead(req, res, next) {
-  try {
-    const bankPartner = String(req.body.bankPartner || "").trim();
-    if (!bankPartner) return res.status(400).json({ message: "Bank partner is required" });
-    const now = new Date().toISOString();
-    const lead = await updateRecord("leads", req.params.id, {
-      bankPartner,
-      preferredBank: bankPartner,
-      status: LEAD_STATUSES.NEW,
-      assignmentStatus: "pending",
-      assignmentTimestamp: now,
-      assignedAt: now,
-    });
-    const assignment = await createRecord("leadAssignments", {
-      leadId: req.params.id,
-      partnerId: bankPartner,
-      partnerName: bankPartner,
-      status: "pending",
-      reason: "manual-admin-assignment",
-      assignmentTimestamp: now,
-    });
-    await createSlaLog({ lead, assignment, status: "pending" });
-    await addTimelineEvent({
-      leadId: req.params.id,
-      eventType: TIMELINE_EVENTS.LEAD_SENT_TO_BANK,
-      title: "Lead Manually Assigned",
-      description: `Lead manually assigned to ${bankPartner}`,
-      actorName: req.user?.email || "super-admin",
-      actorRole: "super-admin",
-      metadata: { bankPartner, assignmentId: assignment.id },
-    });
-    await createNotification({
-      type: "new-lead-assigned",
-      title: "Lead manually assigned",
-      message: `Lead ${lead.caseId || req.params.id} manually assigned to ${bankPartner}`,
-      leadId: req.params.id,
-      partnerId: bankPartner,
-      admin: true,
-      meta: { caseId: lead.caseId },
-    });
-    await writeAuditLog({ req, actionType: "MANUAL_ASSIGNMENT", newValue: bankPartner, leadId: req.params.id });
-    res.json({ message: "Lead assigned to bank partner", lead, assignment });
   } catch (error) {
     next(error);
   }

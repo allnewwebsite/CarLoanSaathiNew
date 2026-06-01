@@ -23,6 +23,7 @@ const emptyLead = {
   carPrice: "",
   loanAmount: "",
   salespersonId: "",
+  branchId: "",
 };
 
 const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
@@ -399,13 +400,42 @@ function AddLeadScreen() {
   const navigate = useNavigate();
   const { salespersons } = useSalespersons();
   const [banks, setBanks] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState([]);
+  const [tieUpMessage, setTieUpMessage] = useState("");
+  const [tieUpError, setTieUpError] = useState("");
+  const [tieUpLoading, setTieUpLoading] = useState(true);
+  const [tieUpSaving, setTieUpSaving] = useState(false);
   const [form, setForm] = useState(emptyLead);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    api.get("/banks").then((response) => setBanks(response.data || [])).catch(() => setBanks([]));
+    const loadBankData = async () => {
+      setTieUpLoading(true);
+      try {
+        const [banksResponse, availableBranchesResponse, dealerBranchesResponse] = await Promise.all([
+          api.get("/banks"),
+          api.get("/branches"),
+          api.get("/dealer/bank-tieups"),
+        ]);
+        setBanks(banksResponse.data || []);
+        const allBranches = Array.isArray(availableBranchesResponse.data) ? availableBranchesResponse.data : [];
+        setAvailableBranches(allBranches.filter((branch) => branch.active !== false));
+        setBranches(Array.isArray(dealerBranchesResponse.data?.branchTieUps) ? dealerBranchesResponse.data.branchTieUps : []);
+        setSelectedBranchIds(Array.isArray(dealerBranchesResponse.data?.branchTieUps) ? dealerBranchesResponse.data.branchTieUps.map((branch) => branch.id) : []);
+      } catch (error) {
+        setBanks([]);
+        setAvailableBranches([]);
+        setBranches([]);
+        setTieUpError("Unable to load available branches");
+      } finally {
+        setTieUpLoading(false);
+      }
+    };
+    loadBankData();
   }, []);
 
   const update = (field, value) => {
@@ -419,6 +449,7 @@ function AddLeadScreen() {
     if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
     if (!cleanText(nextForm.city)) nextErrors.city = "Field required";
     if (!nextForm.preferredBank) nextErrors.preferredBank = "Field required";
+    if (!nextForm.branchId) nextErrors.branchId = "Select tied-up bank branch";
     if (!Number(nextForm.carPrice) || Number(nextForm.carPrice) < 0) nextErrors.carPrice = "Field required";
     if (!Number(nextForm.loanAmount) || Number(nextForm.loanAmount) < 0) nextErrors.loanAmount = "Field required";
     if (Number(nextForm.loanAmount) > Number(nextForm.carPrice)) nextErrors.loanAmount = "Required Loan Amount cannot exceed Car On-Road Price";
@@ -448,6 +479,8 @@ function AddLeadScreen() {
         status: LEAD_STATUSES.NEW,
         carPrice: Number(nextForm.carPrice),
         loanAmount: Number(nextForm.loanAmount),
+        branchId: nextForm.branchId,
+        bankBranchId: nextForm.branchId,
       });
       navigate(`/finance/leads/${response.data.leadId}/documents`, { state: { created: true } });
     } catch (error) {
@@ -457,9 +490,64 @@ function AddLeadScreen() {
     }
   };
 
+  const toggleBranch = (branchId) => {
+    setTieUpMessage("");
+    setTieUpError("");
+    setSelectedBranchIds((current) => {
+      if (current.includes(branchId)) {
+        return current.filter((id) => id !== branchId);
+      }
+      return [...current, branchId];
+    });
+  };
+
+  const saveTieUps = async () => {
+    setTieUpMessage("");
+    setTieUpError("");
+    setTieUpSaving(true);
+    try {
+      await api.patch("/dealer/bank-tieups", { dealershipBankPartners: selectedBranchIds });
+      const response = await api.get("/dealer/bank-tieups");
+      const updatedBranches = Array.isArray(response.data?.branchTieUps) ? response.data.branchTieUps : [];
+      setBranches(updatedBranches);
+      setTieUpMessage("Bank branch tie-ups updated successfully.");
+    } catch (error) {
+      setTieUpError(error.response?.data?.message || "Unable to save bank tie-ups");
+    } finally {
+      setTieUpSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <SectionTitle title="Add Lead" subtitle="Create a dealership case and trigger the bank assignment workflow." />
+      <SectionTitle title="Add Lead" subtitle="Create a dealership case and select a tied-up bank branch for manual lender routing." />
+      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Manage Bank Branch Tie-ups</h2>
+            <p className="mt-2 text-sm text-slate-600">Select only approved bank branches that this dealership is tied up with. The selected branches are available when creating new leads.</p>
+          </div>
+          <button type="button" disabled={tieUpSaving || tieUpLoading} onClick={saveTieUps} className="h-11 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
+            {tieUpSaving ? "Saving..." : "Save Tie-ups"}
+          </button>
+        </div>
+        {tieUpError ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{tieUpError}</p> : null}
+        {tieUpMessage ? <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{tieUpMessage}</p> : null}
+        <div className="mt-4 grid gap-3">
+          {tieUpLoading ? (
+            <p className="text-sm text-slate-500">Loading branch options...</p>
+          ) : availableBranches.length ? (
+            availableBranches.map((branch) => (
+              <label key={branch.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-[#0d47a1]">
+                <input type="checkbox" checked={selectedBranchIds.includes(branch.id)} onChange={() => toggleBranch(branch.id)} className="h-4 w-4 rounded border-slate-300 text-[#0d47a1] focus:ring-[#0d47a1]" />
+                <span>{branch.bankName} — {branch.branchName}{branch.ifscCode ? ` (${branch.ifscCode})` : ""}</span>
+              </label>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">No approved bank branches are available yet. Please check with CarLoanSaathi admin.</p>
+          )}
+        </div>
+      </section>
       <form onSubmit={submit} className="card p-5">
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
@@ -467,6 +555,15 @@ function AddLeadScreen() {
           <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
           <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Preferred Bank" error={errors.preferredBank}><select aria-invalid={Boolean(errors.preferredBank)} className="field mt-1.5" value={form.preferredBank} onBlur={() => validateField("preferredBank")} onChange={(e) => update("preferredBank", e.target.value)}><option value="">Select bank</option>{banks.map((bank) => <option key={bank.name}>{bank.name}</option>)}</select></Field>
+          <Field label="Tied-up Bank Branch" error={errors.branchId}>
+            <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+              <option value="">Select branch</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.bankName} — {branch.branchName}{branch.ifscCode ? ` (${branch.ifscCode})` : ""}</option>
+              ))}
+            </select>
+            {branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Configure bank tie-ups in dealer profile first.</p> : null}
+          </Field>
           <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
           <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
           <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>

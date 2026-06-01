@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createDealerLead, createDealerSalesperson, createDealerStaff, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, registerDealerOnboarding, removeDealerSalesperson, resetDealerStaffPassword, startDealerRegistration, updateDealerProfile, updateDealerStaffLifecycle } from "../controllers/dealer.controller.js";
+import { createDealerLead, createDealerSalesperson, createDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, registerDealerOnboarding, removeDealerSalesperson, resetDealerStaffPassword, startDealerRegistration, updateDealerBankTieUps, updateDealerProfile, updateDealerStaffLifecycle } from "../controllers/dealer.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
@@ -24,6 +24,8 @@ router.post("/staff/:id/lifecycle", updateDealerStaffLifecycle);
 router.post("/staff/:id/reset-password", resetDealerStaffPassword);
 router.get("/earnings", getDealerEarnings);
 router.get("/profile", getDealerProfile);
+router.get("/bank-tieups", getDealerBankTieUps);
+router.patch("/bank-tieups", updateDealerBankTieUps);
 router.patch("/profile", updateDealerProfile);
 
 export default router;

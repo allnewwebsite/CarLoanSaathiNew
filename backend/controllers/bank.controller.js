@@ -1,7 +1,7 @@
 import { createRecord, deleteRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
-import { reassignLeadToNextBranchExecutive, retrieveAndReassignLead } from "../services/assignment.service.js";
+import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
 import { updateSlaForLead } from "../services/sla.service.js";
 import { addTimelineEvent, getTimelineForLead, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { createShortLivedDocumentUrl, deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
@@ -278,6 +278,13 @@ export async function registerBankPartner(req, res, next) {
       ? req.body.supportedBanks
       : String(req.body.supportedBanks || "").split(",").map((item) => item.trim()).filter(Boolean);
     const bankBranchLocation = String(req.body.bankBranchLocation || req.body.branchLocation || req.body.city || "").trim();
+    const ifsc = String(req.body.ifsc || "").trim().toUpperCase();
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      return res.status(400).json({ message: "Valid IFSC code is required for branch registration" });
+    }
+    if (!bankBranchLocation) {
+      return res.status(400).json({ message: "Bank branch location is required" });
+    }
 
     const request = await createRecord("pendingBankApprovals", {
       email,
@@ -286,7 +293,7 @@ export async function registerBankPartner(req, res, next) {
       status: "pending",
       companyName: String(req.body.companyName || "").trim(),
       bankName: String(req.body.bankName || req.body.companyName || req.body.supportedBanks?.[0] || "").trim(),
-      ifsc: String(req.body.ifsc || "").trim().toUpperCase(),
+      ifsc,
       gstin: String(req.body.gstin || "").trim().toUpperCase(),
       branchLocation: bankBranchLocation,
       bankBranchLocation,
@@ -870,9 +877,8 @@ export async function rejectBankLead(req, res, next) {
       metadata: { reason, remarks },
     });
     await createNotification({ type: "rejection", title: "Lead rejected", message: remarks ? `${reason} - ${remarks}` : reason, leadId: lead.id, partnerId: partner.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, priority: "high", meta: { customerName: lead.fullName, reason, remarks } });
-    const assignment = await retrieveAndReassignLead(lead.id, "bank-partner-rejected", partner.email);
     await writeAuditLog({ req, actionType: "BANK_REJECT", newValue: reason, leadId: lead.id });
-    res.json({ message: "Lead rejected and reassignment triggered", assignment });
+    res.json({ message: "Lead rejected. Manual reassignment can be performed by bank manager if needed" });
   } catch (error) {
     next(error);
   }

@@ -34,6 +34,10 @@ export const publicLeadSchema = publicLeadBaseSchema.refine((data) => data.loanA
 });
 
 export const financeDeskLeadSchema = publicLeadBaseSchema.extend({
+  bankBranchId: cleanText(1),
+  bankName: cleanText(1).optional(),
+  branchName: cleanText(1).optional(),
+  ifscCode: cleanText(1).optional(),
   assignedSalesperson: cleanText(1),
   remarks: z.string().trim().max(500).optional(),
   documents: z.array(z.unknown()).optional(),
