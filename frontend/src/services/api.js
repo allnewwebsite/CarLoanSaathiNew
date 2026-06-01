@@ -117,6 +117,29 @@ async function refreshSessionToken() {
   return refreshPromise;
 }
 
+function portalWarmupPath(role) {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized === "super-admin") return "/admin/leads";
+  if (normalized === "bank-manager" || normalized === "loan-executive") return "/bank/leads";
+  if (normalized === "gm-sm") return "/gm/leads";
+  if (normalized === "finance-desk" || normalized === "dealer") return "/dealer/leads";
+  return null;
+}
+
+export async function warmupPortalRoute(role) {
+  const route = portalWarmupPath(role);
+  if (!route) return null;
+  try {
+    return await api.get(route, {
+      timeout: 10000,
+      headers: { "X-CLS-Warmup": "true" },
+      params: { limit: 1 },
+    });
+  } catch {
+    return null;
+  }
+}
+
 api.interceptors.request.use(async (config) => {
   let token = getStoredToken();
   if (token && !authEndpoint(config.url) && shouldRefreshToken(token)) {

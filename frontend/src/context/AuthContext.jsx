@@ -14,7 +14,7 @@ import {
   browserSessionPersistence,
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
-import { api } from "../services/api.js";
+import { api, warmupPortalRoute } from "../services/api.js";
 import { AUTH_STATES, authPersistenceMode, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
@@ -184,6 +184,11 @@ export function AuthProvider({ children }) {
     const session = sessionFromResponse(response);
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token, { rememberMe });
+    try {
+      await warmupPortalRoute(session.role);
+    } catch {
+      // Warmup is best-effort and should not block login.
+    }
     return session;
   };
 

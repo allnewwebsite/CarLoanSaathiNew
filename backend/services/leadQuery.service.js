@@ -191,12 +191,14 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
 
 export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
   const { limit, cursor } = paginationParams(query);
+  const where = queryWhere([], query);
   const result = await queryRecords("leads", {
+    where,
     orderBy: "createdAt",
     direction: "desc",
     limit,
     cursor,
-    search: query.search,
+    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
     allowGlobal: true,
