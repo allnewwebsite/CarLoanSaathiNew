@@ -30,7 +30,7 @@ export function corsOptions() {
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Monitoring-Secret"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Monitoring-Secret", "X-CLS-Warmup"],
   };
 }
 
