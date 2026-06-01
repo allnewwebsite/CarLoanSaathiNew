@@ -9,19 +9,20 @@ function apiBaseUrl() {
   const configured = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
   if (typeof window === "undefined") return configured;
 
-  const isProductionHost = /(^|\.)carloansaathi\.com$/i.test(window.location.hostname);
-  if (isProductionHost && (!configured || configured.includes("api.example.com"))) {
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
+  const isPrivateNetwork = /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
+  const isDefaultLocalApi = configured.includes("localhost") || configured.includes("127.0.0.1");
+
+  if (configured && configured !== "http://localhost:8080/api" && !configured.includes("api.example.com")) {
+    return configured;
+  }
+
+  if (!isLocalHost && !isPrivateNetwork) {
     return PRODUCTION_API_BASE_URL;
   }
 
-  if (isProductionHost && configured === "https://carloansaathi-backend.onrender.com") {
-    return PRODUCTION_API_BASE_URL;
-  }
-
-  const isLocalhostApi = configured.includes("localhost") || configured.includes("127.0.0.1");
-  const isLanFrontend = !["localhost", "127.0.0.1"].includes(window.location.hostname);
-
-  if (isLocalhostApi && isLanFrontend) {
+  if (isDefaultLocalApi && (isLocalHost || isPrivateNetwork)) {
     return configured.replace(/https?:\/\/(localhost|127\.0\.0\.1):8080/, `${window.location.protocol}//${window.location.hostname}:8080`);
   }
 
