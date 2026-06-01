@@ -212,7 +212,9 @@ export async function createPublicLeadIntake(req, res, next) {
 
 export async function getLeads(req, res, next) {
   const startedAt = Date.now();
+  let queryStarted, queryEnded, serializeStarted, serializeEnded;
   try {
+    queryStarted = Date.now();
     let payload;
     if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
     else if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
@@ -226,15 +228,21 @@ export async function getLeads(req, res, next) {
     } else {
       return res.status(403).json({ message: "Lead access denied" });
     }
+    queryEnded = Date.now();
+    serializeStarted = Date.now();
+    const responseJson = JSON.stringify(payload);
+    serializeEnded = Date.now();
     logInfo("Lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
       role: req.user?.role,
-      durationMs: Date.now() - startedAt,
+      totalMs: Date.now() - startedAt,
+      queryMs: queryEnded - queryStarted,
+      serializeMs: serializeEnded - serializeStarted,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(payload?.data) ? payload.data.length : undefined,
     });
-    return res.json(payload);
+    return res.json(JSON.parse(responseJson));
   } catch (error) {
     next(error);
   }

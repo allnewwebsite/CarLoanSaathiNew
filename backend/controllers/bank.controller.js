@@ -444,24 +444,36 @@ export async function getBankRegistrationStatus(req, res, next) {
 
 export async function getBankLeads(req, res, next) {
   const startedAt = Date.now();
+  let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
   try {
+    authStarted = Date.now();
     const partner = await currentPartner(req);
+    authEnded = Date.now();
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     let response;
+    queryStarted = Date.now();
     if (partner.roleType === "loan-executive") {
       response = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query });
+      queryEnded = Date.now();
+      serializeStarted = Date.now();
+      const responseJson = JSON.stringify(response);
+      serializeEnded = Date.now();
       logInfo("Bank executive lead query completed", {
         requestId: req.requestId,
         path: req.originalUrl,
         role: req.user?.role,
-        durationMs: Date.now() - startedAt,
+        totalMs: Date.now() - startedAt,
+        authMs: authEnded - authStarted,
+        queryMs: queryEnded - queryStarted,
+        serializeMs: serializeEnded - serializeStarted,
         warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
         dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
       });
-      return res.json(response);
+      return res.json(JSON.parse(responseJson));
     }
     const { limit } = paginationParams(req.query);
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: Math.min(Math.max(limit * 3, limit), 100) });
+    queryEnded = Date.now();
     const data = scopedLeads.slice(0, limit);
     await recordOperationalEvent({
       type: "bank_leads_scoped",
@@ -473,15 +485,21 @@ export async function getBankLeads(req, res, next) {
       meta: { returned: data.length, bankId: bankIdentity(partner).bankId, branchId: partner.branchId || partner.branchCity || partner.bankBranchLocation },
     });
     const page = pageResponse({ data, limit, nextCursor: null, total: scopedLeads.length });
+    serializeStarted = Date.now();
+    const responseJson = JSON.stringify(page);
+    serializeEnded = Date.now();
     logInfo("Bank manager lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
       role: req.user?.role,
-      durationMs: Date.now() - startedAt,
+      totalMs: Date.now() - startedAt,
+      authMs: authEnded - authStarted,
+      queryMs: queryEnded - queryStarted,
+      serializeMs: serializeEnded - serializeStarted,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: data.length,
     });
-    return res.json(page);
+    return res.json(JSON.parse(responseJson));
   } catch (error) {
     next(error);
   }

@@ -387,18 +387,29 @@ async function deleteMatchingRecords(collection, matcher) {
 
 export async function getAdminLeads(req, res, next) {
   const startedAt = Date.now();
+  let queryStarted, queryEnded, enrichStarted, enrichEnded, serializeStarted, serializeEnded;
   try {
+    queryStarted = Date.now();
     const page = await queryAllLeads({ query: req.query });
+    queryEnded = Date.now();
+    enrichStarted = Date.now();
     const response = { ...page, data: await enrichAdminLeadRows(page.data) };
+    enrichEnded = Date.now();
+    serializeStarted = Date.now();
+    const responseJson = JSON.stringify(response);
+    serializeEnded = Date.now();
     logInfo("Admin lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
       role: req.user?.role,
-      durationMs: Date.now() - startedAt,
+      totalMs: Date.now() - startedAt,
+      queryMs: queryEnded - queryStarted,
+      enrichMs: enrichEnded - enrichStarted,
+      serializeMs: serializeEnded - serializeStarted,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
     });
-    res.json(response);
+    res.json(JSON.parse(responseJson));
   } catch (error) {
     next(error);
   }

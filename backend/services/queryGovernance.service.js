@@ -1,4 +1,4 @@
-import { logWarn } from "./logger.service.js";
+import { logWarn, logInfo } from "./logger.service.js";
 
 export const QUERY_LIMITS = Object.freeze({
   defaultLimit: 20,
@@ -43,15 +43,18 @@ export async function withQueryMonitoring({ collection, operation = "query", whe
   try {
     const result = await Promise.race([executor(), timeoutPromise]);
     const durationMs = Date.now() - started;
+    const meta = {
+      collection,
+      operation,
+      durationMs,
+      limit,
+      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+    };
     if (durationMs >= QUERY_LIMITS.slowQueryMs) {
-      const meta = {
-        collection,
-        operation,
-        durationMs,
-        limit,
-        where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
-      };
       logWarn("Slow Firestore query", meta);
+    }
+    if (collection === "leads" && operation === "query") {
+      logInfo("Firestore query executed", meta);
     }
     return result;
   } finally {
