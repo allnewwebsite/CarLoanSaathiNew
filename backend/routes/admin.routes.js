@@ -26,6 +26,15 @@ import {
   updateAdminWorkflowSettings,
 } from "../controllers/admin.controller.js";
 import {
+  registerBankBranchAdmin,
+  approveBankBranchAdmin,
+  rejectBankBranchAdmin,
+  deactivateBankBranchAdmin,
+  getAdminBankBranches,
+  getBankBranchDetailsAdmin,
+  updateBankBranchAdmin,
+} from "../controllers/bank.admin.controller.js";
+import {
   getAnalyticsBanks,
   getAnalyticsCities,
   getAnalyticsDealers,
@@ -41,6 +50,8 @@ import { ROLES } from "../utils/constants.js";
 const router = Router();
 
 router.use(authenticate, requireRole(ROLES.SUPER_ADMIN));
+
+// Existing routes
 router.get("/onboarding-requests", getAdminOnboardingRequests);
 router.patch("/onboarding-requests/:id", updateAdminOnboardingRequest);
 router.delete("/dealerships/:id/permanent", deleteDealershipPermanently);
@@ -72,5 +83,14 @@ router.get("/workflow/logs", getAdminWorkflowLogs);
 router.patch("/workflow/settings", updateAdminWorkflowSettings);
 router.post("/workflow/process-sla", processAdminSlaBreaches);
 router.patch("/partners/:partnerId/freeze", freezeAdminPartner);
+
+// NEW: Bank branch management (dynamic IFSC system)
+router.post("/bank-branches", registerBankBranchAdmin);
+router.get("/bank-branches", getAdminBankBranches);
+router.get("/bank-branches/:bankId", getBankBranchDetailsAdmin);
+router.patch("/bank-branches/:bankId", updateBankBranchAdmin);
+router.post("/bank-branches/:bankId/approve", approveBankBranchAdmin);
+router.post("/bank-branches/:bankId/reject", rejectBankBranchAdmin);
+router.post("/bank-branches/:bankId/deactivate", deactivateBankBranchAdmin);
 
 export default router;

@@ -12,6 +12,15 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
+import {
+  registerBankBranchAdmin,
+  approveBankBranchAdmin,
+  rejectBankBranchAdmin,
+  deactivateBankBranchAdmin,
+  getAdminBankBranches,
+  getBankBranchDetailsAdmin,
+  updateBankBranchAdmin,
+} from "./bank.admin.controller.js";
 
 function sameDate(value, target) {
   if (!target) return true;
@@ -1164,3 +1173,14 @@ export async function getAdminEcosystem(req, res, next) {
     next(error);
   }
 }
+
+// Re-export bank admin functions from bank.admin.controller
+export {
+  registerBankBranchAdmin,
+  approveBankBranchAdmin,
+  rejectBankBranchAdmin,
+  deactivateBankBranchAdmin,
+  getAdminBankBranches,
+  getBankBranchDetailsAdmin,
+  updateBankBranchAdmin,
+};

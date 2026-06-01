@@ -337,6 +337,39 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // NEW: Dynamic Bank Branch Management
+    // Banks collection - Global bank branches with IFSC codes
+    match /banks/{bankId} {
+      // Read: Finance desk can see approved/active banks; super admin can see all
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && approved() && resource.data.approved == true && resource.data.active == true)
+        || (isBankManager() && resource.data.id == bankId());
+      
+      // Write: Super admin only
+      allow create, update, delete: if isSuperAdmin();
+      allow read, write: if isSuperAdmin();
+    }
+
+    // Dealership Bank Tie-Ups (stored in dealerships document)
+    // Dealership can read/update their own bankTieUps array
+    match /dealerships/{dealerId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      
+      // Allow finance desk to update bankTieUps array only
+      allow update: if isFinanceDesk()
+        && approved()
+        && dealershipId() == dealerId
+        && (
+          // Can only change bankTieUps and bankTieUpDates fields
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['bankTieUps', 'bankTieUpDates', 'updatedAt'])
+        );
+      
+      allow create, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
