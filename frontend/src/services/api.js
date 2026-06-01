@@ -129,6 +129,17 @@ function portalWarmupPath(role) {
 export async function warmupPortalRoute(role) {
   const route = portalWarmupPath(role);
   if (!route) return null;
+
+  try {
+    await api.get("/warmup", {
+      timeout: 10000,
+      headers: { "X-CLS-Warmup": "true" },
+      params: { route },
+    });
+  } catch {
+    // best-effort backend warmup
+  }
+
   try {
     return await api.get(route, {
       timeout: 10000,
@@ -136,7 +147,16 @@ export async function warmupPortalRoute(role) {
       params: { limit: 1 },
     });
   } catch {
-    return null;
+    await sleep(1000);
+    try {
+      return await api.get(route, {
+        timeout: 10000,
+        headers: { "X-CLS-Warmup": "true" },
+        params: { limit: 1 },
+      });
+    } catch {
+      return null;
+    }
   }
 }
 
