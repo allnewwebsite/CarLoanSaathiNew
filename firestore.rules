@@ -245,6 +245,13 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    match /dealershipBankTieUps/{tieUpId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
     match /approvedDealerships/{dealerId} {
       allow read: if isSuperAdmin()
         || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
@@ -347,26 +354,6 @@ service cloud.firestore {
       
       // Write: Super admin only
       allow create, update, delete: if isSuperAdmin();
-      allow read, write: if isSuperAdmin();
-    }
-
-    // Dealership Bank Tie-Ups (stored in dealerships document)
-    // Dealership can read/update their own bankTieUps array
-    match /dealerships/{dealerId} {
-      allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
-      
-      // Allow finance desk to update bankTieUps array only
-      allow update: if isFinanceDesk()
-        && approved()
-        && dealershipId() == dealerId
-        && (
-          // Can only change bankTieUps and bankTieUpDates fields
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['bankTieUps', 'bankTieUpDates', 'updatedAt'])
-        );
-      
-      allow create, delete: if false;
       allow read, write: if isSuperAdmin();
     }
 
