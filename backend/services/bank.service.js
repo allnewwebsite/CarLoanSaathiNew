@@ -189,10 +189,15 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  * Get all approved and active banks
  */
 export async function getActiveBankBranches() {
-  const banks = await listRecords("banks");
+  const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
+    listRecords("banks").catch(() => []),
+    listRecords("bankPartners").catch(() => []),
+    listRecords("branches").catch(() => []),
+    listRecords("branchManagers").catch(() => []),
+    listRecords("pendingBankApprovals").catch(() => []),
+  ]);
 
-  return banks
-    .map((bank) => {
+  const normalizeBank = (bank) => {
       const ifscCode = String(bank.ifscCode || bank.ifsc || bank.bankIfsc || "").trim().toUpperCase();
       const bankName = String(bank.bankName || bank.name || bank.companyName || "").trim();
       const branchName = String(bank.branchName || bank.branchLocation || bank.bankBranchLocation || bank.city || "").trim();
@@ -213,8 +218,45 @@ export async function getActiveBankBranches() {
         approved: bank.approved === true || String(bank.status || "").toLowerCase() === "active",
         active: bank.active !== false && String(bank.status || "active").toLowerCase() !== "suspended",
       };
-    })
-    .filter((bank) => bank.approved && bank.active && bank.ifscCode && bank.bankName && bank.branchName)
+  };
+
+  const approvedApprovals = pendingBankApprovals
+    .filter((item) => ["approved", "active"].includes(String(item.status || item.approvalStatus || "").toLowerCase()))
+    .map((item) => ({ ...item, approved: true, active: true }));
+
+  const records = [
+    ...banks,
+    ...bankPartners,
+    ...branches,
+    ...branchManagers,
+    ...approvedApprovals,
+  ];
+
+  const byIfsc = new Map();
+  for (const record of records) {
+    const bank = normalizeBank(record);
+    if (!bank.approved || !bank.active || !bank.ifscCode || !bank.bankName || !bank.branchName) continue;
+    const existing = byIfsc.get(bank.ifscCode);
+    byIfsc.set(bank.ifscCode, {
+      ...bank,
+      ...existing,
+      bankId: existing?.bankId || bank.bankId,
+      id: existing?.id || bank.id,
+      bankName: existing?.bankName || bank.bankName,
+      branchName: existing?.branchName || bank.branchName,
+      city: existing?.city || bank.city,
+      state: existing?.state || bank.state,
+      email: existing?.email || bank.email,
+      phone: existing?.phone || bank.phone,
+      contactPerson: existing?.contactPerson || bank.contactPerson,
+      approvedAt: existing?.approvedAt || bank.approvedAt,
+      approved: true,
+      active: true,
+      approvalStatus: "approved",
+    });
+  }
+
+  return [...byIfsc.values()]
     .sort((left, right) => `${left.bankName} ${left.ifscCode}`.localeCompare(`${right.bankName} ${right.ifscCode}`));
 }
 
@@ -223,19 +265,7 @@ export async function getActiveBankBranches() {
  */
 export async function getBankByIFSC(ifscCode) {
   const ifsc = String(ifscCode || "").trim().toUpperCase();
-  const banks = await listRecords("banks");
-  const bank = banks
-    .map((item) => ({
-      ...item,
-      ifscCode: String(item.ifscCode || item.ifsc || item.bankIfsc || "").trim().toUpperCase(),
-      bankName: String(item.bankName || item.name || item.companyName || "").trim(),
-      branchName: String(item.branchName || item.branchLocation || item.bankBranchLocation || item.city || "").trim(),
-      city: String(item.city || item.branchCity || item.branchLocation || item.bankBranchLocation || "").trim(),
-      state: String(item.state || "Haryana").trim(),
-      approved: item.approved === true || String(item.status || "").toLowerCase() === "active",
-      active: item.active !== false && String(item.status || "active").toLowerCase() !== "suspended",
-    }))
-    .find((item) => item.ifscCode === ifsc);
+  const bank = (await getActiveBankBranches()).find((item) => item.ifscCode === ifsc);
 
   if (!bank) {
     const error = new Error(`Bank with IFSC ${ifsc} not found`);
