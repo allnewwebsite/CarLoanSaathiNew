@@ -8,6 +8,7 @@ import { sanitizeFirestoreData } from "../utils/firestoreSanitizer.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
+import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -716,6 +717,7 @@ export async function createDealerLead(req, res, next) {
     });
 
     const dealershipCity = dealership.city || dealership.registeredCity || payload.city;
+    const bankBranchCity = branchTieUp.city || branchTieUp.branchCity || branchTieUp.bankBranchCity || branchTieUp.branchName || dealershipCity;
     const now = new Date().toISOString();
     const caseId = await generateLeadCaseId();
 
@@ -734,13 +736,16 @@ export async function createDealerLead(req, res, next) {
       dealershipId,
       dealershipName: dealership.dealershipName || dealership.name || "",
       dealershipCity,
-      routingCity: dealershipCity,
+      routingCity: bankBranchCity,
       
       // Bank branch (new requirement)
       ifscCode,
       bankIfsc: ifscCode,
       branchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
       bankBranchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
+      bankBranchCity,
+      branchCity: bankBranchCity,
+      bankBranchLocation: bankBranchCity,
       bankId: branchTieUp.bankId,
       bankName: branchTieUp.bankName,
       branchName: branchTieUp.branchName,
@@ -767,6 +772,20 @@ export async function createDealerLead(req, res, next) {
     });
 
     const lead = await createRecord("leads", leadPayload);
+    let responseLead = lead;
+    try {
+      responseLead = await reassignLeadToNextBranchExecutive(lead.id, "lead-created-auto-assignment", email);
+    } catch (assignmentError) {
+      logInfo("Dealer lead created without executive auto-assignment", {
+        requestId: req.requestId,
+        leadId: lead.id,
+        caseId: lead.caseId,
+        dealershipId,
+        bankId: branchTieUp.bankId,
+        ifscCode,
+        reason: assignmentError.message,
+      });
+    }
 
     runDealerLeadSideEffects("dealer-lead-created", [
       () => writeAuditLog({
@@ -806,10 +825,10 @@ export async function createDealerLead(req, res, next) {
 
     res.status(201).json({ 
       success: true,
-      leadId: lead.id, 
-      caseId: lead.caseId, 
-      message: "Lead created successfully", 
-      lead 
+      leadId: responseLead.id, 
+      caseId: responseLead.caseId, 
+      message: responseLead.assignedExecutiveId ? "Lead created and assigned to loan executive" : "Lead created successfully", 
+      lead: responseLead 
     });
   } catch (error) {
     if (error?.issues) {
