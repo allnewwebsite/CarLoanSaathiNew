@@ -721,15 +721,20 @@ export async function approveBankApproval(req, res, next) {
   try {
     const request = await getRecord("pendingBankApprovals", req.params.id);
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
-    if (request.status !== "pending") return res.status(400).json({ message: "Application is not pending" });
+    const requestStatus = String(request.status || request.approvalStatus || "pending").toLowerCase();
+    if (requestStatus === "approved") return res.status(409).json({ message: "Bank branch is already approved" });
+    if (!["pending", "submitted"].includes(requestStatus)) return res.status(400).json({ message: "Application is not pending" });
     const now = new Date().toISOString();
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     if (!bankEmail) return res.status(400).json({ message: "Bank manager email is missing on this approval request" });
-    const branchId = request.ifsc || `${bankId}:${branchLocation}`;
+    const bankName = String(request.bankName || request.companyName || request.name || "Bank Branch").trim();
+    const branchLocation = String(request.bankBranchLocation || request.branchLocation || request.branchName || request.city || "Primary Branch").trim();
+    const ifsc = String(request.ifsc || request.ifscCode || request.bankIfsc || "").trim().toUpperCase();
+    const branchId = ifsc || `${bankEmail}:${branchLocation}`;
     const partnerId = branchId;
-    await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc: request.ifsc, ifscCode: request.ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    await upsertRecord("banks", partnerId, { id: partnerId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, ifsc: request.ifsc, bankIfsc: request.ifsc, status: "active", active: true, approved: true });
-    await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: request.ifsc || "", ifsc: request.ifsc || "", state: "Haryana", status: "active", active: true });
+    await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc, ifscCode: ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    await upsertRecord("banks", partnerId, { id: partnerId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, ifsc, bankIfsc: ifsc, status: "active", active: true, approved: true });
+    await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "active", active: true });
     await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
     await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
     if (firebaseAdmin) {
@@ -757,9 +762,58 @@ export async function approveBankApproval(req, res, next) {
     for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
       await upsertRecord("bankCityMappings", `${partnerId}:${city}`, { bankPartnerId: partnerId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
     }
-    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, { status: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
-    if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    const approvalPatch = {
+      status: "approved",
+      approvalStatus: "approved",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+      bankId: partnerId,
+      bankPartnerId: partnerId,
+      branchId: partnerId,
+      approvedAt: now,
+      approvedBy: req.user?.email || "super-admin",
+    };
+    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, approvalPatch);
+    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) =>
+      normalizeEmail(item.email || item.officialEmail || item.primaryGoogleEmail) === bankEmail
+      || item.approvalRequestId === request.id
+      || item.pendingBankApprovalId === request.id
+    );
+    if (pendingBankAccount) {
+      await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, {
+        registrationSubmitted: true,
+        approvalStatus: "approved",
+        status: "approved",
+        active: true,
+        approved: true,
+        accountApproved: true,
+        accountActive: true,
+        bankId: partnerId,
+        bankPartnerId: partnerId,
+        branchId: partnerId,
+        approvedAt: now,
+        approvedBy: req.user?.email || "super-admin",
+      });
+    } else {
+      await upsertRecord("pendingBankAccounts", bankEmail, {
+        email: bankEmail,
+        registrationSubmitted: true,
+        approvalStatus: "approved",
+        status: "approved",
+        active: true,
+        approved: true,
+        accountApproved: true,
+        accountActive: true,
+        bankId: partnerId,
+        bankPartnerId: partnerId,
+        branchId: partnerId,
+        approvalRequestId: request.id,
+        approvedAt: now,
+        approvedBy: req.user?.email || "super-admin",
+      });
+    }
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: partnerId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId: partnerId } });

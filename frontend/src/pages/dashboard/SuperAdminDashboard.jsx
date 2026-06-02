@@ -566,15 +566,19 @@ export function SuperAdminApprovalDetailPage({ type }) {
   const data = useAdminEcosystem();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
   const navigate = useNavigate();
   const item = type === "banks"
     ? data.pendingBankApprovals.find((entry) => entry.id === id)
     : data.pendingDealershipApprovals.find((entry) => entry.id === id);
   const approve = async () => {
     setBusy(true);
+    setActionError("");
     try {
       await api.post(`/admin/approvals/${type}/${id}/approve`);
       navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
+    } catch (error) {
+      setActionError(error.response?.data?.message || error.message || "Unable to approve application");
     } finally {
       setBusy(false);
     }
@@ -582,9 +586,12 @@ export function SuperAdminApprovalDetailPage({ type }) {
   const reject = async () => {
     if (!reason.trim()) return;
     setBusy(true);
+    setActionError("");
     try {
       await api.post(`/admin/approvals/${type}/${id}/reject`, { reason });
       navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
+    } catch (error) {
+      setActionError(error.response?.data?.message || error.message || "Unable to reject application");
     } finally {
       setBusy(false);
     }
@@ -592,9 +599,12 @@ export function SuperAdminApprovalDetailPage({ type }) {
   const suspend = async () => {
     const suspensionReason = reason.trim() || "Suspended by Super Admin";
     setBusy(true);
+    setActionError("");
     try {
       await api.post(`/admin/approvals/${type}/${id}/suspend`, { reason: suspensionReason });
       navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
+    } catch (error) {
+      setActionError(error.response?.data?.message || error.message || "Unable to suspend application");
     } finally {
       setBusy(false);
     }
@@ -646,10 +656,11 @@ export function SuperAdminApprovalDetailPage({ type }) {
       })} loading={false} />
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-base font-semibold text-slate-900">Approval Action</h2>
+        {actionError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</div> : null}
         <textarea className="mt-3 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason required only when rejecting" value={reason} onChange={(event) => setReason(event.target.value)} />
         <div className="mt-3 flex flex-wrap gap-2">
-          <button disabled={busy || item.status !== "pending"} onClick={approve} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Approve</button>
-          <button disabled={busy || item.status !== "pending" || !reason.trim()} onClick={reject} className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Reject</button>
+          <button disabled={busy || !["pending", "submitted"].includes(String(item.status || item.approvalStatus || "pending").toLowerCase())} onClick={approve} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Approve</button>
+          <button disabled={busy || !["pending", "submitted"].includes(String(item.status || item.approvalStatus || "pending").toLowerCase()) || !reason.trim()} onClick={reject} className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Reject</button>
           <button disabled={busy || item.status === "suspended"} onClick={suspend} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 disabled:opacity-50">Suspend</button>
         </div>
       </section>
