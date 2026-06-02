@@ -1,4 +1,4 @@
-import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
+import { createRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
@@ -189,29 +189,33 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  * Get all approved and active banks
  */
 export async function getActiveBankBranches() {
-  const banks = await queryRecords("banks", {
-    where: [
-      { field: "approved", value: true },
-      { field: "active", value: true },
-    ],
-    orderBy: "bankName",
-    direction: "asc",
-    maxLimit: 5000,
-  });
+  const banks = await listRecords("banks");
 
-  return banks.data.map((bank) => ({
-    bankId: bank.id,
-    ifscCode: bank.ifscCode,
-    bankName: bank.bankName,
-    branchName: bank.branchName,
-    address: bank.address,
-    city: bank.city,
-    state: bank.state,
-    contactPerson: bank.contactPerson,
-    phone: bank.phone,
-    email: bank.email,
-    approvedAt: bank.approvedAt,
-  }));
+  return banks
+    .map((bank) => {
+      const ifscCode = String(bank.ifscCode || bank.ifsc || bank.bankIfsc || "").trim().toUpperCase();
+      const bankName = String(bank.bankName || bank.name || bank.companyName || "").trim();
+      const branchName = String(bank.branchName || bank.branchLocation || bank.bankBranchLocation || bank.city || "").trim();
+      return {
+        bankId: bank.bankId || bank.id || ifscCode,
+        id: bank.id || ifscCode,
+        ifscCode,
+        bankName,
+        branchName,
+        address: bank.address || "",
+        city: String(bank.city || bank.branchCity || bank.branchLocation || bank.bankBranchLocation || "").trim(),
+        state: String(bank.state || "Haryana").trim(),
+        contactPerson: bank.contactPerson || bank.managerName || "",
+        phone: bank.phone || bank.mobile || "",
+        email: bank.email || bank.officialEmail || "",
+        approvedAt: bank.approvedAt || null,
+        approvalStatus: bank.approvalStatus || bank.status || (bank.approved ? "approved" : "pending"),
+        approved: bank.approved === true || String(bank.status || "").toLowerCase() === "active",
+        active: bank.active !== false && String(bank.status || "active").toLowerCase() !== "suspended",
+      };
+    })
+    .filter((bank) => bank.approved && bank.active && bank.ifscCode && bank.bankName && bank.branchName)
+    .sort((left, right) => `${left.bankName} ${left.ifscCode}`.localeCompare(`${right.bankName} ${right.ifscCode}`));
 }
 
 /**
@@ -219,18 +223,27 @@ export async function getActiveBankBranches() {
  */
 export async function getBankByIFSC(ifscCode) {
   const ifsc = String(ifscCode || "").trim().toUpperCase();
-  const banks = await queryRecords("banks", {
-    where: [{ field: "ifscCode", value: ifsc }],
-    maxLimit: 1,
-  });
+  const banks = await listRecords("banks");
+  const bank = banks
+    .map((item) => ({
+      ...item,
+      ifscCode: String(item.ifscCode || item.ifsc || item.bankIfsc || "").trim().toUpperCase(),
+      bankName: String(item.bankName || item.name || item.companyName || "").trim(),
+      branchName: String(item.branchName || item.branchLocation || item.bankBranchLocation || item.city || "").trim(),
+      city: String(item.city || item.branchCity || item.branchLocation || item.bankBranchLocation || "").trim(),
+      state: String(item.state || "Haryana").trim(),
+      approved: item.approved === true || String(item.status || "").toLowerCase() === "active",
+      active: item.active !== false && String(item.status || "active").toLowerCase() !== "suspended",
+    }))
+    .find((item) => item.ifscCode === ifsc);
 
-  if (banks.data.length === 0) {
+  if (!bank) {
     const error = new Error(`Bank with IFSC ${ifsc} not found`);
     error.status = 404;
     throw error;
   }
 
-  return banks.data[0];
+  return bank;
 }
 
 /**

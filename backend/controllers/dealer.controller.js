@@ -917,6 +917,13 @@ export async function getDealerBankTieUps(req, res, next) {
       totalTiedUp: currentTieUps?.length || 0,
     });
   } catch (error) {
+    logError("Dealer bank tie-up load failed", {
+      requestId: req.requestId,
+      userEmail: dealerEmail(req),
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
     next(error);
   }
 }
@@ -955,6 +962,13 @@ export async function updateDealerBankTieUps(req, res, next) {
       updatedAt: result.updatedAt,
     });
   } catch (error) {
+    logError("Dealer bank tie-up update failed", {
+      requestId: req.requestId,
+      userEmail: dealerEmail(req),
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
     next(error);
   }
 }

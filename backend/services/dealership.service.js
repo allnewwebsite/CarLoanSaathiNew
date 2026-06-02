@@ -1,4 +1,4 @@
-import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { createRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
@@ -35,14 +35,8 @@ function tieUpFromBank({ dealershipId, bank, ifscCode, active = true, now, creat
 }
 
 async function activeTieUpRecords(dealershipId) {
-  const records = await queryRecords(TIE_UP_COLLECTION, {
-    where: [
-      { field: "dealershipId", value: dealershipId },
-    ],
-    limit: 500,
-    maxLimit: 500,
-  });
-  return (records.data || []).filter((record) => record.active === true);
+  const records = await listRecords(TIE_UP_COLLECTION);
+  return records.filter((record) => record.dealershipId === dealershipId && record.active === true);
 }
 
 async function upsertTieUpRecord(dealershipId, bank, ifscCode, req = null, active = true, createdAt = null) {
@@ -74,6 +68,9 @@ export async function getAvailableBankBranches() {
     contactPerson: branch.contactPerson,
     phone: branch.phone,
     email: branch.email,
+    approved: branch.approved === true,
+    active: branch.active !== false,
+    approvalStatus: branch.approvalStatus || "approved",
   }));
 }
 
@@ -90,22 +87,32 @@ export async function getDealershipBankTieUps(dealershipId) {
 
   const relationTieUps = await activeTieUpRecords(dealershipId);
   if (relationTieUps.length > 0) {
-    return relationTieUps.map((tieUp) => ({
-      id: tieUp.ifscCode,
-      bankId: tieUp.bankId || tieUp.bankBranchId || tieUp.branchId,
-      branchId: tieUp.branchId || tieUp.bankBranchId || tieUp.bankId,
-      bankBranchId: tieUp.bankBranchId || tieUp.branchId || tieUp.bankId,
-      ifscCode: tieUp.ifscCode,
-      bankName: tieUp.bankName,
-      branchName: tieUp.branchName,
-      address: tieUp.address,
-      city: tieUp.city,
-      state: tieUp.state,
-      contactPerson: tieUp.contactPerson,
-      phone: tieUp.phone,
-      email: tieUp.email,
-      addedAt: tieUp.createdAt || tieUp.updatedAt,
-    }));
+    const activeTieUps = [];
+    for (const tieUp of relationTieUps) {
+      try {
+        const bank = await getBankByIFSC(tieUp.ifscCode);
+        if (bank.approved !== true || bank.active === false) continue;
+        activeTieUps.push({
+          id: bank.ifscCode,
+          bankId: bank.id || bank.bankId || tieUp.bankId || tieUp.bankBranchId || tieUp.branchId,
+          branchId: bank.id || bank.bankId || tieUp.branchId || tieUp.bankBranchId || tieUp.bankId,
+          bankBranchId: bank.id || bank.bankId || tieUp.bankBranchId || tieUp.branchId || tieUp.bankId,
+          ifscCode: bank.ifscCode,
+          bankName: bank.bankName,
+          branchName: bank.branchName,
+          address: bank.address || tieUp.address,
+          city: bank.city || tieUp.city,
+          state: bank.state || tieUp.state,
+          contactPerson: bank.contactPerson || tieUp.contactPerson,
+          phone: bank.phone || tieUp.phone,
+          email: bank.email || tieUp.email,
+          addedAt: tieUp.createdAt || tieUp.updatedAt,
+        });
+      } catch (error) {
+        logInfo("Inactive or missing bank tie-up skipped", { ifscCode: tieUp.ifscCode, dealershipId });
+      }
+    }
+    return activeTieUps;
   }
 
   const tieUpIFSCs = Array.isArray(dealership.bankTieUps) ? dealership.bankTieUps : [];

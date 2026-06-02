@@ -19,6 +19,7 @@ const navByRole = {
     { label: "Active Salespersons", to: "/finance/active-salespersons", icon: Users },
     { label: "All Cases", to: "/finance/cases", icon: FileText },
     { label: "Status", to: "/finance/status", icon: FileClock },
+    { label: "Bank Tie-Ups", to: "/finance/bank-tieups", icon: Landmark },
   ],
   "bank-manager": [
     { label: "Total Leads", to: "/bank-manager/leads", icon: ClipboardList },

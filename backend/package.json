@@ -11,6 +11,7 @@
     "backfill:metrics": "node scripts/backfillMetrics.js",
     "backfill:executive-assignments": "node scripts/backfillExecutiveAssignments.js",
     "migrate:lead-branches": "node scripts/migrateLegacyLeadBranches.js",
+    "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {

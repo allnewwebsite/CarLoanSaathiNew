@@ -733,7 +733,29 @@ export async function approveBankApproval(req, res, next) {
     const branchId = ifsc || `${bankEmail}:${branchLocation}`;
     const partnerId = branchId;
     await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc, ifscCode: ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    await upsertRecord("banks", partnerId, { id: partnerId, email: bankEmail, officialEmail: bankEmail, name: bankName, bankName, ifsc, bankIfsc: ifsc, status: "active", active: true, approved: true });
+    await upsertRecord("banks", partnerId, {
+      id: partnerId,
+      bankId: partnerId,
+      email: bankEmail,
+      officialEmail: bankEmail,
+      name: bankName,
+      bankName,
+      branchName: branchLocation,
+      branchLocation,
+      bankBranchLocation: branchLocation,
+      city: branchLocation,
+      branchCity: branchLocation,
+      state: request.state || "Haryana",
+      ifsc,
+      ifscCode: ifsc,
+      bankIfsc: ifsc,
+      status: "active",
+      approvalStatus: "approved",
+      active: true,
+      approved: true,
+      approvedAt: now,
+      approvedBy: req.user?.email || "super-admin",
+    });
     await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "active", active: true });
     await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
     await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
@@ -898,7 +920,7 @@ export async function deleteBankPermanently(req, res, next) {
       return (bankEmail && values.includes(bankEmail)) || (bankName && names.includes(bankName)) || (ifsc && ifscValues.includes(ifsc));
     };
 
-    for (const collection of ["pendingBankApprovals", "pendingBankAccounts", "bankPartners", "banks", "branches", "branchManagers", "loanExecutives", "users"]) {
+    for (const collection of ["pendingBankApprovals", "pendingBankAccounts", "bankPartners", "banks", "branches", "branchManagers", "loanExecutives", "users", "dealershipBankTieUps"]) {
       const records = await listRecords(collection);
       const matches = records.filter(matchesBank);
       for (const record of matches) {

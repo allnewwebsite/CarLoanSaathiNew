@@ -204,7 +204,8 @@ function leadRows(leads, mode = "total") {
 }
 
 export function FinanceDeskPanel({ mode = "total" }) {
-  if (mode === "add") return <AddLeadScreen />;
+  if (mode === "add") return <AddLeadOnlyScreen />;
+  if (mode === "bank-tieups") return <BankTieUpsScreen />;
   if (mode === "staff") return <StaffManagementScreen />;
   if (mode === "salespersons") return <SalespersonManagementScreen />;
   if (mode === "active-salespersons") return <ActiveSalespersonsScreen />;
@@ -395,6 +396,268 @@ function TotalLeadsScreen() {
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
       <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+    </div>
+  );
+}
+
+function bankKey(branch) {
+  return branch.ifscCode || branch.id || "";
+}
+
+function branchLabel(branch) {
+  return `${branch.bankName || "Bank"} - ${branch.branchName || "Branch"}${branch.ifscCode ? ` (${branch.ifscCode})` : ""}`;
+}
+
+function AddLeadOnlyScreen() {
+  const navigate = useNavigate();
+  const { salespersons } = useSalespersons();
+  const [branches, setBranches] = useState([]);
+  const [branchesLoading, setBranchesLoading] = useState(true);
+  const [branchesError, setBranchesError] = useState("");
+  const [form, setForm] = useState(emptyLead);
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const loadTieUps = async () => {
+      setBranchesLoading(true);
+      setBranchesError("");
+      try {
+        const response = await api.get("/dealer/bank-tieups");
+        const currentTieUps = Array.isArray(response.data?.branchTieUps)
+          ? response.data.branchTieUps
+          : Array.isArray(response.data?.currentTieUps)
+            ? response.data.currentTieUps
+            : [];
+        setBranches(currentTieUps);
+      } catch (error) {
+        setBranches([]);
+        setBranchesError("Unable to load tied-up banks. Please try again.");
+      } finally {
+        setBranchesLoading(false);
+      }
+    };
+    loadTieUps();
+  }, []);
+
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+    setMessage("");
+  };
+
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.fullName)) nextErrors.fullName = "Field required";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.city)) nextErrors.city = "Field required";
+    if (!nextForm.branchId) nextErrors.branchId = "Select tied-up bank branch";
+    if (!Number(nextForm.carPrice) || Number(nextForm.carPrice) < 0) nextErrors.carPrice = "Field required";
+    if (!Number(nextForm.loanAmount) || Number(nextForm.loanAmount) < 0) nextErrors.loanAmount = "Field required";
+    if (Number(nextForm.loanAmount) > Number(nextForm.carPrice)) nextErrors.loanAmount = "Required Loan Amount cannot exceed Car On-Road Price";
+    if (!nextForm.salespersonId) nextErrors.salespersonId = "Field required";
+    return nextErrors;
+  };
+
+  const validateField = (field) => {
+    const nextErrors = validate(form);
+    setErrors((current) => ({ ...current, [field]: nextErrors[field] || "" }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const nextForm = {
+      ...form,
+      fullName: cleanText(form.fullName),
+      city: cleanText(form.city),
+      carPrice: numericAmount(form.carPrice),
+      loanAmount: numericAmount(form.loanAmount),
+    };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return setMessage("Fix highlighted fields.");
+    setSubmitting(true);
+    try {
+      const response = await api.post("/dealer/leads", {
+        ...nextForm,
+        status: LEAD_STATUSES.NEW,
+        carPrice: Number(nextForm.carPrice),
+        loanAmount: Number(nextForm.loanAmount),
+        branchId: nextForm.branchId,
+        bankBranchId: nextForm.branchId,
+        ifscCode: nextForm.branchId,
+      });
+      navigate(`/finance/leads/${response.data.leadId}/documents`, { state: { created: true } });
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to create lead");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Add Lead" subtitle="Create a dealership case and route it to one tied-up bank branch." />
+      <form onSubmit={submit} className="card p-5">
+        {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
+        {branchesError ? <p className="mb-4 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{branchesError}</p> : null}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Tied-up Bank Branch" error={errors.branchId}>
+            <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+              <option value="">{branchesLoading ? "Loading branches..." : "Select branch"}</option>
+              {branches.map((branch) => <option key={bankKey(branch)} value={bankKey(branch)}>{branchLabel(branch)}</option>)}
+            </select>
+            {!branchesLoading && branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Open Bank Tie-Ups from the sidebar first.</p> : null}
+          </Field>
+          <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
+          <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
+          <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <div className="flex items-end">
+            <button disabled={submitting} className="h-10 rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? "Creating..." : "Submit Lead"}</button>
+          </div>
+        </div>
+        <p className="mt-4 text-sm text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
+      </form>
+    </div>
+  );
+}
+
+function BankTieUpsScreen() {
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState([]);
+  const [search, setSearch] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const loadTieUps = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.get("/dealer/bank-tieups");
+      const allBranches = Array.isArray(response.data?.availableBranches)
+        ? response.data.availableBranches
+        : Array.isArray(response.data?.availableBanks)
+          ? response.data.availableBanks
+          : [];
+      const currentTieUps = Array.isArray(response.data?.branchTieUps)
+        ? response.data.branchTieUps
+        : Array.isArray(response.data?.currentTieUps)
+          ? response.data.currentTieUps
+          : [];
+      setAvailableBranches(allBranches.filter((branch) => branch.active !== false && branch.approved !== false));
+      setSelectedBranchIds(currentTieUps.map((branch) => bankKey(branch)).filter(Boolean));
+    } catch (requestError) {
+      setAvailableBranches([]);
+      setSelectedBranchIds([]);
+      setError("Unable to load banks. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadTieUps(); }, [loadTieUps]);
+
+  const cities = useMemo(() => [...new Set(availableBranches.map((branch) => branch.city).filter(Boolean))].sort(), [availableBranches]);
+  const states = useMemo(() => [...new Set(availableBranches.map((branch) => branch.state).filter(Boolean))].sort(), [availableBranches]);
+  const filteredBranches = useMemo(() => {
+    const needle = cleanText(search).toLowerCase();
+    return availableBranches.filter((branch) => {
+      const text = [branch.bankName, branch.ifscCode, branch.branchName, branch.city, branch.state].filter(Boolean).join(" ").toLowerCase();
+      return (!needle || text.includes(needle)) && (!city || branch.city === city) && (!state || branch.state === state);
+    });
+  }, [availableBranches, city, search, state]);
+
+  const toggleBranch = (branchId) => {
+    setMessage("");
+    setError("");
+    setSelectedBranchIds((current) => current.includes(branchId) ? current.filter((id) => id !== branchId) : [...current, branchId]);
+  };
+
+  const saveTieUps = async () => {
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      await api.patch("/dealer/bank-tieups", { bankTieUps: selectedBranchIds });
+      await loadTieUps();
+      setMessage("Bank tie-ups saved successfully.");
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || "Unable to save bank tie-ups. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle title="Bank Tie-Ups" subtitle="Select approved bank branches available for this dealership's lead routing." />
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="grid flex-1 gap-3 md:grid-cols-[1fr_180px_180px]">
+            <div className="field flex h-10 items-center gap-2 rounded-md bg-white px-3">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search bank, IFSC, city, state" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+            </div>
+            <select value={city} onChange={(event) => setCity(event.target.value)} className="field h-10 rounded-md bg-white">
+              <option value="">All cities</option>
+              {cities.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select value={state} onChange={(event) => setState(event.target.value)} className="field h-10 rounded-md bg-white">
+              <option value="">All states</option>
+              {states.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
+          <button type="button" disabled={saving || loading} onClick={saveTieUps} className="h-10 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
+            {saving ? "Saving..." : "Save Tie-Ups"}
+          </button>
+        </div>
+        {error ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+        {message ? <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
+        <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+          <div className="grid min-w-[900px] grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium uppercase text-slate-500">
+            <span />
+            <span>Bank Name</span>
+            <span>IFSC Code</span>
+            <span>Branch Name</span>
+            <span>City</span>
+            <span>State</span>
+            <span>Approval Status</span>
+          </div>
+          <div className="overflow-x-auto">
+            {loading ? (
+              <p className="px-3 py-6 text-sm text-slate-500">Loading banks...</p>
+            ) : !availableBranches.length ? (
+              <p className="px-3 py-6 text-sm text-slate-500">No approved banks are currently available.</p>
+            ) : !filteredBranches.length ? (
+              <p className="px-3 py-6 text-sm text-slate-500">No approved bank branches match this search.</p>
+            ) : (
+              filteredBranches.map((branch) => {
+                const id = bankKey(branch);
+                const checked = selectedBranchIds.includes(id);
+                return (
+                  <label key={id} className="grid min-w-[900px] cursor-pointer grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-100 px-3 py-3 text-sm text-slate-700 last:border-b-0 hover:bg-slate-50">
+                    <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0d47a1] focus:ring-[#0d47a1]" checked={checked} onChange={() => toggleBranch(id)} />
+                    <span className="font-medium text-slate-900">{display(branch.bankName)}</span>
+                    <span>{display(branch.ifscCode)}</span>
+                    <span>{display(branch.branchName)}</span>
+                    <span>{display(branch.city)}</span>
+                    <span>{display(branch.state)}</span>
+                    <span className="text-emerald-700">{branch.approvalStatus || "approved"}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

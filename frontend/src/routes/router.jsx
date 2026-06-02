@@ -157,6 +157,7 @@ export const router = createBrowserRouter([
           { path: "manage-team", element: <Navigate to="/finance/manage-staff" replace /> },
           { path: "cases", element: <FinanceDeskPanel mode="cases" /> },
           { path: "status", element: <FinanceDeskPanel mode="status" /> },
+          { path: "bank-tieups", element: <FinanceDeskPanel mode="bank-tieups" /> },
           { path: "leads/:leadId/documents", element: <FinanceLeadDocumentsPage /> },
           { path: "leads/:leadId", element: <FinanceLeadDetailPage /> },
           { path: "salespersons", element: <FinanceDeskPanel mode="salespersons" /> },
