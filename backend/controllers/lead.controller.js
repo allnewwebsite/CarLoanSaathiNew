@@ -10,7 +10,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analyticsEngine.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
-import { logInfo, logSecurity } from "../services/logger.service.js";
+import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -21,6 +21,22 @@ function publicApplicationRisk(payload, req) {
   if (String(payload.fullName || "").split(/\s+/).length < 2) reasons.push("single_token_name");
   if ((req.headers["user-agent"] || "").length < 10) reasons.push("missing_user_agent");
   return reasons;
+}
+
+function runLeadSideEffects(label, tasks = []) {
+  Promise.allSettled(tasks.map((task) => task())).then((results) => {
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logError("Lead side effect failed", {
+          label,
+          taskIndex: index,
+          error: result.reason?.message || String(result.reason || "unknown"),
+        });
+      }
+    });
+  }).catch((error) => {
+    logError("Lead side effect runner failed", { label, error: error.message });
+  });
 }
 
 async function canAccessLead(req, lead) {
@@ -72,24 +88,26 @@ export async function createLead(req, res, next) {
       dealershipCity,
       routingCity: dealershipCity,
     });
-    await writeAuditLog({
-      req,
-      actionType: AUDIT_ACTIONS.LEAD_CREATED,
-      newValue: { caseId, customerName: lead.fullName || lead.customerName },
-      leadId: lead.id,
-      meta: { caseId, dealershipId: lead.dealershipId },
-    });
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.LEAD_CREATED,
-      title: "Lead Created",
-      description: "Lead created from authenticated workspace",
-      actorName: actorEmail,
-      actorRole: req.user?.role || "user",
-      dealershipId: lead.dealershipEmail,
-      metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName },
-    });
-    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
+    runLeadSideEffects("authenticated-lead-created", [
+      () => writeAuditLog({
+        req,
+        actionType: AUDIT_ACTIONS.LEAD_CREATED,
+        newValue: { caseId, customerName: lead.fullName || lead.customerName },
+        leadId: lead.id,
+        meta: { caseId, dealershipId: lead.dealershipId },
+      }),
+      () => addTimelineEvent({
+        leadId: lead.id,
+        eventType: TIMELINE_EVENTS.LEAD_CREATED,
+        title: "Lead Created",
+        description: "Lead created from authenticated workspace",
+        actorName: actorEmail,
+        actorRole: req.user?.role || "user",
+        dealershipId: lead.dealershipEmail,
+        metadata: { customerName: lead.fullName, dealershipName: lead.dealershipName },
+      }),
+      () => queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead }),
+    ]);
     res.status(201).json(lead);
   } catch (error) {
     next(error);
@@ -108,23 +126,25 @@ export async function createPublicLead(req, res, next) {
       dealershipId: payload.dealershipId || req.user?.dealershipId || req.user?.email || null,
       status: LEAD_STATUSES.NEW,
     });
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.LEAD_CREATED,
-      title: "Lead Created",
-      description: "Finance desk submitted a car loan lead",
-      actorName: req.user?.email || "Finance Desk",
-      actorRole: req.user?.role || "finance-desk",
-      metadata: { customerName: lead.fullName },
-    });
-    await writeAuditLog({
-      req,
-      actionType: AUDIT_ACTIONS.LEAD_CREATED,
-      newValue: { caseId, customerName: lead.fullName || lead.customerName },
-      leadId: lead.id,
-      meta: { caseId, dealershipId: lead.dealershipId },
-    });
-    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
+    runLeadSideEffects("finance-lead-created", [
+      () => addTimelineEvent({
+        leadId: lead.id,
+        eventType: TIMELINE_EVENTS.LEAD_CREATED,
+        title: "Lead Created",
+        description: "Finance desk submitted a car loan lead",
+        actorName: req.user?.email || "Finance Desk",
+        actorRole: req.user?.role || "finance-desk",
+        metadata: { customerName: lead.fullName },
+      }),
+      () => writeAuditLog({
+        req,
+        actionType: AUDIT_ACTIONS.LEAD_CREATED,
+        newValue: { caseId, customerName: lead.fullName || lead.customerName },
+        leadId: lead.id,
+        meta: { caseId, dealershipId: lead.dealershipId },
+      }),
+      () => queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead }),
+    ]);
     res.status(201).json({
       leadId: lead.id,
       caseId: lead.caseId,
@@ -155,50 +175,53 @@ export async function createPublicLeadIntake(req, res, next) {
       requestId: req.requestId || null,
       userAgentHash: req.headers["user-agent"] ? Buffer.from(String(req.headers["user-agent"])).toString("base64url").slice(0, 24) : null,
     });
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.LEAD_CREATED,
-      title: "Public Application Received",
-      description: "Public loan application received for finance intake",
-      actorName: "Public Applicant",
-      actorRole: "public",
-      dealershipId: lead.dealershipId || null,
-      metadata: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
-      visibility: ["finance-desk", "gm-sm", "super-admin"],
-    });
-    await writeAuditLog({
-      req,
-      actorId: "public-applicant",
-      actorRole: "public",
-      actionType: AUDIT_ACTIONS.LEAD_CREATED,
-      newValue: { caseId, intakeStatus: lead.intakeStatus },
-      leadId: lead.id,
-      sourcePortal: "public",
-      meta: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
-    });
-    await recordOperationalEvent({
-      type: "public_lead_intake_created",
-      severity: riskReasons.length ? ALERT_SEVERITY.MEDIUM : ALERT_SEVERITY.LOW,
-      component: "lead-intake",
-      message: "Public loan application received",
-      entityId: lead.id,
-      requestId: req.requestId,
-      meta: { caseId, riskFlags: riskReasons },
-    });
-    if (riskReasons.length) {
-      logSecurity("Suspicious public loan application", { requestId: req.requestId, leadId: lead.id, riskFlags: riskReasons });
-      emitOperationalAlert({
-        type: "suspicious_public_application",
-        severity: ALERT_SEVERITY.MEDIUM,
+    runLeadSideEffects("public-lead-created", [
+      () => addTimelineEvent({
+        leadId: lead.id,
+        eventType: TIMELINE_EVENTS.LEAD_CREATED,
+        title: "Public Application Received",
+        description: "Public loan application received for finance intake",
+        actorName: "Public Applicant",
+        actorRole: "public",
+        dealershipId: lead.dealershipId || null,
+        metadata: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
+        visibility: ["finance-desk", "gm-sm", "super-admin"],
+      }),
+      () => writeAuditLog({
+        req,
+        actorId: "public-applicant",
+        actorRole: "public",
+        actionType: AUDIT_ACTIONS.LEAD_CREATED,
+        newValue: { caseId, intakeStatus: lead.intakeStatus },
+        leadId: lead.id,
+        sourcePortal: "public",
+        meta: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
+      }),
+      () => recordOperationalEvent({
+        type: "public_lead_intake_created",
+        severity: riskReasons.length ? ALERT_SEVERITY.MEDIUM : ALERT_SEVERITY.LOW,
         component: "lead-intake",
-        title: "Suspicious public loan application",
-        message: `Public application ${caseId} requires review`,
+        message: "Public loan application received",
         entityId: lead.id,
         requestId: req.requestId,
         meta: { caseId, riskFlags: riskReasons },
-      }).catch(() => {});
-    }
-    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead });
+      }),
+      async () => {
+        if (!riskReasons.length) return null;
+        logSecurity("Suspicious public loan application", { requestId: req.requestId, leadId: lead.id, riskFlags: riskReasons });
+        return emitOperationalAlert({
+          type: "suspicious_public_application",
+          severity: ALERT_SEVERITY.MEDIUM,
+          component: "lead-intake",
+          title: "Suspicious public loan application",
+          message: `Public application ${caseId} requires review`,
+          entityId: lead.id,
+          requestId: req.requestId,
+          meta: { caseId, riskFlags: riskReasons },
+        });
+      },
+      () => queueSafeAnalyticsEvent(ANALYTICS_EVENTS.LEAD_CREATED, { lead }),
+    ]);
     res.status(201).json({
       leadId: lead.id,
       caseId: lead.caseId,

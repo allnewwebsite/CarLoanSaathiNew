@@ -534,7 +534,9 @@ export function DealerRegistrationFormPage() {
   useEffect(() => {
     api.get("/banks")
       .then((response) => {
-        const bankNames = (response.data || []).map((bank) => bank.name).filter(Boolean);
+        const bankNames = (response.data || [])
+          .map((bank) => bank.ifscCode ? `${bank.bankName} - ${bank.branchName} (${bank.ifscCode})` : bank.name)
+          .filter(Boolean);
         setBanks(bankNames.length ? bankNames : fallbackBanks);
       })
       .catch(() => setBanks(fallbackBanks));

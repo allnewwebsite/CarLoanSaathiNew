@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Shield, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
@@ -22,6 +22,7 @@ const navByRole = {
   ],
   "bank-manager": [
     { label: "Total Leads", to: "/bank-manager/leads", icon: ClipboardList },
+    { label: "Analytics", to: "/bank-manager/analytics", icon: BarChart3 },
     { label: "Manage Executive", to: "/bank-manager/manage-executive", icon: Users },
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },
   ],
@@ -40,6 +41,38 @@ const navByRole = {
 };
 
 const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
+
+function DashboardContentFallback() {
+  return (
+    <section className="space-y-4" aria-busy="true">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="h-7 w-52 animate-pulse rounded-md bg-slate-200" />
+        <div className="h-9 w-28 animate-pulse rounded-md bg-slate-200" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((item) => (
+          <div key={item} className="h-20 animate-pulse rounded-lg border border-slate-200 bg-white" />
+        ))}
+      </div>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="grid grid-cols-4 gap-3 border-b border-slate-200 bg-slate-50 p-3">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="h-4 animate-pulse rounded bg-slate-200" />
+          ))}
+        </div>
+        <div className="divide-y divide-slate-100 p-3">
+          {[0, 1, 2, 3, 4, 5].map((row) => (
+            <div key={row} className="grid grid-cols-4 gap-3 py-2">
+              {[0, 1, 2, 3].map((cell) => (
+                <div key={cell} className="h-4 animate-pulse rounded bg-slate-200/80" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function readSidebarState() {
   try {
@@ -195,7 +228,9 @@ export function DashboardLayout() {
           </div>
         </div>
         <div className="w-full max-w-full overflow-x-hidden px-4 py-5 sm:px-6 lg:px-6">
-          <Outlet />
+          <Suspense fallback={<DashboardContentFallback />}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

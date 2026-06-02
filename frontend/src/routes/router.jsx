@@ -5,37 +5,83 @@ import { DashboardLayout } from "../layouts/DashboardLayout.jsx";
 import { ROLES } from "../auth/roleSystem.js";
 import { ProtectedRoute } from "./ProtectedRoute.jsx";
 
-function lazyPage(factory, exportName) {
-  return lazy(() => factory().then((module) => ({ default: module[exportName] })));
+const moduleCache = new WeakMap();
+
+function loadModule(factory) {
+  if (!moduleCache.has(factory)) {
+    moduleCache.set(factory, factory());
+  }
+  return moduleCache.get(factory);
 }
 
-const HomePage = lazyPage(() => import("../pages/HomePage.jsx"), "HomePage");
-const ServicesPage = lazyPage(() => import("../pages/ServicesPage.jsx"), "ServicesPage");
-const MarketplacePage = lazyPage(() => import("../pages/MarketplacePage.jsx"), "MarketplacePage");
-const PartnerProgramPage = lazyPage(() => import("../pages/PartnerProgramPage.jsx"), "PartnerProgramPage");
-const CarsPage = lazyPage(() => import("../pages/CarsPage.jsx"), "CarsPage");
-const ApplyLoanPage = lazyPage(() => import("../pages/ApplyLoanPage.jsx"), "ApplyLoanPage");
-const DealerRegistrationPage = lazyPage(() => import("../pages/DealerRegistrationPage.jsx"), "DealerRegistrationPage");
-const DealerRegistrationFormPage = lazyPage(() => import("../pages/DealerRegistrationPage.jsx"), "DealerRegistrationFormPage");
-const DealerRegistrationPendingPage = lazyPage(() => import("../pages/DealerRegistrationPage.jsx"), "DealerRegistrationPendingPage");
-const DealerRegistrationApprovedPage = lazyPage(() => import("../pages/DealerRegistrationPage.jsx"), "DealerRegistrationApprovedPage");
-const BankRegistration = lazyPage(() => import("../pages/public/BankRegistration.jsx"), "BankRegistration");
-const BankBranchManagerPanel = lazyPage(() => import("../pages/bank/BankBranchManagerPanel.jsx"), "BankBranchManagerPanel");
-const BankManagerLeadDetailPage = lazyPage(() => import("../pages/bank/BankBranchManagerPanel.jsx"), "BankManagerLeadDetailPage");
-const LoanExecutivePanel = lazyPage(() => import("../pages/bank/LoanExecutivePanel.jsx"), "LoanExecutivePanel");
-const LoanExecutiveLeadDetailPage = lazyPage(() => import("../pages/bank/LoanExecutivePanel.jsx"), "LoanExecutiveLeadDetailPage");
-const LoginPage = lazyPage(() => import("../pages/auth/LoginPage.jsx"), "LoginPage");
-const ExecutiveChangePasswordPage = lazyPage(() => import("../pages/auth/ExecutiveChangePasswordPage.jsx"), "ExecutiveChangePasswordPage");
-const LoginActivityPage = lazyPage(() => import("../pages/security/LoginActivityPage.jsx"), "LoginActivityPage");
-const FinanceDeskPanel = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceDeskPanel");
-const FinanceLeadDetailPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDetailPage");
-const FinanceLeadDocumentsPage = lazyPage(() => import("../pages/dashboard/FinanceDeskPanel.jsx"), "FinanceLeadDocumentsPage");
-const GmTrackingPanel = lazyPage(() => import("../pages/dashboard/GmTrackingPanel.jsx"), "GmTrackingPanel");
-const GmLeadDetailPage = lazyPage(() => import("../pages/dashboard/GmTrackingPanel.jsx"), "GmLeadDetailPage");
-const SuperAdminDashboard = lazyPage(() => import("../pages/dashboard/SuperAdminDashboard.jsx"), "SuperAdminDashboard");
-const SuperAdminDealershipDetailPage = lazyPage(() => import("../pages/dashboard/SuperAdminDashboard.jsx"), "SuperAdminDealershipDetailPage");
-const SuperAdminApprovalDetailPage = lazyPage(() => import("../pages/dashboard/SuperAdminDashboard.jsx"), "SuperAdminApprovalDetailPage");
-const SuperAdminLeadDetailPage = lazyPage(() => import("../pages/dashboard/SuperAdminDashboard.jsx"), "SuperAdminLeadDetailPage");
+function lazyPage(factory, exportName) {
+  return lazy(() => loadModule(factory).then((module) => ({ default: module[exportName] })));
+}
+
+const pageModules = {
+  home: () => import("../pages/HomePage.jsx"),
+  services: () => import("../pages/ServicesPage.jsx"),
+  marketplace: () => import("../pages/MarketplacePage.jsx"),
+  partnerProgram: () => import("../pages/PartnerProgramPage.jsx"),
+  cars: () => import("../pages/CarsPage.jsx"),
+  applyLoan: () => import("../pages/ApplyLoanPage.jsx"),
+  dealerRegistration: () => import("../pages/DealerRegistrationPage.jsx"),
+  bankRegistration: () => import("../pages/public/BankRegistration.jsx"),
+  bankBranchManager: () => import("../pages/bank/BankBranchManagerPanel.jsx"),
+  loanExecutive: () => import("../pages/bank/LoanExecutivePanel.jsx"),
+  login: () => import("../pages/auth/LoginPage.jsx"),
+  executiveChangePassword: () => import("../pages/auth/ExecutiveChangePasswordPage.jsx"),
+  loginActivity: () => import("../pages/security/LoginActivityPage.jsx"),
+  financeDesk: () => import("../pages/dashboard/FinanceDeskPanel.jsx"),
+  gmTracking: () => import("../pages/dashboard/GmTrackingPanel.jsx"),
+  superAdmin: () => import("../pages/dashboard/SuperAdminDashboard.jsx"),
+};
+
+const dashboardModules = [
+  pageModules.financeDesk,
+  pageModules.gmTracking,
+  pageModules.bankBranchManager,
+  pageModules.loanExecutive,
+  pageModules.superAdmin,
+  pageModules.executiveChangePassword,
+  pageModules.loginActivity,
+];
+
+export function preloadDashboardRoutes() {
+  dashboardModules.forEach((factory) => {
+    loadModule(factory).catch(() => {
+      // React.lazy will surface any chunk error when that route is actually opened.
+    });
+  });
+}
+
+const HomePage = lazyPage(pageModules.home, "HomePage");
+const ServicesPage = lazyPage(pageModules.services, "ServicesPage");
+const MarketplacePage = lazyPage(pageModules.marketplace, "MarketplacePage");
+const PartnerProgramPage = lazyPage(pageModules.partnerProgram, "PartnerProgramPage");
+const CarsPage = lazyPage(pageModules.cars, "CarsPage");
+const ApplyLoanPage = lazyPage(pageModules.applyLoan, "ApplyLoanPage");
+const DealerRegistrationPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPage");
+const DealerRegistrationFormPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationFormPage");
+const DealerRegistrationPendingPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPendingPage");
+const DealerRegistrationApprovedPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationApprovedPage");
+const BankRegistration = lazyPage(pageModules.bankRegistration, "BankRegistration");
+const BankBranchManagerPanel = lazyPage(pageModules.bankBranchManager, "BankBranchManagerPanel");
+const BankManagerLeadDetailPage = lazyPage(pageModules.bankBranchManager, "BankManagerLeadDetailPage");
+const LoanExecutivePanel = lazyPage(pageModules.loanExecutive, "LoanExecutivePanel");
+const LoanExecutiveLeadDetailPage = lazyPage(pageModules.loanExecutive, "LoanExecutiveLeadDetailPage");
+const LoginPage = lazyPage(pageModules.login, "LoginPage");
+const ExecutiveChangePasswordPage = lazyPage(pageModules.executiveChangePassword, "ExecutiveChangePasswordPage");
+const LoginActivityPage = lazyPage(pageModules.loginActivity, "LoginActivityPage");
+const FinanceDeskPanel = lazyPage(pageModules.financeDesk, "FinanceDeskPanel");
+const FinanceLeadDetailPage = lazyPage(pageModules.financeDesk, "FinanceLeadDetailPage");
+const FinanceLeadDocumentsPage = lazyPage(pageModules.financeDesk, "FinanceLeadDocumentsPage");
+const GmTrackingPanel = lazyPage(pageModules.gmTracking, "GmTrackingPanel");
+const GmLeadDetailPage = lazyPage(pageModules.gmTracking, "GmLeadDetailPage");
+const SuperAdminDashboard = lazyPage(pageModules.superAdmin, "SuperAdminDashboard");
+const SuperAdminDealershipDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminDealershipDetailPage");
+const SuperAdminApprovalDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminApprovalDetailPage");
+const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLeadDetailPage");
 
 export const router = createBrowserRouter([
   {
@@ -155,6 +201,7 @@ export const router = createBrowserRouter([
     children: [
       { path: "dashboard", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="leads" /> }] },
+      { path: "analytics", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="analytics" /> }] },
       { path: "manage-executive", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="manage-executive" /> }] },
       { path: "executives", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="executives" /> }] },
       { path: "executives/:executiveId/cases", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="executive-cases" /> }] },
@@ -165,9 +212,8 @@ export const router = createBrowserRouter([
       { path: "approved", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "rejected", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "disbursed", element: <Navigate to="/bank-manager/leads" replace /> },
-      { path: "analytics", element: <Navigate to="/bank-manager/leads" replace /> },
+      { path: "reports", element: <Navigate to="/bank-manager/analytics" replace /> },
       { path: "notifications", element: <Navigate to="/bank-manager/leads" replace /> },
-      { path: "reports", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "settings", element: <Navigate to="/bank-manager/leads" replace /> },
     ],
   },

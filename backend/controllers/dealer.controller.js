@@ -7,7 +7,7 @@ import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { sanitizeFirestoreData } from "../utils/firestoreSanitizer.js";
 import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
-import { logInfo } from "../services/logger.service.js";
+import { logError, logInfo } from "../services/logger.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -88,6 +88,31 @@ function staffRoleLabel(role, original) {
   if (role === "finance-desk") return "Finance Head";
   const clean = String(original || "").trim().toUpperCase();
   return clean === "SM" ? "SM" : clean === "GM" ? "GM" : "GM / SM";
+}
+
+function runDealerLeadSideEffects(label, tasks = []) {
+  Promise.allSettled(tasks.map((task) => task())).then((results) => {
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logError("Dealer lead side effect failed", {
+          label,
+          taskIndex: index,
+          error: result.reason?.message || String(result.reason || "unknown"),
+        });
+      }
+    });
+  }).catch((error) => {
+    logError("Dealer lead side effect runner failed", { label, error: error.message });
+  });
+}
+
+function tieUpIdsFromRegistration(values = []) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => {
+      const text = String(value || "").trim().toUpperCase();
+      return text.match(/[A-Z]{4}0[A-Z0-9]{6}/)?.[0] || text;
+    })
+    .filter(Boolean);
 }
 
 async function liveDealerRegistrationForAccount(account) {
@@ -492,6 +517,7 @@ export async function registerDealerOnboarding(req, res, next) {
       expectedMonthlyLoanApplications: required(req.body.expectedMonthlyLoanApplications, "Expected monthly loan applications"),
       existingBankTieUps: String(req.body.existingBankTieUps || "None").trim(),
       preferredPartnerBanks: Array.isArray(req.body.preferredPartnerBanks) ? req.body.preferredPartnerBanks : [],
+      dealershipBankPartners: tieUpIdsFromRegistration(req.body.preferredPartnerBanks),
       status: "Pending Approval",
       active: false,
       accountActive: false,
@@ -742,34 +768,33 @@ export async function createDealerLead(req, res, next) {
 
     const lead = await createRecord("leads", leadPayload);
 
-    // Audit log
-    await writeAuditLog({
-      req,
-      actionType: AUDIT_ACTIONS.LEAD_CREATED,
-      newValue: { caseId: lead.caseId, customerName: lead.fullName, ifscCode },
-      leadId: lead.id,
-      dealershipId,
-      meta: { caseId: lead.caseId, dealershipId, ifscCode, bankName: branchTieUp.bankName },
-    });
-
-    // Timeline event
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.LEAD_CREATED,
-      title: "Lead Created",
-      description: `Finance Desk created lead - ${branchTieUp.bankName} ${branchTieUp.branchName}`,
-      actorName: email,
-      actorRole: req.user?.role || "finance-desk",
-      dealershipId,
-      branchId: branchTieUp.bankId,
-      metadata: { 
-        customerName: lead.fullName, 
-        dealershipName: lead.dealershipName,
-        ifscCode,
-        bankName: branchTieUp.bankName,
-        branchName: branchTieUp.branchName,
-      },
-    });
+    runDealerLeadSideEffects("dealer-lead-created", [
+      () => writeAuditLog({
+        req,
+        actionType: AUDIT_ACTIONS.LEAD_CREATED,
+        newValue: { caseId: lead.caseId, customerName: lead.fullName, ifscCode },
+        leadId: lead.id,
+        dealershipId,
+        meta: { caseId: lead.caseId, dealershipId, ifscCode, bankName: branchTieUp.bankName },
+      }),
+      () => addTimelineEvent({
+        leadId: lead.id,
+        eventType: TIMELINE_EVENTS.LEAD_CREATED,
+        title: "Lead Created",
+        description: `Finance Desk created lead - ${branchTieUp.bankName} ${branchTieUp.branchName}`,
+        actorName: email,
+        actorRole: req.user?.role || "finance-desk",
+        dealershipId,
+        branchId: branchTieUp.bankId,
+        metadata: { 
+          customerName: lead.fullName, 
+          dealershipName: lead.dealershipName,
+          ifscCode,
+          bankName: branchTieUp.bankName,
+          branchName: branchTieUp.branchName,
+        },
+      }),
+    ]);
 
     logInfo("Finance Desk lead created", { 
       requestId: req.requestId, 
@@ -1233,4 +1258,3 @@ export async function updateDealerProfile(req, res, next) {
     next(error);
   }
 }
-

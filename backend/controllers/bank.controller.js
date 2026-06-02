@@ -814,14 +814,109 @@ export async function getBankAnalytics(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const leads = await assignedLeadsForPartner(partner);
+    const leads = await assignedLeadsForPartner(partner, { limit: 100 });
     const today = new Date().toISOString().slice(0, 10);
+    const identity = bankIdentity(partner);
+    const activeStatuses = [
+      LEAD_STATUSES.NEW,
+      LEAD_STATUSES.CONTACTED,
+      LEAD_STATUSES.REQUEST_DOCUMENT,
+      LEAD_STATUSES.DOCUMENT_RECEIVED,
+      LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
+      LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+      LEAD_STATUSES.UNDER_BANK_PROCESS,
+      LEAD_STATUSES.ASSIGNED,
+      LEAD_STATUSES.ACCEPTED,
+      LEAD_STATUSES.UNDER_REVIEW,
+      LEAD_STATUSES.DOCS_PENDING,
+    ];
+    const statusOf = (lead) => normalizeStatus(lead.status || lead.assignmentStatus);
+    const activeLeads = leads.filter((lead) => activeStatuses.includes(statusOf(lead)));
+    const disbursedLeads = leads.filter((lead) => statusOf(lead) === LEAD_STATUSES.DISBURSED);
+    const approvedLeads = leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead)));
+    const rejectedLeads = leads.filter((lead) => statusOf(lead) === LEAD_STATUSES.REJECTED);
+    const pendingDocumentLeads = leads.filter((lead) => [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead)));
+    const overdueLeads = leads.filter((lead) => slaLabelForLead(lead) === "Overdue");
+    const disbursedAmount = disbursedLeads.reduce((sum, lead) => sum + Number(lead.disbursedAmount || lead.loanAmount || lead.requiredLoanAmount || 0), 0);
+    const branchMap = new Map();
+    const executiveMap = new Map();
+
+    for (const lead of leads) {
+      const branch = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || identity.bankLocation || "Unassigned Branch";
+      const branchRow = branchMap.get(branch) || {
+        branch,
+        assignedLeads: 0,
+        activeLeads: 0,
+        approvedLeads: 0,
+        disbursedLeads: 0,
+        rejectedLeads: 0,
+        pendingDocuments: 0,
+        slaOverdue: 0,
+      };
+      branchRow.assignedLeads += 1;
+      if (activeStatuses.includes(statusOf(lead))) branchRow.activeLeads += 1;
+      if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) branchRow.approvedLeads += 1;
+      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) branchRow.disbursedLeads += 1;
+      if (statusOf(lead) === LEAD_STATUSES.REJECTED) branchRow.rejectedLeads += 1;
+      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) branchRow.pendingDocuments += 1;
+      if (slaLabelForLead(lead) === "Overdue") branchRow.slaOverdue += 1;
+      branchMap.set(branch, branchRow);
+
+      const executiveId = lead.assignedExecutiveId || lead.assignedExecutiveEmail || lead.assignedExecutiveName || "unassigned";
+      const executiveName = lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || "Unassigned";
+      const executiveRow = executiveMap.get(executiveId) || {
+        executiveId,
+        executiveName,
+        mobile: lead.assignedExecutiveMobile || lead.executiveMobile || "",
+        branch,
+        assignedLeads: 0,
+        activeLeads: 0,
+        approvedLeads: 0,
+        disbursedLeads: 0,
+        rejectedLeads: 0,
+        pendingDocuments: 0,
+        slaOverdue: 0,
+      };
+      executiveRow.assignedLeads += 1;
+      if (activeStatuses.includes(statusOf(lead))) executiveRow.activeLeads += 1;
+      if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) executiveRow.approvedLeads += 1;
+      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) executiveRow.disbursedLeads += 1;
+      if (statusOf(lead) === LEAD_STATUSES.REJECTED) executiveRow.rejectedLeads += 1;
+      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) executiveRow.pendingDocuments += 1;
+      if (slaLabelForLead(lead) === "Overdue") executiveRow.slaOverdue += 1;
+      executiveMap.set(executiveId, executiveRow);
+    }
+
     res.json({
+      bankName: identity.bankName,
+      branch: identity.bankLocation || null,
       assignedLeads: leads.length,
-      pendingLeads: leads.filter((lead) => [LEAD_STATUSES.NEW, LEAD_STATUSES.CONTACTED, LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status || lead.assignmentStatus))).length,
-      approvedLeads: leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(normalizeStatus(lead.status))).length,
-      rejectedLeads: leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED).length,
+      pendingLeads: activeLeads.length,
+      approvedLeads: approvedLeads.length,
+      disbursedLeads: disbursedLeads.length,
+      rejectedLeads: rejectedLeads.length,
+      pendingDocuments: pendingDocumentLeads.length,
       slaDueToday: leads.filter((lead) => (lead.assignmentTimestamp || lead.createdAt || "").startsWith(today)).length,
+      slaOverdue: overdueLeads.length,
+      disbursedAmount,
+      conversionRate: leads.length ? Math.round((approvedLeads.length / leads.length) * 100) : 0,
+      rejectionRate: leads.length ? Math.round((rejectedLeads.length / leads.length) * 100) : 0,
+      branchMetrics: [...branchMap.values()].sort((left, right) => right.assignedLeads - left.assignedLeads),
+      executivePerformance: [...executiveMap.values()].sort((left, right) => right.activeLeads - left.activeLeads),
+      recentCases: leads
+        .slice()
+        .sort((left, right) => String(right.updatedAt || right.assignmentTimestamp || right.createdAt || "").localeCompare(String(left.updatedAt || left.assignmentTimestamp || left.createdAt || "")))
+        .slice(0, 10)
+        .map((lead) => ({
+          id: lead.id,
+          caseId: lead.caseId || lead.id,
+          customerName: lead.fullName || lead.customerName || "",
+          status: statusOf(lead),
+          executiveName: lead.assignedExecutiveName || lead.assignedExecutiveEmail || "",
+          branch: lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || identity.bankLocation || "",
+          sla: slaLabelForLead(lead),
+          updatedAt: lead.updatedAt || lead.statusUpdatedAt || lead.assignmentTimestamp || lead.createdAt || null,
+        })),
     });
   } catch (error) {
     next(error);

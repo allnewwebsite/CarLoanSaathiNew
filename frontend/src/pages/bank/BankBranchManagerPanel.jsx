@@ -48,6 +48,10 @@ function moneyValue(value) {
   return `Rs. ${money.format(Number(value || 0))}`;
 }
 
+function numberValue(value) {
+  return money.format(Number(value || 0));
+}
+
 function dateValue(value) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
@@ -81,6 +85,23 @@ function responseRows(response) {
 
 function Table({ title, headers, rows, loading, page, total, onPage }) {
   return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
+}
+
+function MetricCard({ label, value, subtext }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+      {subtext ? <p className="mt-1 text-xs font-medium text-slate-500">{subtext}</p> : null}
+    </div>
+  );
+}
+
+async function reassignLead(lead, onDone) {
+  const reason = window.prompt(`Reassign ${caseId(lead)} to next same-branch executive`, "manager-reassignment");
+  if (!reason) return;
+  await api.patch(`/bank/leads/${lead.id}/reassign`, { reason });
+  await onDone?.();
 }
 
 function DetailState({ title, message, requestId, onRetry, tone = "slate" }) {
@@ -164,7 +185,8 @@ function useExecutives() {
 function TotalLeadsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { rows, total, loading, page, onPage } = useBankLeads(search);
+  const { rows, total, loading, page, onPage, load } = useBankLeads(search);
+  const [actionError, setActionError] = useState("");
   const tableRows = rows.map((lead) => ({
     key: lead.id,
     cells: [
@@ -180,14 +202,106 @@ function TotalLeadsPage() {
       display(lead.assignedExecutiveName),
       display(lead.assignedExecutiveMobile || lead.executiveMobile),
       leadStatusLabel(lead),
-      <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
+      <div key="actions" className="flex flex-wrap gap-2">
+        <button onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button
+          onClick={() => reassignLead(lead, () => load(page, { silent: true })).catch((error) => setActionError(error.response?.data?.message || error.message || "Unable to reassign lead"))}
+          className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#0d47a1]"
+        >
+          Reassign
+        </button>
+      </div>,
     ],
   }));
   return (
     <section className="space-y-4">
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+    </section>
+  );
+}
+
+function AnalyticsPage() {
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    setError("");
+    try {
+      const response = await api.get("/bank/analytics");
+      setData(response.data || {});
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Unable to load bank analytics");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize });
+
+  const branchRows = (data?.branchMetrics || []).map((item) => ({
+    key: item.branch,
+    cells: [
+      display(item.branch),
+      numberValue(item.assignedLeads),
+      numberValue(item.activeLeads),
+      numberValue(item.pendingDocuments),
+      numberValue(item.disbursedLeads),
+      numberValue(item.rejectedLeads),
+      numberValue(item.slaOverdue),
+    ],
+  }));
+  const executiveRows = (data?.executivePerformance || []).map((item) => ({
+    key: item.executiveId,
+    cells: [
+      display(item.executiveName),
+      display(item.mobile),
+      display(item.branch),
+      numberValue(item.assignedLeads),
+      numberValue(item.activeLeads),
+      numberValue(item.pendingDocuments),
+      numberValue(item.disbursedLeads),
+      numberValue(item.rejectedLeads),
+      numberValue(item.slaOverdue),
+    ],
+  }));
+  const recentRows = (data?.recentCases || []).map((lead) => ({
+    key: lead.id,
+    cells: [
+      lead.caseId,
+      display(lead.customerName),
+      display(lead.executiveName),
+      display(lead.branch),
+      leadStatusLabel(lead),
+      display(lead.sla),
+      dateTime(lead.updatedAt),
+      <button key="view" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>,
+    ],
+  }));
+
+  return (
+    <section className="space-y-5">
+      <PageTitle title="Analytics" />
+      {error ? <DetailState title="Analytics unavailable" message={error} onRetry={() => load()} tone="red" /> : null}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Assigned Leads" value={loading ? "-" : numberValue(data?.assignedLeads)} subtext={data?.branch || data?.bankName || "Current branch scope"} />
+        <MetricCard label="Active Cases" value={loading ? "-" : numberValue(data?.pendingLeads)} subtext={`${numberValue(data?.pendingDocuments)} pending document cases`} />
+        <MetricCard label="Disbursed Amount" value={loading ? "-" : moneyValue(data?.disbursedAmount)} subtext={`${numberValue(data?.disbursedLeads)} disbursed cases`} />
+        <MetricCard label="SLA Overdue" value={loading ? "-" : numberValue(data?.slaOverdue)} subtext={`${numberValue(data?.slaDueToday)} cases generated today`} />
+        <MetricCard label="Approved" value={loading ? "-" : numberValue(data?.approvedLeads)} subtext={`${numberValue(data?.conversionRate)}% conversion`} />
+        <MetricCard label="Rejected" value={loading ? "-" : numberValue(data?.rejectedLeads)} subtext={`${numberValue(data?.rejectionRate)}% rejection`} />
+        <MetricCard label="Branches" value={loading ? "-" : numberValue(data?.branchMetrics?.length)} subtext="Branch-level workload" />
+        <MetricCard label="Executives" value={loading ? "-" : numberValue(data?.executivePerformance?.length)} subtext="Tracked assignment owners" />
+      </div>
+      <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={loading} />
+      <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={loading} />
+      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={loading} />
     </section>
   );
 }
@@ -404,6 +518,7 @@ function PageTitle({ title }) {
 }
 
 export function BankBranchManagerPanel({ mode = "leads" }) {
+  if (mode === "analytics") return <AnalyticsPage />;
   if (mode === "manage-executive") return <ManageExecutivePage />;
   if (mode === "executives") return <AllExecutivesPage />;
   if (mode === "executive-cases") return <ExecutiveCasesPage />;
@@ -414,6 +529,7 @@ export function BankManagerLeadDetailPage() {
   const { leadId } = useParams();
   const [lead, setLead] = useState(null);
   const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
@@ -462,8 +578,23 @@ export function BankManagerLeadDetailPage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Customer Documents" />
+      {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <div className="grid gap-3 md:grid-cols-4">
         {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Current Status", leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+      </div>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Case Assignment</p>
+            <p className="mt-1 text-sm text-slate-500">Current executive: {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}</p>
+          </div>
+          <button
+            onClick={() => reassignLead(lead, () => loadLead({ silent: true })).catch((err) => setActionError(err.response?.data?.message || err.message || "Unable to reassign lead"))}
+            className="w-full rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-[#0d47a1] sm:w-auto"
+          >
+            Reassign to Next Executive
+          </button>
+        </div>
       </div>
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={rows} loading={false} />
     </section>

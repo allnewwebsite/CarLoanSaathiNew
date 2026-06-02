@@ -70,6 +70,36 @@ function MobileRows({ headers, rows }) {
   );
 }
 
+function TableSkeletonRows({ headers, rows = 8, gridTemplateColumns }) {
+  return (
+    <div role="rowgroup" className="divide-y divide-slate-100 bg-white" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <div role="row" key={rowIndex} className="grid w-full" style={{ gridTemplateColumns }}>
+          {headers.map((header, cellIndex) => (
+            <div key={`${header}-${cellIndex}`} role="cell" className="flex min-h-8 min-w-0 items-center px-2 py-1">
+              <div className={`h-3 animate-pulse rounded bg-slate-200/85 ${cellIndex === 0 ? "w-3/4" : cellIndex % 3 === 0 ? "w-1/2" : "w-2/3"}`} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MobileSkeletonRows({ rows = 4 }) {
+  return (
+    <div className="divide-y divide-slate-100 bg-white md:hidden" aria-hidden="true">
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <article key={rowIndex} className="space-y-3 p-4">
+          <div className="h-3 w-1/3 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-4/5 animate-pulse rounded bg-slate-200/85" />
+          <div className="h-3 w-1/2 animate-pulse rounded bg-slate-200/75" />
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export function OperationalTable({
   title,
   headers,
@@ -106,7 +136,7 @@ export function OperationalTable({
             </div>
           </div>
 
-          {loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">Loading...</div>}
+          {loading && !hasRows && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
           {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
 
           {hasRows && useVirtual && (
@@ -134,7 +164,7 @@ export function OperationalTable({
           {loading && hasRows && <div className="px-3 py-2 text-left text-sm font-medium text-slate-500">Updating records…</div>}
         </div>
         {hasRows ? <MobileRows headers={headers} rows={rows} /> : null}
-        {loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">Loading...</div> : null}
+        {loading && !hasRows ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
         {loading && hasRows ? <div className="px-3 py-2 text-sm font-medium text-slate-500 md:hidden">Updating records…</div> : null}
       </div>

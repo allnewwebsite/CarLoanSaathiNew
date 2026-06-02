@@ -4,10 +4,13 @@ import { RouterProvider } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { initFrontendMonitoring } from "./services/monitoring.js";
-import { router } from "./routes/router.jsx";
+import { preloadDashboardRoutes, router } from "./routes/router.jsx";
 import "./styles/index.css";
 
 initFrontendMonitoring();
+
+const schedulePreload = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250));
+schedulePreload(() => preloadDashboardRoutes());
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
