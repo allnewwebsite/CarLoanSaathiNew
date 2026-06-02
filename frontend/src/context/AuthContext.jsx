@@ -10,12 +10,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updatePassword,
-  browserLocalPersistence,
   browserSessionPersistence,
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api, warmupPortalRoute } from "../services/api.js";
-import { AUTH_STATES, authPersistenceMode, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
+import { AUTH_STATES, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
@@ -99,7 +98,7 @@ export function AuthProvider({ children }) {
   };
 
   const applySession = (session, token, options = {}) => {
-    storeAuthSession(session, token, { rememberMe: authPersistenceMode() === "local", ...options });
+    storeAuthSession(session, token, options);
     logAuthDecision("session-applied", { session, token });
     setUser(session);
     setIsAuthenticated(true);
@@ -136,7 +135,7 @@ export function AuthProvider({ children }) {
       const idToken = await currentUser.getIdToken(true);
       const response = await api.post("/auth/session/restore", { idToken });
       const session = sessionFromResponse(response);
-      applySession(session, response.data.token, { rememberMe: authPersistenceMode() === "local" });
+      applySession(session, response.data.token);
       warmupSessionPortal(session);
       return session;
     } catch (error) {
@@ -174,7 +173,7 @@ export function AuthProvider({ children }) {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
     try {
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      await setPersistence(auth, browserSessionPersistence);
       credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (error) {
       const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
@@ -202,7 +201,7 @@ export function AuthProvider({ children }) {
     }
     const session = sessionFromResponse(response);
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
-    applySession(session, response.data.token, { rememberMe });
+    applySession(session, response.data.token);
     await warmupSessionPortal(session);
     return session;
   };
@@ -244,7 +243,7 @@ export function AuthProvider({ children }) {
     const response = await api.post("/auth/password/change-complete");
     if (response.data?.token && response.data?.user) {
       const session = sessionFromResponse(response);
-      applySession(session, response.data.token, { rememberMe: authPersistenceMode() === "local" });
+      applySession(session, response.data.token);
       return session;
     }
     const refreshed = await validateSession({ silent: false, showLoading: false });
@@ -267,7 +266,7 @@ export function AuthProvider({ children }) {
       warmupSessionPortal(session);
       return session;
     } catch (error) {
-      if (auth.currentUser && authPersistenceMode() === "local") {
+      if (auth.currentUser) {
         const restored = await restoreSessionFromFirebase(auth.currentUser, { silent: true });
         if (restored) return restored;
       }
@@ -315,7 +314,7 @@ export function AuthProvider({ children }) {
     const onTokenRefreshed = (event) => {
       if (!event.detail?.user || !event.detail?.token) return;
       const session = sessionFromResponse({ data: event.detail });
-      applySession(session, event.detail.token, { rememberMe: authPersistenceMode() === "local" });
+      applySession(session, event.detail.token);
     };
     window.addEventListener("cls:auth-token-refreshed", onTokenRefreshed);
     return () => window.removeEventListener("cls:auth-token-refreshed", onTokenRefreshed);

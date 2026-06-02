@@ -41,7 +41,7 @@ function apiBaseUrl() {
 export const api = axios.create({
   baseURL: apiBaseUrl(),
   timeout: 15000,
-  withCredentials: true,
+  withCredentials: false,
 });
 
 let refreshPromise = null;
@@ -101,7 +101,7 @@ async function refreshSessionToken() {
   if (!refreshPromise) {
     refreshPromise = axios.post(`${apiBaseUrl()}/auth/session/refresh`, null, {
       timeout: 10000,
-      withCredentials: true,
+      withCredentials: false,
       headers: { Authorization: `Bearer ${token}` },
     }).then((response) => {
       if (response.data?.token) {

@@ -72,7 +72,7 @@ function passwordChangeRouteForRole(role) {
 }
 
 function authCookieEnabled() {
-  return process.env.ENABLE_AUTH_COOKIES === "true";
+  return false;
 }
 
 function authCookieOptions() {
@@ -88,6 +88,7 @@ function authCookieOptions() {
 
 function setAuthCookie(res, token) {
   if (authCookieEnabled() && token) res.cookie(SESSION_COOKIE_NAME, token, authCookieOptions());
+  else clearAuthCookie(res);
 }
 
 function clearAuthCookie(res) {

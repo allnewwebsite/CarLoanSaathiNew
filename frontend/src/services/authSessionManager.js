@@ -14,17 +14,15 @@ const PERSISTENCE_KEY = "cls_auth_persistence";
 const AUTH_CHANNEL = "cls_auth_channel";
 
 export function authPersistenceMode() {
-  if (sessionStorage.getItem(PERSISTENCE_KEY) === "session") return "session";
-  if (localStorage.getItem(PERSISTENCE_KEY) === "local") return "local";
-  return "local";
+  return "session";
 }
 
 export function getStoredToken() {
-  return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function getStoredUser() {
-  const raw = sessionStorage.getItem(USER_KEY) || localStorage.getItem(USER_KEY);
+  const raw = sessionStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw);
@@ -33,34 +31,34 @@ export function getStoredUser() {
   }
 }
 
-export function storeAuthSession(session, token, { rememberMe = true } = {}) {
-  const durable = rememberMe !== false;
-  const primary = durable ? localStorage : sessionStorage;
-  const secondary = durable ? sessionStorage : localStorage;
-  primary.setItem(USER_KEY, JSON.stringify(session));
-  primary.setItem(PERSISTENCE_KEY, durable ? "local" : "session");
-  if (token) primary.setItem(TOKEN_KEY, token);
-  secondary.removeItem(USER_KEY);
-  secondary.removeItem(TOKEN_KEY);
-  secondary.removeItem(PERSISTENCE_KEY);
+export function storeAuthSession(session, token) {
+  sessionStorage.setItem(USER_KEY, JSON.stringify(session));
+  sessionStorage.setItem(PERSISTENCE_KEY, "session");
+  if (token) sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(PERSISTENCE_KEY);
 }
 
 export function updateStoredToken(token) {
   if (!token) return;
-  const storage = authPersistenceMode() === "session" ? sessionStorage : localStorage;
-  storage.setItem(TOKEN_KEY, token);
+  sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.removeItem(TOKEN_KEY);
 }
 
 export function clearAuthStorage() {
-  for (const storage of [localStorage, sessionStorage]) {
-    storage.removeItem(TOKEN_KEY);
-    storage.removeItem(USER_KEY);
-    storage.removeItem(PERSISTENCE_KEY);
-    storage.removeItem("cls_session_only");
-  }
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(USER_KEY);
+  sessionStorage.removeItem(PERSISTENCE_KEY);
+  sessionStorage.removeItem("cls_session_only");
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(PERSISTENCE_KEY);
+  localStorage.removeItem("cls_session_only");
 }
 
 export function publishAuthEvent(type, payload = {}) {
+  if (type === "logout") return;
   const event = { type, payload, at: Date.now() };
   localStorage.setItem(AUTH_CHANNEL, JSON.stringify(event));
   localStorage.removeItem(AUTH_CHANNEL);

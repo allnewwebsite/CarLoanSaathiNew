@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { ReCaptchaV3Provider, initializeAppCheck } from "firebase/app-check";
-import { getAuth } from "firebase/auth";
+import { browserSessionPersistence, initializeAuth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -27,4 +27,4 @@ if (appCheckSiteKey) {
 
 export { app };
 export { appCheck };
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, { persistence: browserSessionPersistence });
