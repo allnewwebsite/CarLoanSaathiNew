@@ -9,6 +9,7 @@ const { upsertRecord, createRecord } = await import("../services/firestore.servi
 const { updateDealershipBankTieUps, getDealershipBankTieUps, validateBranchTieUp } = await import("../services/dealership.service.js");
 const { getBankByIFSC } = await import("../services/bank.service.js");
 const { queryBankLeads, queryDealershipLeads, queryExecutiveLeads } = await import("../services/leadQuery.service.js");
+const { reassignLeadToNextBranchExecutive } = await import("../services/assignment.service.js");
 const { LEAD_STATUSES } = await import("../utils/status.constants.js");
 
 const banks = [
@@ -55,8 +56,9 @@ async function seedBanksAndDealers() {
 async function createLead({ dealershipId, customerName, ifscCode, executiveId = "" }) {
   const dealer = dealers.find((item) => item.id === dealershipId);
   const bank = await validateBranchTieUp(dealershipId, ifscCode);
-  return createRecord("leads", {
-    caseId: `TEST-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  const caseId = `TEST-${dealershipId.split("@")[0]}-${ifscCode}-${customerName}`.toUpperCase();
+  return upsertRecord("leads", caseId, {
+    caseId,
     fullName: customerName,
     mobile: "9876543210",
     city: dealer.city,
@@ -74,6 +76,9 @@ async function createLead({ dealershipId, customerName, ifscCode, executiveId = 
     selectedBranchName: bank.branchName,
     ifscCode,
     assignedBankIfsc: ifscCode,
+    bankBranchCity: bank.city,
+    branchCity: bank.city,
+    routingCity: bank.city,
     branchId: bank.bankId,
     bankBranchId: bank.bankId,
     assignedExecutiveId: executiveId,
@@ -108,6 +113,25 @@ async function run() {
   const dealerBLead = await createLead({ dealershipId: "dealer-b@example.com", customerName: "Aman", ifscCode: "ICIC0000461" });
   const dealerCLead = await createLead({ dealershipId: "dealer-c@example.com", customerName: "Neha", ifscCode: "SBIN0000461" });
 
+  await createRecord("loanExecutives", {
+    id: "sun@example.com",
+    name: "Sun",
+    fullName: "Sun",
+    email: "sun@example.com",
+    officialEmail: "sun@example.com",
+    mobile: "8578451145",
+    jobId: "78454",
+    bankId: "ICIC0000461",
+    bankPartnerId: "ICIC0000461",
+    bankName: "ICICI Bank",
+    bankIfsc: "ICIC0000461",
+    ifsc: "ICIC0000461",
+    branchCity: "Jhajjar",
+    city: "Jhajjar",
+    active: true,
+    status: "active",
+  });
+
   const icici = await getBankByIFSC("ICIC0000461");
   const hdfc = await getBankByIFSC("HDFC0000461");
   const sbi = await getBankByIFSC("SBIN0000461");
@@ -128,6 +152,14 @@ async function run() {
   const executiveLeads = (await queryExecutiveLeads({ executiveId: "exec-icici", executiveEmail: "exec-icici@example.com", query: { limit: 20 } })).data;
   assert(executiveLeads.some((lead) => lead.id === dealerALead.id), "Assigned executive should see assigned lead");
   assert(!executiveLeads.some((lead) => lead.id === dealerBLead.id), "Executive must not see unassigned Dealer B lead");
+
+  const assignedDealerBLead = await reassignLeadToNextBranchExecutive(dealerBLead.id, "verification-assignment", "bank-manager@example.com");
+  assert(assignedDealerBLead.assignedExecutiveId === "sun@example.com", "Bank manager assignment should write executive id");
+  assert(assignedDealerBLead.assignedExecutiveEmail === "sun@example.com", "Bank manager assignment should write executive email");
+  assert(assignedDealerBLead.assignedExecutiveName === "Sun", "Bank manager assignment should write executive name");
+  assert(assignedDealerBLead.assignedExecutiveMobile === "8578451145", "Bank manager assignment should write executive mobile");
+  const sunLeads = (await queryExecutiveLeads({ executiveId: "sun@example.com", executiveEmail: "sun@example.com", query: { limit: 20 } })).data;
+  assert(sunLeads.some((lead) => lead.id === dealerBLead.id), "Loan executive should see lead after bank manager assignment");
 
   console.log("Bank tie-up workflow verification passed.");
 }

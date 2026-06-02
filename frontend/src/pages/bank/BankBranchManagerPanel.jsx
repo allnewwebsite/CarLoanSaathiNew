@@ -194,7 +194,6 @@ function TotalLeadsPage() {
       display(lead.fullName || lead.customerName),
       display(lead.mobile),
       display(lead.city || lead.dealershipCity),
-      display(lead.preferredBank || lead.bankPartner),
       moneyValue(lead.onRoadPrice || lead.carOnRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       dateValue(lead.createdAt),
@@ -208,7 +207,7 @@ function TotalLeadsPage() {
           onClick={() => reassignLead(lead, () => load(page, { silent: true })).catch((error) => setActionError(error.response?.data?.message || error.message || "Unable to reassign lead"))}
           className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#0d47a1]"
         >
-          Reassign
+          {lead.assignedExecutiveId || lead.assignedExecutiveEmail ? "Reassign" : "Assign"}
         </button>
       </div>,
     ],
@@ -218,7 +217,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
     </section>
   );
 }
@@ -498,7 +497,6 @@ function ExecutiveCasesPage() {
       display(lead.mobile),
       display(lead.city || lead.dealershipCity),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      display(lead.preferredBank || lead.bankPartner),
       leadStatusLabel(lead),
       dateTime(lead.assignmentTimestamp || lead.createdAt),
       dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
@@ -508,7 +506,7 @@ function ExecutiveCasesPage() {
   return (
     <section className="space-y-4">
       <PageTitle title={payload.executive ? `${payload.executive.name || payload.executive.fullName} Cases` : "Executive Cases"} />
-      <Table title="Assigned Cases" headers={["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Loan Amount", "Preferred Bank", "Current Status", "Assigned Date", "Last Updated", "Documents"]} rows={rows} loading={loading} />
+      <Table title="Assigned Cases" headers={["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Loan Amount", "Current Status", "Assigned Date", "Last Updated", "Documents"]} rows={rows} loading={loading} />
     </section>
   );
 }
@@ -592,7 +590,7 @@ export function BankManagerLeadDetailPage() {
             onClick={() => reassignLead(lead, () => loadLead({ silent: true })).catch((err) => setActionError(err.response?.data?.message || err.message || "Unable to reassign lead"))}
             className="w-full rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-[#0d47a1] sm:w-auto"
           >
-            Reassign to Next Executive
+            {lead.assignedExecutiveId || lead.assignedExecutiveEmail ? "Reassign to Next Executive" : "Assign to Executive"}
           </button>
         </div>
       </div>

@@ -16,6 +16,28 @@ function routingCityForLead(lead) {
   return lead.dealershipCity || lead.routingCity || lead.dealerCity || lead.branchCity || lead.city;
 }
 
+function sameText(left, right) {
+  const a = String(left || "").trim().toLowerCase();
+  const b = String(right || "").trim().toLowerCase();
+  return Boolean(a && b && a === b);
+}
+
+function bankMatchesExecutive(lead, executive) {
+  return sameText(executive.bankId, lead.bankId)
+    || sameText(executive.bankPartnerId, lead.bankId)
+    || sameText(executive.bankPartnerId, lead.assignedPartnerId)
+    || sameText(executive.bankIfsc, lead.assignedBankIfsc)
+    || sameText(executive.bankIfsc, lead.bankIfsc)
+    || sameText(executive.ifsc, lead.assignedBankIfsc)
+    || sameText(executive.ifsc, lead.ifscCode)
+    || sameText(executive.bankName, lead.assignedBankName)
+    || sameText(executive.bankName, lead.selectedBankName)
+    || sameText(executive.bankName, lead.bankName)
+    || sameText(executive.bankName, lead.bankPartner)
+    || sameText(executive.bankName, lead.preferredBank)
+    || sameText(executive.branchId, lead.branchId);
+}
+
 function nextPartnerIndex(queue, partners) {
   if (!queue?.lastAssignedPartner) return 0;
   const current = partners.findIndex((partner) => partner.id === queue.lastAssignedPartner || partner.name === queue.lastAssignedPartner);
@@ -378,11 +400,8 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   const executives = executivesPage.data;
   const eligible = executives.filter((executive) => {
     const executiveCity = executive.branchCity || executive.city || executive.operatingCity;
-    const sameCity = !branchCity || !executiveCity || executiveCity === branchCity;
-    const sameBank = executive.bankPartnerId === lead.assignedPartnerId
-      || executive.bankName === lead.bankPartner
-      || executive.bankName === lead.preferredBank
-      || executive.branchId === lead.branchId;
+    const sameCity = !branchCity || !executiveCity || sameText(executiveCity, branchCity);
+    const sameBank = bankMatchesExecutive(lead, executive);
     const active = executive.active !== false && executive.paused !== true && executive.status !== "inactive";
     return sameCity && sameBank && active && executive.id !== currentExecutive && executive.email !== currentExecutive;
   });
@@ -399,20 +418,29 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   const executive = eligible.sort((a, b) => (workload.get(a.id) || 0) - (workload.get(b.id) || 0))[0];
   const now = new Date().toISOString();
   const responseDeadlineAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const executiveName = executive.name || executive.fullName || executive.email;
+  const executiveEmail = executive.email || executive.officialEmail || executive.id || null;
+  const executiveMobile = executive.mobile || null;
 
   const updated = await updateRecord("leads", leadId, {
     assignedExecutiveId: executive.id,
-    assignedExecutiveEmail: executive.email || null,
-    assignedExecutiveName: executive.name || executive.fullName || executive.email,
-    assignedExecutiveMobile: executive.mobile || null,
+    assignedExecutiveEmail: executiveEmail,
+    assignedExecutiveName: executiveName,
+    assignedExecutiveMobile: executiveMobile,
+    assignedExecutiveJobId: executive.jobId || null,
+    executiveMobile,
     assignmentStatus: "pending",
     status: LEAD_STATUSES.NEW,
     assignmentTimestamp: now,
+    assignedAt: now,
+    assignedByManager: requestedBy,
     slaAcceptDeadlineAt: responseDeadlineAt,
     assignmentHistory: [...(lead.assignmentHistory || []), {
       executiveId: executive.id,
-      executiveName: executive.name || executive.fullName || executive.email,
-      executiveMobile: executive.mobile || null,
+      executiveEmail,
+      executiveName,
+      executiveMobile,
+      executiveJobId: executive.jobId || null,
       branchCity,
       timestamp: now,
       reason,
@@ -431,9 +459,26 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   if (activeAssignment) {
     await updateRecord("leadAssignments", activeAssignment.id, {
       executiveId: executive.id,
-      executiveName: executive.name || executive.fullName || executive.email,
-      executiveMobile: executive.mobile || null,
+      executiveEmail,
+      executiveName,
+      executiveMobile,
       status: "pending",
+      assignmentTimestamp: now,
+      responseDeadlineAt,
+    });
+  } else {
+    await createRecord("leadAssignments", {
+      leadId,
+      partnerId: lead.assignedPartnerId || lead.bankId || null,
+      partnerName: lead.assignedBankName || lead.selectedBankName || lead.bankPartner || lead.bankName || null,
+      bankId: lead.bankId || null,
+      branchCity,
+      executiveId: executive.id,
+      executiveEmail,
+      executiveName,
+      executiveMobile,
+      status: "pending",
+      reason,
       assignmentTimestamp: now,
       responseDeadlineAt,
     });
@@ -453,7 +498,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     leadId,
     eventType: TIMELINE_EVENTS.LEAD_REASSIGNED,
     title: "Executive Reassigned",
-    description: `Lead reassigned to ${executive.name || executive.fullName || executive.email}`,
+    description: `Lead reassigned to ${executiveName}`,
     actorName: requestedBy,
     actorRole: "bank-manager",
     metadata: { fromExecutiveId: currentExecutive || null, toExecutiveId: executive.id, branchCity, reason },
@@ -461,11 +506,11 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   await createNotification({
     type: "executive-reassigned",
     title: "Lead reassigned",
-    message: `Lead ${leadId} reassigned to ${executive.name || executive.fullName || executive.email}`,
+    message: `Lead ${leadId} reassigned to ${executiveName}`,
     leadId,
     recipientRole: "loan-executive",
     recipientId: executive.id,
-    phoneNumber: executive.mobile,
+    phoneNumber: executiveMobile,
     meta: { reason, branchCity },
   });
 

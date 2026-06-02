@@ -172,7 +172,6 @@ function TotalLeadsPage({ mode }) {
         display(lead.mobile),
         display(lead.city || lead.dealershipCity),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-        display(lead.preferredBank || lead.bankPartner),
         <StatusBadge key="status" status={workflowStatus(lead.status)} />,
         dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
         ...(status === "REJECTED_REASON" ? [display(lead.rejectionReason || lead.loanRejectionReason), dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
@@ -183,7 +182,6 @@ function TotalLeadsPage({ mode }) {
         display(lead.fullName || lead.customerName),
         display(lead.mobile),
         display(lead.city || lead.dealershipCity),
-        display(lead.preferredBank || lead.bankPartner),
         moneyValue(lead.onRoadPrice || lead.carOnRoadPrice),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         dateValue(lead.createdAt),
@@ -195,8 +193,8 @@ function TotalLeadsPage({ mode }) {
   }));
 
   const statusHeaders = status === "REJECTED_REASON"
-    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Preferred Bank", "Current Status", "Last Updated", "Rejection Reason", "Rejection Timestamp", "Executive Name", "Documents"]
-    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Preferred Bank", "Current Status", "Last Updated", "Documents"];
+    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Rejection Reason", "Rejection Timestamp", "Executive Name", "Documents"]
+    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Documents"];
 
   return (
     <section className="space-y-4">
@@ -209,7 +207,7 @@ function TotalLeadsPage({ mode }) {
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
     </section>
