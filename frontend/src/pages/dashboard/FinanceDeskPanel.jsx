@@ -19,7 +19,6 @@ const emptyLead = {
   fullName: "",
   mobile: "",
   city: "",
-  preferredBank: "",
   carPrice: "",
   loanAmount: "",
   salespersonId: "",
@@ -71,6 +70,10 @@ function dateTime(value) {
 
 function caseId(lead) {
   return lead.caseId || lead.id;
+}
+
+function bankDisplay(lead) {
+  return lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || lead.preferredBank || "";
 }
 
 function financeStatus(lead) {
@@ -158,7 +161,7 @@ function leadRows(leads, mode = "total") {
         caseId(lead),
         display(lead.fullName || lead.customerName),
         display(lead.mobile),
-        display(lead.preferredBank || lead.bankPartner),
+        display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         <StatusBadge key="status" lead={lead} />,
         dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
@@ -174,7 +177,7 @@ function leadRows(leads, mode = "total") {
         key: lead.id,
         cells: [
           ...base,
-          display(lead.preferredBank),
+          display(bankDisplay(lead)),
           moneyValue(lead.carPrice || lead.carOnRoadPrice),
           moneyValue(lead.loanAmount || lead.requiredLoanAmount),
           display(lead.bankPartner || lead.assignedBankName),
@@ -189,7 +192,7 @@ function leadRows(leads, mode = "total") {
       key: lead.id,
       cells: [
         ...base,
-        display(lead.preferredBank || lead.bankPartner),
+        display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         dateValue(lead.generatedAt || lead.createdAt),
         <StatusBadge key="status" lead={lead} />,
@@ -391,7 +394,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
     </div>
   );
 }
@@ -399,10 +402,12 @@ function TotalLeadsScreen() {
 function AddLeadScreen() {
   const navigate = useNavigate();
   const { salespersons } = useSalespersons();
-  const [banks, setBanks] = useState([]);
   const [branches, setBranches] = useState([]);
   const [availableBranches, setAvailableBranches] = useState([]);
   const [selectedBranchIds, setSelectedBranchIds] = useState([]);
+  const [tieUpSearch, setTieUpSearch] = useState("");
+  const [tieUpCity, setTieUpCity] = useState("");
+  const [tieUpState, setTieUpState] = useState("");
   const [tieUpMessage, setTieUpMessage] = useState("");
   const [tieUpError, setTieUpError] = useState("");
   const [tieUpLoading, setTieUpLoading] = useState(true);
@@ -416,18 +421,21 @@ function AddLeadScreen() {
     const loadBankData = async () => {
       setTieUpLoading(true);
       try {
-        const [banksResponse, availableBranchesResponse, dealerBranchesResponse] = await Promise.all([
-          api.get("/banks"),
-          api.get("/branches"),
-          api.get("/dealer/bank-tieups"),
-        ]);
-        setBanks(banksResponse.data || []);
-        const allBranches = Array.isArray(availableBranchesResponse.data) ? availableBranchesResponse.data : [];
+        const dealerBranchesResponse = await api.get("/dealer/bank-tieups");
+        const allBranches = Array.isArray(dealerBranchesResponse.data?.availableBranches)
+          ? dealerBranchesResponse.data.availableBranches
+          : Array.isArray(dealerBranchesResponse.data?.availableBanks)
+            ? dealerBranchesResponse.data.availableBanks
+            : [];
         setAvailableBranches(allBranches.filter((branch) => branch.active !== false));
-        setBranches(Array.isArray(dealerBranchesResponse.data?.branchTieUps) ? dealerBranchesResponse.data.branchTieUps : []);
-        setSelectedBranchIds(Array.isArray(dealerBranchesResponse.data?.branchTieUps) ? dealerBranchesResponse.data.branchTieUps.map((branch) => branch.id) : []);
+        const currentTieUps = Array.isArray(dealerBranchesResponse.data?.branchTieUps)
+          ? dealerBranchesResponse.data.branchTieUps
+          : Array.isArray(dealerBranchesResponse.data?.currentTieUps)
+            ? dealerBranchesResponse.data.currentTieUps
+            : [];
+        setBranches(currentTieUps);
+        setSelectedBranchIds(currentTieUps.map((branch) => branch.ifscCode || branch.id).filter(Boolean));
       } catch (error) {
-        setBanks([]);
         setAvailableBranches([]);
         setBranches([]);
         setTieUpError("Unable to load available branches");
@@ -448,7 +456,6 @@ function AddLeadScreen() {
     if (!cleanText(nextForm.fullName)) nextErrors.fullName = "Field required";
     if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
     if (!cleanText(nextForm.city)) nextErrors.city = "Field required";
-    if (!nextForm.preferredBank) nextErrors.preferredBank = "Field required";
     if (!nextForm.branchId) nextErrors.branchId = "Select tied-up bank branch";
     if (!Number(nextForm.carPrice) || Number(nextForm.carPrice) < 0) nextErrors.carPrice = "Field required";
     if (!Number(nextForm.loanAmount) || Number(nextForm.loanAmount) < 0) nextErrors.loanAmount = "Field required";
@@ -481,6 +488,7 @@ function AddLeadScreen() {
         loanAmount: Number(nextForm.loanAmount),
         branchId: nextForm.branchId,
         bankBranchId: nextForm.branchId,
+        ifscCode: nextForm.branchId,
       });
       navigate(`/finance/leads/${response.data.leadId}/documents`, { state: { created: true } });
     } catch (error) {
@@ -506,10 +514,15 @@ function AddLeadScreen() {
     setTieUpError("");
     setTieUpSaving(true);
     try {
-      await api.patch("/dealer/bank-tieups", { dealershipBankPartners: selectedBranchIds });
+      await api.patch("/dealer/bank-tieups", { bankTieUps: selectedBranchIds });
       const response = await api.get("/dealer/bank-tieups");
-      const updatedBranches = Array.isArray(response.data?.branchTieUps) ? response.data.branchTieUps : [];
+      const updatedBranches = Array.isArray(response.data?.branchTieUps)
+        ? response.data.branchTieUps
+        : Array.isArray(response.data?.currentTieUps)
+          ? response.data.currentTieUps
+          : [];
       setBranches(updatedBranches);
+      setSelectedBranchIds(updatedBranches.map((branch) => branch.ifscCode || branch.id).filter(Boolean));
       setTieUpMessage("Bank branch tie-ups updated successfully.");
     } catch (error) {
       setTieUpError(error.response?.data?.message || "Unable to save bank tie-ups");
@@ -517,6 +530,24 @@ function AddLeadScreen() {
       setTieUpSaving(false);
     }
   };
+
+  const tieUpCities = useMemo(() => [...new Set(availableBranches.map((branch) => branch.city).filter(Boolean))].sort(), [availableBranches]);
+  const tieUpStates = useMemo(() => [...new Set(availableBranches.map((branch) => branch.state).filter(Boolean))].sort(), [availableBranches]);
+  const filteredBranches = useMemo(() => {
+    const search = cleanText(tieUpSearch).toLowerCase();
+    return availableBranches.filter((branch) => {
+      const matchesSearch = !search || [
+        branch.bankName,
+        branch.branchName,
+        branch.ifscCode,
+        branch.city,
+        branch.state,
+      ].some((value) => String(value || "").toLowerCase().includes(search));
+      const matchesCity = !tieUpCity || branch.city === tieUpCity;
+      const matchesState = !tieUpState || branch.state === tieUpState;
+      return matchesSearch && matchesCity && matchesState;
+    });
+  }, [availableBranches, tieUpCity, tieUpSearch, tieUpState]);
 
   return (
     <div className="space-y-4">
@@ -533,18 +564,35 @@ function AddLeadScreen() {
         </div>
         {tieUpError ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{tieUpError}</p> : null}
         {tieUpMessage ? <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{tieUpMessage}</p> : null}
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_180px]">
+          <div className="field flex h-10 items-center gap-2 rounded-md bg-white px-3">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input value={tieUpSearch} onChange={(event) => setTieUpSearch(event.target.value)} placeholder="Search bank, branch, IFSC" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          </div>
+          <select value={tieUpCity} onChange={(event) => setTieUpCity(event.target.value)} className="field h-10 rounded-md bg-white">
+            <option value="">All cities</option>
+            {tieUpCities.map((city) => <option key={city} value={city}>{city}</option>)}
+          </select>
+          <select value={tieUpState} onChange={(event) => setTieUpState(event.target.value)} className="field h-10 rounded-md bg-white">
+            <option value="">All states</option>
+            {tieUpStates.map((state) => <option key={state} value={state}>{state}</option>)}
+          </select>
+        </div>
         <div className="mt-4 grid gap-3">
           {tieUpLoading ? (
             <p className="text-sm text-slate-500">Loading branch options...</p>
-          ) : availableBranches.length ? (
-            availableBranches.map((branch) => (
-              <label key={branch.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-[#0d47a1]">
-                <input type="checkbox" checked={selectedBranchIds.includes(branch.id)} onChange={() => toggleBranch(branch.id)} className="h-4 w-4 rounded border-slate-300 text-[#0d47a1] focus:ring-[#0d47a1]" />
+          ) : filteredBranches.length ? (
+            filteredBranches.map((branch) => {
+              const branchKey = branch.ifscCode || branch.id;
+              return (
+              <label key={branchKey} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-[#0d47a1]">
+                <input type="checkbox" checked={selectedBranchIds.includes(branchKey)} onChange={() => toggleBranch(branchKey)} className="h-4 w-4 rounded border-slate-300 text-[#0d47a1] focus:ring-[#0d47a1]" />
                 <span>{branch.bankName} — {branch.branchName}{branch.ifscCode ? ` (${branch.ifscCode})` : ""}</span>
               </label>
-            ))
+              );
+            })
           ) : (
-            <p className="text-sm text-slate-500">No approved bank branches are available yet. Please check with CarLoanSaathi admin.</p>
+            <p className="text-sm text-slate-500">No approved bank branches match this search.</p>
           )}
         </div>
       </section>
@@ -554,7 +602,6 @@ function AddLeadScreen() {
           <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
           <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Preferred Bank" error={errors.preferredBank}><select aria-invalid={Boolean(errors.preferredBank)} className="field mt-1.5" value={form.preferredBank} onBlur={() => validateField("preferredBank")} onChange={(e) => update("preferredBank", e.target.value)}><option value="">Select bank</option>{banks.map((bank) => <option key={bank.name}>{bank.name}</option>)}</select></Field>
           <Field label="Tied-up Bank Branch" error={errors.branchId}>
             <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
               <option value="">Select branch</option>
@@ -690,7 +737,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} onPage={pageTo} />
     </div>
   );
 }
@@ -716,7 +763,7 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Preferred Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Preferred Bank", "Loan Amount", "Current Status", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} onPage={pageTo} />
     </div>
   );
 }
@@ -771,7 +818,7 @@ export function FinanceLeadDetailPage() {
           <button onClick={() => navigate(`/finance/leads/${lead.id}/documents`)} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white">View Documents</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Preferred Bank", lead.preferredBank], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Executive", lead.assignedExecutiveName], ["Status", financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Executive", lead.assignedExecutiveName], ["Status", financeStatus(lead)]].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>

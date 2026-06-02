@@ -25,7 +25,7 @@ const publicLeadBaseSchema = z.object({
   carPrice: money.max(20000000),
   loanAmount: money.max(20000000),
   employmentType: cleanText(2),
-  preferredBank: cleanText(2),
+  preferredBank: z.string().trim().max(120).optional().or(z.literal("")),
 });
 
 export const publicLeadSchema = publicLeadBaseSchema.refine((data) => data.loanAmount <= data.carPrice, {

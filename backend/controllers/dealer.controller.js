@@ -106,15 +106,6 @@ function runDealerLeadSideEffects(label, tasks = []) {
   });
 }
 
-function tieUpIdsFromRegistration(values = []) {
-  return (Array.isArray(values) ? values : [])
-    .map((value) => {
-      const text = String(value || "").trim().toUpperCase();
-      return text.match(/[A-Z]{4}0[A-Z0-9]{6}/)?.[0] || text;
-    })
-    .filter(Boolean);
-}
-
 async function liveDealerRegistrationForAccount(account) {
   if (!account?.email) return { linkedOnboarding: null, linkedApproval: null, dealership: null, live: false };
   const [onboardingRequests, approvalRequests] = await Promise.all([
@@ -395,11 +386,12 @@ function normalizeFinanceDeskLead(body) {
     carPrice: body.carPrice || body.carOnRoadPrice || body.vehiclePrice || body.loanAmount,
     loanAmount: body.loanAmount || body.requiredLoanAmount,
     employmentType: body.employmentType || "Not specified",
-    preferredBank: body.preferredBank,
     bankBranchId: body.bankBranchId || body.branchId || body.ifscCode || "",
-    bankName: body.bankName || body.preferredBank || "",
+    bankId: body.bankId || body.assignedBankId || "",
+    bankName: body.bankName || "",
     branchName: body.branchName || "",
     ifscCode: body.ifscCode || "",
+    salespersonId: body.salespersonId || "",
     assignedSalesperson: body.assignedSalesperson || body.salespersonName || "Finance desk direct",
     remarks: body.remarks,
     documents: body.documents,
@@ -421,7 +413,6 @@ function readableLeadError(error) {
     carPrice: "Missing car price",
     loanAmount: "Missing loan amount",
     assignedSalesperson: "Missing assigned salesperson",
-    preferredBank: "Missing preferred bank",
     bankBranchId: "Select a tied-up bank branch",
   };
   return messages[field] || issue.message || "Failed to create lead";
@@ -515,9 +506,6 @@ export async function registerDealerOnboarding(req, res, next) {
       landmark: String(req.body.landmark || "").trim(),
       monthlyCarSalesCapacity: required(req.body.monthlyCarSalesCapacity, "Monthly car sales capacity"),
       expectedMonthlyLoanApplications: required(req.body.expectedMonthlyLoanApplications, "Expected monthly loan applications"),
-      existingBankTieUps: String(req.body.existingBankTieUps || "None").trim(),
-      preferredPartnerBanks: Array.isArray(req.body.preferredPartnerBanks) ? req.body.preferredPartnerBanks : [],
-      dealershipBankPartners: tieUpIdsFromRegistration(req.body.preferredPartnerBanks),
       status: "Pending Approval",
       active: false,
       accountActive: false,
@@ -674,7 +662,7 @@ export async function createDealerLead(req, res, next) {
 
     // ===== NEW WORKFLOW: MANDATORY BRANCH SELECTION =====
     // Get IFSC code from request - REQUIRED
-    const ifscCode = String(req.body.ifscCode || "").trim().toUpperCase();
+    const ifscCode = String(req.body.ifscCode || req.body.bankBranchId || req.body.branchId || "").trim().toUpperCase();
     if (!ifscCode) {
       return res.status(400).json({ 
         message: "Bank branch selection is required",
@@ -718,6 +706,8 @@ export async function createDealerLead(req, res, next) {
       selectedBrand: dealerBrand,
       carBrand: dealerBrand,
       ifscCode,
+      branchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
+      bankBranchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
       bankId: branchTieUp.bankId,
       bankName: branchTieUp.bankName,
       branchName: branchTieUp.branchName,
@@ -748,9 +738,19 @@ export async function createDealerLead(req, res, next) {
       
       // Bank branch (new requirement)
       ifscCode,
+      bankIfsc: ifscCode,
+      branchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
+      bankBranchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
       bankId: branchTieUp.bankId,
       bankName: branchTieUp.bankName,
       branchName: branchTieUp.branchName,
+      assignedBankId: branchTieUp.bankId,
+      assignedPartnerId: branchTieUp.bankId,
+      assignedBankName: branchTieUp.bankName,
+      assignedBankIfsc: ifscCode,
+      selectedBankName: branchTieUp.bankName,
+      selectedBranchName: branchTieUp.branchName,
+      selectedBankBranchId: branchTieUp.bankId || branchTieUp.id || ifscCode,
       
       // Salesperson
       salespersonId: salesperson.id,
@@ -910,7 +910,9 @@ export async function getDealerBankTieUps(req, res, next) {
     res.json({
       dealershipId: dealership.id || dealershipEmail,
       currentTieUps: currentTieUps || [],
+      branchTieUps: currentTieUps || [],
       availableBanks: availableBanks || [],
+      availableBranches: availableBanks || [],
       totalAvailable: availableBanks?.length || 0,
       totalTiedUp: currentTieUps?.length || 0,
     });
@@ -925,8 +927,9 @@ export async function updateDealerBankTieUps(req, res, next) {
     const dealershipId = dealership.id || dealershipEmail;
 
     // Get the requested IFSC codes
-    const ifscCodes = Array.isArray(req.body.bankTieUps)
-      ? req.body.bankTieUps.map((item) => (typeof item === "string" ? item : item.ifscCode))
+    const requestedTieUps = req.body.bankTieUps || req.body.dealershipBankPartners || req.body.bankBranchIds || [];
+    const ifscCodes = Array.isArray(requestedTieUps)
+      ? requestedTieUps.map((item) => (typeof item === "string" ? item : item.ifscCode || item.bankIfsc || item.id))
       : [];
 
     // Update the bank tie-ups
@@ -948,6 +951,7 @@ export async function updateDealerBankTieUps(req, res, next) {
       message: "Bank tie-ups updated successfully",
       dealershipId,
       bankTieUps: result.bankTieUps,
+      branchTieUps: result.bankTieUps,
       updatedAt: result.updatedAt,
     });
   } catch (error) {

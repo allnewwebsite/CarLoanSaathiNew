@@ -15,7 +15,6 @@ const cities = ["Bahadurgarh", "Jhajjar", "Rohtak", "Sonipat", "Beri", "Gurugram
 const dealershipBrands = ["Tata Motors", "Hyundai", "Kia", "Mahindra", "Maruti Suzuki", "Toyota", "Honda", "MG", "Skoda", "Volkswagen", "Nissan", "Renault", "BMW", "Audi", "Mercedes-Benz", "Volvo"];
 const financeTeamSizes = ["1-2", "3-5", "5-10", "10+"];
 const salesCapacity = ["10+", "25+", "50+", "70+", "100+", "200+"];
-const fallbackBanks = ["HDFC Bank", "ICICI Bank", "Axis Bank", "State Bank of India", "Kotak Mahindra Bank", "IndusInd Bank", "Bank of Baroda", "Punjab National Bank", "IDFC First Bank", "AU Small Finance Bank", "Yes Bank", "Union Bank"];
 const documentFields = ["GST Certificate", "Dealership License", "Office Exterior Photo", "Office Interior Photo"];
 const documentConfig = {
   "GST Certificate": { type: "gst-certificate", folder: "gst" },
@@ -35,7 +34,6 @@ const benefitCards = [
   "Secure document workflow",
   "Bank SLA monitoring",
 ];
-const supportedBanks = ["HDFC Bank", "ICICI Bank", "Axis Bank", "SBI", "Kotak", "PNB", "Bank of Baroda", "IndusInd"];
 const workflow = ["Customer", "Salesperson", "Finance Desk", "CarLoanSaathi", "Bank", "Approval", "Disbursement"];
 
 const initialForm = {
@@ -62,8 +60,6 @@ const initialForm = {
   landmark: "",
   monthlyCarSalesCapacity: "",
   expectedMonthlyLoanApplications: "",
-  existingBankTieUps: "",
-  preferredPartnerBanks: [],
   loginEmail: "",
 };
 
@@ -134,61 +130,6 @@ function StandardSelect({ label, value, options, onChange, placeholder = "Select
       </select>
       {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
     </label>
-  );
-}
-
-function BankMultiSelect({ label, value, options, onChange, placeholder = "Select banks", error }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  const selected = Array.isArray(value) ? value : [];
-
-  useEffect(() => {
-    const close = (event) => {
-      if (!ref.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
-
-  const toggle = (bank) => {
-    onChange(selected.includes(bank) ? selected.filter((item) => item !== bank) : [...selected, bank]);
-  };
-
-  return (
-    <div ref={ref} className="relative min-w-0 text-sm font-medium text-slate-700">
-      <span>{label}</span>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className={`mt-1.5 flex min-h-10 w-full items-center justify-between gap-2 rounded-md border bg-white px-3 py-2 text-left text-sm font-normal text-slate-900 outline-none transition hover:border-slate-400 ${error ? "border-red-300" : "border-slate-300"}`}
-      >
-        <span className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-          {selected.length ? selected.slice(0, 3).map((bank) => (
-            <span key={bank} className="max-w-full truncate rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-[#0d47a1]">{bank}</span>
-          )) : <span className="px-1 text-[#64748b]">{placeholder}</span>}
-          {selected.length > 3 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">+{selected.length - 3}</span>}
-        </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 transition ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-          {options.length ? options.map((bank) => (
-            <label key={bank} className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm font-normal text-slate-800 transition hover:bg-slate-50">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[#cfd8e3] accent-[#0d47a1]"
-                checked={selected.includes(bank)}
-                onChange={() => toggle(bank)}
-              />
-              <span className="min-w-0 flex-1 truncate">{bank}</span>
-            </label>
-          )) : (
-            <p className="rounded-xl bg-[#f8fbff] px-3 py-4 text-sm font-semibold text-[#536173]">No partner banks available yet.</p>
-          )}
-        </div>
-      )}
-      {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
-    </div>
   );
 }
 
@@ -326,12 +267,8 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Bank network</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">Supported partner banks</h2>
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {supportedBanks.map((bank) => (
-                <div key={bank} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-center text-sm font-medium text-slate-700">{bank}</div>
-              ))}
-            </div>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">Approved branch tie-ups after onboarding</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Dealership approval is separate from bank routing. Finance desk users select approved bank branches later, and every lead must use one of those active tie-ups.</p>
           </div>
         </section>
 
@@ -522,7 +459,6 @@ export function DealerRegistrationFormPage() {
     loginEmail: registrationSession.email || "",
     financeDeskEmail: registrationSession.email || "",
   }));
-  const [banks, setBanks] = useState([]);
   const [documents, setDocuments] = useState({});
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -530,17 +466,6 @@ export function DealerRegistrationFormPage() {
   const navigate = useNavigate();
   const dealerUid = firebaseUser?.uid || auth.currentUser?.uid || registrationSession.uid || registrationSession.registrationId || registrationSession.email || "";
   const dealerEmail = firebaseUser?.email || auth.currentUser?.email || registrationSession.email || "";
-
-  useEffect(() => {
-    api.get("/banks")
-      .then((response) => {
-        const bankNames = (response.data || [])
-          .map((bank) => bank.ifscCode ? `${bank.bankName} - ${bank.branchName} (${bank.ifscCode})` : bank.name)
-          .filter(Boolean);
-        setBanks(bankNames.length ? bankNames : fallbackBanks);
-      })
-      .catch(() => setBanks(fallbackBanks));
-  }, []);
 
   const hasVerifiedEmail = Boolean(
     dealerEmail
@@ -676,7 +601,6 @@ export function DealerRegistrationFormPage() {
     const missing = requiredFields.find(([field]) => !String(form[field] || "").trim());
     if (missing) return `${missing[1]} is required.`;
     if (!cities.includes(form.city)) return "Please select a supported dealership city.";
-    if (!form.preferredPartnerBanks.length) return "Please select at least one preferred partner bank.";
     if (!hasVerifiedEmail || !dealerEmail) return "Create an email/password account before submitting dealership registration.";
     return "";
   };
@@ -801,7 +725,7 @@ export function DealerRegistrationFormPage() {
             <div className="mt-14 rounded-lg bg-white p-4">
               <Sparkles className="h-6 w-6 text-[#0d47a1]" />
               <p className="mt-3 text-lg font-semibold text-slate-900">Finance desk onboarding</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Verified dealership identity, city mapping, bank preferences, and document readiness.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Verified dealership identity, city mapping, finance desk readiness, and document status.</p>
             </div>
           </div>
         </section>
@@ -859,7 +783,6 @@ export function DealerRegistrationFormPage() {
             <SectionCard number="6" title="Business & Loan Capacity">
               <StandardSelect label="Monthly Car Sales Capacity *" value={form.monthlyCarSalesCapacity} options={salesCapacity} onChange={(value) => update("monthlyCarSalesCapacity", value)} placeholder="Select monthly capacity" />
               <label className={labelClass}>Expected Monthly Loan Applications *<input required type="number" className={fieldClass} value={form.expectedMonthlyLoanApplications} onChange={(e) => update("expectedMonthlyLoanApplications", e.target.value)} /></label>
-              <label className={labelClass}>Current Partner Banks<input className={fieldClass} value={form.existingBankTieUps} onChange={(e) => update("existingBankTieUps", e.target.value)} placeholder="None, or list current bank relationships" /></label>
             </SectionCard>
             <SectionCard number="7" title="Document Uploads">
               <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal leading-6 text-slate-600">

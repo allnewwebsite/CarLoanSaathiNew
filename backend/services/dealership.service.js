@@ -5,6 +5,54 @@ import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { getActiveBankBranches, getBankByIFSC } from "./bank.service.js";
 import { logInfo } from "./logger.service.js";
 
+const TIE_UP_COLLECTION = "dealershipBankTieUps";
+
+function tieUpRecordId(dealershipId, ifscCode) {
+  const dealer = String(dealershipId || "").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const ifsc = String(ifscCode || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return `${dealer}__${ifsc}`;
+}
+
+function tieUpFromBank({ dealershipId, bank, ifscCode, active = true, now, createdAt }) {
+  return {
+    dealershipId,
+    active,
+    bankBranchId: bank.id,
+    branchId: bank.id,
+    bankId: bank.id,
+    ifscCode,
+    bankName: bank.bankName,
+    branchName: bank.branchName,
+    address: bank.address || "",
+    city: bank.city || "",
+    state: bank.state || "",
+    contactPerson: bank.contactPerson || "",
+    phone: bank.phone || "",
+    email: bank.email || "",
+    createdAt: createdAt || now,
+    updatedAt: now,
+  };
+}
+
+async function activeTieUpRecords(dealershipId) {
+  const records = await queryRecords(TIE_UP_COLLECTION, {
+    where: [
+      { field: "dealershipId", value: dealershipId },
+    ],
+    limit: 500,
+    maxLimit: 500,
+  });
+  return (records.data || []).filter((record) => record.active === true);
+}
+
+async function upsertTieUpRecord(dealershipId, bank, ifscCode, req = null, active = true, createdAt = null) {
+  const now = new Date().toISOString();
+  const payload = tieUpFromBank({ dealershipId, bank, ifscCode, active, now, createdAt });
+  if (req?.user?.email) payload.updatedBy = req.user.email;
+  await upsertRecord(TIE_UP_COLLECTION, tieUpRecordId(dealershipId, ifscCode), payload);
+  return payload;
+}
+
 /**
  * Get all available bank branches for a dealership to tie up with
  * Automatically loads all approved and active bank branches
@@ -13,7 +61,10 @@ import { logInfo } from "./logger.service.js";
 export async function getAvailableBankBranches() {
   const branches = await getActiveBankBranches();
   return branches.map((branch) => ({
+    id: branch.ifscCode,
     bankId: branch.bankId,
+    branchId: branch.bankId,
+    bankBranchId: branch.bankId,
     ifscCode: branch.ifscCode,
     bankName: branch.bankName,
     branchName: branch.branchName,
@@ -37,6 +88,26 @@ export async function getDealershipBankTieUps(dealershipId) {
     throw error;
   }
 
+  const relationTieUps = await activeTieUpRecords(dealershipId);
+  if (relationTieUps.length > 0) {
+    return relationTieUps.map((tieUp) => ({
+      id: tieUp.ifscCode,
+      bankId: tieUp.bankId || tieUp.bankBranchId || tieUp.branchId,
+      branchId: tieUp.branchId || tieUp.bankBranchId || tieUp.bankId,
+      bankBranchId: tieUp.bankBranchId || tieUp.branchId || tieUp.bankId,
+      ifscCode: tieUp.ifscCode,
+      bankName: tieUp.bankName,
+      branchName: tieUp.branchName,
+      address: tieUp.address,
+      city: tieUp.city,
+      state: tieUp.state,
+      contactPerson: tieUp.contactPerson,
+      phone: tieUp.phone,
+      email: tieUp.email,
+      addedAt: tieUp.createdAt || tieUp.updatedAt,
+    }));
+  }
+
   const tieUpIFSCs = Array.isArray(dealership.bankTieUps) ? dealership.bankTieUps : [];
   
   // If empty, no tie-ups yet
@@ -50,7 +121,10 @@ export async function getDealershipBankTieUps(dealershipId) {
     try {
       const bank = await getBankByIFSC(ifscCode);
       tieUps.push({
+        id: bank.ifscCode,
         bankId: bank.id,
+        branchId: bank.id,
+        bankBranchId: bank.id,
         ifscCode: bank.ifscCode,
         bankName: bank.bankName,
         branchName: bank.branchName,
@@ -114,6 +188,8 @@ export async function addBankTieUp(dealershipId, ifscCode, req = null) {
     updatedAt: now,
   });
 
+  await upsertTieUpRecord(dealershipId, bank, ifsc, req, true, now);
+
   // Audit log
   if (req) {
     await writeAuditLog({
@@ -127,18 +203,16 @@ export async function addBankTieUp(dealershipId, ifscCode, req = null) {
     });
   }
 
-  // Timeline event
-  await addTimelineEvent(
-    TIMELINE_EVENTS.BANK_TIEUP_ADDED || "BANK_TIEUP_ADDED",
-    `Bank tie-up added: ${bank.bankName} - ${bank.branchName}`,
-    {
-      dealershipId,
-      ifscCode: ifsc,
-      bankName: bank.bankName,
-      branchName: bank.branchName,
-    },
-    req
-  );
+  await addTimelineEvent({
+    eventType: TIMELINE_EVENTS.BANK_TIEUP_ADDED || "BANK_TIEUP_ADDED",
+    title: "Bank Tie-up Added",
+    description: `Bank tie-up added: ${bank.bankName} - ${bank.branchName}`,
+    actorName: req?.user?.email || "system",
+    actorRole: req?.user?.role || "finance-desk",
+    dealershipId,
+    branchId: bank.id,
+    metadata: { ifscCode: ifsc, bankName: bank.bankName, branchName: bank.branchName },
+  });
 
   logInfo("Bank tie-up added", {
     dealershipId,
@@ -207,6 +281,7 @@ export async function removeBankTieUp(dealershipId, ifscCode, req = null) {
   try {
     const bank = await getBankByIFSC(ifsc);
     bankName = bank.bankName;
+    await upsertTieUpRecord(dealershipId, bank, ifsc, req, false, dealership.bankTieUpDates?.[ifsc] || now);
   } catch (error) {
     // Bank may be deleted
   }
@@ -225,16 +300,15 @@ export async function removeBankTieUp(dealershipId, ifscCode, req = null) {
     });
   }
 
-  // Timeline event
-  await addTimelineEvent(
-    TIMELINE_EVENTS.BANK_TIEUP_REMOVED || "BANK_TIEUP_REMOVED",
-    `Bank tie-up removed: ${bankName}`,
-    {
-      dealershipId,
-      ifscCode: ifsc,
-    },
-    req
-  );
+  await addTimelineEvent({
+    eventType: TIMELINE_EVENTS.BANK_TIEUP_REMOVED || "BANK_TIEUP_REMOVED",
+    title: "Bank Tie-up Removed",
+    description: `Bank tie-up removed: ${bankName}`,
+    actorName: req?.user?.email || "system",
+    actorRole: req?.user?.role || "finance-desk",
+    dealershipId,
+    metadata: { ifscCode: ifsc, bankName },
+  });
 
   logInfo("Bank tie-up removed", {
     dealershipId,
@@ -300,6 +374,16 @@ export async function updateDealershipBankTieUps(dealershipId, ifscCodes, req = 
   const updateDate = {};
   for (const ifsc of uniqueCodes) {
     updateDate[ifsc] = currentTieUps.includes(ifsc) ? dealership.bankTieUpDates?.[ifsc] : now;
+    const bank = await getBankByIFSC(ifsc);
+    await upsertTieUpRecord(dealershipId, bank, ifsc, req, true, updateDate[ifsc]);
+  }
+  for (const ifsc of removedIFSCs) {
+    try {
+      const bank = await getBankByIFSC(ifsc);
+      await upsertTieUpRecord(dealershipId, bank, ifsc, req, false, dealership.bankTieUpDates?.[ifsc] || now);
+    } catch (error) {
+      logInfo("Removed bank tie-up relation could not resolve bank", { ifsc, dealershipId });
+    }
   }
 
   const updated = await updateRecord("dealerships", dealershipId, {

@@ -15,6 +15,14 @@ const LEAD_FIELDS = [
   "routingCity",
   "preferredBank",
   "bankPartner",
+  "bankName",
+  "branchName",
+  "selectedBankName",
+  "selectedBranchName",
+  "ifscCode",
+  "bankIfsc",
+  "bankBranchId",
+  "branchId",
   "assignedBankId",
   "assignedBankName",
   "assignedBankIfsc",
@@ -50,7 +58,7 @@ const LEAD_FIELDS = [
   "bankId",
 ];
 
-const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "preferredBank", "bankPartner", "assignedSalesperson", "salespersonName"];
+const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedSalesperson", "salespersonName"];
 
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
@@ -86,7 +94,8 @@ function localFilters(leads, query = {}) {
     const salespersonOk = (!salesperson && !salespersonId)
       || String(lead.salespersonId || "") === salespersonId
       || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
-    const bankOk = !bank || String(lead.preferredBank || lead.bankPartner || "").toLowerCase() === bank;
+    const bankText = String(lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || lead.preferredBank || "").toLowerCase();
+    const bankOk = !bank || bankText === bank || bankText.includes(bank);
     const cityOk = !city || String(lead.city || "").toLowerCase() === city;
     const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
     return statusOk && salespersonOk && bankOk && cityOk && dateOk;
@@ -113,7 +122,7 @@ function queryWhere(baseWhere = [], query = {}) {
   if (query.bankId) where.push({ field: "bankId", value: String(query.bankId).trim() });
   if (query.assignedExecutiveId) where.push({ field: "assignedExecutiveId", value: String(query.assignedExecutiveId).trim() });
   if (query.city) where.push({ field: "city", value: String(query.city).trim() });
-  if (query.preferredBank || query.bank) where.push({ field: "preferredBank", value: String(query.preferredBank || query.bank).trim() });
+  if (query.bankName) where.push({ field: "bankName", value: String(query.bankName).trim() });
   if (query.caseId) where.push({ field: "caseId", value: String(query.caseId).trim() });
   const search = String(query.search || "").trim();
   if (/^CLS-/i.test(search)) where.push({ field: "caseId", value: search.toUpperCase() });

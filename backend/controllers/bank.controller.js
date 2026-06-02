@@ -95,14 +95,35 @@ function partnerCanAccessLead(partner, lead) {
   }
 
   if (partner.roleType === "bank-manager") {
-    const partnerCity = partner.branchCity || partner.city || partner.operatingCity || partner.bankBranchLocation || partner.branchLocation;
-    const leadCity = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || lead.city;
-    const sameCity = !cleanText(partnerCity) || !cleanText(leadCity) || sameText(partnerCity, leadCity);
     const sameBank = anyMatch(
-      [lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],
-      [partner.bankId, partner.bankPartnerId, partner.partnerId, partner.id, partner.email, partner.bankName, partner.companyName],
+      [
+        lead.bankId,
+        lead.assignedBankId,
+        lead.assignedPartnerId,
+        lead.branchId,
+        lead.bankBranchId,
+        lead.selectedBankBranchId,
+        lead.ifscCode,
+        lead.bankIfsc,
+        lead.assignedBankIfsc,
+        lead.bankName,
+        lead.assignedBankName,
+      ],
+      [
+        partner.bankId,
+        partner.bankPartnerId,
+        partner.partnerId,
+        partner.id,
+        partner.branchId,
+        partner.bankBranchId,
+        partner.ifsc,
+        partner.ifscCode,
+        partner.bankIfsc,
+        partner.bankName,
+        partner.companyName,
+      ],
     );
-    return sameCity && sameBank;
+    return sameBank;
   }
 
   const supportedBanks = Array.isArray(partner.supportedBanks) ? partner.supportedBanks : [];
