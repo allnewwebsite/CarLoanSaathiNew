@@ -308,6 +308,19 @@ function emailMatchesRecord(record = {}, email) {
   ].some((value) => String(value || "").trim().toLowerCase() === normalized);
 }
 
+async function getRecordByEmail(collection, email, fields = ["email", "officialEmail", "loginEmail", "dealershipEmail"]) {
+  const direct = await getRecord(collection, email).catch(() => null);
+  if (direct) return direct;
+  const records = await listRecords(collection).catch((error) => {
+    logWarn("Auth account lookup fallback scan failed", { collection, error: error.message });
+    return [];
+  });
+  const normalized = String(email || "").trim().toLowerCase();
+  return records.find((record) =>
+    fields.some((field) => String(record?.[field] || "").trim().toLowerCase() === normalized)
+  ) || null;
+}
+
 async function updatePasswordLifecycleRecords(email, role, patch) {
   const linkedCollections = role === "loan-executive"
     ? ["loanExecutives"]
@@ -335,8 +348,7 @@ async function accountForEmail(email, portal) {
   const allowed = PORTAL_ROLES[portal] || [];
   const candidates = [];
   if (allowed.includes("finance-desk")) {
-    const financeDesks = await listRecords("financeDesks");
-    const desk = financeDesks.find((item) => item.officialEmail === email || item.email === email || item.dealershipEmail === email || item.id === email);
+    const desk = await getRecordByEmail("financeDesks", email);
     if (desk) candidates.push({
       role: "finance-desk",
       accountSource: "financeDesks",
@@ -352,8 +364,11 @@ async function accountForEmail(email, portal) {
       accountActive: desk.accountActive !== false,
       firstLoginRequired: desk.firstLoginRequired === true,
     });
-    const directDealership = await getRecord("dealerships", email) || await getRecord("approvedDealerships", email);
-    const dealerships = directDealership ? [] : await listRecords("dealerships");
+    const directDealership = await getRecord("dealerships", email).catch(() => null) || await getRecord("approvedDealerships", email).catch(() => null);
+    const dealerships = directDealership ? [] : await listRecords("dealerships").catch((error) => {
+      logWarn("Auth dealership lookup fallback scan failed", { error: error.message });
+      return [];
+    });
     const dealership = directDealership || dealerships.find((item) =>
       item.loginEmail === email
       || item.primaryGoogleEmail === email
@@ -375,8 +390,10 @@ async function accountForEmail(email, portal) {
     }
   }
   if (allowed.includes("gm-sm")) {
-    const managers = await listRecords("dealershipManagers");
-    const manager = managers.find((item) => item.email === email && /gm|showroom|manager/i.test(item.role || ""));
+    const managerRecord = await getRecordByEmail("dealershipManagers", email);
+    const manager = managerRecord && /gm|sm|showroom|manager/i.test(managerRecord.role || managerRecord.roleLabel || "")
+      ? managerRecord
+      : null;
     if (manager) candidates.push({
       role: "gm-sm",
       accountSource: "dealershipManagers",
@@ -394,8 +411,7 @@ async function accountForEmail(email, portal) {
     });
   }
   if (allowed.includes("bank-manager")) {
-    const managers = await listRecords("branchManagers");
-    const manager = managers.find((item) => item.email === email || item.officialEmail === email || item.id === email);
+    const manager = await getRecordByEmail("branchManagers", email, ["email", "officialEmail"]);
     if (manager) candidates.push({
       role: "bank-manager",
       accountSource: "branchManagers",
@@ -409,7 +425,10 @@ async function accountForEmail(email, portal) {
       accountActive: manager.accountActive !== false,
     });
 
-    const bankAccounts = await listRecords("pendingBankAccounts");
+    const bankAccounts = await listRecords("pendingBankAccounts").catch((error) => {
+      logWarn("Auth pending bank account lookup failed", { error: error.message });
+      return [];
+    });
     const approvedBankAccount = bankAccounts.find((item) =>
       item.email === email
       && item.approvalStatus === "approved"
@@ -430,7 +449,10 @@ async function accountForEmail(email, portal) {
       accountActive: true,
     });
 
-    const bankApprovals = await listRecords("pendingBankApprovals");
+    const bankApprovals = await listRecords("pendingBankApprovals").catch((error) => {
+      logWarn("Auth pending bank approval lookup failed", { error: error.message });
+      return [];
+    });
     const approvedBankRequest = bankApprovals.find((item) =>
       (item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email)
       && item.status === "approved"
@@ -450,8 +472,7 @@ async function accountForEmail(email, portal) {
     });
   }
   if (allowed.includes("loan-executive")) {
-    const executives = await listRecords("loanExecutives");
-    const executive = executives.find((item) => item.email === email || item.officialEmail === email || item.id === email);
+    const executive = await getRecordByEmail("loanExecutives", email, ["email", "officialEmail"]);
     if (executive) candidates.push({
       role: "loan-executive",
       accountSource: "loanExecutives",
@@ -644,9 +665,12 @@ function bankLoginGate(registration) {
 
 async function approvedDealerAccess(email, account) {
   const dealershipEmail = account?.dealershipId || email;
-  const registrations = await listRecords("pendingDealerAccounts");
+  const registrations = await listRecords("pendingDealerAccounts").catch((error) => {
+    logWarn("Auth pending dealer account lookup failed", { error: error.message });
+    return [];
+  });
   const registration = registrations.find((item) => item.email === dealershipEmail || item.email === email);
-  const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("approvedDealerships", dealershipEmail);
+  const dealership = await getRecord("dealerships", dealershipEmail).catch(() => null) || await getRecord("approvedDealerships", dealershipEmail).catch(() => null);
   const activeApprovedAccount = account?.approved === true
     && account?.active === true
     && account?.accountApproved === true
