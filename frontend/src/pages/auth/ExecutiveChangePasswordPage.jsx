@@ -19,7 +19,7 @@ function strengthLabel(score) {
   return "Weak";
 }
 
-function PasswordInput({ label, value, onChange, visible, onToggle, autoComplete, error }) {
+function PasswordInput({ label, name, value, onChange, visible, onToggle, autoComplete, error }) {
   return (
     <label className="block text-sm font-medium text-slate-700">
       {label}
@@ -27,8 +27,14 @@ function PasswordInput({ label, value, onChange, visible, onToggle, autoComplete
         <LockKeyhole className="h-4 w-4 text-slate-400" />
         <input
           required
+          name={name}
           type={visible ? "text" : "password"}
           autoComplete={autoComplete}
+          autoCorrect="off"
+          spellCheck={false}
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-form-type="other"
           value={value}
           onChange={(event) => onChange(event.target.value.replace(/\s/g, ""))}
           className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-900 outline-none"
@@ -95,9 +101,9 @@ export function ExecutiveChangePasswordPage() {
         <h1 className="mt-3 text-2xl font-semibold text-slate-950">Change Temporary Password</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">For security, change the temporary password issued by your {isExecutive ? "bank manager" : "dealership admin"} before opening your dashboard.</p>
 
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <PasswordInput label="Current Temporary Password" value={form.currentPassword} onChange={(value) => update("currentPassword", value)} visible={visible.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} autoComplete="current-password" error={fieldErrors.currentPassword} />
-          <PasswordInput label="New Password" value={form.newPassword} onChange={(value) => update("newPassword", value)} visible={visible.newPassword} onToggle={() => setVisible((current) => ({ ...current, newPassword: !current.newPassword }))} autoComplete="new-password" error={fieldErrors.newPassword} />
+        <form onSubmit={submit} className="mt-6 space-y-4" autoComplete="off" data-form-type="other">
+          <PasswordInput label="Current Temporary Password" name="cls_current_temporary_password" value={form.currentPassword} onChange={(value) => update("currentPassword", value)} visible={visible.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} autoComplete="off" error={fieldErrors.currentPassword} />
+          <PasswordInput label="New Password" name="cls_new_private_password" value={form.newPassword} onChange={(value) => update("newPassword", value)} visible={visible.newPassword} onToggle={() => setVisible((current) => ({ ...current, newPassword: !current.newPassword }))} autoComplete="off" error={fieldErrors.newPassword} />
 
           <div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -106,7 +112,7 @@ export function ExecutiveChangePasswordPage() {
             <p className="mt-2 text-xs font-semibold text-slate-600">Password strength: {strengthLabel(score)}</p>
           </div>
 
-          <PasswordInput label="Confirm Password" value={form.confirmPassword} onChange={(value) => update("confirmPassword", value)} visible={visible.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} autoComplete="new-password" error={fieldErrors.confirmPassword} />
+          <PasswordInput label="Confirm Password" name="cls_confirm_private_password" value={form.confirmPassword} onChange={(value) => update("confirmPassword", value)} visible={visible.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} autoComplete="off" error={fieldErrors.confirmPassword} />
           {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{error}</p> : null}
           <button type="submit" disabled={loading} className="flex h-11 w-full items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-semibold text-white disabled:opacity-70">
             {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Change Password"}

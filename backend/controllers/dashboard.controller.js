@@ -1,12 +1,19 @@
 import { scopedAnalytics } from "../services/analytics.service.js";
+import { ROLES } from "../utils/constants.js";
+
+function analyticsScopeForUser(user = {}) {
+  if (user.role === ROLES.SUPER_ADMIN) return {};
+  if ([ROLES.FINANCE_DESK, ROLES.GM_SM].includes(user.role)) return { dealershipId: user.dealershipId };
+  if (user.role === ROLES.BANK_MANAGER) return { bankId: user.bankId };
+  if (user.role === ROLES.LOAN_EXECUTIVE) return { assignedExecutiveId: user.uid };
+  const error = new Error("Dashboard role is not allowed");
+  error.status = 403;
+  throw error;
+}
 
 export async function getOverview(req, res, next) {
   try {
-    const metrics = await scopedAnalytics({
-      dealershipId: ["finance-desk", "gm-sm"].includes(req.user?.role) ? req.user.dealershipId : null,
-      bankId: req.user?.role === "bank-manager" ? req.user.bankId : null,
-      assignedExecutiveId: req.user?.role === "loan-executive" ? req.user.uid : null,
-    });
+    const metrics = await scopedAnalytics(analyticsScopeForUser(req.user));
     res.json({
       cases: metrics.totalLeads || 0,
       activeDealerships: metrics.activeDealerships || 0,

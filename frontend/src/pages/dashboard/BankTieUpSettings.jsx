@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { api } from "../../services/api.js";
 
 /**
  * Bank Tie-Up Settings Component
@@ -16,8 +17,7 @@ import axios from "axios";
  */
 export default function BankTieUpSettings() {
   const navigate = useNavigate();
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const { user } = useAuth();
 
   // State Management
   const [currentTieUps, setCurrentTieUps] = useState([]);
@@ -57,13 +57,7 @@ export default function BankTieUpSettings() {
       setLoading(true);
       setError(null);
 
-      const token = await user.getIdToken();
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/api/dealer/bank-tieups`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get("/dealer/bank-tieups");
 
       setCurrentTieUps(response.data.currentTieUps || []);
       setAvailableBanks(response.data.availableBanks || []);
@@ -82,17 +76,9 @@ export default function BankTieUpSettings() {
     async (bank) => {
       try {
         setAddingIfsc(bank.ifscCode);
-        const token = await user.getIdToken();
-
-        const response = await axios.patch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/dealer/bank-tieups`,
-          {
-            bankTieUps: [...currentTieUps.map((t) => t.ifscCode), bank.ifscCode],
-          },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const response = await api.patch("/dealer/bank-tieups", {
+          bankTieUps: [...currentTieUps.map((t) => t.ifscCode), bank.ifscCode],
+        });
 
         setCurrentTieUps(response.data.bankTieUps);
         setSuccess(`Added ${bank.bankName} - ${bank.branchName}`);
@@ -120,19 +106,11 @@ export default function BankTieUpSettings() {
     async (ifscCode) => {
       try {
         setRemovingIfsc(ifscCode);
-        const token = await user.getIdToken();
-
         const updatedTieUps = currentTieUps
           .filter((t) => t.ifscCode !== ifscCode)
           .map((t) => t.ifscCode);
 
-        const response = await axios.patch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/dealer/bank-tieups`,
-          { bankTieUps: updatedTieUps },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const response = await api.patch("/dealer/bank-tieups", { bankTieUps: updatedTieUps });
 
         setCurrentTieUps(response.data.bankTieUps);
         setSuccess("Bank tie-up removed successfully");
@@ -193,7 +171,7 @@ export default function BankTieUpSettings() {
     if (user) {
       fetchBankTieUps();
     } else {
-      navigate("/login");
+      navigate("/dealer/login");
     }
   }, [user, navigate, fetchBankTieUps]);
 
@@ -434,7 +412,7 @@ export default function BankTieUpSettings() {
                           disabled={addingIfsc === bank.ifscCode}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50 whitespace-nowrap flex-shrink-0"
                         >
-                          {addingIfsc === bank.ifscCode ? "Adding..." : "Add"}
+                          {addingIfsc === bank.ifscCode ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Add"}
                         </button>
                       </div>
                     </div>
@@ -481,7 +459,7 @@ export default function BankTieUpSettings() {
                 disabled={removingIfsc === confirmRemoveIfsc}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                {removingIfsc === confirmRemoveIfsc ? "Removing..." : "Remove"}
+                {removingIfsc === confirmRemoveIfsc ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Remove"}
               </button>
             </div>
           </div>

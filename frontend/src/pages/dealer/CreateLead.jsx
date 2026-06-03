@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import axios from "axios";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { api } from "../../services/api.js";
 
 /**
  * Lead Creation Component with Dynamic Bank Branch Selection
@@ -17,8 +17,7 @@ import axios from "axios";
  */
 export default function CreateDealerLead() {
   const navigate = useNavigate();
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const { user } = useAuth();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -57,14 +56,7 @@ export default function CreateDealerLead() {
   const fetchBankTieUps = useCallback(async () => {
     try {
       setLoadingBanks(true);
-      const token = await user.getIdToken();
-
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/api/dealer/bank-tieups`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get("/dealer/bank-tieups");
 
       setBanks(response.data.currentTieUps || []);
     } catch (err) {
@@ -81,14 +73,7 @@ export default function CreateDealerLead() {
   const fetchSalespersons = useCallback(async () => {
     try {
       setLoadingSalespersons(true);
-      const token = await user.getIdToken();
-
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/api/dealer/salespersons`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get("/dealer/salespersons");
 
       setSalespersons(response.data.salespersons || []);
     } catch (err) {
@@ -105,15 +90,7 @@ export default function CreateDealerLead() {
   const fetchCars = useCallback(async () => {
     try {
       setLoadingCars(true);
-      const token = await user.getIdToken();
-
-      // This endpoint should be available from existing catalog
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/api/catalog/cars`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.get("/catalog/cars");
 
       setCars(response.data.brands || []);
     } catch (err) {
@@ -135,14 +112,7 @@ export default function CreateDealerLead() {
       }
 
       try {
-        const token = await user.getIdToken();
-
-        const response = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/api/catalog/cars/${brand}/models`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const response = await api.get(`/catalog/cars/${brand}/models`);
 
         setModels(response.data.models || []);
       } catch (err) {
@@ -245,7 +215,6 @@ export default function CreateDealerLead() {
 
     try {
       setLoading(true);
-      const token = await user.getIdToken();
 
       // Find selected bank details
       const selectedBank = banks.find((b) => b.ifscCode === formData.ifscCode);
@@ -262,13 +231,7 @@ export default function CreateDealerLead() {
         loanAmount: parseFloat(formData.loanAmount),
       };
 
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/api/dealer/leads`,
-        payload,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const response = await api.post("/dealer/leads", payload);
 
       setSuccess(
         `Lead created successfully! Case ID: ${response.data.caseId}`

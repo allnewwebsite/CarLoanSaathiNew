@@ -273,6 +273,57 @@ async function createPendingGoogleAccount({ decoded, portal, reason }) {
   });
 }
 
+function lifecycleOverlay(base = {}, userRecord = {}) {
+  if (!userRecord?.role || userRecord.role !== base.role) return base;
+  return {
+    ...base,
+    firstLoginRequired: userRecord.firstLoginRequired === true,
+    passwordChangedAt: userRecord.passwordChangedAt || base.passwordChangedAt || null,
+    passwordExpiresAt: userRecord.passwordExpiresAt || base.passwordExpiresAt || null,
+    passwordExpired: userRecord.passwordExpired === true,
+    passwordDaysRemaining: Number.isFinite(Number(userRecord.passwordDaysRemaining)) ? Number(userRecord.passwordDaysRemaining) : base.passwordDaysRemaining,
+    accountStatus: userRecord.accountStatus || base.accountStatus,
+    active: userRecord.active !== false && base.active !== false,
+    approved: userRecord.approved === true || base.approved === true,
+    accountApproved: userRecord.accountApproved !== false && base.accountApproved !== false,
+    accountActive: userRecord.accountActive !== false && base.accountActive !== false,
+  };
+}
+
+async function accountWithUserLifecycle(email, account) {
+  if (!account) return null;
+  const userRecord = await getRecord("users", email).catch(() => null);
+  return userRecord ? lifecycleOverlay(account, userRecord) : account;
+}
+
+function emailMatchesRecord(record = {}, email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  return [
+    record.id,
+    record.email,
+    record.officialEmail,
+    record.loginEmail,
+    record.dealershipEmail,
+  ].some((value) => String(value || "").trim().toLowerCase() === normalized);
+}
+
+async function updatePasswordLifecycleRecords(email, role, patch) {
+  const linkedCollections = role === "loan-executive"
+    ? ["loanExecutives"]
+    : role === "finance-desk"
+      ? ["financeDesks", "dealerStaff"]
+      : ["dealershipManagers", "dealerStaff"];
+
+  await Promise.all(linkedCollections.map(async (collection) => {
+    const records = await listRecords(collection).catch(() => []);
+    const matches = records.filter((record) => emailMatchesRecord(record, email));
+    await Promise.all(matches.map((record) => upsertRecord(collection, record.id || email, {
+      ...record,
+      ...patch,
+    }).catch(() => null)));
+  }));
+}
+
 async function accountForEmail(email, portal) {
   const adminEmail = superAdminEmail();
   if (portal === "admin" || email === adminEmail) {
@@ -408,7 +459,7 @@ async function accountForEmail(email, portal) {
       firstLoginRequired: executive.firstLoginRequired === true,
     });
   }
-  if (candidates.length) return candidates[0];
+  if (candidates.length) return accountWithUserLifecycle(email, candidates[0]);
 
   const users = await listRecords("users");
   const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item));
@@ -1090,38 +1141,27 @@ export async function completeForcedPasswordChange(req, res, next) {
     if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
-    await upsertRecord("users", email, {
-      ...account,
+    const lifecyclePatch = {
       firstLoginRequired: false,
+      forcePasswordReset: false,
+      temporaryPasswordRequired: false,
+      firstLoginCompleted: true,
       passwordChangedAt: now,
       passwordExpiresAt,
+      passwordExpired: false,
+      passwordDaysRemaining: PASSWORD_VALID_DAYS,
+    };
+    await upsertRecord("users", email, {
+      ...account,
+      ...lifecyclePatch,
     });
-    const linkedCollections = account.role === "loan-executive"
-      ? ["loanExecutives"]
-      : account.role === "finance-desk"
-        ? ["financeDesks", "dealerStaff"]
-        : ["dealershipManagers", "dealerStaff"];
-    for (const collection of linkedCollections) {
-      const record = await getRecord(collection, email).catch(() => null);
-      if (record) {
-        await upsertRecord(collection, email, {
-          ...record,
-          firstLoginRequired: false,
-          passwordChangedAt: now,
-          passwordExpiresAt,
-        });
-      }
-    }
+    await updatePasswordLifecycleRecords(email, account.role, lifecyclePatch);
     await writeLoginActivity({ email, role: account.role, status: "password-changed", req });
     const user = {
       ...account,
       uid: account.uid || account.email || email,
       email,
-      firstLoginRequired: false,
-      passwordChangedAt: now,
-      passwordExpiresAt,
-      passwordExpired: false,
-      passwordDaysRemaining: PASSWORD_VALID_DAYS,
+      ...lifecyclePatch,
       sessionId: req.user?.sessionId || null,
     };
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });

@@ -133,6 +133,114 @@ function partnerCanAccessLead(partner, lead) {
   );
 }
 
+function leadBranchValues(lead = {}) {
+  return [
+    lead.branchId,
+    lead.bankBranchId,
+    lead.selectedBankBranchId,
+    lead.bankBranchCity,
+    lead.branchCity,
+    lead.routingCity,
+    lead.ifscCode,
+    lead.bankIfsc,
+    lead.assignedBankIfsc,
+  ];
+}
+
+function partnerBranchValues(partner = {}) {
+  return [
+    partner.branchId,
+    partner.bankBranchId,
+    partner.bankPartnerId,
+    partner.partnerId,
+    partner.id,
+    partner.ifsc,
+    partner.ifscCode,
+    partner.bankIfsc,
+    partner.bankBranchLocation,
+    partner.branchLocation,
+    partner.branchCity,
+    partner.city,
+  ];
+}
+
+function documentBelongsToLead(document, lead) {
+  return anyMatch(
+    [document.leadId, document.caseId],
+    [lead.id, lead.caseId],
+  );
+}
+
+function documentBelongsToBank(document, lead, partner) {
+  return anyMatch(
+    [
+      document.partnerId,
+      document.bankId,
+      document.bankPartnerId,
+      document.assignedBankId,
+      document.branchId,
+      document.bankBranchId,
+      document.ifscCode,
+      document.bankIfsc,
+    ],
+    [
+      partner.id,
+      partner.bankId,
+      partner.bankPartnerId,
+      partner.partnerId,
+      partner.branchId,
+      partner.ifsc,
+      partner.ifscCode,
+      partner.bankIfsc,
+      lead.bankId,
+      lead.assignedBankId,
+      lead.assignedPartnerId,
+      lead.branchId,
+      lead.bankBranchId,
+      lead.selectedBankBranchId,
+      lead.ifscCode,
+      lead.bankIfsc,
+      lead.assignedBankIfsc,
+    ],
+  );
+}
+
+function documentBelongsToBranch(document, lead, partner) {
+  const partnerBranches = partnerBranchValues(partner);
+  const leadBranchMatch = anyMatch(leadBranchValues(lead), partnerBranches);
+  if (!leadBranchMatch) return false;
+
+  const documentBranches = [
+    document.branchId,
+    document.bankBranchId,
+    document.selectedBankBranchId,
+    document.bankBranchCity,
+    document.branchCity,
+    document.routingCity,
+    document.ifscCode,
+    document.bankIfsc,
+  ].filter(Boolean);
+  return !documentBranches.length || anyMatch(documentBranches, partnerBranches);
+}
+
+function documentBelongsToExecutive(document, lead, partner) {
+  if (partner.roleType !== "loan-executive") return true;
+  const executiveTargets = [partner.id, partner.email, partner.mobile, partner.name, partner.fullName];
+  const leadExecutiveMatch = anyMatch(
+    [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
+    executiveTargets,
+  );
+  if (!leadExecutiveMatch) return false;
+
+  const documentExecutiveValues = [
+    document.assignedExecutiveId,
+    document.assignedExecutiveEmail,
+    document.assignedExecutiveMobile,
+    document.assignedExecutiveName,
+  ].filter(Boolean);
+  return !documentExecutiveValues.length || anyMatch(documentExecutiveValues, executiveTargets);
+}
+
 function bankIdentity(partner) {
   const bankId = partner.bankPartnerId || partner.partnerId || partner.bankId || partner.id || partner.email || partner.bankName;
   return {
@@ -1230,7 +1338,30 @@ export async function deleteBankLeadDocument(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
     const document = await getRecord("bankDocuments", req.params.documentId);
-    if (!document || document.partnerId !== partner.id) return res.status(404).json({ message: "Document not found" });
+    if (
+      !document
+      || !documentBelongsToLead(document, lead)
+      || !documentBelongsToBank(document, lead, partner)
+      || !documentBelongsToBranch(document, lead, partner)
+      || !documentBelongsToExecutive(document, lead, partner)
+    ) {
+      recordOperationalEvent({
+        type: "bank_document_delete_blocked",
+        severity: ALERT_SEVERITY.HIGH,
+        component: "bank-rbac",
+        message: "Blocked bank document deletion outside lead ownership scope",
+        entityId: req.params.documentId,
+        requestId: req.requestId,
+        meta: {
+          actor: partner.email || partner.id,
+          roleType: partner.roleType,
+          leadId: lead.id,
+          documentLeadId: document?.leadId || null,
+          documentPartnerId: document?.partnerId || null,
+        },
+      }).catch(() => {});
+      return res.status(404).json({ message: "Document not found" });
+    }
     await deleteLeadDocument(document.storagePath);
     await deleteRecord("bankDocuments", document.id);
     await addTimelineEvent({ leadId: lead.id, eventType: TIMELINE_EVENTS.DOCUMENT_REPLACED, title: "Document Removed", description: document.documentType, actorName: partner.email || partner.name || partner.fullName, actorRole: req.user?.role || "bank", metadata: { documentType: document.documentType } });

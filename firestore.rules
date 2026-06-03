@@ -65,19 +65,15 @@ service cloud.firestore {
     }
 
     function sameBranch(data) {
-      return branchId() == null
-        || (
-          data.branchId == null
-          && data.bankBranchCity == null
-          && data.branchCity == null
-          && data.routingCity == null
-          && data.city == null
-        )
-        || data.branchId == branchId()
+      return approved()
+        && branchId() != null
+        && (
+          data.branchId == branchId()
         || data.bankBranchCity == branchId()
         || data.branchCity == branchId()
         || data.routingCity == branchId()
-        || data.city == branchId();
+          || data.city == branchId()
+        );
     }
 
     function assignedExecutive(data) {

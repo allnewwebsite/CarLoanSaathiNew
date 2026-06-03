@@ -162,10 +162,11 @@ export async function warmupPortalRoute(role) {
 
 api.interceptors.request.use(async (config) => {
   let token = getStoredToken();
-  if (token && !authEndpoint(config.url) && shouldRefreshToken(token)) {
+  const isAuthEndpoint = authEndpoint(config.url);
+  if (token && !isAuthEndpoint && shouldRefreshToken(token)) {
     token = await refreshSessionToken().catch(() => token);
   }
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !isAuthEndpoint) config.headers.Authorization = `Bearer ${token}`;
   if (appCheck) {
     try {
       const appCheckToken = await getToken(appCheck, false);

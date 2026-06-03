@@ -230,14 +230,22 @@ export function AuthProvider({ children }) {
   };
 
   const changeCurrentPassword = async ({ currentPassword, newPassword }) => {
-    const currentUser = auth.currentUser;
-    if (!currentUser?.email) {
+    const expectedEmail = String(user?.email || getStoredUser()?.email || "").trim().toLowerCase();
+    if (!expectedEmail) {
       const error = new Error("Login again before changing your password.");
       error.code = "AUTH_REQUIRED";
       throw error;
     }
-    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
-    await reauthenticateWithCredential(currentUser, credential);
+    let currentUser = auth.currentUser;
+    const currentEmail = String(currentUser?.email || "").trim().toLowerCase();
+    if (!currentUser?.email || currentEmail !== expectedEmail) {
+      await setPersistence(auth, browserSessionPersistence);
+      const credential = await signInWithEmailAndPassword(auth, expectedEmail, currentPassword);
+      currentUser = credential.user;
+    } else {
+      const credential = EmailAuthProvider.credential(expectedEmail, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+    }
     await updatePassword(currentUser, newPassword);
     await currentUser.getIdToken(true);
     const response = await api.post("/auth/password/change-complete");
