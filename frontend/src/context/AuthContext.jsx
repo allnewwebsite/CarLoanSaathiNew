@@ -135,36 +135,15 @@ export function AuthProvider({ children }) {
 
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
-    let credential;
-    try {
-      await setPersistence(auth, browserSessionPersistence);
-      credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-    } catch (error) {
-      const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
-      if (lookup?.data) error.accountLookup = lookup.data;
-      const lookupCode = lookup?.data?.code || "";
-      const shouldRecordFailure = !lookupCode || lookupCode === "ACCOUNT_FOUND" || lookupCode === "ACCOUNT_LOCKED";
-      if (lookupCode === "ACCOUNT_LOCKED") throw error;
-      if (shouldRecordFailure) {
-        const failure = await api.post("/auth/login-failure", { email: normalizedEmail, reason: error.code || "firebase-auth-failed" }).catch(() => null);
-        if (failure?.data?.locked === true) error.accountLookup = failure.data;
-      }
-      throw error;
-    }
-    await credential.user.reload();
-    if (credential.user.emailVerified !== true) {
-      const error = new Error("Please verify your email address before logging in.");
-      error.code = "EMAIL_NOT_VERIFIED";
-      setFirebaseUser(credential.user);
-      throw error;
-    }
-    setFirebaseUser(credential.user);
-    const idToken = await credential.user.getIdToken(true);
     let response;
     try {
-      response = await api.post("/auth/login", { idToken, portal, targetPortal });
+      response = await api.post("/auth/login", { email: normalizedEmail, password, portal, targetPortal });
     } catch (error) {
-      await clearLocalSession({ signOutFirebase: true, reason: "login-backend-rejected" });
+      if (error?.response?.status === 401 || error?.response?.status === 404 || error?.response?.status === 403) {
+        const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
+        if (lookup?.data) error.accountLookup = lookup.data;
+      }
+      await clearLocalSession({ signOutFirebase: true, reason: "login-rejected" });
       throw error;
     }
     const session = sessionFromResponse(response);

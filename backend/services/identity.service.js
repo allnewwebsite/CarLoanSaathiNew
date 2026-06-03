@@ -1,4 +1,4 @@
-import { getRecord, listRecords, upsertRecord } from "./firestore.service.js";
+import { findRecordsByField, getRecord, upsertRecord } from "./firestore.service.js";
 
 const ACTIVE_DENY_STATUSES = new Set(["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed"]);
 
@@ -50,10 +50,15 @@ export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
   if (normalizedEmail) {
     const byEmail = await getRecord("users", normalizedEmail).catch(() => null);
     if (byEmail) candidates.push(byEmail);
+
+    const emailMatches = await findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []);
+    candidates.push(...emailMatches);
   }
-  const users = await listRecords("users").catch(() => []);
-  candidates.push(...users.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
-  return uniqueRecords(candidates);
+  if (normalizedUid) {
+    const uidMatches = await findRecordsByField("users", "uid", normalizedUid, 5).catch(() => []);
+    candidates.push(...uidMatches);
+  }
+  return uniqueRecords(candidates.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
 }
 
 export async function resolveCanonicalIdentity({ uid = "", email = "", portal = "" } = {}) {

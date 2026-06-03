@@ -155,6 +155,14 @@ export async function listRecords(collection) {
   return records;
 }
 
+export async function findRecordsByField(collection, field, value, limit = 10) {
+  if (!field || value === undefined || value === null) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 25);
+  if (!firestore) return (memoryStore[collection] || []).filter((item) => item[field] === value).slice(0, safeLimit);
+  const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
+  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
 function parseCursor(cursor) {
   if (!cursor) return null;
   try {
