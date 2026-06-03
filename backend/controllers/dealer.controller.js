@@ -96,15 +96,33 @@ function staffListRow(item) {
     id: item.id || item.email || item.officialEmail,
     fullName: item.fullName || item.name || item.headName || item.email,
     email: item.email || item.officialEmail,
-    mobile: item.mobile || "",
-    employeeId: item.employeeId || item.jobId || "",
+    mobile: item.mobile || item.headMobile || item.officialMobile || "",
+    employeeId: item.employeeId || item.jobId || item.employeeCode || "",
     role: item.role,
     roleLabel: item.roleLabel || staffRoleLabel(item.role, item.role),
-    branch: item.branch || item.city || item.location || "",
+    branch: item.branch || item.city || item.location || item.dealershipCity || "",
     city: item.city || item.branch || "",
     status: item.active === false || item.accountActive === false ? "inactive" : item.status || item.accountStatus || "active",
     active: item.active !== false && item.accountActive !== false,
   };
+}
+
+function mergeStaffRows(existing = {}, incoming = {}) {
+  const merged = { ...existing };
+  for (const [key, value] of Object.entries(incoming)) {
+    const current = merged[key];
+    const hasCurrent = current !== undefined && current !== null && current !== "";
+    const hasIncoming = value !== undefined && value !== null && value !== "";
+    if (!hasCurrent && hasIncoming) merged[key] = value;
+  }
+  if (incoming.active === false) {
+    merged.active = false;
+    merged.status = incoming.status || "inactive";
+  } else if (existing.active !== false && incoming.active === true) {
+    merged.active = true;
+    if (!merged.status || merged.status === "inactive") merged.status = incoming.status || "active";
+  }
+  return merged;
 }
 
 function runDealerLeadSideEffects(label, tasks = []) {
@@ -910,7 +928,7 @@ export async function getDealerSalespersons(req, res, next) {
 
 export async function getDealerStaff(req, res, next) {
   try {
-    const { dealershipEmail } = await financeDeskContext(req);
+    const { dealershipEmail, dealership } = await financeDeskContext(req);
     const [dealerStaff, financeDesks, dealershipManagers, users] = await Promise.all([
       listRecords("dealerStaff"),
       listRecords("financeDesks"),
@@ -924,7 +942,13 @@ export async function getDealerStaff(req, res, next) {
       if (item.dealershipId !== dealershipEmail && item.dealershipEmail !== dealershipEmail) return;
       const role = normalizeStaffRole(item.role);
       if (!role) return;
-      rows.set(email, { ...rows.get(email), ...staffListRow({ ...item, email, role }) });
+      rows.set(email, mergeStaffRows(rows.get(email), staffListRow({
+        ...item,
+        email,
+        role,
+        branch: item.branch || item.city || dealership.city || dealership.registeredCity || dealership.dealershipName,
+        city: item.city || dealership.city || dealership.registeredCity || "",
+      })));
     };
     dealerStaff.forEach(add);
     financeDesks.forEach(add);
