@@ -614,7 +614,34 @@ function firebasePasswordErrorPayload(code = "") {
   if (normalized === "TOO_MANY_ATTEMPTS_TRY_LATER") {
     return { status: 429, code: "auth/too-many-requests", message: "Too many attempts. Try again later." };
   }
+  if (normalized.includes("API_KEY_HTTP_REFERRER_BLOCKED") || normalized.includes("REFERER")) {
+    return { status: 502, code: "FIREBASE_AUTH_REFERER_BLOCKED", message: "Secure login service is not allowed for this domain." };
+  }
   return { status: 502, code: "FIREBASE_AUTH_FAILED", message: "Secure login service failed. Try again." };
+}
+
+function firebaseAuthReferers() {
+  const explicit = String(process.env.FIREBASE_AUTH_REFERER || "").trim().replace(/\/+$/, "");
+  const configuredOrigins = String(process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  const preferredOrigins = [
+    explicit,
+    "https://www.carloansaathi.com",
+    "https://carloansaathi.com",
+    ...configuredOrigins,
+  ];
+  return [...new Set(preferredOrigins.filter(Boolean))];
+}
+
+function isFirebaseRefererBlocked(data = {}) {
+  const message = String(data?.error?.message || "").toUpperCase();
+  const details = Array.isArray(data?.error?.details) ? data.error.details : [];
+  const reason = details
+    .map((detail) => String(detail?.reason || detail?.message || "").toUpperCase())
+    .find(Boolean) || "";
+  return message.includes("REFERER") || reason.includes("API_KEY_HTTP_REFERRER_BLOCKED");
 }
 
 async function signInWithFirebasePassword(email, password) {
@@ -626,38 +653,42 @@ async function signInWithFirebasePassword(email, password) {
     throw error;
   }
 
-  const firebaseReferer = String(process.env.FIREBASE_AUTH_REFERER || process.env.CLIENT_ORIGIN || "https://www.carloansaathi.com")
-    .split(",")[0]
-    .trim()
-    .replace(/\/+$/, "");
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Referer: firebaseReferer,
-    },
-    body: JSON.stringify({
-      email,
-      password,
-      returnSecureToken: true,
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const payload = firebasePasswordErrorPayload(data?.error?.message);
-    const error = new Error(payload.message);
-    error.status = payload.status;
-    error.code = payload.code;
-    error.firebaseCode = data?.error?.message || "";
-    throw error;
+  let lastError = null;
+  for (const firebaseReferer of firebaseAuthReferers()) {
+    const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Referer: firebaseReferer,
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        returnSecureToken: true,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      if (!data.idToken) {
+        const error = new Error("Firebase did not return a login token");
+        error.status = 502;
+        error.code = "FIREBASE_TOKEN_MISSING";
+        throw error;
+      }
+      return data.idToken;
+    }
+
+    const firebaseCode = data?.error?.details?.find((detail) => detail?.reason)?.reason || data?.error?.message || "";
+    const payload = firebasePasswordErrorPayload(firebaseCode);
+    lastError = new Error(payload.message);
+    lastError.status = payload.status;
+    lastError.code = payload.code;
+    lastError.firebaseCode = firebaseCode;
+    lastError.firebaseReferer = firebaseReferer;
+
+    if (!isFirebaseRefererBlocked(data)) break;
   }
-  if (!data.idToken) {
-    const error = new Error("Firebase did not return a login token");
-    error.status = 502;
-    error.code = "FIREBASE_TOKEN_MISSING";
-    throw error;
-  }
-  return data.idToken;
+  throw lastError;
 }
 
 export async function login(req, res, next) {
@@ -680,6 +711,13 @@ export async function login(req, res, next) {
           const result = await incrementFailedLogin(normalizedEmail, req, error.code || "firebase-auth-failed");
           if (result.locked) return res.status(423).json(accountLockedPayload({ lockedUntil: result.lockedUntil }));
         } else {
+          logWarn("Firebase password sign-in failed", {
+            requestId: req.requestId,
+            email: normalizedEmail,
+            code: error.code || "firebase-auth-failed",
+            firebaseCode: error.firebaseCode || "",
+            firebaseReferer: error.firebaseReferer || "",
+          });
           await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: error.code || "firebase-auth-failed", req });
         }
         return res.status(error.status || 500).json({ code: error.code, message: error.message });
