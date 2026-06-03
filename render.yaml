@@ -22,6 +22,8 @@ services:
         sync: false
       - key: FIREBASE_WEB_API_KEY
         sync: false
+      - key: FIREBASE_AUTH_REFERER
+        value: https://www.carloansaathi.com
       - key: FIREBASE_ACTION_CONTINUE_URL
         sync: false
       - key: SUPER_ADMIN_EMAIL

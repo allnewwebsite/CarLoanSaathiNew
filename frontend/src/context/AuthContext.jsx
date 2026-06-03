@@ -135,9 +135,29 @@ export function AuthProvider({ children }) {
 
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
+    let idToken = "";
+    try {
+      await setPersistence(auth, browserSessionPersistence);
+      const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      await credential.user.reload();
+      if (credential.user.emailVerified !== true) {
+        const error = new Error("Please verify your email address before logging in.");
+        error.code = "EMAIL_NOT_VERIFIED";
+        setFirebaseUser(credential.user);
+        throw error;
+      }
+      setFirebaseUser(credential.user);
+      idToken = await credential.user.getIdToken(true);
+    } catch (error) {
+      if (error.code === "EMAIL_NOT_VERIFIED") throw error;
+      idToken = "";
+    }
+
     let response;
     try {
-      response = await api.post("/auth/login", { email: normalizedEmail, password, portal, targetPortal });
+      response = await api.post("/auth/login", idToken
+        ? { idToken, portal, targetPortal }
+        : { email: normalizedEmail, password, portal, targetPortal });
     } catch (error) {
       if (error?.response?.status === 401 || error?.response?.status === 404 || error?.response?.status === 403) {
         const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);

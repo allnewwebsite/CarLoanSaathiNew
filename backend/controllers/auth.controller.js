@@ -626,9 +626,16 @@ async function signInWithFirebasePassword(email, password) {
     throw error;
   }
 
+  const firebaseReferer = String(process.env.FIREBASE_AUTH_REFERER || process.env.CLIENT_ORIGIN || "https://www.carloansaathi.com")
+    .split(",")[0]
+    .trim()
+    .replace(/\/+$/, "");
   const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Referer: firebaseReferer,
+    },
     body: JSON.stringify({
       email,
       password,
