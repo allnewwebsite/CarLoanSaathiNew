@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
@@ -307,7 +308,7 @@ export function GmLeadDetailPage() {
   }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading documents...</section>;
+  if (loading) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
 
   return (

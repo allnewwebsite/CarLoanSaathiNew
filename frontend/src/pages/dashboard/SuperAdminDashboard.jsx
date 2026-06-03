@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Building2, ClipboardCheck, Download, FileClock, Landmark, Search, Shield, Users } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -480,7 +481,7 @@ function SystemSettings({ data }) {
     const response = await api.patch("/admin/workflow/settings", next);
     setMessage(response.data.message || "Settings updated");
   };
-  if (!settings) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading settings...</section>;
+  if (!settings) return <DetailPageSkeleton cards={3} />;
   return (
     <section className="grid gap-4 lg:grid-cols-3">
       {message && <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 lg:col-span-3">{message}</div>}
@@ -514,7 +515,7 @@ export function SuperAdminLeadDetailPage() {
   const data = useAdminEcosystem();
   const lead = data.leads.find((item) => item.id === leadId || item.caseId === leadId);
   const documents = useMemo(() => [...(data.documents || []), ...(data.bankDocuments || [])].filter((item) => item.leadId === (lead?.id || leadId)), [data.bankDocuments, data.documents, lead, leadId]);
-  if (data.loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading lead...</section>;
+  if (data.loading) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   return (
     <section className="space-y-5">
@@ -546,7 +547,7 @@ export function SuperAdminDealershipDetailPage() {
   const dealer = data.pendingDealershipApprovals.find((item) => item.id === id)
     || data.onboardingRequests.find((item) => item.id === id)
     || data.dealerships.find((item) => item.id === id || item.loginEmail === id);
-  if (data.loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading dealership...</section>;
+  if (data.loading) return <DetailPageSkeleton />;
   if (!dealer) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Dealership not found.</section>;
   const email = dealer.loginEmail || dealer.id;
   const leads = data.leads.filter((lead) => [lead.dealerEmail, lead.dealershipEmail, lead.createdBy].includes(email));
@@ -609,7 +610,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
       setBusy(false);
     }
   };
-  if (data.loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading application...</section>;
+  if (data.loading) return <DetailPageSkeleton />;
   if (!item) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Application not found.</section>;
   const sections = type === "banks"
     ? [

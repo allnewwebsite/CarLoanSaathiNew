@@ -209,7 +209,7 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
             </div>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button onClick={beginRegistration} disabled={loading} className="inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-70">
-                {loading ? "Creating account..." : "Create Account"}
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Create Account"}
               </button>
               <a href="#benefits" className="inline-flex h-11 items-center justify-center rounded-md border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700">Explore Benefits</a>
             </div>
@@ -290,7 +290,7 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
             </div>
           </div>
           <button onClick={beginRegistration} disabled={loading} className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-6 text-sm font-medium text-white disabled:opacity-70">
-            {loading ? "Creating account..." : "Create Account"}
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Create Account"}
           </button>
         </section>
       </div>

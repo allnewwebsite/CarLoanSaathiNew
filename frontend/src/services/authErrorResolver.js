@@ -84,7 +84,7 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
 
   if (code === "auth/weak-password") return base("Password is too weak.");
   if (code === "auth/too-many-requests") return base("Too many attempts. Try again later.", { showForgotPassword: false });
-  if (code === "BACKEND_WARMUP_TIMEOUT") return base("Server is waking up. Please wait 30-60 seconds and try again.", { showForgotPassword: false });
+  if (code === "BACKEND_WARMUP_TIMEOUT") return base("Server is warming up. Try again shortly.", { showForgotPassword: false });
 
   if (code === "auth/requests-from-referer-are-blocked" || /referer.*blocked/i.test(message)) {
     return base("This website is blocked by Firebase API key restrictions. Add this domain in Google Cloud API key restrictions.", { showForgotPassword: false });

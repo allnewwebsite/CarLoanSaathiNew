@@ -99,7 +99,17 @@ export function LeadTimeline({ leadId, compact = false }) {
       </div>
 
       <div className="mt-5 space-y-0">
-        {loading && <p className="py-6 text-center text-sm text-slate-500">Loading timeline...</p>}
+        {loading && Array.from({ length: compact ? 3 : 5 }).map((_, index) => (
+          <div key={index} className="relative grid grid-cols-[2rem_1fr] gap-3 pb-5" aria-hidden="true">
+            {index !== (compact ? 2 : 4) && <span className="absolute left-4 top-8 h-full w-px bg-slate-200" />}
+            <span className="relative z-10 h-8 w-8 animate-pulse rounded-full bg-slate-200" />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
+              <div className="mt-3 h-3 w-5/6 animate-pulse rounded bg-slate-200/80" />
+              <div className="mt-4 h-3 w-1/2 animate-pulse rounded bg-slate-200/70" />
+            </div>
+          </div>
+        ))}
         {!loading && !events.length && <p className="py-6 text-center text-sm text-slate-500">No timeline events yet.</p>}
         {!loading && events.map((event, index) => {
           const Icon = iconByType[event.eventType] || Clock3;

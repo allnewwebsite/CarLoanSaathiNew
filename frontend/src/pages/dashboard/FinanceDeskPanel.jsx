@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
@@ -356,7 +357,7 @@ function StaffManagementScreen() {
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
-        <button disabled={busy} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create Employee</button>
+        <button disabled={busy} className="mt-4 inline-flex min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? <ButtonSpinner /> : "Create Employee"}</button>
       </form>
       <Table headers={["Employee Name", "Role", "Official Email", "Mobile Number", "Employee ID", "Branch", "Status", "Created Date", "Actions"]} rows={tableRows} loading={loading} />
     </section>
@@ -398,7 +399,7 @@ export function FinanceStaffDetailPage() {
     }
   };
 
-  if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading employee profile...</section>;
+  if (loading) return <DetailPageSkeleton />;
   if (!employee) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">{error || "Employee not found."}</section>;
 
   const profile = [
@@ -467,6 +468,24 @@ function bankKey(branch) {
 
 function branchLabel(branch) {
   return `${branch.bankName || "Bank"} - ${branch.branchName || "Branch"}${branch.ifscCode ? ` (${branch.ifscCode})` : ""}`;
+}
+
+function BranchListSkeleton({ rows = 6 }) {
+  return (
+    <div aria-hidden="true">
+      {Array.from({ length: rows }).map((_, rowIndex) => (
+        <div key={rowIndex} className="grid min-w-[900px] grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0">
+          <span className="h-4 w-4 animate-pulse rounded bg-slate-200" />
+          <span className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
+          <span className="h-4 w-3/4 animate-pulse rounded bg-slate-200/85" />
+          <span className="h-4 w-2/3 animate-pulse rounded bg-slate-200/85" />
+          <span className="h-4 w-1/2 animate-pulse rounded bg-slate-200/75" />
+          <span className="h-4 w-1/2 animate-pulse rounded bg-slate-200/75" />
+          <span className="h-4 w-20 animate-pulse rounded bg-slate-200/75" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function AddLeadOnlyScreen() {
@@ -568,8 +587,8 @@ function AddLeadOnlyScreen() {
           <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
           <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Tied-up Bank Branch" error={errors.branchId}>
-            <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
-              <option value="">{branchesLoading ? "Loading branches..." : "Select branch"}</option>
+            <select aria-invalid={Boolean(errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+              <option value="">Select branch</option>
               {branches.map((branch) => <option key={bankKey(branch)} value={bankKey(branch)}>{branchLabel(branch)}</option>)}
             </select>
             {!branchesLoading && branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Open Bank Tie-Ups from the sidebar first.</p> : null}
@@ -578,7 +597,7 @@ function AddLeadOnlyScreen() {
           <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
           <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
           <div className="flex items-end">
-            <button disabled={submitting} className="h-10 rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? "Creating..." : "Submit Lead"}</button>
+            <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>
         </div>
         <p className="mt-4 text-sm text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
@@ -676,8 +695,8 @@ function BankTieUpsScreen() {
               {states.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </div>
-          <button type="button" disabled={saving || loading} onClick={saveTieUps} className="h-10 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
-            {saving ? "Saving..." : "Save Tie-Ups"}
+          <button type="button" disabled={saving || loading} onClick={saveTieUps} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
+            {saving ? <ButtonSpinner /> : "Save Tie-Ups"}
           </button>
         </div>
         {error ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
@@ -694,7 +713,7 @@ function BankTieUpsScreen() {
           </div>
           <div className="overflow-x-auto">
             {loading ? (
-              <p className="px-3 py-6 text-sm text-slate-500">Loading banks...</p>
+              <BranchListSkeleton />
             ) : !availableBranches.length ? (
               <p className="px-3 py-6 text-sm text-slate-500">No approved banks are currently available.</p>
             ) : !filteredBranches.length ? (
@@ -882,8 +901,8 @@ function AddLeadScreen() {
             <h2 className="text-base font-semibold text-slate-900">Manage Bank Branch Tie-ups</h2>
             <p className="mt-2 text-sm text-slate-600">Select only approved bank branches that this dealership is tied up with. The selected branches are available when creating new leads.</p>
           </div>
-          <button type="button" disabled={tieUpSaving || tieUpLoading} onClick={saveTieUps} className="h-11 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
-            {tieUpSaving ? "Saving..." : "Save Tie-ups"}
+          <button type="button" disabled={tieUpSaving || tieUpLoading} onClick={saveTieUps} className="inline-flex h-11 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">
+            {tieUpSaving ? <ButtonSpinner /> : "Save Tie-ups"}
           </button>
         </div>
         {tieUpError ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{tieUpError}</p> : null}
@@ -904,7 +923,7 @@ function AddLeadScreen() {
         </div>
         <div className="mt-4 grid gap-3">
           {tieUpLoading ? (
-            <p className="text-sm text-slate-500">Loading branch options...</p>
+            <div className="space-y-3" aria-hidden="true">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-11 animate-pulse rounded-lg border border-slate-200 bg-white" />)}</div>
           ) : filteredBranches.length ? (
             filteredBranches.map((branch) => {
               const branchKey = branch.ifscCode || branch.id;
@@ -939,7 +958,7 @@ function AddLeadScreen() {
           <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
           <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
           <div className="flex items-end">
-            <button disabled={submitting} className="h-10 rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? "Creating..." : "Submit Lead"}</button>
+            <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>
         </div>
         <p className="mt-4 text-sm text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
@@ -1010,7 +1029,7 @@ function SalespersonManagementScreen() {
           <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => setErrors(validate(form))} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
           <Field label="Job ID" error={errors.jobId}><input aria-invalid={Boolean(errors.jobId)} className="field mt-1.5" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Mail ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
-          <button disabled={saving} className="h-10 rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? "Saving..." : "Add Salesperson"}</button>
+          <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Salesperson"}</button>
         </div>
       </form>
       <div className="space-y-4">
@@ -1128,7 +1147,7 @@ export function FinanceLeadDetailPage() {
   }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <section className="card p-5 text-sm text-slate-500">Loading lead...</section>;
+  if (loading) return <DetailPageSkeleton />;
   if (!lead) return <section className="card p-5 text-sm text-slate-500">Lead not found.</section>;
 
   return (

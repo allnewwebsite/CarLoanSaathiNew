@@ -303,7 +303,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
               <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
               <input type="password" placeholder="Password" className="field h-11 rounded-md" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
             </div>
-            <button disabled={loading} onClick={startEmailAccount} className="mt-6 inline-flex h-11 w-fit items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-70">{loading ? "Creating account..." : "Create Account"}</button>
+            <button disabled={loading} onClick={startEmailAccount} className="mt-6 inline-flex h-11 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-70">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Create Account"}</button>
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Onboarding Workflow</p>

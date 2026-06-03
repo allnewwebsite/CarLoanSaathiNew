@@ -161,12 +161,12 @@ export function OperationalTable({
             </div>
           )}
 
-          {loading && hasRows && <div className="px-3 py-2 text-left text-sm font-medium text-slate-500">Updating records…</div>}
+          {loading && hasRows && <TableSkeletonRows headers={headers} rows={3} gridTemplateColumns={gridTemplateColumns} />}
         </div>
         {hasRows ? <MobileRows headers={headers} rows={rows} /> : null}
         {loading && !hasRows ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
-        {loading && hasRows ? <div className="px-3 py-2 text-sm font-medium text-slate-500 md:hidden">Updating records…</div> : null}
+        {loading && hasRows ? <MobileSkeletonRows rows={2} /> : null}
       </div>
       {onPage ? (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">
@@ -178,3 +178,4 @@ export function OperationalTable({
     </section>
   );
 }
+

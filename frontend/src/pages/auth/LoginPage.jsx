@@ -292,7 +292,7 @@ export function LoginPage({ portal = "dealer" }) {
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
               </button>
               <button type="button" disabled={resetLoading} onClick={resetPassword} className="flex w-full justify-center text-xs font-semibold text-[#0d47a1] disabled:opacity-60">
-                {resetLoading ? "Sending password reset link..." : "Forgot Password?"}
+                {resetLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Forgot Password?"}
               </button>
             </form>
 

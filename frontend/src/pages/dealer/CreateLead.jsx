@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import axios from "axios";
 
 /**
@@ -620,9 +621,9 @@ export default function CreateDealerLead() {
             <button
               type="submit"
               disabled={loading || banks.length === 0 || salespersons.length === 0}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+              className="inline-flex min-w-32 items-center justify-center rounded-lg bg-blue-600 px-6 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "Creating..." : "Create Lead"}
+              {loading ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : "Create Lead"}
             </button>
           </div>
         </form>

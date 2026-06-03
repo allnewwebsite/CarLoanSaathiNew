@@ -1,12 +1,19 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { ROLES, dashboardPathForRole, isKnownRole, loginPathForRole, passwordPathForRole, requiresPasswordChange } from "../auth/roleSystem.js";
+import { DetailPageSkeleton } from "../components/ui/Loading.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   const fallbackLogin = loginPath || loginPathForRole(user?.role);
-  if (loading) return <div className="min-h-screen bg-slate-50" />;
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <DetailPageSkeleton />
+      </main>
+    );
+  }
   if (!user) return <Navigate to={fallbackLogin || "/dealer/login"} replace state={{ from: location }} />;
   if (!isKnownRole(user.role)) return <Navigate to={loginPathForRole(user.role)} replace />;
   if ([ROLES.FINANCE_DESK, ROLES.GM_SM].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {

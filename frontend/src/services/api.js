@@ -79,7 +79,7 @@ export async function ensureApiReady({ onStatus, maxWaitMs = 65000 } = {}) {
   while (Date.now() - started < maxWaitMs) {
     attempt += 1;
     try {
-      onStatus?.(attempt === 1 ? "Checking secure login service..." : "Server is waking up. Please wait 30-60 seconds.");
+      onStatus?.(attempt === 1 ? "Checking secure login service." : "Server is warming up. Try again shortly.");
       const response = await axios.get(`${apiBaseUrl()}/health`, {
         timeout: attempt === 1 ? 6000 : 10000,
         headers: { "X-CLS-Warmup": "true" },
@@ -90,7 +90,7 @@ export async function ensureApiReady({ onStatus, maxWaitMs = 65000 } = {}) {
     }
     await sleep(Math.min(2000 + attempt * 500, 5000));
   }
-  const error = new Error("Server is waking up. Please wait 30-60 seconds and try again.");
+  const error = new Error("Server is warming up. Try again shortly.");
   error.code = "BACKEND_WARMUP_TIMEOUT";
   throw error;
 }

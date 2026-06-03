@@ -23,8 +23,6 @@ export function LoginActivityPage() {
     return () => { active = false; };
   }, []);
 
-  if (loading) return <section className="card p-5 text-sm text-slate-500">Loading security activity...</section>;
-
   return (
     <section className="space-y-5">
       <div>
@@ -35,13 +33,13 @@ export function LoginActivityPage() {
         title="Active and Recent Sessions"
         headers={["Login Time", "Device", "Browser", "IP", "Last Active", "Status"]}
         rows={payload.sessions.map((session) => ({ key: session.id, cells: [dateTime(session.loginAt), display(session.device), display(session.browser), display(session.ipAddress), dateTime(session.lastSeenAt), session.revoked ? "Revoked" : "Active"] }))}
-        loading={false}
+        loading={loading}
       />
       <OperationalTable
         title="Security Events"
         headers={["Time", "Status", "Reason", "Role", "IP", "User Agent"]}
         rows={payload.activities.map((event) => ({ key: event.id, cells: [dateTime(event.createdAt), display(event.status), display(event.reason), display(event.role), display(event.ipAddress), display(event.userAgent)] }))}
-        loading={false}
+        loading={loading}
       />
     </section>
   );
