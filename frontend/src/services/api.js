@@ -89,9 +89,20 @@ function currentLoginPath() {
   return "";
 }
 
+function loginPathForCurrentPortal(fallback = "/finance/login") {
+  if (typeof window === "undefined") return fallback;
+  const path = window.location.pathname || "";
+  if (path.startsWith("/bank-manager") || path.startsWith("/bank")) return "/bank/login";
+  if (path.startsWith("/loan-executive") || path.startsWith("/executive")) return "/executive/login";
+  if (path.startsWith("/admin") || path.startsWith("/super-admin")) return "/admin/login";
+  if (path.startsWith("/dealer/login")) return "/dealer/login";
+  if (path.startsWith("/dealer") || path.startsWith("/finance") || path.startsWith("/gm")) return "/finance/login";
+  return fallback;
+}
+
 function redirectToLoginForRole(role, fallback = "/finance/login") {
   if (typeof window === "undefined" || currentLoginPath()) return;
-  const target = loginPathForRole(role, fallback);
+  const target = loginPathForRole(role, fallback || loginPathForCurrentPortal());
   if (window.location.pathname !== target) window.location.assign(target);
 }
 
@@ -227,7 +238,7 @@ api.interceptors.response.use(
       publishAuthEvent("logout", { reason: error.response?.data?.code || "session-refresh-failed" });
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
-        redirectToLoginForRole(stored?.role);
+        redirectToLoginForRole(stored?.role, loginPathForCurrentPortal());
       }
     } else if (error.response?.status === 403 && error.response?.data?.code === "PASSWORD_CHANGE_REQUIRED") {
       if (typeof window !== "undefined" && error.response.data.redirectTo && window.location.pathname !== error.response.data.redirectTo) {
@@ -251,7 +262,7 @@ api.interceptors.response.use(
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
         publishAuthEvent("logout", { reason: error.response?.data?.code });
-        redirectToLoginForRole(stored?.role, error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank/login" : "/finance/login");
+        redirectToLoginForRole(stored?.role, error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank/login" : loginPathForCurrentPortal());
       }
     }
     return Promise.reject(error);

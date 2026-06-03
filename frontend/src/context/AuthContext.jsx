@@ -123,28 +123,12 @@ export function AuthProvider({ children }) {
     if (broadcast) publishAuthEvent("logout", { reason });
   };
 
-  const restoreSessionFromFirebase = async (currentUser = auth.currentUser, { silent = true } = {}) => {
-    if (!currentUser) return null;
-    setSessionChecking(true);
+  const detachFirebaseCredentialSession = async () => {
+    setFirebaseUser(null);
     try {
-      await currentUser.reload();
-      if (currentUser.emailVerified !== true) {
-        setAuthStatus(AUTH_STATES.UNAUTHORIZED);
-        return null;
-      }
-      const idToken = await currentUser.getIdToken(true);
-      const response = await api.post("/auth/session/restore", { idToken });
-      const session = sessionFromResponse(response);
-      applySession(session, response.data.token);
-      warmupSessionPortal(session);
-      return session;
-    } catch (error) {
-      setAuthStatus(AUTH_STATES.FAILED);
-      await clearLocalSession({ signOutFirebase: true, reason: "restore-failed" });
-      if (!silent) throw error;
-      return null;
-    } finally {
-      setSessionChecking(false);
+      if (auth.currentUser) await signOut(auth);
+    } catch {
+      // Backend JWT session remains the source of truth after login.
     }
   };
 
@@ -158,7 +142,6 @@ export function AuthProvider({ children }) {
         setIsAuthenticated(false);
         setAuthStatus(AUTH_STATES.UNAUTHORIZED);
       }
-      if (currentUser && !token) restoreSessionFromFirebase(currentUser);
     });
     return unsubscribe;
   }, []);
@@ -202,6 +185,7 @@ export function AuthProvider({ children }) {
     const session = sessionFromResponse(response);
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token);
+    await detachFirebaseCredentialSession();
     await warmupSessionPortal(session);
     return session;
   };
@@ -252,6 +236,7 @@ export function AuthProvider({ children }) {
     if (response.data?.token && response.data?.user) {
       const session = sessionFromResponse(response);
       applySession(session, response.data.token);
+      await detachFirebaseCredentialSession();
       return session;
     }
     const refreshed = await validateSession({ silent: false, showLoading: false });
@@ -261,7 +246,6 @@ export function AuthProvider({ children }) {
   const validateSession = async ({ silent = true, showLoading = false } = {}) => {
     const token = getStoredToken();
     if (!token) {
-      if (auth.currentUser) return restoreSessionFromFirebase(auth.currentUser, { silent });
       setSessionChecking(false);
       setAuthStatus(AUTH_STATES.UNAUTHORIZED);
       return null;
@@ -274,11 +258,7 @@ export function AuthProvider({ children }) {
       warmupSessionPortal(session);
       return session;
     } catch (error) {
-      if (auth.currentUser) {
-        const restored = await restoreSessionFromFirebase(auth.currentUser, { silent: true });
-        if (restored) return restored;
-      }
-      await clearLocalSession({ signOutFirebase: true, reason: "session-invalid" });
+      await clearLocalSession({ signOutFirebase: false, reason: "session-invalid" });
       if (!silent) throw error;
       return null;
     } finally {
@@ -330,7 +310,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => subscribeAuthEvents((event) => {
     if (event?.type !== "logout") return;
-    clearLocalSession({ signOutFirebase: true, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
+    clearLocalSession({ signOutFirebase: false, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
   }), []);
 
   const createRegistrationAccount = async ({ email, password }) => {
@@ -458,7 +438,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Local cleanup must still happen even if the log request fails.
     }
-    await clearLocalSession({ reason: "manual-logout" });
+    await clearLocalSession({ signOutFirebase: false, reason: "manual-logout" });
   };
 
   const value = useMemo(() => ({
