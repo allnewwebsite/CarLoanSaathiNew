@@ -66,12 +66,24 @@ export function getStoredToken() {
   const scope = scopeFromPath();
   const scoped = sessionStorage.getItem(scopedKey(TOKEN_KEY, scope));
   if (scoped) return scoped;
+  const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
+  if (activeScope && activeScope !== scope) {
+    const activeScoped = sessionStorage.getItem(scopedKey(TOKEN_KEY, activeScope));
+    if (activeScoped) return activeScoped;
+  }
   return legacyUserForScope(scope) ? sessionStorage.getItem(TOKEN_KEY) : null;
 }
 
 export function getStoredUser() {
   const scope = scopeFromPath();
-  return parseJson(sessionStorage.getItem(scopedKey(USER_KEY, scope))) || legacyUserForScope(scope);
+  const scoped = parseJson(sessionStorage.getItem(scopedKey(USER_KEY, scope)));
+  if (scoped) return scoped;
+  const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
+  if (activeScope && activeScope !== scope) {
+    const activeScoped = parseJson(sessionStorage.getItem(scopedKey(USER_KEY, activeScope)));
+    if (activeScoped) return activeScoped;
+  }
+  return legacyUserForScope(scope);
 }
 
 export function storeAuthSession(session, token) {
@@ -90,21 +102,28 @@ export function storeAuthSession(session, token) {
 
 export function updateStoredToken(token) {
   if (!token) return;
-  const scope = scopeFromRole(getStoredUser()?.role) || scopeFromPath();
+  const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
+  const scope = scopeFromRole(getStoredUser()?.role) || activeScope || scopeFromPath();
   sessionStorage.setItem(scopedKey(TOKEN_KEY, scope), token);
   localStorage.removeItem(TOKEN_KEY);
 }
 
 export function clearAuthStorage() {
   const scope = scopeFromPath();
+  const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
   sessionStorage.removeItem(scopedKey(TOKEN_KEY, scope));
   sessionStorage.removeItem(scopedKey(USER_KEY, scope));
   sessionStorage.removeItem(scopedKey(PERSISTENCE_KEY, scope));
+  if (activeScope && activeScope !== scope) {
+    sessionStorage.removeItem(scopedKey(TOKEN_KEY, activeScope));
+    sessionStorage.removeItem(scopedKey(USER_KEY, activeScope));
+    sessionStorage.removeItem(scopedKey(PERSISTENCE_KEY, activeScope));
+  }
   sessionStorage.removeItem("cls_session_only");
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
   sessionStorage.removeItem(PERSISTENCE_KEY);
-  if (sessionStorage.getItem(ACTIVE_SCOPE_KEY) === scope) sessionStorage.removeItem(ACTIVE_SCOPE_KEY);
+  sessionStorage.removeItem(ACTIVE_SCOPE_KEY);
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(PERSISTENCE_KEY);
