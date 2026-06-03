@@ -95,6 +95,7 @@ export const router = createBrowserRouter([
       { path: "/dealer/login", element: <LoginPage portal="dealer" /> },
       { path: "/finance/register", element: <DealerRegistrationPage audience="finance" /> },
       { path: "/finance/login", element: <LoginPage portal="finance" /> },
+      { path: "/gm/login", element: <LoginPage portal="gm" /> },
       { path: "/bank/register", element: <BankRegistration /> },
       { path: "/bank/login", element: <LoginPage portal="bank" /> },
       { path: "/executive/register", element: <BankRegistration audience="executive" /> },
@@ -125,7 +126,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/gm",
-    element: <ProtectedRoute roles={[ROLES.GM_SM]} loginPath="/dealer/login" />,
+    element: <ProtectedRoute roles={[ROLES.GM_SM]} loginPath="/finance/login" />,
     children: [
       { path: "dashboard", element: <DashboardLayout />, children: [{ index: true, element: <Navigate to="/gm/total-leads" replace /> }] },
       { path: "change-password", element: <ExecutiveChangePasswordPage /> },
@@ -145,7 +146,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/finance",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/finance/login" />,
     children: [
       {
         element: <DashboardLayout />,
@@ -179,21 +180,21 @@ export const router = createBrowserRouter([
   },
   {
     path: "/change-password",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.LOAN_EXECUTIVE]} loginPath="/dealer/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
     children: [
       { index: true, element: <ExecutiveChangePasswordPage /> },
     ],
   },
   {
     path: "/security",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/dealer/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/finance/login" />,
     children: [
       { path: "login-activity", element: <DashboardLayout />, children: [{ index: true, element: <LoginActivityPage /> }] },
     ],
   },
   {
     path: "/dealer",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/dealer/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/finance/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/finance/dashboard" replace /> },
     ],

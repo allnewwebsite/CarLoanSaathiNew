@@ -14,6 +14,7 @@ const ROLE_ROUTES = {
   "super-admin": "/admin/dashboard",
 };
 const PORTAL_ROLES = {
+  finance: ["finance-desk", "gm-sm"],
   dealer: ["finance-desk", "gm-sm"],
   bank: ["bank-manager", "loan-executive"],
   admin: ["super-admin"],
@@ -21,15 +22,15 @@ const PORTAL_ROLES = {
 const ROLE_GUIDANCE = {
   "finance-desk": {
     roleLabel: "Finance Head",
-    portalLabel: "Dealer Portal",
-    redirectTo: "/dealer/login",
-    actionLabel: "Go to Dealer Login",
+    portalLabel: "Finance Head Portal",
+    redirectTo: "/finance/login",
+    actionLabel: "Go to Finance Login",
   },
   "gm-sm": {
     roleLabel: "GM / SM",
-    portalLabel: "Dealer Portal",
-    redirectTo: "/dealer/login",
-    actionLabel: "Go to Dealer Login",
+    portalLabel: "Finance Head Portal",
+    redirectTo: "/finance/login",
+    actionLabel: "Go to Finance Login",
   },
   "bank-manager": {
     roleLabel: "Bank Manager",
@@ -58,7 +59,7 @@ const PASSWORD_VALID_DAYS = Number(process.env.PASSWORD_VALID_DAYS || 90);
 const SESSION_COOKIE_NAME = "cls_session";
 
 function normalizePortal(portal = "dealer") {
-  if (portal === "finance") return "dealer";
+  if (portal === "gm") return "finance";
   if (portal === "executive") return "bank";
   if (portal === "super-admin") return "admin";
   return PORTAL_ROLES[portal] ? portal : "dealer";
@@ -341,6 +342,9 @@ async function accountForEmail(email, portal) {
       accountSource: "financeDesks",
       accountSourceId: desk.id || desk.email || email,
       dealershipId: desk.dealershipEmail || desk.dealershipId || desk.id,
+      branchId: desk.branchId || desk.branch || desk.city || null,
+      portalType: desk.portalType || "finance",
+      accountType: desk.accountType || "finance-head",
       status: desk.status || "active",
       active: desk.active !== false,
       approved: desk.approved !== false,
@@ -378,6 +382,9 @@ async function accountForEmail(email, portal) {
       accountSource: "dealershipManagers",
       accountSourceId: manager.id || manager.email || email,
       dealershipId: manager.dealershipEmail || manager.dealershipId,
+      branchId: manager.branchId || manager.branch || manager.city || null,
+      portalType: manager.portalType || "finance",
+      accountType: manager.accountType || "dealership-management",
       status: manager.status || "active",
       active: manager.active !== false,
       approved: manager.approved !== false,
@@ -467,6 +474,7 @@ async function accountForEmail(email, portal) {
 }
 
 function portalForRole(role) {
+  if (["finance-desk", "gm-sm"].includes(role)) return "finance";
   return Object.entries(PORTAL_ROLES).find(([, roles]) => roles.includes(role))?.[0] || null;
 }
 
@@ -638,7 +646,7 @@ async function approvedDealerAccess(email, account) {
   const dealershipEmail = account?.dealershipId || email;
   const registrations = await listRecords("pendingDealerAccounts");
   const registration = registrations.find((item) => item.email === dealershipEmail || item.email === email);
-  const dealership = await getRecord("dealerships", dealershipEmail);
+  const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("approvedDealerships", dealershipEmail);
   const activeApprovedAccount = account?.approved === true
     && account?.active === true
     && account?.accountApproved === true
@@ -675,6 +683,8 @@ async function setFirebaseClaims(email, user) {
       approved: user.approved === true,
       active: user.active === true,
       dealershipId: user.dealershipId || null,
+      portalType: user.portalType || null,
+      accountType: user.accountType || null,
       bankId: user.bankId || null,
       branchId: user.branchId || null,
     });
@@ -733,6 +743,13 @@ export async function login(req, res, next) {
           actionLabel: registration ? "Check Approval Status" : "Go to Dealer Registration",
         });
       }
+      if (portal === "finance") {
+        await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "finance-staff-not-found", req });
+        return res.status(403).json({
+          code: "NO_ACCOUNT",
+          message: "No active Finance Head, GM, or SM account found for this email.",
+        });
+      }
       if (portal === "bank") {
         authPhase = "bank-registration-status";
         const registration = await bankRegistrationStatus(normalizedEmail);
@@ -763,7 +780,7 @@ export async function login(req, res, next) {
       accountSourceId: account.accountSourceId || null,
       redirectTo: ROLE_ROUTES[account.role],
     });
-    if (portal === "dealer" && !account.dealershipId && account.role !== "super-admin") {
+    if (["dealer", "finance"].includes(portal) && !account.dealershipId && account.role !== "super-admin") {
       logWarn("Auth login denied: missing dealership id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealership-id-missing", req });
       return res.status(403).json({ message: "Your dealership account is pending Super Admin approval." });
@@ -773,7 +790,7 @@ export async function login(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "bank-id-missing", req });
       return res.status(403).json({ message: "Your bank account is pending Super Admin approval." });
     }
-    if (portal === "dealer" && !(await approvedDealerAccess(normalizedEmail, account))) {
+    if (["dealer", "finance"].includes(portal) && !(await approvedDealerAccess(normalizedEmail, account))) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealer-approval-pending", req });
       return res.status(403).json({
         title: "Dealer Registration Required",
@@ -802,11 +819,13 @@ export async function login(req, res, next) {
       active: true,
       accountStatus: "active",
       emailVerified: true,
-      accountApproved: ["dealer", "bank"].includes(portal) ? true : account.accountApproved === true,
+      accountApproved: ["dealer", "finance", "bank"].includes(portal) ? true : account.accountApproved === true,
       accountActive: true,
       dealershipId: account.dealershipId || null,
       bankId: account.bankId || null,
       branchId: account.branchId || null,
+      portalType: account.portalType || portal,
+      accountType: account.accountType || null,
       accountSource: account.accountSource || "users",
       accountSourceId: account.accountSourceId || null,
       status: account.status || "active",
@@ -905,6 +924,8 @@ export async function restoreSession(req, res, next) {
       dealershipId: account.dealershipId || null,
       bankId: account.bankId || null,
       branchId: account.branchId || null,
+      portalType: account.portalType || null,
+      accountType: account.accountType || null,
       status: account.status || "active",
       firstLoginRequired: firstLoginRequiredFor(account),
       passwordChangedAt: lifecycle.passwordChangedAt,
@@ -966,6 +987,8 @@ export async function refreshSession(req, res, next) {
       dealershipId: account.dealershipId || null,
       bankId: account.bankId || null,
       branchId: account.branchId || null,
+      portalType: account.portalType || null,
+      accountType: account.accountType || null,
       status: account.status || "active",
       firstLoginRequired: firstLoginRequiredFor(account),
       passwordChangedAt: lifecycle.passwordChangedAt,

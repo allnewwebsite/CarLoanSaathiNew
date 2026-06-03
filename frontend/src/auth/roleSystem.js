@@ -15,8 +15,8 @@ export const ROLE_ROUTES = {
 };
 
 export const ROLE_LOGIN_ROUTES = {
-  [ROLES.FINANCE_DESK]: "/dealer/login",
-  [ROLES.GM_SM]: "/dealer/login",
+  [ROLES.FINANCE_DESK]: "/finance/login",
+  [ROLES.GM_SM]: "/finance/login",
   [ROLES.BANK_MANAGER]: "/bank/login",
   [ROLES.LOAN_EXECUTIVE]: "/executive/login",
   [ROLES.SUPER_ADMIN]: "/admin/login",
@@ -37,6 +37,7 @@ export const ROLE_LABELS = {
 };
 
 export const PORTAL_ROLES = {
+  finance: [ROLES.FINANCE_DESK, ROLES.GM_SM],
   dealer: [ROLES.FINANCE_DESK, ROLES.GM_SM],
   bank: [ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE],
   admin: [ROLES.SUPER_ADMIN],

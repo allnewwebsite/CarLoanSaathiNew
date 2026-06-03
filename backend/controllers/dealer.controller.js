@@ -1141,6 +1141,8 @@ export async function createDealerStaff(req, res, next) {
     }
 
     const roleLabel = staffRoleLabel(role, req.body.role);
+    const portalType = "finance";
+    const accountType = role === "finance-desk" ? "finance-head" : "dealership-management";
     const staffPayload = {
       id: email,
       uid: firebaseUser.uid,
@@ -1152,10 +1154,13 @@ export async function createDealerStaff(req, res, next) {
       employeeId,
       role,
       roleLabel,
+      portalType,
+      accountType,
       dealershipId: dealershipEmail,
       dealershipEmail,
       dealershipName,
       branch,
+      branchId: branch,
       city,
       createdByDealerAdmin: true,
       createdByDealerAdminId: dealerEmail(req),
@@ -1185,6 +1190,8 @@ export async function createDealerStaff(req, res, next) {
       uid: firebaseUser.uid,
       email,
       role,
+      portalType,
+      accountType,
       approved: true,
       active: true,
       accountApproved: true,
@@ -1192,6 +1199,7 @@ export async function createDealerStaff(req, res, next) {
       dealershipId: dealershipEmail,
       dealershipName,
       branch,
+      branchId: branch,
       city,
       firstLoginRequired: true,
       passwordChangedAt: null,
@@ -1204,11 +1212,13 @@ export async function createDealerStaff(req, res, next) {
       approved: true,
       active: true,
       dealershipId: dealershipEmail,
+      portalType,
+      accountType,
     });
     await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
     res.status(201).json({
       ...staffPayload,
-      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/dealer/login`,
+      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/finance/login`,
       temporaryPassword,
     });
   } catch (error) {

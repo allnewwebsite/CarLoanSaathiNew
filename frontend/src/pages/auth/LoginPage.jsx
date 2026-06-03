@@ -20,7 +20,15 @@ const portals = {
     subtitle: "For dealership finance managers responsible for customer loan processing and bank coordination.",
     note: "Finance Head access uses the approved dealership account and remains protected by dealership RBAC.",
     registrationPath: "/finance/register",
-    authPortal: "dealer",
+    authPortal: "finance",
+  },
+  gm: {
+    eyebrow: "GM / SM Portal",
+    title: "GM / SM LOGIN",
+    subtitle: "For dealership GM and SM users tracking leads, salespersons, and case status.",
+    note: "GM and SM access is issued by the dealership Finance Head.",
+    registrationPath: "/finance/register",
+    authPortal: "finance",
   },
   bank: {
     eyebrow: "Bank Manager Portal",

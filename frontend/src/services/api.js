@@ -69,6 +69,32 @@ function authEndpoint(url = "") {
     || String(url).startsWith("/auth/password-reset");
 }
 
+function loginPathForRole(role, fallback = "/finance/login") {
+  const normalized = String(role || "").trim().toLowerCase();
+  if (normalized === "loan-executive") return "/executive/login";
+  if (normalized === "bank-manager") return "/bank/login";
+  if (normalized === "super-admin") return "/admin/login";
+  if (normalized === "finance-desk" || normalized === "gm-sm") return "/finance/login";
+  return fallback;
+}
+
+function currentLoginPath() {
+  if (typeof window === "undefined") return "";
+  const path = window.location.pathname || "";
+  if (path.startsWith("/finance/login") || path.startsWith("/gm/login")) return "/finance/login";
+  if (path.startsWith("/dealer/login")) return "/dealer/login";
+  if (path.startsWith("/bank/login")) return "/bank/login";
+  if (path.startsWith("/executive/login")) return "/executive/login";
+  if (path.startsWith("/admin/login")) return "/admin/login";
+  return "";
+}
+
+function redirectToLoginForRole(role, fallback = "/finance/login") {
+  if (typeof window === "undefined" || currentLoginPath()) return;
+  const target = loginPathForRole(role, fallback);
+  if (window.location.pathname !== target) window.location.assign(target);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -200,15 +226,8 @@ api.interceptors.response.use(
       clearAuthStorage();
       publishAuthEvent("logout", { reason: error.response?.data?.code || "session-refresh-failed" });
       if (typeof window !== "undefined") {
-        const target = stored?.role === "loan-executive"
-          ? "/executive/login"
-          : stored?.role === "bank-manager"
-            ? "/bank/login"
-            : stored?.role === "super-admin"
-              ? "/admin/login"
-              : "/dealer/login";
         window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
-        if (!window.location.pathname.includes(target.replace("/", ""))) window.location.assign(target);
+        redirectToLoginForRole(stored?.role);
       }
     } else if (error.response?.status === 403 && error.response?.data?.code === "PASSWORD_CHANGE_REQUIRED") {
       if (typeof window !== "undefined" && error.response.data.redirectTo && window.location.pathname !== error.response.data.redirectTo) {
@@ -230,18 +249,9 @@ api.interceptors.response.use(
       const stored = getStoredUser();
       clearAuthStorage();
       if (typeof window !== "undefined") {
-        const target = stored?.role === "loan-executive"
-          ? "/executive/login"
-          : stored?.role === "bank-manager" || error.response?.data?.code === "BANK_ACCOUNT_INACTIVE"
-            ? "/bank/login"
-            : stored?.role === "super-admin"
-              ? "/admin/login"
-              : "/dealer/login";
         window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
         publishAuthEvent("logout", { reason: error.response?.data?.code });
-        if (!window.location.pathname.includes(target.replace("/", ""))) {
-          window.location.assign(target);
-        }
+        redirectToLoginForRole(stored?.role, error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank/login" : "/finance/login");
       }
     }
     return Promise.reject(error);
