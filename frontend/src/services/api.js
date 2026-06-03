@@ -13,6 +13,17 @@ function normalizeApiUrl(url) {
   return `${trimmed.replace(/\/+$/, "")}/api`;
 }
 
+function isLocalOrPrivateApiUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    const normalized = hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(normalized)
+      || /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(normalized);
+  } catch {
+    return false;
+  }
+}
+
 function apiBaseUrl() {
   let configured = import.meta.env.VITE_API_BASE_URL || DEFAULT_LOCAL_API_BASE_URL;
   if (typeof window === "undefined") return normalizeApiUrl(configured);
@@ -22,6 +33,10 @@ function apiBaseUrl() {
   const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
   const isPrivateNetwork = /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
   const hasCustomApiBase = Boolean(import.meta.env.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes("api.example.com"));
+
+  if (!isLocalHost && !isPrivateNetwork && isLocalOrPrivateApiUrl(configured)) {
+    return PRODUCTION_API_BASE_URL;
+  }
 
   if (hasCustomApiBase) {
     return configured;
