@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
-import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
@@ -67,16 +67,18 @@ function dateTime(value) {
   return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function workflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
+}
+
 function leadStatusLabel(lead) {
-  const status = normalizeStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.UNDER_REVIEW);
-  if (status === LEAD_STATUSES.NEW) return "New Lead";
-  if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
+  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
-  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
-  if (status === LEAD_STATUSES.CONTACTED) return "Contacted";
-  if (status === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "All Documents Received";
-  if (status === LEAD_STATUSES.UNDER_BANK_PROCESS) return "Under Bank Process";
-  return "Bank Process";
+  return standardStatusLabel(status);
 }
 
 function responseRows(response) {
@@ -142,7 +144,7 @@ function SearchBar({ value, onChange }) {
   );
 }
 
-function useBankLeads(search) {
+function useBankLeads(search, status = "") {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -152,18 +154,18 @@ function useBankLeads(search) {
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search } });
+      const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search, status } });
       setRows(responseRows(response));
       setTotal(response.data?.total || responseRows(response).length);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, status]);
 
   useEffect(() => { load(page); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
-  const onPage = (nextPage) => setParams({ page: String(nextPage) });
+  const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, loading, page, onPage, load };
 }
 
@@ -219,6 +221,46 @@ function TotalLeadsPage() {
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+    </section>
+  );
+}
+
+function StatusPage() {
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const status = params.get("status") || LEAD_STATUSES.NEW;
+  const [search, setSearch] = useState(params.get("search") || "");
+  const { rows, total, loading, page, onPage } = useBankLeads(search, status);
+  const choose = (nextStatus) => setParams({ status: nextStatus, page: "1", ...(search ? { search } : {}) });
+  const tableRows = rows.map((lead) => ({
+    key: lead.id,
+    cells: [
+      caseId(lead),
+      display(lead.fullName || lead.customerName),
+      display(lead.mobile),
+      display(lead.city || lead.dealershipCity),
+      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
+      leadStatusLabel(lead),
+      dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
+      ...(normalizeStatus(status) === LEAD_STATUSES.REJECTED ? [display(lead.rejectionReason || lead.loanRejectionReason)] : []),
+      display(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
+      <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
+    ],
+  }));
+  const headers = normalizeStatus(status) === LEAD_STATUSES.REJECTED
+    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Rejection Reason", "Assigned Executive", "Documents"]
+    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Assigned Executive", "Documents"];
+  return (
+    <section className="space-y-4">
+      <PageTitle title="Status" />
+      <SearchBar value={search} onChange={(value) => {
+        setSearch(value);
+        setParams({ status, page: "1", ...(value ? { search: value } : {}) });
+      }} />
+      <div className="flex flex-wrap gap-2">
+        {BANK_STATUS_OPTIONS.map((value) => <button key={value} onClick={() => choose(value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{standardStatusLabel(value)}</button>)}
+      </div>
+      <Table title="Status Cases" headers={headers} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
     </section>
   );
 }
@@ -520,6 +562,7 @@ function PageTitle({ title }) {
 
 export function BankBranchManagerPanel({ mode = "leads" }) {
   if (mode === "analytics") return <AnalyticsPage />;
+  if (mode === "status") return <StatusPage />;
   if (mode === "manage-executive") return <ManageExecutivePage />;
   if (mode === "executives") return <AllExecutivesPage />;
   if (mode === "executive-cases") return <ExecutiveCasesPage />;

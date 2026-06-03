@@ -70,7 +70,7 @@ function normalizeFinanceStatus(status) {
     REQUEST_PENDING_DOCUMENTS: "Pending Documents",
     ALL_DOCUMENTS_RECEIVED: "Bank Processing",
     UNDER_BANK_PROCESS: "Bank Processing",
-    ASSIGNED: "Bank Processing",
+    ASSIGNED: "New Lead",
     ACCEPTED: "Bank Processing",
     UNDER_REVIEW: "Bank Processing",
     DOCS_PENDING: "Pending Documents",
@@ -90,7 +90,13 @@ function localFilters(leads, query = {}) {
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
   return leads.filter((lead) => {
-    const statusOk = !status || normalizeFinanceStatus(lead.status) === status || normalizeStatus(lead.status) === normalizeStatus(status);
+    const normalizedQueryStatus = normalizeStatus(status);
+    const financeStatus = normalizeFinanceStatus(lead.status);
+    const leadStatus = normalizeStatus(lead.status);
+    const statusOk = !status
+      || financeStatus === status
+      || leadStatus === normalizedQueryStatus
+      || (normalizedQueryStatus === LEAD_STATUSES.NEW && financeStatus === "New Lead");
     const salespersonOk = (!salesperson && !salespersonId)
       || String(lead.salespersonId || "") === salespersonId
       || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
@@ -106,7 +112,8 @@ function statusValuesForQuery(status) {
   const value = String(status || "").trim();
   if (!value) return [];
   const normalized = normalizeStatus(value);
-  if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
+  if (normalized === LEAD_STATUSES.NEW || value === "New Lead") return [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED];
+  if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
   if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
   if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];
   if (value === "Rejected With Reason") return [LEAD_STATUSES.REJECTED];

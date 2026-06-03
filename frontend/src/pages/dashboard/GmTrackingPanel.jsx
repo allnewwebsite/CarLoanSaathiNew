@@ -3,19 +3,14 @@ import { FileText, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
-import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusCards = [
-  { label: "Disbursed", value: "Disbursed" },
-  { label: "Rejected With Reason", value: "Rejected With Reason" },
-  { label: "Pending Documents", value: "Pending Documents" },
-  { label: "Bank Process", value: "Bank Processing" },
-];
+const statusCards = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 function display(value) {
   return value || "-";
@@ -39,12 +34,18 @@ function timeValue(value) {
   return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function workflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
+}
+
 function statusLabel(lead) {
-  const status = normalizeStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.UNDER_REVIEW);
-  if (status === LEAD_STATUSES.DISBURSED || status === LEAD_STATUSES.CLOSED) return "Disbursed";
-  if (status === LEAD_STATUSES.REJECTED) return "Rejected With Reason";
-  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
-  return "Bank Process";
+  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
+  if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Rejected With Reason" : "Rejected";
+  return standardStatusLabel(status);
 }
 
 function Table({ title, headers, rows, loading, page, total, onPage }) {
@@ -204,7 +205,7 @@ function SalespersonsScreen() {
 
 function StatusScreen() {
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") || "Bank Processing";
+  const status = params.get("status") || LEAD_STATUSES.NEW;
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const { leads, total, loading, load } = useGmLeads({ status });
   const choose = (nextStatus) => {
@@ -216,7 +217,7 @@ function StatusScreen() {
     setPage(nextPage);
     load({ status, page: nextPage });
   };
-  const rejected = status === "Rejected With Reason";
+  const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
     <section className="space-y-4">
       <SectionTitle title="Status" subtitle="Bank-updated loan statuses for this dealership." />

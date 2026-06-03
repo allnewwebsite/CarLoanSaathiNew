@@ -205,6 +205,7 @@ export const router = createBrowserRouter([
     children: [
       { path: "dashboard", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="leads" /> }] },
+      { path: "status", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="status" /> }] },
       { path: "analytics", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="analytics" /> }] },
       { path: "manage-executive", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="manage-executive" /> }] },
       { path: "executives", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="executives" /> }] },

@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
-import { ADMIN_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
+import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
@@ -36,6 +36,14 @@ function leadStatus(lead) {
   return normalizeStatus(lead.status || LEAD_STATUSES.NEW);
 }
 
+function workflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
+}
+
 function slaState(lead) {
   const value = lead.slaAcceptDeadlineAt || lead.assignmentTimestamp;
   if (!value) return "Tracked";
@@ -50,7 +58,7 @@ function approvalRatio(leads) {
 }
 
 function enterpriseLeadStatus(lead) {
-  const status = leadStatus(lead);
+  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
   if (status === LEAD_STATUSES.NEW) return "New Lead";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
@@ -58,7 +66,7 @@ function enterpriseLeadStatus(lead) {
   if (status === LEAD_STATUSES.CONTACTED) return "Contacted";
   if (status === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "All Documents Received";
   if (status === LEAD_STATUSES.UNDER_BANK_PROCESS) return "Under Bank Process";
-  return "Bank Process";
+  return statusLabel(status);
 }
 
 function csvCell(value) {
@@ -246,13 +254,7 @@ function generatedTime(value) {
   return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
-const STATUS_FILTERS = [
-  { label: "Disbursed", value: LEAD_STATUSES.DISBURSED },
-  { label: "Rejected", value: LEAD_STATUSES.REJECTED },
-  { label: "Under Bank Process", value: LEAD_STATUSES.UNDER_BANK_PROCESS },
-  { label: "Loan Rejected With Reason", value: "REJECTED_REASON" },
-  { label: "Pending Documents", value: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS },
-];
+const STATUS_FILTERS = BANK_STATUS_OPTIONS.map((value) => ({ label: statusLabel(value), value }));
 
 function useAdminPanelData(mode, search, leadFilter) {
   const [rows, setRows] = useState([]);
@@ -274,7 +276,7 @@ function useAdminPanelData(mode, search, leadFilter) {
         const response = await api.get("/admin/approvals/banks", { params: { status: "pending", search } });
         setRows(responseRows(response));
       } else if (mode === "status") {
-        const status = leadFilter === "REJECTED_REASON" ? LEAD_STATUSES.REJECTED : leadFilter || LEAD_STATUSES.DISBURSED;
+        const status = leadFilter || LEAD_STATUSES.NEW;
         const response = await api.get("/admin/leads", { params: { status, search } });
         setRows(responseRows(response));
       } else {
@@ -296,7 +298,7 @@ function AdminListPage({ mode }) {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("search") || "");
   const [updatingId, setUpdatingId] = useState("");
-  const leadFilter = params.get("status") || LEAD_STATUSES.DISBURSED;
+  const leadFilter = params.get("status") || LEAD_STATUSES.NEW;
   const pageData = useAdminPanelData(mode, search, leadFilter);
   const refresh = pageData.load;
 

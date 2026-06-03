@@ -3,18 +3,13 @@ import { FileText, Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
-import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusTabs = [
-  { label: "Disbursed", value: "Disbursed" },
-  { label: "Rejected With Reason", value: "Rejected" },
-  { label: "Pending Documents", value: "Pending Documents" },
-  { label: "Bank Process", value: "Bank Processing" },
-];
+const statusTabs = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 const emptyLead = {
   fullName: "",
@@ -77,13 +72,21 @@ function bankDisplay(lead) {
   return lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || "";
 }
 
+function workflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
+}
+
 function financeStatus(lead) {
-  const status = normalizeStatus(lead?.status);
-  if (status === LEAD_STATUSES.NEW) return "New Lead";
+  const status = workflowStatus(lead?.status || lead?.assignmentStatus || LEAD_STATUSES.NEW);
+  if (status === LEAD_STATUSES.NEW) return "New";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead?.rejectionReason ? "Rejected With Reason" : "Rejected";
   if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
-  return "Bank Process";
+  return standardStatusLabel(status);
 }
 
 function StatusBadge({ lead }) {
@@ -1088,7 +1091,7 @@ function AllCasesScreen() {
 function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
-  const status = params.get("status") || "Bank Processing";
+  const status = params.get("status") || LEAD_STATUSES.NEW;
   const { leads, total, loading, loadLeads } = useDealerLeads({ status });
   const choose = (value) => {
     setPage(1);
@@ -1099,7 +1102,7 @@ function StatusScreen() {
     setPage(nextPage);
     loadLeads({ page: nextPage, status });
   };
-  const rejected = status === "Rejected";
+  const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
     <div className="space-y-4">
       <SectionTitle title="Status" subtitle="Status lists update from Loan Executive changes." />

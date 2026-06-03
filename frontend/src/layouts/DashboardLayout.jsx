@@ -23,6 +23,7 @@ const navByRole = {
   ],
   "bank-manager": [
     { label: "Total Leads", to: "/bank-manager/leads", icon: ClipboardList },
+    { label: "Status", to: "/bank-manager/status", icon: FileClock },
     { label: "Analytics", to: "/bank-manager/analytics", icon: BarChart3 },
     { label: "Manage Executive", to: "/bank-manager/manage-executive", icon: Users },
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },

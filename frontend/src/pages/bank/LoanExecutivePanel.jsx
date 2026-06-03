@@ -4,23 +4,14 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
-import { LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
+import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusOptions = [
-  { label: "New", value: LEAD_STATUSES.NEW },
-  { label: "Contacted", value: LEAD_STATUSES.CONTACTED },
-  { label: "Request Document", value: LEAD_STATUSES.REQUEST_DOCUMENT },
-  { label: "Document Received", value: LEAD_STATUSES.DOCUMENT_RECEIVED },
-  { label: "Request Pending Documents", value: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS },
-  { label: "All Documents Received", value: LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED },
-  { label: "Under Bank Process", value: LEAD_STATUSES.UNDER_BANK_PROCESS },
-  { label: "Disbursed", value: LEAD_STATUSES.DISBURSED },
-];
+const statusOptions = BANK_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
 
 function display(value) {
   return value || "-";
@@ -149,7 +140,7 @@ function TotalLeadsPage({ mode }) {
   const [search, setSearch] = useState(params.get("search") || "");
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
-  const status = mode === "status" ? params.get("status") || LEAD_STATUSES.DISBURSED : "";
+  const status = mode === "status" ? params.get("status") || LEAD_STATUSES.NEW : "";
   const { rows, total, loading, page, onPage, load } = useExecutiveLeads({ search, status });
 
   const updateStatus = async (lead, nextStatus) => {
