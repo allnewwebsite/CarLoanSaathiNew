@@ -1061,26 +1061,35 @@ export async function lookupAccountForLogin(req, res, next) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
 
+    const account = await accountForAnyPortal(email);
     let firebaseUser = null;
     try {
       firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     } catch (error) {
-      if (error.code === "auth/user-not-found") return res.json({ exists: false, code: "NO_ACCOUNT", message: "No account found for this email." });
-      throw error;
+      if (error.code !== "auth/user-not-found") throw error;
     }
 
-    const account = await accountForAnyPortal(email);
-    if (!account?.role) {
-      return res.json({ exists: true, code: "ACCOUNT_NOT_APPROVED", message: "Your account exists but is awaiting approval from Super Admin." });
+    if (account?.role) {
+      const accountPortal = portalForRole(account.role);
+      if (accountPortal && accountPortal !== portal) return res.json({ exists: true, ...wrongPortalPayload(account) });
+      if (!firebaseUser) {
+        return res.json({
+          exists: true,
+          code: "LOGIN_CREDENTIALS_MISSING",
+          role: account.role,
+          correctPortal: accountPortal,
+          message: "A staff profile exists for this email, but the login credential is missing. Remove and recreate this employee, or ask Super Admin to repair the Firebase Auth account.",
+        });
+      }
+      if (firebaseUser.disabled === true) {
+        return res.json({ exists: true, code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." });
+      }
+      if (!accountActive(account)) return res.json({ exists: true, ...inactiveAccountMessage(account) });
+      return res.json({ exists: true, code: "ACCOUNT_FOUND", role: account.role, correctPortal: accountPortal });
     }
 
-    const accountPortal = portalForRole(account.role);
-    if (accountPortal && accountPortal !== portal) return res.json({ exists: true, ...wrongPortalPayload(account) });
-    if (firebaseUser.disabled === true) {
-      return res.json({ exists: true, code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." });
-    }
-    if (!accountActive(account)) return res.json({ exists: true, ...inactiveAccountMessage(account) });
-    return res.json({ exists: true, code: "ACCOUNT_FOUND", role: account.role, correctPortal: accountPortal });
+    if (!firebaseUser) return res.json({ exists: false, code: "NO_ACCOUNT", message: "No account found for this email." });
+    return res.json({ exists: true, code: "ACCOUNT_NOT_APPROVED", message: "Your account exists but is awaiting approval from Super Admin." });
   } catch (error) {
     next(error);
   }

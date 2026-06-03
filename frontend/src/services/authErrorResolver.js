@@ -69,6 +69,15 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
     });
   }
 
+  if (code === "LOGIN_CREDENTIALS_MISSING") {
+    return base(data.message || "A staff profile exists for this email, but the login credential is missing. Remove and recreate this employee, or ask Super Admin to repair the Firebase Auth account.", {
+      actionLabel: data.redirectTo ? data.actionLabel || "Go to Correct Login" : "",
+      actionTo: data.redirectTo || "",
+      showCreateAccount: false,
+      showForgotPassword: false,
+    });
+  }
+
   if (code === "auth/wrong-password" || code === "auth/invalid-credential" || code === "auth/invalid-login-credentials" || (code === "ACCOUNT_FOUND" && /auth\/(wrong-password|invalid-credential|invalid-login-credentials)/.test(firebaseCode))) {
     return base("Incorrect password. Please try again or use Forgot Password.");
   }
