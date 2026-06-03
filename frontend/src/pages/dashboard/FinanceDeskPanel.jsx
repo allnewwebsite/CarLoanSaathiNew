@@ -93,7 +93,7 @@ function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   const tone = {
     Disbursed: "bg-slate-800 text-white",
-    "New Lead": "bg-slate-100 text-slate-700",
+    New: "bg-slate-100 text-slate-700",
     "Rejected With Reason": "bg-rose-50 text-rose-700",
     Rejected: "bg-rose-50 text-rose-700",
     "Pending Documents": "bg-amber-50 text-amber-700",

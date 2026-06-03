@@ -26,7 +26,7 @@ export const STATUS_LABELS = Object.freeze({
   REQUEST_PENDING_DOCUMENTS: "Request Pending Documents",
   ALL_DOCUMENTS_RECEIVED: "All Documents Received",
   UNDER_BANK_PROCESS: "Under Bank Process",
-  ASSIGNED: "Assigned",
+  ASSIGNED: "New",
   ACCEPTED: "Accepted",
   UNDER_REVIEW: "Under Review",
   DOCS_PENDING: "Docs Pending",

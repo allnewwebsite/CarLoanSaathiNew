@@ -63,14 +63,14 @@ const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
-    NEW: "New Lead",
+    NEW: "New",
     CONTACTED: "Bank Processing",
     REQUEST_DOCUMENT: "Pending Documents",
     DOCUMENT_RECEIVED: "Pending Documents",
     REQUEST_PENDING_DOCUMENTS: "Pending Documents",
     ALL_DOCUMENTS_RECEIVED: "Bank Processing",
     UNDER_BANK_PROCESS: "Bank Processing",
-    ASSIGNED: "New Lead",
+    ASSIGNED: "New",
     ACCEPTED: "Bank Processing",
     UNDER_REVIEW: "Bank Processing",
     DOCS_PENDING: "Pending Documents",
@@ -79,7 +79,7 @@ function normalizeFinanceStatus(status) {
     DISBURSED: "Disbursed",
     CLOSED: "Disbursed",
   };
-  return map[normalized] || "New Lead";
+  return map[normalized] || "New";
 }
 
 function localFilters(leads, query = {}) {
@@ -96,7 +96,7 @@ function localFilters(leads, query = {}) {
     const statusOk = !status
       || financeStatus === status
       || leadStatus === normalizedQueryStatus
-      || (normalizedQueryStatus === LEAD_STATUSES.NEW && financeStatus === "New Lead");
+      || (normalizedQueryStatus === LEAD_STATUSES.NEW && financeStatus === "New");
     const salespersonOk = (!salesperson && !salespersonId)
       || String(lead.salespersonId || "") === salespersonId
       || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
@@ -112,7 +112,7 @@ function statusValuesForQuery(status) {
   const value = String(status || "").trim();
   if (!value) return [];
   const normalized = normalizeStatus(value);
-  if (normalized === LEAD_STATUSES.NEW || value === "New Lead") return [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED];
+  if (normalized === LEAD_STATUSES.NEW || value === "New Lead" || value === "New") return [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED];
   if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
   if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
   if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];

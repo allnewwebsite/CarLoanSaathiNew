@@ -30,7 +30,7 @@ function financeStatus(status) {
     [LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS]: "Pending Documents",
     [LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED]: "Bank Processing",
     [LEAD_STATUSES.UNDER_BANK_PROCESS]: "Bank Processing",
-    [LEAD_STATUSES.ASSIGNED]: "New Lead",
+    [LEAD_STATUSES.ASSIGNED]: "New",
     [LEAD_STATUSES.ACCEPTED]: "Bank Processing",
     [LEAD_STATUSES.UNDER_REVIEW]: "Bank Processing",
     [LEAD_STATUSES.DOCS_PENDING]: "Pending Documents",
@@ -39,7 +39,7 @@ function financeStatus(status) {
     [LEAD_STATUSES.DISBURSED]: "Disbursed",
     [LEAD_STATUSES.CLOSED]: "Disbursed",
   };
-  return map[normalized] || "New Lead";
+  return map[normalized] || "New";
 }
 
 async function gmLeads(req) {

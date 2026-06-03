@@ -59,7 +59,7 @@ function approvalRatio(leads) {
 
 function enterpriseLeadStatus(lead) {
   const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
-  if (status === LEAD_STATUSES.NEW) return "New Lead";
+  if (status === LEAD_STATUSES.NEW) return "New";
   if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
   if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
   if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";

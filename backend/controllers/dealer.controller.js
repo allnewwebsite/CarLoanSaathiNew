@@ -518,14 +518,14 @@ function readableLeadError(error) {
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
-    NEW: "New Lead",
+    NEW: "New",
     CONTACTED: "Bank Processing",
     REQUEST_DOCUMENT: "Pending Documents",
     DOCUMENT_RECEIVED: "Pending Documents",
     REQUEST_PENDING_DOCUMENTS: "Pending Documents",
     ALL_DOCUMENTS_RECEIVED: "Bank Processing",
     UNDER_BANK_PROCESS: "Bank Processing",
-    ASSIGNED: "Bank Processing",
+    ASSIGNED: "New",
     ACCEPTED: "Bank Processing",
     UNDER_REVIEW: "Bank Processing",
     DOCS_PENDING: "Pending Documents",
@@ -534,7 +534,7 @@ function normalizeFinanceStatus(status) {
     DISBURSED: "Disbursed",
     CLOSED: "Disbursed",
   };
-  return map[normalized] || "New Lead";
+  return map[normalized] || "New";
 }
 
 export async function registerDealerOnboarding(req, res, next) {
