@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
@@ -13,7 +13,7 @@ import {
   browserSessionPersistence,
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
-import { api, warmupPortalRoute } from "../services/api.js";
+import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
@@ -85,18 +85,6 @@ export function AuthProvider({ children }) {
   const [authReady, setAuthReady] = useState(false);
   const [sessionChecking, setSessionChecking] = useState(Boolean(getStoredToken() || getStoredUser()));
   const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
-  const portalWarmupRequested = useRef(false);
-
-  const warmupSessionPortal = async (session) => {
-    if (!session?.role || portalWarmupRequested.current) return;
-    portalWarmupRequested.current = true;
-    try {
-      await warmupPortalRoute(session.role);
-    } catch {
-      // best-effort portal warmup
-    }
-  };
-
   const applySession = (session, token, options = {}) => {
     storeAuthSession(session, token, options);
     logAuthDecision("session-applied", { session, token });
@@ -106,7 +94,6 @@ export function AuthProvider({ children }) {
   };
 
   const clearLocalSession = async ({ signOutFirebase = true, broadcast = true, reason = "local-clear" } = {}) => {
-    portalWarmupRequested.current = false;
     teardownRealtimeSubscriptions();
     clearAuthStorage();
     setFirebaseUser(null);
@@ -146,12 +133,6 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (authStatus === AUTH_STATES.AUTHENTICATED && user?.role) {
-      warmupSessionPortal(user);
-    }
-  }, [authStatus, user?.role]);
-
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
@@ -190,7 +171,6 @@ export function AuthProvider({ children }) {
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token);
     await detachFirebaseCredentialSession();
-    await warmupSessionPortal(session);
     return session;
   };
 
@@ -259,7 +239,6 @@ export function AuthProvider({ children }) {
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
       applySession(session, token);
-      warmupSessionPortal(session);
       return session;
     } catch (error) {
       await clearLocalSession({ signOutFirebase: false, reason: "session-invalid" });

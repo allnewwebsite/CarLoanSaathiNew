@@ -13,6 +13,7 @@ import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { revokeUserSessions } from "./auth.controller.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -397,6 +398,29 @@ async function deleteMatchingRecords(collection, matcher) {
   return matches.length;
 }
 
+async function firebaseUidForEmail(email) {
+  if (!firebaseAdmin || !email) return null;
+  try {
+    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+    return firebaseUser.uid;
+  } catch (error) {
+    if (error.code === "auth/user-not-found") return null;
+    throw error;
+  }
+}
+
+async function deleteFirebaseAuthByEmail(email) {
+  if (!firebaseAdmin || !email) return false;
+  try {
+    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+    await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
+    return true;
+  } catch (error) {
+    if (error.code === "auth/user-not-found") return false;
+    throw error;
+  }
+}
+
 export async function getAdminLeads(req, res, next) {
   const startedAt = Date.now();
   let queryStarted, queryEnded, enrichStarted, enrichEnded, serializeStarted, serializeEnded;
@@ -533,11 +557,16 @@ export async function approveDealershipApproval(req, res, next) {
     };
     await upsertRecord("dealerships", loginEmail, dealership);
     await upsertRecord("approvedDealerships", loginEmail, dealership);
-    await assertNoActiveIdentityCollision({ uid: loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [loginEmail] });
-    await upsertCanonicalUser(loginEmail, { uid: loginEmail, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+    const financeUid = await firebaseUidForEmail(loginEmail);
+    const financeCanonicalId = financeUid || loginEmail;
+    await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
+    await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
     if (request.generalManager?.email) {
-      await assertNoActiveIdentityCollision({ uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", excludeIds: [request.generalManager.email] });
-      await upsertCanonicalUser(request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+      const gmEmail = normalizeEmail(request.generalManager.email);
+      const gmUid = await firebaseUidForEmail(gmEmail);
+      const gmCanonicalId = gmUid || gmEmail;
+      await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
+      await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
     }
     await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk", accountActive: true });
     await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
@@ -705,18 +734,15 @@ export async function deleteDealershipPermanently(req, res, next) {
       deleted[collection] = (deleted[collection] || 0) + await deleteMatchingRecords(collection, matchesDealer);
     }
 
-    if (firebaseAdmin && loginEmail) {
-      try {
-        const firebaseUser = await firebaseAdmin.auth().getUserByEmail(loginEmail);
-        await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {});
-      } catch {
-        // Firebase Auth user may not exist; Firestore cleanup remains the source of truth.
-      }
+    const authDeleted = {};
+    for (const email of emails) {
+      await revokeUserSessions(email, "dealership-permanent-delete").catch(() => {});
+      authDeleted[email] = await deleteFirebaseAuthByEmail(email);
     }
 
     await approvalLog({ req, entityType: "dealership", entityId: id, previousStatus: request.status || "unknown", newStatus: "deleted", rejectionReason: "Permanently deleted by Super Admin" });
-    await writeAuditLog({ req, actionType: "DEALERSHIP_DELETED_PERMANENTLY", oldValue: request.status || "", newValue: "deleted", meta: { id, loginEmail, deleted, deletedAt: now } });
-    res.json({ message: "Dealership permanently deleted", id, loginEmail, deleted });
+    await writeAuditLog({ req, actionType: "DEALERSHIP_DELETED_PERMANENTLY", oldValue: request.status || "", newValue: "deleted", meta: { id, loginEmail, deleted, authDeleted, deletedAt: now } });
+    res.json({ message: "Dealership permanently deleted", id, loginEmail, deleted, authDeleted });
   } catch (error) {
     next(error);
   }
@@ -763,8 +789,10 @@ export async function approveBankApproval(req, res, next) {
     });
     await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "active", active: true });
     await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-    await assertNoActiveIdentityCollision({ uid: bankEmail, email: bankEmail, role: "bank-manager", excludeIds: [bankEmail] });
-    await upsertCanonicalUser(bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+    const bankUid = await firebaseUidForEmail(bankEmail);
+    const bankCanonicalId = bankUid || bankEmail;
+    await assertNoActiveIdentityCollision({ uid: bankCanonicalId, email: bankEmail, role: "bank-manager", excludeIds: [bankCanonicalId, bankEmail] });
+    await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
     if (firebaseAdmin) {
       try {
         const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
@@ -912,6 +940,7 @@ export async function deleteBankPermanently(req, res, next) {
     const bankName = String(request.bankName || request.companyName || request.name || "").trim().toLowerCase();
     const ifsc = String(request.ifsc || request.ifscCode || "").trim().toLowerCase();
     const deleted = {};
+    const authEmails = new Set([bankEmail].filter(Boolean));
     const matchesBank = (item) => {
       const values = [
         item.id,
@@ -931,22 +960,23 @@ export async function deleteBankPermanently(req, res, next) {
       const records = await listRecords(collection);
       const matches = records.filter(matchesBank);
       for (const record of matches) {
+        const email = normalizeEmail(record.email || record.officialEmail || record.managerEmail || record.id);
+        if (email && email.includes("@")) authEmails.add(email);
+      }
+      for (const record of matches) {
         await deleteRecord(collection, record.id);
       }
       deleted[collection] = matches.length;
     }
 
-    if (firebaseAdmin && bankEmail) {
-      try {
-        const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
-        await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {});
-      } catch {
-        // Firebase Auth user may not exist; database cleanup remains authoritative.
-      }
+    const authDeleted = {};
+    for (const email of authEmails) {
+      await revokeUserSessions(email, "bank-permanent-delete").catch(() => {});
+      authDeleted[email] = await deleteFirebaseAuthByEmail(email);
     }
 
-    await writeAuditLog({ req, actionType: "BANK_DELETED", oldValue: request.status, newValue: "deleted", meta: { bankEmail, bankName, ifsc, deleted } });
-    res.json({ message: "Bank permanently deleted", deleted });
+    await writeAuditLog({ req, actionType: "BANK_DELETED", oldValue: request.status, newValue: "deleted", meta: { bankEmail, bankName, ifsc, deleted, authDeleted } });
+    res.json({ message: "Bank permanently deleted", deleted, authDeleted });
   } catch (error) {
     next(error);
   }

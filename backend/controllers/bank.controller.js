@@ -51,6 +51,13 @@ function anyMatch(values, targets) {
   return values.some((value) => targets.some((target) => sameText(value, target)));
 }
 
+async function deleteMatchingRecords(collection, predicate) {
+  const records = await listRecords(collection).catch(() => []);
+  const matches = records.filter(predicate);
+  await Promise.all(matches.map((item) => deleteRecord(collection, item.id)));
+  return matches.length;
+}
+
 async function currentPartner(req) {
   const email = userEmail(req);
   if (req.user?.role === "loan-executive") {
@@ -800,29 +807,61 @@ export async function removeBankExecutive(req, res, next) {
     const identity = bankIdentity(partner);
     const executive = await getRecord("loanExecutives", req.params.executiveId);
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
-    const updated = await updateRecord("loanExecutives", executive.id, {
-      active: false,
-      accountActive: false,
-      status: "inactive",
-      removedAt: new Date().toISOString(),
-      removedByManagerId: partner.email || partner.id,
-    });
-    if (executive.email) {
-      await upsertRecord("users", executive.email, {
-        uid: executive.email,
-        email: executive.email,
-        role: "loan-executive",
-        approved: true,
-        active: false,
-        accountApproved: true,
-        accountActive: false,
-        bankId: identity.bankId,
-        branchId: identity.bankLocation,
-        status: "inactive",
-      });
+    const email = cleanText(executive.email || executive.officialEmail || executive.id);
+    const uid = String(executive.uid || executive.authUid || "").trim();
+    const deleted = {};
+    const removedAt = new Date().toISOString();
+    const matchesExecutive = (item = {}) => {
+      const itemEmail = cleanText(item.email || item.officialEmail || item.id);
+      const itemUid = String(item.uid || item.authUid || "").trim();
+      return Boolean(
+        (email && itemEmail === email)
+        || (uid && itemUid === uid)
+        || String(item.id || "") === executive.id
+      );
+    };
+
+    for (const collection of ["loanExecutives", "users"]) {
+      deleted[collection] = await deleteMatchingRecords(collection, matchesExecutive);
     }
-    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_REMOVED", oldValue: executive.status, newValue: "inactive", meta: { executiveId: executive.id, bankId: identity.bankId } });
-    res.json({ message: "Executive removed", executive: updated });
+
+    const leads = await listRecords("leads").catch(() => []);
+    const affectedLeads = leads.filter((lead) =>
+      lead.bankId === identity.bankId
+      && (
+        (uid && String(lead.assignedExecutiveId || "").trim() === uid)
+        || (email && cleanText(lead.assignedExecutiveEmail) === email)
+        || (email && cleanText(lead.assignedExecutiveId) === email)
+      )
+    );
+    await Promise.all(affectedLeads.map((lead) => updateRecord("leads", lead.id, {
+      assignedExecutiveId: null,
+      assignedExecutiveEmail: null,
+      assignedExecutiveName: null,
+      assignedExecutiveMobile: null,
+      updatedAt: removedAt,
+    })));
+
+    await revokeUserSessions(email, "bank-executive-permanent-delete").catch(() => {});
+    let authDeleted = false;
+    if (firebaseAdmin && email) {
+      try {
+        const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+        await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
+        authDeleted = true;
+      } catch (firebaseError) {
+        if (firebaseError.code !== "auth/user-not-found") throw firebaseError;
+      }
+    }
+
+    await writeAuditLog({
+      req,
+      actionType: "BANK_EXECUTIVE_REMOVED",
+      oldValue: executive.status,
+      newValue: "deleted",
+      meta: { executiveId: executive.id, bankId: identity.bankId, email, uid, deleted, affectedLeadCount: affectedLeads.length, authDeleted },
+    });
+    res.json({ message: "Executive permanently removed", deleted, affectedLeadCount: affectedLeads.length, authDeleted });
   } catch (error) {
     next(error);
   }
