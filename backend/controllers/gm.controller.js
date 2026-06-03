@@ -1,4 +1,4 @@
-import { getRecord, queryRecords } from "../services/firestore.service.js";
+import { getRecord, listRecords, queryRecords } from "../services/firestore.service.js";
 import { logInfo } from "../services/logger.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
@@ -88,15 +88,14 @@ export async function getGmSalespersons(req, res, next) {
     if (!dealershipEmail) return res.json([]);
     const leadsPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
     const leads = leadsPage.data;
-    const salespersonsPage = await queryRecords("salespersons", {
-      where: [{ field: "dealershipId", value: dealershipEmail }],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 100,
-      maxLimit: 100,
-    });
-    const salespersons = salespersonsPage.data
-      .filter((person) => person.active !== false)
+    const inactiveStatuses = new Set(["inactive", "removed", "deleted"]);
+    const salespersons = (await listRecords("salespersons"))
+      .filter((person) => (
+        person.dealershipId === dealershipEmail
+        && person.active !== false
+        && !inactiveStatuses.has(String(person.status || "").toLowerCase())
+      ))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
       .map((person) => {
         const cases = leads.filter((lead) => lead.salespersonId === person.id || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === String(person.name || "").toLowerCase());
         return {

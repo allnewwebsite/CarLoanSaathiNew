@@ -107,7 +107,6 @@ function totalRows(leads) {
       display(lead.fullName || lead.customerName),
       display(lead.mobile),
       display(lead.city || lead.dealershipCity),
-      display(lead.preferredBank || lead.bankPartner),
       moneyValue(lead.carPrice || lead.carOnRoadPrice || lead.onRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       display(lead.assignedSalesperson || lead.salespersonName),
@@ -126,7 +125,6 @@ function caseRows(leads) {
       display(lead.fullName || lead.customerName),
       display(lead.mobile),
       display(lead.city || lead.dealershipCity),
-      display(lead.preferredBank || lead.bankPartner),
       moneyValue(lead.carPrice || lead.carOnRoadPrice || lead.onRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       display(lead.assignedSalesperson || lead.salespersonName),
@@ -145,7 +143,6 @@ function statusRows(leads, rejected) {
       caseId(lead),
       display(lead.fullName || lead.customerName),
       display(lead.assignedSalesperson || lead.salespersonName),
-      display(lead.preferredBank || lead.bankPartner),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       statusLabel(lead),
     ];
@@ -175,7 +172,7 @@ function TotalLeadsScreen() {
     <section className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All leads created by this dealership." />
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" defaultValue={search} onChange={(event) => updateSearch(event.target.value)} /></div>
-      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Current Status", "Generated Date", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Current Status", "Generated Date", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
     </section>
   );
 }
@@ -226,7 +223,7 @@ function StatusScreen() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statusCards.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-lg border p-4 text-left text-sm font-semibold ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700 hover:border-[#0d47a1]/40"}`}>{item.label}</button>)}
       </div>
-      <Table title="Status Cases" headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Preferred Bank", "Loan Amount", "Current Status", "Rejection Reason", "Last Updated Date", "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Preferred Bank", "Loan Amount", "Current Status", "Last Updated Date", "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Status Cases" headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Rejection Reason", "Last Updated Date", "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Last Updated Date", "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} onPage={pageTo} />
     </section>
   );
 }
@@ -255,7 +252,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
     </section>
   );
 }
@@ -273,7 +270,7 @@ function SalespersonCasesScreen() {
   return (
     <section className="space-y-4">
       <SectionTitle title={salesperson ? `${salesperson.name} Cases` : "Salesperson Cases"} subtitle="Only cases linked to this salesperson." />
-      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Preferred Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
     </section>
   );
 }

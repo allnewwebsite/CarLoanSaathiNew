@@ -74,7 +74,7 @@ function caseId(lead) {
 }
 
 function bankDisplay(lead) {
-  return lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || lead.preferredBank || "";
+  return lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || "";
 }
 
 function financeStatus(lead) {

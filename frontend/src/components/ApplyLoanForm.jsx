@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronDown, Loader2, Search, UserRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fallbackBanks, fallbackBrands, getFallbackCarsByBrand } from "../data/catalogFallback.js";
+import { fallbackBrands, getFallbackCarsByBrand } from "../data/catalogFallback.js";
 import { api } from "../services/api.js";
 import { Button } from "./ui/Button.jsx";
 import { Toast } from "./ui/Toast.jsx";
@@ -14,7 +14,6 @@ const emptyForm = {
   carPrice: "",
   loanAmount: "",
   employmentType: "",
-  preferredBank: "",
 };
 
 const steps = [
@@ -107,7 +106,6 @@ export function ApplyLoanForm({ initialSelection }) {
   const [form, setForm] = useState({ ...emptyForm, ...initialSelection });
   const [brands, setBrands] = useState([]);
   const [models, setModels] = useState([]);
-  const [banks, setBanks] = useState([]);
   const [brandSlug, setBrandSlug] = useState("");
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -121,13 +119,9 @@ export function ApplyLoanForm({ initialSelection }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api.get("/brands").then((response) => response.data?.length ? response.data : fallbackBrands).catch(() => fallbackBrands),
-      api.get("/banks").then((response) => response.data?.length ? response.data : fallbackBanks).catch(() => fallbackBanks),
-    ]).then(([brandData, bankData]) => {
+    api.get("/brands").then((response) => response.data?.length ? response.data : fallbackBrands).catch(() => fallbackBrands).then((brandData) => {
       if (!active) return;
       setBrands(brandData);
-      setBanks(bankData);
       const matched = brandData.find((brand) => brand.name === initialSelection?.selectedBrand || brand.slug === initialSelection?.brandSlug);
       if (matched) setBrandSlug(matched.slug);
     });
@@ -153,7 +147,6 @@ export function ApplyLoanForm({ initialSelection }) {
 
   const brandOptions = useMemo(() => brands.map(toOption), [brands]);
   const modelOptions = useMemo(() => models.map(toOption), [models]);
-  const bankOptions = useMemo(() => banks.map((bank) => ({ label: bank.name, value: bank.name, item: bank })), [banks]);
   const completion = useMemo(() => Math.round(((step + 1) / steps.length) * 100), [step]);
 
   const update = (field, value) => {
@@ -199,7 +192,6 @@ export function ApplyLoanForm({ initialSelection }) {
       if (!Number(form.loanAmount) || Number(form.loanAmount) <= 0) nextErrors.loanAmount = "Loan amount is required";
       if (Number(form.loanAmount) > Number(form.carPrice)) nextErrors.loanAmount = "Loan amount cannot exceed car price";
       if (!form.employmentType) nextErrors.employmentType = "Employment type is required";
-      if (!form.preferredBank) nextErrors.preferredBank = "Preferred bank is required";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -226,7 +218,6 @@ export function ApplyLoanForm({ initialSelection }) {
         carPrice: Number(form.carPrice),
         loanAmount: Number(form.loanAmount),
         employmentType: form.employmentType,
-        preferredBank: form.preferredBank,
         website: "",
       };
       const response = await api.post("/leads/public", payload);
@@ -314,7 +305,6 @@ export function ApplyLoanForm({ initialSelection }) {
             </select>
             {errors.employmentType && <p className="mt-1 text-xs text-red-600">{errors.employmentType}</p>}
           </label>
-          <SearchableSelect label="Preferred Bank *" value={form.preferredBank} options={bankOptions} placeholder="Search and select bank" error={errors.preferredBank} onChange={(option) => update("preferredBank", option.item.name)} />
         </div>
       )}
 
