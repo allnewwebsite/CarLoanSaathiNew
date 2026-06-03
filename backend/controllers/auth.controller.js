@@ -21,8 +21,8 @@ const PORTAL_ROLES = {
 };
 const ROLE_GUIDANCE = {
   "finance-desk": {
-    roleLabel: "Finance Head",
-    portalLabel: "Finance Head Portal",
+    roleLabel: "Finance Desk",
+    portalLabel: "Finance Desk Portal",
     redirectTo: "/finance/login",
     actionLabel: "Go to Finance Login",
   },
@@ -322,6 +322,21 @@ function emailMatchesRecord(record = {}, email) {
   ].some((value) => String(value || "").trim().toLowerCase() === normalized);
 }
 
+function uidMatchesRecord(record = {}, email, uid) {
+  if (!uid) return true;
+  const recordUid = String(record.uid || record.authUid || "").trim();
+  if (!recordUid) return true;
+  return recordUid === uid || recordUid === email;
+}
+
+function selectIdentityCandidate(email, candidates = [], uid = "") {
+  if (!candidates.length) return null;
+  const compatible = candidates.filter((candidate) => uidMatchesRecord(candidate, email, uid));
+  if (!compatible.length) return null;
+  if (!uid) return compatible[0];
+  return compatible.find((candidate) => String(candidate.uid || "").trim() === uid) || compatible[0];
+}
+
 async function getRecordByEmail(collection, email, fields = ["email", "officialEmail", "loginEmail", "dealershipEmail"]) {
   const direct = await getRecord(collection, email).catch(() => null);
   if (direct) return direct;
@@ -352,12 +367,12 @@ async function updatePasswordLifecycleRecords(email, role, patch) {
   }));
 }
 
-async function accountForEmail(email, portal) {
+async function accountForEmail(email, portal, uid = "") {
   const adminEmail = superAdminEmail();
   if (portal === "admin" || email === adminEmail) {
     if (email !== adminEmail) return null;
     const adminUser = await getRecord("users", email);
-    return adminUser?.role === "super-admin" ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
+    return adminUser?.role === "super-admin" && uidMatchesRecord(adminUser, email, uid) ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
   }
   const allowed = PORTAL_ROLES[portal] || [];
   const candidates = [];
@@ -365,6 +380,7 @@ async function accountForEmail(email, portal) {
     const desk = await getRecordByEmail("financeDesks", email);
     if (desk) candidates.push({
       role: "finance-desk",
+      uid: desk.uid || null,
       accountSource: "financeDesks",
       accountSourceId: desk.id || desk.email || email,
       dealershipId: desk.dealershipEmail || desk.dealershipId || desk.id,
@@ -392,6 +408,7 @@ async function accountForEmail(email, portal) {
     if (dealership?.active !== false && dealership?.accountActive !== false && !["pending", "rejected", "suspended"].includes(String(dealership.status || "").toLowerCase())) {
       candidates.push({
         role: "finance-desk",
+        uid: dealership.uid || null,
         accountSource: directDealership ? "dealerships" : "dealerships:list",
         accountSourceId: dealership.id || dealership.loginEmail || email,
         dealershipId: dealership.loginEmail || dealership.id || email,
@@ -410,6 +427,7 @@ async function accountForEmail(email, portal) {
       : null;
     if (manager) candidates.push({
       role: "gm-sm",
+      uid: manager.uid || null,
       accountSource: "dealershipManagers",
       accountSourceId: manager.id || manager.email || email,
       dealershipId: manager.dealershipEmail || manager.dealershipId,
@@ -428,6 +446,7 @@ async function accountForEmail(email, portal) {
     const manager = await getRecordByEmail("branchManagers", email, ["email", "officialEmail"]);
     if (manager) candidates.push({
       role: "bank-manager",
+      uid: manager.uid || null,
       accountSource: "branchManagers",
       accountSourceId: manager.id || manager.email || email,
       bankId: manager.bankPartnerId || manager.bankId || manager.bankName,
@@ -451,6 +470,7 @@ async function accountForEmail(email, portal) {
     );
     if (approvedBankAccount) candidates.push({
       role: "bank-manager",
+      uid: approvedBankAccount.uid || null,
       accountSource: "pendingBankAccounts",
       accountSourceId: approvedBankAccount.id || approvedBankAccount.email || email,
       bankId: approvedBankAccount.bankId || approvedBankAccount.bankData?.bankId || approvedBankAccount.email,
@@ -473,6 +493,7 @@ async function accountForEmail(email, portal) {
     );
     if (approvedBankRequest) candidates.push({
       role: "bank-manager",
+      uid: approvedBankRequest.uid || null,
       accountSource: "pendingBankApprovals",
       accountSourceId: approvedBankRequest.id || approvedBankRequest.email || email,
       bankId: approvedBankRequest.bankId || approvedBankRequest.email || approvedBankRequest.officialEmail || email,
@@ -489,6 +510,7 @@ async function accountForEmail(email, portal) {
     const executive = await getRecordByEmail("loanExecutives", email, ["email", "officialEmail"]);
     if (executive) candidates.push({
       role: "loan-executive",
+      uid: executive.uid || null,
       accountSource: "loanExecutives",
       accountSourceId: executive.id || executive.email || email,
       bankId: executive.bankPartnerId || executive.bankId || executive.bankName,
@@ -501,11 +523,16 @@ async function accountForEmail(email, portal) {
       firstLoginRequired: executive.firstLoginRequired === true,
     });
   }
-  if (candidates.length) return accountWithUserLifecycle(email, candidates[0]);
+  const selected = selectIdentityCandidate(email, candidates, uid);
+  if (selected) return accountWithUserLifecycle(email, selected);
 
   const users = await listRecords("users");
-  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item));
+  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item) && uidMatchesRecord(item, email, uid));
   return approvedUser ? { ...approvedUser, accountSource: "users", accountSourceId: approvedUser.id || email } : null;
+}
+
+function portalAllowsRole(portal, role) {
+  return Boolean((PORTAL_ROLES[portal] || []).includes(role));
 }
 
 function portalForRole(role) {
@@ -537,15 +564,15 @@ function inactiveAccountMessage(account = {}) {
   return { code: "APPROVAL_PENDING", message: "Your account exists but is awaiting approval from Super Admin." };
 }
 
-async function accountForAnyPortal(email) {
+async function accountForAnyPortal(email, uid = "") {
   const [dealerAccount, bankAccount, adminAccount] = await Promise.all([
-    accountForEmail(email, "dealer").catch(() => null),
-    accountForEmail(email, "bank").catch(() => null),
-    accountForEmail(email, "admin").catch(() => null),
+    accountForEmail(email, "dealer", uid).catch(() => null),
+    accountForEmail(email, "bank", uid).catch(() => null),
+    accountForEmail(email, "admin", uid).catch(() => null),
   ]);
   if (dealerAccount || bankAccount || adminAccount) return dealerAccount || bankAccount || adminAccount;
   const directUser = await getRecord("users", email).catch(() => null);
-  return directUser?.role ? directUser : null;
+  return directUser?.role && uidMatchesRecord(directUser, email, uid) ? directUser : null;
 }
 
 function wrongPortalPayload(account = {}) {
@@ -742,6 +769,7 @@ export async function login(req, res, next) {
     authPhase = "verify-firebase-token";
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    const firebaseUid = String(decoded.uid || "").trim();
     logInfo("Auth login token verified", { requestId: req.requestId, email: normalizedEmail, portal });
     authPhase = "validate-firebase-email";
     if (!normalizedEmail) return res.status(400).json({ message: "Account email is required" });
@@ -750,17 +778,16 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
     authPhase = "resolve-account";
-    let account = await accountForEmail(normalizedEmail, portal);
+    let account = await accountForEmail(normalizedEmail, portal, firebaseUid);
     account = await clearTransientLoginLock(normalizedEmail, account);
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
-      const knownAccount = await accountForAnyPortal(normalizedEmail);
-      const knownPortal = portalForRole(knownAccount?.role);
-      if (knownAccount?.role && knownPortal && knownPortal !== portal) {
+      const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid);
+      if (knownAccount?.role && !portalAllowsRole(portal, knownAccount.role)) {
         await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: "wrong-portal", req });
         return res.status(403).json(wrongPortalPayload(knownAccount));
       }
-      if (knownAccount?.role && knownPortal === portal && !accountActive(knownAccount)) {
+      if (knownAccount?.role && portalAllowsRole(portal, knownAccount.role) && !accountActive(knownAccount)) {
         const inactive = inactiveAccountMessage(knownAccount);
         await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: inactive.code.toLowerCase(), req });
         return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
@@ -918,13 +945,14 @@ export async function restoreSession(req, res, next) {
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     const normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    const firebaseUid = String(decoded.uid || "").trim();
     if (!normalizedEmail) return res.status(400).json({ message: "Account email is required" });
     if (decoded.email_verified !== true) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-email-not-verified", req });
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
 
-    const account = await accountForAnyPortal(normalizedEmail);
+    const account = await accountForAnyPortal(normalizedEmail, firebaseUid);
     if (!account?.role || !ROLE_ROUTES[account.role]) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-account-not-approved", req });
       return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
@@ -1071,17 +1099,19 @@ export async function lookupAccountForLogin(req, res, next) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
 
-    const account = await accountForAnyPortal(email);
     let firebaseUser = null;
     try {
       firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     } catch (error) {
       if (error.code !== "auth/user-not-found") throw error;
     }
+    const firebaseUid = String(firebaseUser?.uid || "").trim();
+    const portalAccount = await accountForEmail(email, portal, firebaseUid);
+    const account = portalAccount || await accountForAnyPortal(email, firebaseUid);
 
     if (account?.role) {
       const accountPortal = portalForRole(account.role);
-      if (accountPortal && accountPortal !== portal) return res.json({ exists: true, ...wrongPortalPayload(account) });
+      if (!portalAllowsRole(portal, account.role)) return res.json({ exists: true, ...wrongPortalPayload(account) });
       if (!firebaseUser) {
         return res.json({
           exists: true,
