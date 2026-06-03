@@ -224,12 +224,14 @@ function accountLockedPayload(account = {}) {
 
 async function incrementFailedLogin(email, req, reason = "firebase-auth-failed") {
   const account = await getRecord("users", email);
-  const attempts = Number(account?.failedLoginAttempts || 0) + 1;
+  const expiredLock = account?.lockedUntil && !accountLocked(account);
+  const attempts = (expiredLock ? 0 : Number(account?.failedLoginAttempts || 0)) + 1;
   const lockedUntil = attempts >= MAX_FAILED_LOGINS ? lockUntilDate() : null;
   const update = {
     failedLoginAttempts: attempts,
     lastFailedLoginAt: new Date().toISOString(),
-    ...(lockedUntil ? { lockedUntil, accountStatus: "locked" } : {}),
+    lockedUntil: lockedUntil || null,
+    ...(lockedUntil ? { accountStatus: "locked" } : expiredLock ? { accountStatus: account?.role === "super-admin" || account?.approved === true ? "active" : account?.accountStatus || "pending" } : {}),
   };
   if (account) await upsertRecord("users", email, update);
   await writeLoginActivity({ email, role: account?.role || null, status: "denied", reason, req });
@@ -244,6 +246,18 @@ async function clearFailedLogin(email) {
     lockedUntil: null,
     accountStatus: account.role === "super-admin" || account.approved === true ? "active" : account.accountStatus || "pending",
   });
+}
+
+async function clearTransientLoginLock(email, account = {}) {
+  if (!account?.role) return account;
+  if (!account.lockedUntil && !account.failedLoginAttempts && account.accountStatus !== "locked") return account;
+  await clearFailedLogin(email);
+  return {
+    ...account,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    accountStatus: account.role === "super-admin" || account.approved === true ? "active" : account.accountStatus || "pending",
+  };
 }
 
 export async function revokeUserSessions(email, reason = "admin-revoked") {
@@ -690,7 +704,6 @@ async function approvedDealerAccess(email, account) {
 
 function accountActive(account) {
   return Boolean(account?.role)
-    && !accountLocked(account)
     && account?.active !== false
     && account?.accountActive !== false
     && account?.approved !== false
@@ -737,11 +750,8 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
     authPhase = "resolve-account";
-    const account = await accountForEmail(normalizedEmail, portal);
-    if (accountLocked(account)) {
-      await writeLoginActivity({ email: normalizedEmail, role: account?.role, status: "denied", reason: "account-locked", req });
-      return res.status(423).json(accountLockedPayload(account));
-    }
+    let account = await accountForEmail(normalizedEmail, portal);
+    account = await clearTransientLoginLock(normalizedEmail, account);
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
       const knownAccount = await accountForAnyPortal(normalizedEmail);

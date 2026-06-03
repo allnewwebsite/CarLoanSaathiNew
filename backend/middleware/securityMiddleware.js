@@ -49,6 +49,22 @@ export const authRateLimit = rateLimit({
   message: { message: "Too many authentication attempts. Try again later." },
 });
 
+export const authLookupRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: numberEnv("AUTH_LOOKUP_RATE_LIMIT_MAX", 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many account checks. Try again later." },
+});
+
+export const loginFailureRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: numberEnv("LOGIN_FAILURE_RATE_LIMIT_MAX", 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login failure records. Try again later." },
+});
+
 export const passwordResetRateLimit = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: numberEnv("PASSWORD_RESET_RATE_LIMIT_MAX", 5),

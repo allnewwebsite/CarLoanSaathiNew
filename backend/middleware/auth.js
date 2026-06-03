@@ -34,18 +34,16 @@ async function verifiedAccountFromEmail(email) {
     error.code = "ACCOUNT_NOT_APPROVED";
     throw error;
   }
-  const locked = account?.lockedUntil && new Date(account.lockedUntil).getTime() > Date.now();
   const active = account.approved === true
     && Boolean(account.role)
-    && !locked
     && account.active !== false
     && account.accountApproved !== false
     && account.accountActive !== false
     && !["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed"].includes(String(account.accountStatus || account.status || "").toLowerCase());
   if (!active) {
     const error = new Error("Account is inactive or pending approval");
-    error.status = locked ? 423 : 403;
-    error.code = locked ? "ACCOUNT_LOCKED" : "ACCOUNT_INACTIVE";
+    error.status = 403;
+    error.code = "ACCOUNT_INACTIVE";
     throw error;
   }
   return account;

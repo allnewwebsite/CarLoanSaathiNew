@@ -56,6 +56,8 @@ const portals = {
 };
 
 const workflowSteps = ["Customer", "Salesperson", "Finance Desk", "Bank", "Approval", "Disbursement"];
+const REMEMBER_PREFIX = "cls_login_memory";
+const LAST_PORTAL_KEY = "cls_last_login_portal";
 
 function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
@@ -66,6 +68,29 @@ function formatRemaining(ms) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function rememberedLogin(portal) {
+  try {
+    return JSON.parse(localStorage.getItem(`${REMEMBER_PREFIX}:${portal}`) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function storeRememberedLogin(portal, email, rolePortal) {
+  localStorage.setItem(`${REMEMBER_PREFIX}:${portal}`, JSON.stringify({
+    email,
+    portal,
+    rolePortal,
+    rememberedAt: new Date().toISOString(),
+  }));
+  localStorage.setItem(LAST_PORTAL_KEY, portal);
+}
+
+function clearRememberedLogin(portal) {
+  localStorage.removeItem(`${REMEMBER_PREFIX}:${portal}`);
+  if (localStorage.getItem(LAST_PORTAL_KEY) === portal) localStorage.removeItem(LAST_PORTAL_KEY);
 }
 
 export function LoginPage({ portal = "dealer" }) {
@@ -86,6 +111,14 @@ export function LoginPage({ portal = "dealer" }) {
   const [errorAction, setErrorAction] = useState(null);
   const [lockedUntil, setLockedUntil] = useState("");
   const [lockRemainingMs, setLockRemainingMs] = useState(0);
+
+  useEffect(() => {
+    const remembered = rememberedLogin(portal);
+    if (remembered?.email) {
+      setEmail(remembered.email);
+      setRememberMe(true);
+    }
+  }, [portal]);
 
   useEffect(() => {
     if (!lockedUntil) {
@@ -116,7 +149,8 @@ export function LoginPage({ portal = "dealer" }) {
     setLockedUntil("");
     setMessage("");
     setShowResend(false);
-    if (!validEmail(email)) {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    if (!validEmail(normalizedEmail)) {
       setError("Enter a valid email address.");
       setLoading(false);
       return;
@@ -130,6 +164,8 @@ export function LoginPage({ portal = "dealer" }) {
       await ensureApiReady({ onStatus: setMessage });
       setMessage("");
       const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal, rememberMe });
+      if (rememberMe) storeRememberedLogin(portal, normalizedEmail, session.role);
+      else clearRememberedLogin(portal);
       navigate(session.redirectTo || "/", { replace: true });
     } catch (err) {
       const resolved = resolveAuthError(err, portal, "login");

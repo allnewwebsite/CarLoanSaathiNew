@@ -161,9 +161,13 @@ export function AuthProvider({ children }) {
     } catch (error) {
       const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
       if (lookup?.data) error.accountLookup = lookup.data;
-      if (lookup?.data?.code === "ACCOUNT_LOCKED") throw error;
-      const failure = await api.post("/auth/login-failure", { email: normalizedEmail, reason: error.code || "firebase-auth-failed" }).catch(() => null);
-      if (failure?.data?.locked === true) error.accountLookup = failure.data;
+      const lookupCode = lookup?.data?.code || "";
+      const shouldRecordFailure = !lookupCode || lookupCode === "ACCOUNT_FOUND" || lookupCode === "ACCOUNT_LOCKED";
+      if (lookupCode === "ACCOUNT_LOCKED") throw error;
+      if (shouldRecordFailure) {
+        const failure = await api.post("/auth/login-failure", { email: normalizedEmail, reason: error.code || "firebase-auth-failed" }).catch(() => null);
+        if (failure?.data?.locked === true) error.accountLookup = failure.data;
+      }
       throw error;
     }
     await credential.user.reload();
