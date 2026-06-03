@@ -316,7 +316,7 @@ function StaffManagementScreen() {
       dateValue(staff.createdAt),
       <div key="actions" className="flex flex-wrap gap-2">
         <button type="button" onClick={() => navigate(`/finance/staff/${encodeURIComponent(staff.id || staff.email)}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
-        <button type="button" onClick={() => removeStaff(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>
+        {staff.protected ? null : <button type="button" onClick={() => removeStaff(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>}
       </div>,
     ],
   }));
@@ -424,7 +424,7 @@ export function FinanceStaffDetailPage() {
         <SectionTitle title="Employee Details" subtitle="Verified staff profile and authentication mapping." />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => navigate("/finance/manage-staff")} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700">Back</button>
-          <button type="button" onClick={removeEmployee} className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Remove</button>
+          {employee.protected ? null : <button type="button" onClick={removeEmployee} className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Remove</button>}
         </div>
       </div>
       {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}

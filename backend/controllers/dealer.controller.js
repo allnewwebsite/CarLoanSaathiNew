@@ -137,7 +137,7 @@ async function deleteMatchingRecords(collection, predicate) {
   return matches.length;
 }
 
-async function buildDealerStaffRows(dealershipEmail, dealership = {}) {
+async function buildDealerStaffRows(dealershipEmail, dealership = {}, currentEmail = "") {
   const [dealerStaff, financeDesks, financeDesk, dealershipManagers, users, loginActivity] = await Promise.all([
     listRecords("dealerStaff"),
     listRecords("financeDesks"),
@@ -165,6 +165,7 @@ async function buildDealerStaffRows(dealershipEmail, dealership = {}) {
       .sort((left, right) => String(right.loginAt || right.createdAt || "").localeCompare(String(left.loginAt || left.createdAt || "")))[0];
     rows.set(email, mergeStaffRows(rows.get(email), {
       ...row,
+      protected: email === staffEmail(dealershipEmail) || email === staffEmail(currentEmail),
       sourceCollections: [...new Set([...(rows.get(email)?.sourceCollections || []), source])],
       uniqueEmployeeId: row.employeeId || item.uid || email,
       authAccountId: item.uid || rows.get(email)?.authAccountId || email,
@@ -990,8 +991,8 @@ export async function getDealerSalespersons(req, res, next) {
 
 export async function getDealerStaff(req, res, next) {
   try {
-    const { dealershipEmail, dealership } = await financeDeskContext(req);
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    const { email, dealershipEmail, dealership } = await financeDeskContext(req);
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
     res.json(staff);
   } catch (error) {
     next(error);
@@ -1000,9 +1001,9 @@ export async function getDealerStaff(req, res, next) {
 
 export async function getDealerStaffDetail(req, res, next) {
   try {
-    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    const { email, dealershipEmail, dealership } = await financeDeskContext(req);
     const staffId = decodeURIComponent(req.params.id || "");
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
     const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
     if (!employee) return res.status(404).json({ message: "Employee not found" });
     res.json(employee);
@@ -1234,13 +1235,16 @@ export async function createDealerStaff(req, res, next) {
 export async function deleteDealerStaff(req, res, next) {
   try {
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
-    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    const { email: actorEmail, dealershipEmail, dealership } = await financeDeskContext(req);
     const staffId = decodeURIComponent(req.params.id || "");
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership, actorEmail);
     const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
     if (!employee) return res.status(404).json({ message: "Employee not found" });
 
     const email = staffEmail(employee.email);
+    if (email === staffEmail(dealershipEmail) || email === staffEmail(actorEmail) || employee.protected === true) {
+      return res.status(400).json({ message: "Primary Finance Desk account cannot be removed from Manage Staff." });
+    }
     const belongsToDealer = (item) => item.dealershipId === dealershipEmail || item.dealershipEmail === dealershipEmail;
     const emailMatches = (item) => staffEmail(item.email || item.officialEmail || item.id) === email;
     const deleted = {};
