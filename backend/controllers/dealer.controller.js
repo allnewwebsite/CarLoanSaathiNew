@@ -19,6 +19,7 @@ import {
 } from "../services/dealership.service.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
+import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -314,7 +315,8 @@ export async function startDealerRegistration(req, res, next) {
     const registration = existing
       ? await updateRecord("pendingDealerAccounts", existing.id, payload)
       : await createRecord("pendingDealerAccounts", payload);
-    await upsertRecord("users", email, {
+    await assertNoActiveIdentityCollision({ uid: decoded.uid || email, email, role: "finance-desk", excludeIds: [] });
+    await upsertCanonicalUser(decoded.uid || email, {
       uid: decoded.uid || email,
       email,
       role: "finance-desk",
@@ -698,8 +700,9 @@ export async function registerDealerOnboarding(req, res, next) {
       submittedAt: now,
     });
 
-    await upsertRecord("users", loginEmail, {
-      uid: loginEmail,
+    await assertNoActiveIdentityCollision({ uid: req.body.dealerUid || loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [] });
+    await upsertCanonicalUser(req.body.dealerUid || loginEmail, {
+      uid: req.body.dealerUid || loginEmail,
       email: loginEmail,
       role: "finance-desk",
       approvalStatus: "pending",
@@ -1129,6 +1132,7 @@ export async function createDealerStaff(req, res, next) {
     } catch (firebaseError) {
       if (firebaseError.code === "auth/email-already-exists") {
         firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+        await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role, excludeIds: [] });
         await firebaseAdmin.auth().updateUser(firebaseUser.uid, {
           password: temporaryPassword,
           displayName: fullName,
@@ -1139,6 +1143,7 @@ export async function createDealerStaff(req, res, next) {
         throw firebaseError;
       }
     }
+    await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role, excludeIds: [] });
 
     const roleLabel = staffRoleLabel(role, req.body.role);
     const portalType = "finance";
@@ -1186,7 +1191,7 @@ export async function createDealerStaff(req, res, next) {
         dealershipEmail,
       });
     }
-    await upsertRecord("users", email, {
+    await upsertCanonicalUser(firebaseUser.uid, {
       uid: firebaseUser.uid,
       email,
       role,

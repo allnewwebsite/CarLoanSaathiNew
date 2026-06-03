@@ -64,8 +64,9 @@ async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
     bankId: null,
     updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
   };
-  await firestore.collection("users").doc(email).set({
+  await firestore.collection("users").doc(authUser.uid).set({
     ...record,
+    canonical: true,
     createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
   await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {

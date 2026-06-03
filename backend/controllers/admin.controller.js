@@ -12,6 +12,7 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
+import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -258,7 +259,8 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
   await upsertRecord("dealerships", loginEmail, dealership);
   await upsertRecord("approvedDealerships", loginEmail, dealership);
   await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk" });
-  await upsertRecord("users", loginEmail, {
+  await assertNoActiveIdentityCollision({ uid: loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [loginEmail] });
+  await upsertCanonicalUser(loginEmail, {
     uid: loginEmail,
     email: loginEmail,
     role: "finance-desk",
@@ -272,7 +274,8 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
 
   const gmEmail = normalizeEmail(request.generalManager?.email);
   if (gmEmail) {
-    await upsertRecord("users", gmEmail, {
+    await assertNoActiveIdentityCollision({ uid: gmEmail, email: gmEmail, role: "gm-sm", excludeIds: [gmEmail] });
+    await upsertCanonicalUser(gmEmail, {
       uid: gmEmail,
       email: gmEmail,
       role: "gm-sm",
@@ -530,9 +533,11 @@ export async function approveDealershipApproval(req, res, next) {
     };
     await upsertRecord("dealerships", loginEmail, dealership);
     await upsertRecord("approvedDealerships", loginEmail, dealership);
-    await upsertRecord("users", loginEmail, { uid: loginEmail, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+    await assertNoActiveIdentityCollision({ uid: loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [loginEmail] });
+    await upsertCanonicalUser(loginEmail, { uid: loginEmail, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
     if (request.generalManager?.email) {
-      await upsertRecord("users", request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+      await assertNoActiveIdentityCollision({ uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", excludeIds: [request.generalManager.email] });
+      await upsertCanonicalUser(request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
     }
     await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk", accountActive: true });
     await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
@@ -758,7 +763,8 @@ export async function approveBankApproval(req, res, next) {
     });
     await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "active", active: true });
     await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-    await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+    await assertNoActiveIdentityCollision({ uid: bankEmail, email: bankEmail, role: "bank-manager", excludeIds: [bankEmail] });
+    await upsertCanonicalUser(bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
     if (firebaseAdmin) {
       try {
         const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
@@ -778,7 +784,8 @@ export async function approveBankApproval(req, res, next) {
       const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
       if (executiveEmail) {
         await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-        await upsertRecord("users", executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+        await assertNoActiveIdentityCollision({ uid: executiveEmail, email: executiveEmail, role: "loan-executive", excludeIds: [executiveEmail] });
+        await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
       }
     }
     for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {

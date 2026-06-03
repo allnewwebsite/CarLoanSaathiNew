@@ -14,6 +14,7 @@ import { logInfo } from "../services/logger.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
+import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -516,7 +517,8 @@ export async function startBankRegistration(req, res, next) {
       bankData: {},
     };
     const registration = existing ? await updateRecord("pendingBankAccounts", existing.id, payload) : await createRecord("pendingBankAccounts", payload);
-    await upsertRecord("users", email, {
+    await assertNoActiveIdentityCollision({ uid: decoded.uid || email, email, role: "bank-manager", excludeIds: [] });
+    await upsertCanonicalUser(decoded.uid || email, {
       uid: decoded.uid || email,
       email,
       role: "bank-manager",
@@ -719,6 +721,7 @@ export async function createBankExecutive(req, res, next) {
       if (firebaseError.code === "auth/email-already-exists") return res.status(409).json({ message: "Firebase Auth account already exists for this email" });
       throw firebaseError;
     }
+    await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role: "loan-executive", excludeIds: [] });
 
     const payload = {
       id: email,
@@ -751,7 +754,7 @@ export async function createBankExecutive(req, res, next) {
       createdAt: now,
     };
     await upsertRecord("loanExecutives", email, payload);
-    await upsertRecord("users", email, {
+    await upsertCanonicalUser(firebaseUser.uid, {
       uid: firebaseUser.uid,
       email,
       role: "loan-executive",

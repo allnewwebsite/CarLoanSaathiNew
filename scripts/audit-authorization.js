@@ -34,7 +34,10 @@ assertCheck(
   !requireRole.includes('user.role === "super-admin") return next()'),
   "Admin APIs must explicitly require super-admin.",
 );
-assertCheck("backend auth verifies Firestore user", auth.includes("verifiedAccountFromEmail"));
+assertCheck(
+  "backend auth verifies Firestore user",
+  auth.includes("verifiedAccountFromTokenUser") && auth.includes("resolveCanonicalIdentity"),
+);
 assertCheck("backend auth rejects unverified email", auth.includes("EMAIL_NOT_VERIFIED"));
 assertCheck("Firestore denies default wildcard", firestoreRules.includes("match /{document=**}") && firestoreRules.includes("allow read, write: if false"));
 assertCheck("Firestore protects system counters", firestoreRules.includes("match /systemCounters/{id}") && firestoreRules.includes("allow read, write: if false"));

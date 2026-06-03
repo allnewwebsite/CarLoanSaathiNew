@@ -5,6 +5,12 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { writeAuditLog } from "../services/audit.service.js";
 import { logError, logInfo, logWarn } from "../services/logger.service.js";
+import {
+  assertNoActiveIdentityCollision,
+  findIdentityCandidates,
+  resolveCanonicalIdentity,
+  upsertCanonicalUser,
+} from "../services/identity.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
@@ -128,7 +134,8 @@ function passwordLifecyclePatch(account = {}, now = new Date()) {
 async function persistPasswordLifecycleIfMissing(email, account, lifecycle) {
   if (!email || firstLoginRequiredFor(account)) return;
   if (account.passwordChangedAt && account.passwordExpiresAt) return;
-  await upsertRecord("users", email, {
+  await upsertCanonicalUser(account.uid || account.id || email, {
+    ...account,
     passwordChangedAt: lifecycle.passwordChangedAt,
     passwordExpiresAt: lifecycle.passwordExpiresAt,
   }).catch(() => null);
@@ -223,7 +230,7 @@ function accountLockedPayload(account = {}) {
 }
 
 async function incrementFailedLogin(email, req, reason = "firebase-auth-failed") {
-  const account = await getRecord("users", email);
+  const account = (await findIdentityCandidates({ email })).find((item) => item.role);
   const expiredLock = account?.lockedUntil && !accountLocked(account);
   const attempts = (expiredLock ? 0 : Number(account?.failedLoginAttempts || 0)) + 1;
   const lockedUntil = attempts >= MAX_FAILED_LOGINS ? lockUntilDate() : null;
@@ -233,15 +240,16 @@ async function incrementFailedLogin(email, req, reason = "firebase-auth-failed")
     lockedUntil: lockedUntil || null,
     ...(lockedUntil ? { accountStatus: "locked" } : expiredLock ? { accountStatus: account?.role === "super-admin" || account?.approved === true ? "active" : account?.accountStatus || "pending" } : {}),
   };
-  if (account) await upsertRecord("users", email, update);
+  if (account) await upsertCanonicalUser(account.uid || account.id || email, { ...account, ...update });
   await writeLoginActivity({ email, role: account?.role || null, status: "denied", reason, req });
   return { attempts, locked: attempts >= MAX_FAILED_LOGINS, lockedUntil };
 }
 
 async function clearFailedLogin(email) {
-  const account = await getRecord("users", email);
+  const account = (await findIdentityCandidates({ email })).find((item) => item.role);
   if (!account) return;
-  await upsertRecord("users", email, {
+  await upsertCanonicalUser(account.uid || account.id || email, {
+    ...account,
     failedLoginAttempts: 0,
     lockedUntil: null,
     accountStatus: account.role === "super-admin" || account.approved === true ? "active" : account.accountStatus || "pending",
@@ -268,8 +276,8 @@ export async function revokeUserSessions(email, reason = "admin-revoked") {
     revokedAt: now,
     revokedReason: reason,
   }).catch(() => null)));
-  const account = await getRecord("users", email).catch(() => null);
-  if (account) await upsertRecord("users", email, { sessionRevokedAt: now });
+  const account = (await findIdentityCandidates({ email })).find((item) => item.role);
+  if (account) await upsertCanonicalUser(account.uid || account.id || email, { ...account, sessionRevokedAt: now });
 }
 
 async function createPendingGoogleAccount({ decoded, portal, reason }) {
@@ -307,7 +315,8 @@ function lifecycleOverlay(base = {}, userRecord = {}) {
 
 async function accountWithUserLifecycle(email, account) {
   if (!account) return null;
-  const userRecord = await getRecord("users", email).catch(() => null);
+  const userRecord = (await findIdentityCandidates({ uid: account.uid, email }).catch(() => []))
+    .find((item) => item.role === account.role);
   return userRecord ? lifecycleOverlay(account, userRecord) : account;
 }
 
@@ -329,27 +338,6 @@ function uidMatchesRecord(record = {}, email, uid) {
   return recordUid === uid || recordUid === email;
 }
 
-function selectIdentityCandidate(email, candidates = [], uid = "") {
-  if (!candidates.length) return null;
-  const compatible = candidates.filter((candidate) => uidMatchesRecord(candidate, email, uid));
-  if (!compatible.length) return null;
-  if (!uid) return compatible[0];
-  return compatible.find((candidate) => String(candidate.uid || "").trim() === uid) || compatible[0];
-}
-
-async function getRecordByEmail(collection, email, fields = ["email", "officialEmail", "loginEmail", "dealershipEmail"]) {
-  const direct = await getRecord(collection, email).catch(() => null);
-  if (direct) return direct;
-  const records = await listRecords(collection).catch((error) => {
-    logWarn("Auth account lookup fallback scan failed", { collection, error: error.message });
-    return [];
-  });
-  const normalized = String(email || "").trim().toLowerCase();
-  return records.find((record) =>
-    fields.some((field) => String(record?.[field] || "").trim().toLowerCase() === normalized)
-  ) || null;
-}
-
 async function updatePasswordLifecycleRecords(email, role, patch) {
   const linkedCollections = role === "loan-executive"
     ? ["loanExecutives"]
@@ -369,166 +357,25 @@ async function updatePasswordLifecycleRecords(email, role, patch) {
 
 async function accountForEmail(email, portal, uid = "") {
   const adminEmail = superAdminEmail();
+  const allowed = PORTAL_ROLES[portal] || [];
   if (portal === "admin" || email === adminEmail) {
     if (email !== adminEmail) return null;
-    const adminUser = await getRecord("users", email);
+    const adminUser = (await findIdentityCandidates({ uid, email })).find((item) => item.role === "super-admin");
     return adminUser?.role === "super-admin" && uidMatchesRecord(adminUser, email, uid) ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
   }
-  const allowed = PORTAL_ROLES[portal] || [];
-  const candidates = [];
-  if (allowed.includes("finance-desk")) {
-    const desk = await getRecordByEmail("financeDesks", email);
-    if (desk) candidates.push({
-      role: "finance-desk",
-      uid: desk.uid || null,
-      accountSource: "financeDesks",
-      accountSourceId: desk.id || desk.email || email,
-      dealershipId: desk.dealershipEmail || desk.dealershipId || desk.id,
-      branchId: desk.branchId || desk.branch || desk.city || null,
-      portalType: desk.portalType || "finance",
-      accountType: desk.accountType || "finance-head",
-      status: desk.status || "active",
-      active: desk.active !== false,
-      approved: desk.approved !== false,
-      accountApproved: desk.accountApproved !== false,
-      accountActive: desk.accountActive !== false,
-      firstLoginRequired: desk.firstLoginRequired === true,
-    });
-    const directDealership = await getRecord("dealerships", email).catch(() => null) || await getRecord("approvedDealerships", email).catch(() => null);
-    const dealerships = directDealership ? [] : await listRecords("dealerships").catch((error) => {
-      logWarn("Auth dealership lookup fallback scan failed", { error: error.message });
-      return [];
-    });
-    const dealership = directDealership || dealerships.find((item) =>
-      item.loginEmail === email
-      || item.primaryGoogleEmail === email
-      || item.officialDealershipEmail === email
-      || item.id === email
-    );
-    if (dealership?.active !== false && dealership?.accountActive !== false && !["pending", "rejected", "suspended"].includes(String(dealership.status || "").toLowerCase())) {
-      candidates.push({
-        role: "finance-desk",
-        uid: dealership.uid || null,
-        accountSource: directDealership ? "dealerships" : "dealerships:list",
-        accountSourceId: dealership.id || dealership.loginEmail || email,
-        dealershipId: dealership.loginEmail || dealership.id || email,
-        status: "active",
-        active: true,
-        approved: true,
-        accountApproved: true,
-        accountActive: true,
-      });
-    }
-  }
-  if (allowed.includes("gm-sm")) {
-    const managerRecord = await getRecordByEmail("dealershipManagers", email);
-    const manager = managerRecord && /gm|sm|showroom|manager/i.test(managerRecord.role || managerRecord.roleLabel || "")
-      ? managerRecord
+  const canonical = await resolveCanonicalIdentity({ uid, email, portal });
+  if (canonical?.role) {
+    return allowed.includes(canonical.role)
+      ? accountWithUserLifecycle(email, { ...canonical, accountSource: "users", accountSourceId: canonical.id || canonical.uid || email })
       : null;
-    if (manager) candidates.push({
-      role: "gm-sm",
-      uid: manager.uid || null,
-      accountSource: "dealershipManagers",
-      accountSourceId: manager.id || manager.email || email,
-      dealershipId: manager.dealershipEmail || manager.dealershipId,
-      branchId: manager.branchId || manager.branch || manager.city || null,
-      portalType: manager.portalType || "finance",
-      accountType: manager.accountType || "dealership-management",
-      status: manager.status || "active",
-      active: manager.active !== false,
-      approved: manager.approved !== false,
-      accountApproved: manager.accountApproved !== false,
-      accountActive: manager.accountActive !== false,
-      firstLoginRequired: manager.firstLoginRequired === true,
-    });
   }
-  if (allowed.includes("bank-manager")) {
-    const manager = await getRecordByEmail("branchManagers", email, ["email", "officialEmail"]);
-    if (manager) candidates.push({
-      role: "bank-manager",
-      uid: manager.uid || null,
-      accountSource: "branchManagers",
-      accountSourceId: manager.id || manager.email || email,
-      bankId: manager.bankPartnerId || manager.bankId || manager.bankName,
-      branchId: manager.branchId || manager.branchCity || manager.bankBranchLocation,
-      status: manager.status || "active",
-      active: manager.active !== false,
-      approved: manager.approved !== false,
-      accountApproved: manager.accountApproved !== false,
-      accountActive: manager.accountActive !== false,
-    });
-
-    const bankAccounts = await listRecords("pendingBankAccounts").catch((error) => {
-      logWarn("Auth pending bank account lookup failed", { error: error.message });
-      return [];
-    });
-    const approvedBankAccount = bankAccounts.find((item) =>
-      item.email === email
-      && item.approvalStatus === "approved"
-      && item.accountApproved === true
-      && item.accountActive === true
-    );
-    if (approvedBankAccount) candidates.push({
-      role: "bank-manager",
-      uid: approvedBankAccount.uid || null,
-      accountSource: "pendingBankAccounts",
-      accountSourceId: approvedBankAccount.id || approvedBankAccount.email || email,
-      bankId: approvedBankAccount.bankId || approvedBankAccount.bankData?.bankId || approvedBankAccount.email,
-      branchId: approvedBankAccount.branchId || approvedBankAccount.bankData?.bankBranchLocation || approvedBankAccount.bankData?.branchLocation,
-      status: "active",
-      accountStatus: "active",
-      active: true,
-      approved: true,
-      accountApproved: true,
-      accountActive: true,
-    });
-
-    const bankApprovals = await listRecords("pendingBankApprovals").catch((error) => {
-      logWarn("Auth pending bank approval lookup failed", { error: error.message });
-      return [];
-    });
-    const approvedBankRequest = bankApprovals.find((item) =>
-      (item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email)
-      && item.status === "approved"
-    );
-    if (approvedBankRequest) candidates.push({
-      role: "bank-manager",
-      uid: approvedBankRequest.uid || null,
-      accountSource: "pendingBankApprovals",
-      accountSourceId: approvedBankRequest.id || approvedBankRequest.email || email,
-      bankId: approvedBankRequest.bankId || approvedBankRequest.email || approvedBankRequest.officialEmail || email,
-      branchId: approvedBankRequest.bankBranchLocation || approvedBankRequest.branchLocation || approvedBankRequest.city,
-      status: "active",
-      accountStatus: "active",
-      active: true,
-      approved: true,
-      accountApproved: true,
-      accountActive: true,
-    });
+  const identityCandidates = await findIdentityCandidates({ uid, email });
+  const inactiveCanonical = identityCandidates.find((item) => allowed.includes(item.role));
+  if (inactiveCanonical) {
+    return accountWithUserLifecycle(email, { ...inactiveCanonical, accountSource: "users", accountSourceId: inactiveCanonical.id || inactiveCanonical.uid || email });
   }
-  if (allowed.includes("loan-executive")) {
-    const executive = await getRecordByEmail("loanExecutives", email, ["email", "officialEmail"]);
-    if (executive) candidates.push({
-      role: "loan-executive",
-      uid: executive.uid || null,
-      accountSource: "loanExecutives",
-      accountSourceId: executive.id || executive.email || email,
-      bankId: executive.bankPartnerId || executive.bankId || executive.bankName,
-      branchId: executive.branchId || executive.branchCity || executive.bankBranchLocation,
-      status: executive.status || "active",
-      active: executive.active !== false,
-      approved: executive.approved !== false,
-      accountApproved: executive.accountApproved !== false,
-      accountActive: executive.accountActive !== false,
-      firstLoginRequired: executive.firstLoginRequired === true,
-    });
-  }
-  const selected = selectIdentityCandidate(email, candidates, uid);
-  if (selected) return accountWithUserLifecycle(email, selected);
 
-  const users = await listRecords("users");
-  const approvedUser = users.find((item) => item.email === email && allowed.includes(item.role) && accountActive(item) && uidMatchesRecord(item, email, uid));
-  return approvedUser ? { ...approvedUser, accountSource: "users", accountSourceId: approvedUser.id || email } : null;
+  return null;
 }
 
 function portalAllowsRole(portal, role) {
@@ -571,8 +418,7 @@ async function accountForAnyPortal(email, uid = "") {
     accountForEmail(email, "admin", uid).catch(() => null),
   ]);
   if (dealerAccount || bankAccount || adminAccount) return dealerAccount || bankAccount || adminAccount;
-  const directUser = await getRecord("users", email).catch(() => null);
-  return directUser?.role && uidMatchesRecord(directUser, email, uid) ? directUser : null;
+  return (await findIdentityCandidates({ uid, email })).find((item) => item.role && uidMatchesRecord(item, email, uid)) || null;
 }
 
 function wrongPortalPayload(account = {}) {
@@ -873,7 +719,7 @@ export async function login(req, res, next) {
     await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
     authPhase = "persist-user-session";
     const user = {
-      uid: normalizedEmail,
+      uid: firebaseUid || account.uid || normalizedEmail,
       email: normalizedEmail,
       role: account.role,
       approved: true,
@@ -897,7 +743,7 @@ export async function login(req, res, next) {
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
     };
-    await upsertRecord("users", normalizedEmail, user);
+    await upsertCanonicalUser(user.uid, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
     authPhase = "create-user-session";
@@ -974,7 +820,7 @@ export async function restoreSession(req, res, next) {
     const lifecycle = passwordLifecyclePatch(account);
     await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
     const user = {
-      uid: normalizedEmail,
+      uid: firebaseUid || account.uid || normalizedEmail,
       email: normalizedEmail,
       role: account.role,
       approved: true,
@@ -996,7 +842,7 @@ export async function restoreSession(req, res, next) {
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
     };
-    await upsertRecord("users", normalizedEmail, user);
+    await upsertCanonicalUser(user.uid, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
     const sessionId = await createUserSession({ req, user });
@@ -1018,9 +864,10 @@ export async function restoreSession(req, res, next) {
 
 export async function refreshSession(req, res, next) {
   try {
-    const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    const email = String(req.user?.email || "").trim().toLowerCase();
+    const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session", code: "INVALID_SESSION" });
-    const account = await getRecord("users", email);
+    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
     if (!account?.role || !ROLE_ROUTES[account.role]) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
@@ -1150,7 +997,8 @@ export async function validatePasswordReset(req, res, next) {
     if (firebaseUser.emailVerified !== true) {
       return res.status(403).json({ message: "Verify your email before resetting password.", code: "EMAIL_NOT_VERIFIED" });
     }
-    const account = await getRecord("users", email);
+    const account = await resolveCanonicalIdentity({ uid: firebaseUser.uid, email }).catch(() => null)
+      || (await findIdentityCandidates({ uid: firebaseUser.uid, email })).find((item) => item.role);
     if (!account) return res.status(404).json({ message: "No account found with this email address." });
     if (!accountActive(account)) {
       const inactive = inactiveAccountMessage(account);
@@ -1164,11 +1012,12 @@ export async function validatePasswordReset(req, res, next) {
 
 export async function session(req, res, next) {
   try {
-    const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    const email = String(req.user?.email || "").trim().toLowerCase();
+    const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
     if (req.user?.role === "super-admin") return res.json({ user: req.user });
 
-    const account = await getRecord("users", email);
+    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
     if (!account) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
@@ -1231,9 +1080,10 @@ export async function session(req, res, next) {
 
 export async function completeForcedPasswordChange(req, res, next) {
   try {
-    const email = String(req.user?.email || req.user?.uid || "").trim().toLowerCase();
+    const email = String(req.user?.email || "").trim().toLowerCase();
+    const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
-    const account = await getRecord("users", email);
+    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
     if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
@@ -1247,7 +1097,7 @@ export async function completeForcedPasswordChange(req, res, next) {
       passwordExpired: false,
       passwordDaysRemaining: PASSWORD_VALID_DAYS,
     };
-    await upsertRecord("users", email, {
+    await upsertCanonicalUser(account.uid || account.id || uid || email, {
       ...account,
       ...lifecyclePatch,
     });
@@ -1336,7 +1186,8 @@ export async function approvePendingGoogleAccount(req, res, next) {
       branchId: req.body.branchId || null,
       status: "active",
     };
-    await upsertRecord("users", request.email, user);
+    await assertNoActiveIdentityCollision({ uid: user.uid, email: user.email, role: user.role, excludeIds: [user.uid, user.email] });
+    await upsertCanonicalUser(user.uid, user);
     await setFirebaseClaims(request.email, user);
     const updated = await updateRecord("pendingGoogleAccounts", request.id, { status: "approved", assignedRole: role, approvedBy: req.user?.email, approvedAt: new Date().toISOString() });
     res.json({ message: "Account approved", request: updated });

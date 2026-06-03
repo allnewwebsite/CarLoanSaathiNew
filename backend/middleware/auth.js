@@ -2,13 +2,14 @@ import jwt from "jsonwebtoken";
 import { jwtSecret } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord, updateRecord } from "../services/firestore.service.js";
+import { findIdentityCandidates, resolveCanonicalIdentity } from "../services/identity.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 
 async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
   const dealershipId = String(user.dealershipId || email).trim().toLowerCase();
-  const account = await getRecord("users", email);
+  const account = await resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null);
   if (user?.role === "super-admin") {
     return Boolean(account && account.role === "super-admin" && account.approved === true && account.active !== false);
   }
@@ -26,8 +27,14 @@ async function dealerAccountIsActive(user) {
   );
 }
 
-async function verifiedAccountFromEmail(email) {
-  const account = await getRecord("users", email);
+async function verifiedAccountFromTokenUser(tokenUser = {}) {
+  const email = String(tokenUser.email || "").trim().toLowerCase();
+  const uid = String(tokenUser.uid || "").trim();
+  let account = await resolveCanonicalIdentity({ uid, email });
+  if (!account) {
+    const candidates = await findIdentityCandidates({ uid, email });
+    account = candidates.find((item) => item.role);
+  }
   if (!account) {
     const error = new Error("Account is not approved");
     error.status = 403;
@@ -110,7 +117,7 @@ export async function authenticate(req, res, next) {
     }
     let account;
     try {
-      account = await verifiedAccountFromEmail(email);
+      account = await verifiedAccountFromTokenUser(tokenUser);
     } catch (error) {
       observeAuthFailure(req, error.code || "account_not_active");
       return res.status(error.status || 403).json({ message: error.message, code: error.code || "ACCOUNT_INACTIVE" });
