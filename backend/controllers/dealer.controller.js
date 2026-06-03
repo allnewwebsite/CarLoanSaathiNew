@@ -91,6 +91,22 @@ function staffRoleLabel(role, original) {
   return clean === "SM" ? "SM" : clean === "GM" ? "GM" : "GM / SM";
 }
 
+function staffListRow(item) {
+  return {
+    id: item.id || item.email || item.officialEmail,
+    fullName: item.fullName || item.name || item.headName || item.email,
+    email: item.email || item.officialEmail,
+    mobile: item.mobile || "",
+    employeeId: item.employeeId || item.jobId || "",
+    role: item.role,
+    roleLabel: item.roleLabel || staffRoleLabel(item.role, item.role),
+    branch: item.branch || item.city || item.location || "",
+    city: item.city || item.branch || "",
+    status: item.active === false || item.accountActive === false ? "inactive" : item.status || item.accountStatus || "active",
+    active: item.active !== false && item.accountActive !== false,
+  };
+}
+
 function runDealerLeadSideEffects(label, tasks = []) {
   Promise.allSettled(tasks.map((task) => task())).then((results) => {
     results.forEach((result, index) => {
@@ -895,22 +911,28 @@ export async function getDealerSalespersons(req, res, next) {
 export async function getDealerStaff(req, res, next) {
   try {
     const { dealershipEmail } = await financeDeskContext(req);
-    const staff = (await listRecords("dealerStaff"))
-      .filter((item) => item.dealershipId === dealershipEmail)
-      .map((item) => ({
-        id: item.id,
-        fullName: item.fullName || item.name,
-        email: item.email,
-        mobile: item.mobile,
-        employeeId: item.employeeId,
-        role: item.role,
-        roleLabel: item.roleLabel,
-        branch: item.branch,
-        city: item.city,
-        status: item.active === false ? "inactive" : item.status || "active",
-        active: item.active !== false,
-      }));
-    res.json(staff);
+    const [dealerStaff, financeDesks, dealershipManagers, users] = await Promise.all([
+      listRecords("dealerStaff"),
+      listRecords("financeDesks"),
+      listRecords("dealershipManagers"),
+      listRecords("users"),
+    ]);
+    const rows = new Map();
+    const add = (item) => {
+      const email = String(item.email || item.officialEmail || item.id || "").trim().toLowerCase();
+      if (!email) return;
+      if (item.dealershipId !== dealershipEmail && item.dealershipEmail !== dealershipEmail) return;
+      const role = normalizeStaffRole(item.role);
+      if (!role) return;
+      rows.set(email, { ...rows.get(email), ...staffListRow({ ...item, email, role }) });
+    };
+    dealerStaff.forEach(add);
+    financeDesks.forEach(add);
+    dealershipManagers.forEach(add);
+    users
+      .filter((item) => ["finance-desk", "gm-sm"].includes(normalizeStaffRole(item.role)))
+      .forEach(add);
+    res.json([...rows.values()].sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || ""))));
   } catch (error) {
     next(error);
   }
@@ -1010,7 +1032,15 @@ export async function createDealerStaff(req, res, next) {
     if (existingStaff.some((item) => item.mobile === mobile)) return res.status(409).json({ message: "Mobile number already exists for this dealership" });
     if (existingStaff.some((item) => String(item.employeeId || "").toLowerCase() === employeeId.toLowerCase())) return res.status(409).json({ message: "Employee ID already exists for this dealership" });
     const existingUser = await getRecord("users", email).catch(() => null);
-    if (existingUser?.active !== false) return res.status(409).json({ message: "An active account already exists with this email" });
+    const existingUserActive = existingUser && existingUser.active !== false && existingUser.accountActive !== false;
+    const sameDealershipUser = existingUser
+      && (existingUser.dealershipId === dealershipEmail || existingUser.dealershipEmail === dealershipEmail);
+    if (existingUserActive && !sameDealershipUser) {
+      return res.status(409).json({ message: "This email belongs to another active account" });
+    }
+    if (existingUserActive && sameDealershipUser && !["finance-desk", "gm-sm"].includes(normalizeStaffRole(existingUser.role))) {
+      return res.status(409).json({ message: "This email belongs to another active role" });
+    }
 
     const now = new Date().toISOString();
     const city = String(req.body.city || req.body.branch || dealership.city || dealership.registeredCity || "").trim();
@@ -1027,8 +1057,17 @@ export async function createDealerStaff(req, res, next) {
         disabled: false,
       });
     } catch (firebaseError) {
-      if (firebaseError.code === "auth/email-already-exists") return res.status(409).json({ message: "Firebase Auth account already exists for this email" });
-      throw firebaseError;
+      if (firebaseError.code === "auth/email-already-exists") {
+        firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+        await firebaseAdmin.auth().updateUser(firebaseUser.uid, {
+          password: temporaryPassword,
+          displayName: fullName,
+          emailVerified: true,
+          disabled: false,
+        });
+      } else {
+        throw firebaseError;
+      }
     }
 
     const roleLabel = staffRoleLabel(role, req.body.role);
