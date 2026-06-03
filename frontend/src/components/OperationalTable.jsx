@@ -115,8 +115,9 @@ export function OperationalTable({
   action = null,
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
-  const hasRows = rows.length > 0;
-  const useVirtual = !loading && hasRows && rows.length >= virtualizeAt;
+  const visibleRows = loading ? [] : rows;
+  const hasRows = visibleRows.length > 0;
+  const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
   const gridTemplateColumns = headers.map(columnTemplate).join(" ");
   const tableMinWidth = `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`;
 
@@ -136,37 +137,34 @@ export function OperationalTable({
             </div>
           </div>
 
-          {loading && !hasRows && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
+          {loading && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
           {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
 
           {hasRows && useVirtual && (
             <List
-              defaultHeight={Math.min(height, Math.max(rowHeight, rows.length * rowHeight))}
-              rowCount={rows.length}
+              defaultHeight={Math.min(height, Math.max(rowHeight, visibleRows.length * rowHeight))}
+              rowCount={visibleRows.length}
               rowHeight={rowHeight}
               overscanCount={8}
               rowComponent={VirtualRow}
-              rowProps={{ rows, gridTemplateColumns }}
-              style={{ height: Math.min(height, Math.max(rowHeight, rows.length * rowHeight)), width: "100%" }}
+              rowProps={{ rows: visibleRows, gridTemplateColumns }}
+              style={{ height: Math.min(height, Math.max(rowHeight, visibleRows.length * rowHeight)), width: "100%" }}
             />
           )}
 
           {hasRows && !useVirtual && (
-            <div role="rowgroup" className={`divide-y divide-slate-100 bg-white ${loading ? "opacity-70" : ""}`}>
-              {rows.map((row) => (
+            <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
+              {visibleRows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
                   {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
                 </div>
               ))}
             </div>
           )}
-
-          {loading && hasRows && <TableSkeletonRows headers={headers} rows={3} gridTemplateColumns={gridTemplateColumns} />}
         </div>
-        {hasRows ? <MobileRows headers={headers} rows={rows} /> : null}
-        {loading && !hasRows ? <MobileSkeletonRows /> : null}
+        {!loading && hasRows ? <MobileRows headers={headers} rows={visibleRows} /> : null}
+        {loading ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
-        {loading && hasRows ? <MobileSkeletonRows rows={2} /> : null}
       </div>
       {onPage ? (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">
