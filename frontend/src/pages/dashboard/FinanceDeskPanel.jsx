@@ -215,6 +215,7 @@ export function FinanceDeskPanel({ mode = "total" }) {
 }
 
 function StaffManagementScreen() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyStaff);
@@ -287,37 +288,17 @@ function StaffManagementScreen() {
     }
   };
 
-  const lifecycle = async (staff, action) => {
-    const label = staff.fullName || staff.email;
-    let payload = { action };
-    if (action === "transfer") {
-      const branch = window.prompt("Enter new branch/location", staff.branch || staff.city || "");
-      if (!branch) return;
-      payload = { action, branch, city: branch };
-    } else if (action !== "activate" && !window.confirm(`${action === "remove" ? "Remove" : action === "suspend" ? "Suspend" : "Disable"} ${label}?`)) return;
+  const removeStaff = async (staff) => {
+    const confirmed = window.confirm("Are you sure you want to permanently remove this employee?");
+    if (!confirmed) return;
+    setMessage("");
+    setError("");
     try {
-      await api.post(`/dealer/staff/${staff.id}/lifecycle`, payload);
-      setMessage(`Employee ${action} completed.`);
+      await api.delete(`/dealer/staff/${encodeURIComponent(staff.id || staff.email)}`);
+      setMessage("Employee permanently removed.");
       await loadStaff();
     } catch (err) {
-      setError(err.response?.data?.message || `Unable to ${action} employee`);
-    }
-  };
-
-  const resetPassword = async (staff) => {
-    if (!window.confirm(`Reset password for ${staff.fullName || staff.email}? Existing sessions will be revoked.`)) return;
-    try {
-      const response = await api.post(`/dealer/staff/${staff.id}/reset-password`);
-      setCredentials({
-        name: response.data?.employee?.fullName || staff.fullName,
-        role: staff.roleLabel,
-        email: staff.email,
-        temporaryPassword: response.data?.temporaryPassword || "",
-        portalLogin: response.data?.portalLogin || `${window.location.origin}/dealer/login`,
-      });
-      setMessage("Temporary password generated.");
-    } catch (err) {
-      setError(err.response?.data?.message || "Unable to reset password");
+      setError(err.response?.data?.message || "Unable to remove employee");
     }
   };
 
@@ -326,18 +307,15 @@ function StaffManagementScreen() {
     cells: [
       display(staff.fullName),
       display(staff.roleLabel),
-      display(staff.mobile),
       display(staff.email),
+      display(staff.mobile),
       display(staff.employeeId),
       display(staff.branch || staff.city),
       display(staff.status),
+      dateValue(staff.createdAt),
       <div key="actions" className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => window.alert(`${staff.fullName}\n${staff.email}\n${staff.mobile}\n${staff.roleLabel}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
-        <button type="button" onClick={() => lifecycle(staff, "suspend")} className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">Suspend</button>
-        <button type="button" onClick={() => lifecycle(staff, "activate")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700">Activate</button>
-        <button type="button" onClick={() => resetPassword(staff)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Reset Password</button>
-        <button type="button" onClick={() => lifecycle(staff, "transfer")} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Transfer Branch</button>
-        <button type="button" onClick={() => lifecycle(staff, "remove")} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>
+        <button type="button" onClick={() => navigate(`/finance/staff/${encodeURIComponent(staff.id || staff.email)}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => removeStaff(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>
       </div>,
     ],
   }));
@@ -380,7 +358,90 @@ function StaffManagementScreen() {
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
         <button disabled={busy} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create Employee</button>
       </form>
-      <Table headers={["Employee Name", "Role", "Mobile Number", "Official Email", "Employee ID", "Branch / Location", "Status", "Actions"]} rows={tableRows} loading={loading} />
+      <Table headers={["Employee Name", "Role", "Official Email", "Mobile Number", "Employee ID", "Branch", "Status", "Created Date", "Actions"]} rows={tableRows} loading={loading} />
+    </section>
+  );
+}
+
+export function FinanceStaffDetailPage() {
+  const { employeeId } = useParams();
+  const navigate = useNavigate();
+  const [employee, setEmployee] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadEmployee = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.get(`/dealer/staff/${encodeURIComponent(employeeId)}`);
+      setEmployee(response.data || null);
+    } catch (err) {
+      setEmployee(null);
+      setError(err.response?.data?.message || "Unable to load employee profile");
+    } finally {
+      setLoading(false);
+    }
+  }, [employeeId]);
+
+  useEffect(() => { loadEmployee(); }, [loadEmployee]);
+
+  const removeEmployee = async () => {
+    if (!employee) return;
+    const confirmed = window.confirm("Are you sure you want to permanently remove this employee?");
+    if (!confirmed) return;
+    try {
+      await api.delete(`/dealer/staff/${encodeURIComponent(employee.id || employee.email)}`);
+      navigate("/finance/manage-staff");
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to remove employee");
+    }
+  };
+
+  if (loading) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Loading employee profile...</section>;
+  if (!employee) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">{error || "Employee not found."}</section>;
+
+  const profile = [
+    ["Employee Full Name", employee.fullName],
+    ["Role", employee.roleLabel],
+    ["Official Email", employee.email],
+    ["Mobile Number", employee.mobile],
+    ["Employee ID", employee.employeeId],
+    ["Branch / Location", employee.branch || employee.city],
+    ["Status", employee.status],
+    ["Created Date", dateTime(employee.createdAt)],
+    ["Created By", employee.createdBy],
+    ["Last Login Date", dateTime(employee.lastLoginAt)],
+    ["Assigned Dealership", employee.assignedDealership],
+    ["Unique Employee ID", employee.uniqueEmployeeId],
+    ["Authentication Account ID", employee.authAccountId],
+  ];
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SectionTitle title="Employee Details" subtitle="Verified staff profile and authentication mapping." />
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => navigate("/finance/manage-staff")} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700">Back</button>
+          <button type="button" onClick={removeEmployee} className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Remove</button>
+        </div>
+      </div>
+      {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
+      <section className="rounded-lg border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-2 border-b border-slate-100 pb-4">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{display(employee.roleLabel)}</p>
+          <h1 className="text-2xl font-semibold text-slate-950">{display(employee.fullName)}</h1>
+          <p className="text-sm text-slate-500">{display(employee.email)}</p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {profile.map(([label, value]) => (
+            <div key={label} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-3">
+              <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">{label}</p>
+              <p className="mt-1 break-words text-sm font-medium text-slate-900">{display(value)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

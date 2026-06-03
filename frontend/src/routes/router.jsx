@@ -74,6 +74,7 @@ const LoginPage = lazyPage(pageModules.login, "LoginPage");
 const ExecutiveChangePasswordPage = lazyPage(pageModules.executiveChangePassword, "ExecutiveChangePasswordPage");
 const LoginActivityPage = lazyPage(pageModules.loginActivity, "LoginActivityPage");
 const FinanceDeskPanel = lazyPage(pageModules.financeDesk, "FinanceDeskPanel");
+const FinanceStaffDetailPage = lazyPage(pageModules.financeDesk, "FinanceStaffDetailPage");
 const FinanceLeadDetailPage = lazyPage(pageModules.financeDesk, "FinanceLeadDetailPage");
 const FinanceLeadDocumentsPage = lazyPage(pageModules.financeDesk, "FinanceLeadDocumentsPage");
 const GmTrackingPanel = lazyPage(pageModules.gmTracking, "GmTrackingPanel");
@@ -154,6 +155,7 @@ export const router = createBrowserRouter([
           { path: "total-leads", element: <FinanceDeskPanel mode="total" /> },
           { path: "add-lead", element: <FinanceDeskPanel mode="add" /> },
           { path: "manage-staff", element: <FinanceDeskPanel mode="staff" /> },
+          { path: "staff/:employeeId", element: <FinanceStaffDetailPage /> },
           { path: "manage-team", element: <Navigate to="/finance/manage-staff" replace /> },
           { path: "cases", element: <FinanceDeskPanel mode="cases" /> },
           { path: "status", element: <FinanceDeskPanel mode="status" /> },

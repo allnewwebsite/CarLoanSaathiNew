@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
@@ -123,6 +123,65 @@ function mergeStaffRows(existing = {}, incoming = {}) {
     if (!merged.status || merged.status === "inactive") merged.status = incoming.status || "active";
   }
   return merged;
+}
+
+function staffEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function deleteMatchingRecords(collection, predicate) {
+  const records = await listRecords(collection).catch(() => []);
+  const matches = records.filter(predicate);
+  await Promise.all(matches.map((item) => deleteRecord(collection, item.id)));
+  return matches.length;
+}
+
+async function buildDealerStaffRows(dealershipEmail, dealership = {}) {
+  const [dealerStaff, financeDesks, financeDesk, dealershipManagers, users, loginActivity] = await Promise.all([
+    listRecords("dealerStaff"),
+    listRecords("financeDesks"),
+    listRecords("financeDesk"),
+    listRecords("dealershipManagers"),
+    listRecords("users"),
+    listRecords("loginActivity").catch(() => []),
+  ]);
+  const rows = new Map();
+  const add = (item, source) => {
+    const email = staffEmail(item.email || item.officialEmail || item.id);
+    if (!email) return;
+    if (item.dealershipId !== dealershipEmail && item.dealershipEmail !== dealershipEmail) return;
+    const role = normalizeStaffRole(item.role);
+    if (!role) return;
+    const row = staffListRow({
+      ...item,
+      email,
+      role,
+      branch: item.branch || item.city || dealership.city || dealership.registeredCity || dealership.dealershipName,
+      city: item.city || dealership.city || dealership.registeredCity || "",
+    });
+    const lastLogin = loginActivity
+      .filter((activity) => staffEmail(activity.email) === email && String(activity.status || "").toLowerCase().includes("login"))
+      .sort((left, right) => String(right.loginAt || right.createdAt || "").localeCompare(String(left.loginAt || left.createdAt || "")))[0];
+    rows.set(email, mergeStaffRows(rows.get(email), {
+      ...row,
+      sourceCollections: [...new Set([...(rows.get(email)?.sourceCollections || []), source])],
+      uniqueEmployeeId: row.employeeId || item.uid || email,
+      authAccountId: item.uid || rows.get(email)?.authAccountId || email,
+      createdAt: item.createdAt || rows.get(email)?.createdAt || "",
+      createdBy: item.createdByDealerAdminId || item.createdBy || rows.get(email)?.createdBy || "",
+      lastLoginAt: item.lastLoginAt || lastLogin?.loginAt || lastLogin?.createdAt || rows.get(email)?.lastLoginAt || "",
+      assignedDealership: item.dealershipName || dealership.dealershipName || dealership.name || dealershipEmail,
+      dealershipId: item.dealershipId || item.dealershipEmail || dealershipEmail,
+    }));
+  };
+  dealerStaff.forEach((item) => add(item, "dealerStaff"));
+  financeDesks.forEach((item) => add(item, "financeDesks"));
+  financeDesk.forEach((item) => add(item, "financeDesk"));
+  dealershipManagers.forEach((item) => add(item, "dealershipManagers"));
+  users
+    .filter((item) => ["finance-desk", "gm-sm"].includes(normalizeStaffRole(item.role)))
+    .forEach((item) => add(item, "users"));
+  return [...rows.values()].sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || "")));
 }
 
 function runDealerLeadSideEffects(label, tasks = []) {
@@ -929,34 +988,21 @@ export async function getDealerSalespersons(req, res, next) {
 export async function getDealerStaff(req, res, next) {
   try {
     const { dealershipEmail, dealership } = await financeDeskContext(req);
-    const [dealerStaff, financeDesks, dealershipManagers, users] = await Promise.all([
-      listRecords("dealerStaff"),
-      listRecords("financeDesks"),
-      listRecords("dealershipManagers"),
-      listRecords("users"),
-    ]);
-    const rows = new Map();
-    const add = (item) => {
-      const email = String(item.email || item.officialEmail || item.id || "").trim().toLowerCase();
-      if (!email) return;
-      if (item.dealershipId !== dealershipEmail && item.dealershipEmail !== dealershipEmail) return;
-      const role = normalizeStaffRole(item.role);
-      if (!role) return;
-      rows.set(email, mergeStaffRows(rows.get(email), staffListRow({
-        ...item,
-        email,
-        role,
-        branch: item.branch || item.city || dealership.city || dealership.registeredCity || dealership.dealershipName,
-        city: item.city || dealership.city || dealership.registeredCity || "",
-      })));
-    };
-    dealerStaff.forEach(add);
-    financeDesks.forEach(add);
-    dealershipManagers.forEach(add);
-    users
-      .filter((item) => ["finance-desk", "gm-sm"].includes(normalizeStaffRole(item.role)))
-      .forEach(add);
-    res.json([...rows.values()].sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || ""))));
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    res.json(staff);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getDealerStaffDetail(req, res, next) {
+  try {
+    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    const staffId = decodeURIComponent(req.params.id || "");
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+    res.json(employee);
   } catch (error) {
     next(error);
   }
@@ -1170,58 +1216,49 @@ export async function createDealerStaff(req, res, next) {
   }
 }
 
-async function updateStaffLinkedRecords(email, patch) {
-  const account = await getRecord("users", email).catch(() => null);
-  if (account) await upsertRecord("users", email, { ...account, ...patch });
-  const staff = await getRecord("dealerStaff", email).catch(() => null);
-  if (staff) await upsertRecord("dealerStaff", email, { ...staff, ...patch });
-  const financeDesk = await getRecord("financeDesks", email).catch(() => null);
-  if (financeDesk) await upsertRecord("financeDesks", email, { ...financeDesk, ...patch });
-  const manager = await getRecord("dealershipManagers", email).catch(() => null);
-  if (manager) await upsertRecord("dealershipManagers", email, { ...manager, ...patch });
-}
-
-export async function updateDealerStaffLifecycle(req, res, next) {
+export async function deleteDealerStaff(req, res, next) {
   try {
-    const { dealershipEmail } = await financeDeskContext(req);
-    const staff = await getRecord("dealerStaff", req.params.id);
-    if (!staff || staff.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Employee not found" });
-    const action = String(req.body.action || "").trim();
-    const now = new Date().toISOString();
-    let patch = {};
-    if (action === "suspend") patch = { active: false, accountActive: false, accountStatus: "suspended", status: "suspended", suspendedAt: now, suspendedBy: dealerEmail(req) };
-    else if (action === "activate") patch = { active: true, accountActive: true, accountStatus: "active", status: "active", activatedAt: now, activatedBy: dealerEmail(req) };
-    else if (action === "disable") patch = { active: false, accountActive: false, accountStatus: "disabled", status: "disabled", disabledAt: now, disabledBy: dealerEmail(req) };
-    else if (action === "remove") patch = { active: false, accountActive: false, accountStatus: "removed", status: "removed", removedAt: now, removedBy: dealerEmail(req) };
-    else if (action === "transfer") {
-      const branch = required(req.body.branch, "Branch");
-      const city = String(req.body.city || branch).trim();
-      patch = { branch, city, branchTransferredAt: now, branchTransferredBy: dealerEmail(req) };
-    } else {
-      return res.status(400).json({ message: "Invalid employee action" });
-    }
-    await updateStaffLinkedRecords(staff.email, patch);
-    if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(staff.email, `dealer-staff-${action}`);
-    await writeAuditLog({ req, actionType: `DEALER_STAFF_${action.toUpperCase()}`, targetEntity: "dealerStaff", targetId: staff.email, meta: { dealershipId: dealershipEmail, action } });
-    res.json({ message: "Employee updated", employee: { ...staff, ...patch } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function resetDealerStaffPassword(req, res, next) {
-  try {
-    const { dealershipEmail } = await financeDeskContext(req);
-    const staff = await getRecord("dealerStaff", req.params.id);
-    if (!staff || staff.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Employee not found" });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
-    const temporaryPassword = generateTemporaryPassword();
-    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(staff.email);
-    await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: temporaryPassword });
-    await updateStaffLinkedRecords(staff.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: dealerEmail(req) });
-    await revokeUserSessions(staff.email, "dealer-staff-password-reset");
-    await writeAuditLog({ req, actionType: "DEALER_STAFF_PASSWORD_RESET", targetEntity: "dealerStaff", targetId: staff.email, meta: { dealershipId: dealershipEmail } });
-    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/dealer/login`, employee: staff });
+    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    const staffId = decodeURIComponent(req.params.id || "");
+    const staff = await buildDealerStaffRows(dealershipEmail, dealership);
+    const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
+    if (!employee) return res.status(404).json({ message: "Employee not found" });
+
+    const email = staffEmail(employee.email);
+    const belongsToDealer = (item) => item.dealershipId === dealershipEmail || item.dealershipEmail === dealershipEmail;
+    const emailMatches = (item) => staffEmail(item.email || item.officialEmail || item.id) === email;
+    const deleted = {};
+
+    for (const collection of ["dealerStaff", "financeDesks", "financeDesk", "dealershipManagers", "users"]) {
+      deleted[collection] = await deleteMatchingRecords(collection, (item) => belongsToDealer(item) && emailMatches(item));
+    }
+    for (const collection of ["loginActivity", "authAuditLogs", "notifications"]) {
+      deleted[collection] = await deleteMatchingRecords(collection, (item) =>
+        emailMatches(item)
+        || staffEmail(item.recipientId || item.userEmail || item.actorEmail || item.createdBy || item.updatedBy) === email
+      );
+    }
+
+    await revokeUserSessions(email, "dealer-staff-permanent-delete").catch(() => {});
+    let authDeleted = false;
+    try {
+      const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+      await firebaseAdmin.auth().deleteUser(firebaseUser.uid);
+      authDeleted = true;
+    } catch (firebaseError) {
+      if (firebaseError.code !== "auth/user-not-found") throw firebaseError;
+    }
+
+    await writeAuditLog({
+      req,
+      actionType: "DEALER_STAFF_PERMANENT_DELETE",
+      targetEntity: "dealerStaff",
+      targetId: email,
+      oldValue: employee,
+      meta: { dealershipId: dealershipEmail, deleted, authDeleted },
+    });
+    res.json({ message: "Employee permanently removed", employeeEmail: email, deleted, authDeleted });
   } catch (error) {
     next(error);
   }

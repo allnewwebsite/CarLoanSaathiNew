@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createDealerLead, createDealerSalesperson, createDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, registerDealerOnboarding, removeDealerSalesperson, resetDealerStaffPassword, startDealerRegistration, updateDealerBankTieUps, updateDealerProfile, updateDealerStaffLifecycle } from "../controllers/dealer.controller.js";
+import { createDealerLead, createDealerSalesperson, createDealerStaff, deleteDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, getDealerStaffDetail, registerDealerOnboarding, removeDealerSalesperson, startDealerRegistration, updateDealerBankTieUps, updateDealerProfile } from "../controllers/dealer.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
@@ -20,8 +20,8 @@ router.post("/salespersons", createDealerSalesperson);
 router.delete("/salespersons/:id", removeDealerSalesperson);
 router.get("/staff", getDealerStaff);
 router.post("/staff", createDealerStaff);
-router.post("/staff/:id/lifecycle", updateDealerStaffLifecycle);
-router.post("/staff/:id/reset-password", resetDealerStaffPassword);
+router.get("/staff/:id", getDealerStaffDetail);
+router.delete("/staff/:id", deleteDealerStaff);
 router.get("/earnings", getDealerEarnings);
 router.get("/profile", getDealerProfile);
 router.get("/bank-tieups", getDealerBankTieUps);
