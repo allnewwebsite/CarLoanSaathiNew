@@ -117,6 +117,16 @@ export function getCachedGetData(url, params = null) {
   return entry.response.data;
 }
 
+export function prefetchGet(url, params = null, options = {}) {
+  if (getCachedGetData(url, params)) return Promise.resolve(null);
+  return api.get(url, {
+    ...options,
+    params,
+    silent: true,
+    timeout: Math.min(Number(options.timeout) || DEFAULT_REQUEST_TIMEOUT_MS, 10000),
+  }).catch(() => null);
+}
+
 function invalidateGetCache() {
   getCache.clear();
 }

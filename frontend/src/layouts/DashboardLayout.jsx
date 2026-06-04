@@ -3,6 +3,7 @@ import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileTex
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { prefetchGet } from "../services/api.js";
 
 const navByRole = {
   "gm-sm": [
@@ -43,6 +44,40 @@ const navByRole = {
 };
 
 const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
+const pageSize = 10;
+
+function prefetchSpecsForRoute(to) {
+  const path = String(to || "").split("?")[0];
+  if (path.startsWith("/finance/bank-tieups")) return [{ url: "/dealer/bank-tieups" }];
+  if (path.startsWith("/finance/salespersons") || path.startsWith("/finance/active-salespersons")) return [{ url: "/dealer/salespersons" }];
+  if (path.startsWith("/finance/manage-staff")) return [{ url: "/dealer/staff" }];
+  if (path.startsWith("/finance/add-lead")) return [{ url: "/dealer/bank-tieups" }, { url: "/dealer/salespersons" }];
+  if (path.startsWith("/finance/status")) return [{ url: "/dealer/leads", params: { page: 1, limit: pageSize } }];
+  if (path.startsWith("/finance")) return [{ url: "/dealer/leads", params: { page: 1, limit: pageSize } }];
+
+  if (path.startsWith("/gm/salespersons")) return [{ url: "/gm/salespersons" }, { url: "/gm/leads", params: { page: 1, limit: pageSize } }];
+  if (path.startsWith("/gm/status") || path.startsWith("/gm/cases") || path.startsWith("/gm/total-leads")) return [{ url: "/gm/leads", params: { page: 1, limit: pageSize } }];
+
+  if (path.startsWith("/bank-manager/analytics")) return [{ url: "/bank/analytics" }];
+  if (path.startsWith("/bank-manager/executives") || path.startsWith("/bank-manager/manage-executive")) return [{ url: "/bank/executives" }];
+  if (path.startsWith("/bank-manager")) return [{ url: "/bank/leads", params: { page: 1, limit: pageSize, search: "", status: "" } }];
+
+  if (path.startsWith("/loan-executive")) return [{ url: "/bank/leads", params: { page: 1, limit: pageSize, search: "", status: "" } }];
+
+  if (path.startsWith("/admin/dealerships")) return [{ url: "/admin/approvals/dealerships", params: { status: "approved", search: "" } }];
+  if (path.startsWith("/admin/approvals/dealerships")) return [{ url: "/admin/approvals/dealerships", params: { status: "pending", search: "" } }];
+  if (path.startsWith("/admin/banks")) return [{ url: "/admin/approvals/banks", params: { status: "approved", search: "" } }];
+  if (path.startsWith("/admin/approvals/banks")) return [{ url: "/admin/approvals/banks", params: { status: "pending", search: "" } }];
+  if (path.startsWith("/admin/status")) return [{ url: "/admin/leads", params: { status: "NEW", search: "" } }];
+  if (path.startsWith("/admin")) return [{ url: "/admin/leads", params: { search: "" } }];
+  return [];
+}
+
+function prefetchDashboardRoute(to) {
+  prefetchSpecsForRoute(to).forEach(({ url, params }) => {
+    prefetchGet(url, params);
+  });
+}
 
 function DashboardContentFallback() {
   return (
@@ -147,6 +182,17 @@ export function DashboardLayout() {
       ? [["Dealership", user.dealershipName || "Dealership"]]
       : [];
 
+  useEffect(() => {
+    const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250));
+    const cancel = window.cancelIdleCallback || window.clearTimeout;
+    const handle = schedule(() => {
+      nav.forEach((item, index) => {
+        window.setTimeout(() => prefetchDashboardRoute(item.to), index * 90);
+      });
+    });
+    return () => cancel(handle);
+  }, [nav]);
+
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
       {mobileOpen ? <button aria-label="Close sidebar overlay" className="fixed inset-0 z-30 bg-slate-900/30 opacity-100 transition-opacity duration-200 ease-out lg:hidden" onClick={() => setMobileOpen(false)} /> : null}
@@ -164,7 +210,7 @@ export function DashboardLayout() {
           {nav.map((item) => {
             const Icon = item.icon;
             return (
-              <NavLink key={item.to} to={item.to} title={collapsed ? item.label : undefined} className={() => `group flex min-h-10 items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-medium transition-[background-color,color,padding,transform] duration-200 ease-out ${collapsed ? "lg:justify-center lg:px-2" : ""} ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}>
+              <NavLink key={item.to} to={item.to} onMouseEnter={() => prefetchDashboardRoute(item.to)} onFocus={() => prefetchDashboardRoute(item.to)} onPointerDown={() => prefetchDashboardRoute(item.to)} title={collapsed ? item.label : undefined} className={() => `group flex min-h-10 items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-medium transition-[background-color,color,padding,transform] duration-200 ease-out ${collapsed ? "lg:justify-center lg:px-2" : ""} ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}>
                 <Icon className="h-5 w-5 shrink-0 transition-transform duration-200 ease-out group-hover:scale-105" /> <span className={`truncate whitespace-nowrap transition-[opacity,transform,width] duration-200 ease-out ${collapsed ? "lg:w-0 lg:-translate-x-1 lg:opacity-0" : "lg:w-auto lg:translate-x-0 lg:opacity-100"}`}>{item.label}</span>
               </NavLink>
             );
@@ -223,7 +269,7 @@ export function DashboardLayout() {
         <div className="border-b border-slate-200 bg-white px-4 py-2 lg:hidden">
           <div className="flex gap-2 overflow-x-auto">
             {nav.map((item) => (
-              <NavLink key={item.to} to={item.to} className={() => `whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>
+              <NavLink key={item.to} to={item.to} onTouchStart={() => prefetchDashboardRoute(item.to)} onFocus={() => prefetchDashboardRoute(item.to)} className={() => `whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>
                 {item.label}
               </NavLink>
             ))}

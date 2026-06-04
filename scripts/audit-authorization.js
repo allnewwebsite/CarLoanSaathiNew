@@ -95,11 +95,18 @@ assertCheck(
 assertCheck(
   "portal list pages hydrate from cached data on first paint",
   read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx").includes("getCachedGetData(\"/dealer/leads\"")
+    && read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx").includes("const cachedTieUps = getCachedGetData(\"/dealer/bank-tieups\")")
     && read("frontend/src/pages/dashboard/GmTrackingPanel.jsx").includes("getCachedGetData(\"/gm/leads\"")
     && read("frontend/src/pages/bank/BankBranchManagerPanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
     && read("frontend/src/pages/bank/LoanExecutivePanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
     && read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx").includes("adminPanelRequest")
     && read("frontend/src/pages/dashboard/BankTieUpSettings.jsx").includes("getCachedGetData(\"/dealer/bank-tieups\""),
+);
+assertCheck(
+  "dashboard sidebar prefetches all portal tabs",
+  read("frontend/src/layouts/DashboardLayout.jsx").includes("function prefetchSpecsForRoute")
+    && read("frontend/src/layouts/DashboardLayout.jsx").includes("nav.forEach((item, index)")
+    && read("frontend/src/layouts/DashboardLayout.jsx").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
 );
 assertCheck(
   "CORS allows portal header required by login",

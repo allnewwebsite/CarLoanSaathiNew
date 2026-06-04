@@ -613,14 +613,25 @@ function AddLeadOnlyScreen() {
 }
 
 function BankTieUpsScreen() {
-  const [availableBranches, setAvailableBranches] = useState([]);
-  const [selectedBranchIds, setSelectedBranchIds] = useState([]);
+  const cachedTieUps = getCachedGetData("/dealer/bank-tieups");
+  const cachedBranches = Array.isArray(cachedTieUps?.availableBranches)
+    ? cachedTieUps.availableBranches
+    : Array.isArray(cachedTieUps?.availableBanks)
+      ? cachedTieUps.availableBanks
+      : [];
+  const cachedCurrentTieUps = Array.isArray(cachedTieUps?.branchTieUps)
+    ? cachedTieUps.branchTieUps
+    : Array.isArray(cachedTieUps?.currentTieUps)
+      ? cachedTieUps.currentTieUps
+      : [];
+  const [availableBranches, setAvailableBranches] = useState(() => cachedBranches.filter((branch) => branch.active !== false && branch.approved !== false));
+  const [selectedBranchIds, setSelectedBranchIds] = useState(() => cachedCurrentTieUps.map((branch) => bankKey(branch)).filter(Boolean));
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedTieUps);
   const [saving, setSaving] = useState(false);
 
   const loadTieUps = useCallback(async () => {
@@ -718,7 +729,7 @@ function BankTieUpsScreen() {
             <span>Approval Status</span>
           </div>
           <div className="overflow-x-auto">
-            {loading ? (
+            {loading && !availableBranches.length ? (
               <BranchListSkeleton />
             ) : !availableBranches.length ? (
               <p className="px-3 py-6 text-sm text-slate-500">No approved banks are currently available.</p>
