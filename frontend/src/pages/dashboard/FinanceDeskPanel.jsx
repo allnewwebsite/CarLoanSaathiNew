@@ -5,7 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
@@ -123,9 +123,12 @@ function useSalespersons({ includeInactive = false } = {}) {
 }
 
 function useDealerLeads(filters = {}) {
-  const [leads, setLeads] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const initialParams = { page: 1, limit: pageSize, ...filters };
+  const cached = getCachedGetData("/dealer/leads", initialParams);
+  const cachedPayload = Array.isArray(cached) ? { data: cached, total: cached.length } : cached;
+  const [leads, setLeads] = useState(() => cachedPayload?.data || []);
+  const [total, setTotal] = useState(() => cachedPayload?.total || 0);
+  const [loading, setLoading] = useState(() => !cachedPayload);
   const loadLeads = useCallback(async (next = {}) => {
     const silent = next.silent === true;
     if (!silent) setLoading(true);

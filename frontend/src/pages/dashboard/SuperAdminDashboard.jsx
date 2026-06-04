@@ -7,7 +7,7 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -257,9 +257,20 @@ function generatedTime(value) {
 
 const STATUS_FILTERS = BANK_STATUS_OPTIONS.map((value) => ({ label: statusLabel(value), value }));
 
+function adminPanelRequest(mode, search, leadFilter) {
+  if (mode === "dealerships") return { url: "/admin/approvals/dealerships", params: { status: "approved", search } };
+  if (mode === "approval-dealerships") return { url: "/admin/approvals/dealerships", params: { status: "pending", search } };
+  if (mode === "banks") return { url: "/admin/approvals/banks", params: { status: "approved", search } };
+  if (mode === "approval-banks") return { url: "/admin/approvals/banks", params: { status: "pending", search } };
+  if (mode === "status") return { url: "/admin/leads", params: { status: leadFilter || LEAD_STATUSES.NEW, search } };
+  return { url: "/admin/leads", params: { search } };
+}
+
 function useAdminPanelData(mode, search, leadFilter) {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const initialRequest = adminPanelRequest(mode, search, leadFilter);
+  const cached = getCachedGetData(initialRequest.url, initialRequest.params);
+  const [rows, setRows] = useState(() => responseRows({ data: cached }));
+  const [loading, setLoading] = useState(() => !cached);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);

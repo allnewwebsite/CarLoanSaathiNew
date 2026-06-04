@@ -84,12 +84,22 @@ assertCheck(
   "API client caches GET and App Check token for fast tab switching",
   apiClient.includes("const getCache = new Map()")
     && apiClient.includes("APP_CHECK_CACHE_TTL_MS")
-    && apiClient.includes("config.adapter = () => Promise.resolve(cached)"),
+    && apiClient.includes("config.adapter = () => Promise.resolve(cached)")
+    && apiClient.includes("export function getCachedGetData"),
 );
 assertCheck(
   "tables retain rows during refresh",
   read("frontend/src/components/OperationalTable.jsx").includes("const visibleRows = rows")
     && read("frontend/src/components/OperationalTable.jsx").includes("loading && !hasRows"),
+);
+assertCheck(
+  "portal list pages hydrate from cached data on first paint",
+  read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx").includes("getCachedGetData(\"/dealer/leads\"")
+    && read("frontend/src/pages/dashboard/GmTrackingPanel.jsx").includes("getCachedGetData(\"/gm/leads\"")
+    && read("frontend/src/pages/bank/BankBranchManagerPanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
+    && read("frontend/src/pages/bank/LoanExecutivePanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
+    && read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx").includes("adminPanelRequest")
+    && read("frontend/src/pages/dashboard/BankTieUpSettings.jsx").includes("getCachedGetData(\"/dealer/bank-tieups\""),
 );
 assertCheck(
   "CORS allows portal header required by login",

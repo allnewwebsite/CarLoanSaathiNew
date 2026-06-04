@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -145,11 +145,13 @@ function SearchBar({ value, onChange }) {
 }
 
 function useBankLeads(search, status = "") {
-  const [rows, setRows] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status });
+  const cachedRows = responseRows({ data: cached });
+  const [rows, setRows] = useState(() => cachedRows);
+  const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
+  const [loading, setLoading] = useState(() => !cached);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -170,8 +172,9 @@ function useBankLeads(search, status = "") {
 }
 
 function useExecutives() {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedGetData("/bank/executives");
+  const [rows, setRows] = useState(() => responseRows({ data: cached }));
+  const [loading, setLoading] = useState(() => !cached);
   const load = useCallback(async () => {
     setLoading(true);
     try {

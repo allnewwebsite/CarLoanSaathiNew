@@ -76,10 +76,15 @@ function stableParams(params) {
     .join("&");
 }
 
+function getCacheKey(url = "", params = null, baseURL = apiBaseUrl()) {
+  if (authEndpoint(url)) return "";
+  return `${baseURL}|${url || ""}|${stableParams(params)}|${requestPortalHeader()}`;
+}
+
 function cacheKey(config = {}) {
   const method = String(config.method || "get").toLowerCase();
-  if (method !== "get" || authEndpoint(config.url)) return "";
-  return `${config.baseURL || apiBaseUrl()}|${config.url || ""}|${stableParams(config.params)}|${requestPortalHeader()}`;
+  if (method !== "get") return "";
+  return getCacheKey(config.url, config.params, config.baseURL || apiBaseUrl());
 }
 
 function cachedResponse(config) {
@@ -102,6 +107,14 @@ function rememberGetResponse(response) {
       headers: response.headers,
     },
   });
+}
+
+export function getCachedGetData(url, params = null) {
+  const key = getCacheKey(url, params);
+  if (!key) return null;
+  const entry = getCache.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) return null;
+  return entry.response.data;
 }
 
 function invalidateGetCache() {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 /**
  * Bank Tie-Up Settings Component
@@ -18,11 +18,12 @@ import { api } from "../../services/api.js";
 export default function BankTieUpSettings() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const cachedBankTieUps = getCachedGetData("/dealer/bank-tieups");
 
   // State Management
-  const [currentTieUps, setCurrentTieUps] = useState([]);
-  const [availableBanks, setAvailableBanks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [currentTieUps, setCurrentTieUps] = useState(() => cachedBankTieUps?.currentTieUps || []);
+  const [availableBanks, setAvailableBanks] = useState(() => cachedBankTieUps?.availableBanks || []);
+  const [loading, setLoading] = useState(() => !cachedBankTieUps);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
@@ -184,7 +185,7 @@ export default function BankTieUpSettings() {
     return () => clearInterval(interval);
   }, [fetchBankTieUps]);
 
-  if (loading) {
+  if (loading && !currentTieUps.length && !availableBanks.length) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">

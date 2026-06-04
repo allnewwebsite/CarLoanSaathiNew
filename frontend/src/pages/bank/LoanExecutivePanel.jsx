@@ -6,7 +6,7 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -71,11 +71,13 @@ function Table({ title, headers, rows, loading, page, total, onPage }) {
 }
 
 function useExecutiveLeads({ search, status }) {
-  const [rows, setRows] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "" });
+  const cachedRows = responseRows({ data: cached });
+  const [rows, setRows] = useState(() => cachedRows);
+  const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
+  const [loading, setLoading] = useState(() => !cached);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {

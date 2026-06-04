@@ -5,7 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -62,9 +62,11 @@ function DocumentsButton({ lead }) {
 }
 
 function useGmLeads(filters = {}) {
-  const [leads, setLeads] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const initialParams = { page: 1, limit: pageSize, ...filters };
+  const cached = getCachedGetData("/gm/leads", initialParams);
+  const [leads, setLeads] = useState(() => cached?.data || []);
+  const [total, setTotal] = useState(() => cached?.total || 0);
+  const [loading, setLoading] = useState(() => !cached);
   const load = useCallback(async (next = {}) => {
     const silent = next.silent === true;
     if (!silent) setLoading(true);
