@@ -99,6 +99,8 @@ function rememberGetResponse(response) {
   const key = cacheKey(response.config);
   if (!key) return;
   getCache.set(key, {
+    url: response.config?.url || "",
+    params: response.config?.params || null,
     expiresAt: Date.now() + Number(response.config?.cacheTtlMs || GET_CACHE_TTL_MS),
     response: {
       data: response.data,
@@ -115,6 +117,25 @@ export function getCachedGetData(url, params = null) {
   const entry = getCache.get(key);
   if (!entry || entry.expiresAt <= Date.now()) return null;
   return entry.response.data;
+}
+
+export function findCachedGetItem(url, matcher) {
+  if (typeof matcher !== "function") return null;
+  for (const entry of getCache.values()) {
+    if (!entry || entry.expiresAt <= Date.now() || entry.url !== url) continue;
+    const payload = entry.response?.data;
+    const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+    const found = rows.find(matcher);
+    if (found) return found;
+    if (payload && typeof payload === "object") {
+      for (const value of Object.values(payload)) {
+        if (!Array.isArray(value)) continue;
+        const nestedFound = value.find(matcher);
+        if (nestedFound) return nestedFound;
+      }
+    }
+  }
+  return null;
 }
 
 export function prefetchGet(url, params = null, options = {}) {

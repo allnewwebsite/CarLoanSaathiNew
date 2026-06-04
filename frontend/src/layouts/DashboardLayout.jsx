@@ -64,12 +64,13 @@ function prefetchSpecsForRoute(to) {
 
   if (path.startsWith("/loan-executive")) return [{ url: "/bank/leads", params: { page: 1, limit: pageSize, search: "", status: "" } }];
 
-  if (path.startsWith("/admin/dealerships")) return [{ url: "/admin/approvals/dealerships", params: { status: "approved", search: "" } }];
-  if (path.startsWith("/admin/approvals/dealerships")) return [{ url: "/admin/approvals/dealerships", params: { status: "pending", search: "" } }];
-  if (path.startsWith("/admin/banks")) return [{ url: "/admin/approvals/banks", params: { status: "approved", search: "" } }];
-  if (path.startsWith("/admin/approvals/banks")) return [{ url: "/admin/approvals/banks", params: { status: "pending", search: "" } }];
-  if (path.startsWith("/admin/status")) return [{ url: "/admin/leads", params: { status: "NEW", search: "" } }];
-  if (path.startsWith("/admin")) return [{ url: "/admin/leads", params: { search: "" } }];
+  const adminBase = [{ url: "/admin/ecosystem" }, { url: "/admin/analytics" }, { url: "/admin/audit-logs" }];
+  if (path.startsWith("/admin/dealerships")) return [...adminBase, { url: "/admin/approvals/dealerships", params: { status: "approved", search: "" } }];
+  if (path.startsWith("/admin/approvals/dealerships")) return [...adminBase, { url: "/admin/approvals/dealerships", params: { status: "pending", search: "" } }];
+  if (path.startsWith("/admin/banks")) return [...adminBase, { url: "/admin/approvals/banks", params: { status: "approved", search: "" } }];
+  if (path.startsWith("/admin/approvals/banks")) return [...adminBase, { url: "/admin/approvals/banks", params: { status: "pending", search: "" } }];
+  if (path.startsWith("/admin/status")) return [...adminBase, { url: "/admin/leads", params: { status: "NEW", search: "" } }];
+  if (path.startsWith("/admin")) return [...adminBase, { url: "/admin/leads", params: { search: "" } }];
   return [];
 }
 

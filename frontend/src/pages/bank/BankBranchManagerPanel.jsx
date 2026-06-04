@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -270,8 +270,9 @@ function StatusPage() {
 
 function AnalyticsPage() {
   const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedAnalytics = getCachedGetData("/bank/analytics");
+  const [data, setData] = useState(() => cachedAnalytics);
+  const [loading, setLoading] = useState(() => !cachedAnalytics);
   const [error, setError] = useState("");
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -289,6 +290,7 @@ function AnalyticsPage() {
 
   useEffect(() => { load(); }, [load]);
   useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize });
+  const emptyLoading = loading && !data;
 
   const branchRows = (data?.branchMetrics || []).map((item) => ({
     key: item.branch,
@@ -335,18 +337,18 @@ function AnalyticsPage() {
       <PageTitle title="Analytics" />
       {error ? <DetailState title="Analytics unavailable" message={error} onRetry={() => load()} tone="red" /> : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Assigned Leads" value={loading ? "-" : numberValue(data?.assignedLeads)} subtext={data?.branch || data?.bankName || "Current branch scope"} />
-        <MetricCard label="Active Cases" value={loading ? "-" : numberValue(data?.pendingLeads)} subtext={`${numberValue(data?.pendingDocuments)} pending document cases`} />
-        <MetricCard label="Disbursed Amount" value={loading ? "-" : moneyValue(data?.disbursedAmount)} subtext={`${numberValue(data?.disbursedLeads)} disbursed cases`} />
-        <MetricCard label="SLA Overdue" value={loading ? "-" : numberValue(data?.slaOverdue)} subtext={`${numberValue(data?.slaDueToday)} cases generated today`} />
-        <MetricCard label="Approved" value={loading ? "-" : numberValue(data?.approvedLeads)} subtext={`${numberValue(data?.conversionRate)}% conversion`} />
-        <MetricCard label="Rejected" value={loading ? "-" : numberValue(data?.rejectedLeads)} subtext={`${numberValue(data?.rejectionRate)}% rejection`} />
-        <MetricCard label="Branches" value={loading ? "-" : numberValue(data?.branchMetrics?.length)} subtext="Branch-level workload" />
-        <MetricCard label="Executives" value={loading ? "-" : numberValue(data?.executivePerformance?.length)} subtext="Tracked assignment owners" />
+        <MetricCard label="Assigned Leads" value={emptyLoading ? "-" : numberValue(data?.assignedLeads)} subtext={data?.branch || data?.bankName || "Current branch scope"} />
+        <MetricCard label="Active Cases" value={emptyLoading ? "-" : numberValue(data?.pendingLeads)} subtext={`${numberValue(data?.pendingDocuments)} pending document cases`} />
+        <MetricCard label="Disbursed Amount" value={emptyLoading ? "-" : moneyValue(data?.disbursedAmount)} subtext={`${numberValue(data?.disbursedLeads)} disbursed cases`} />
+        <MetricCard label="SLA Overdue" value={emptyLoading ? "-" : numberValue(data?.slaOverdue)} subtext={`${numberValue(data?.slaDueToday)} cases generated today`} />
+        <MetricCard label="Approved" value={emptyLoading ? "-" : numberValue(data?.approvedLeads)} subtext={`${numberValue(data?.conversionRate)}% conversion`} />
+        <MetricCard label="Rejected" value={emptyLoading ? "-" : numberValue(data?.rejectedLeads)} subtext={`${numberValue(data?.rejectionRate)}% rejection`} />
+        <MetricCard label="Branches" value={emptyLoading ? "-" : numberValue(data?.branchMetrics?.length)} subtext="Branch-level workload" />
+        <MetricCard label="Executives" value={emptyLoading ? "-" : numberValue(data?.executivePerformance?.length)} subtext="Tracked assignment owners" />
       </div>
-      <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={loading} />
-      <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={loading} />
-      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={loading} />
+      <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={emptyLoading} />
+      <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={emptyLoading} />
+      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
     </section>
   );
 }
@@ -574,10 +576,13 @@ export function BankBranchManagerPanel({ mode = "leads" }) {
 
 export function BankManagerLeadDetailPage() {
   const { leadId } = useParams();
-  const [lead, setLead] = useState(null);
+  const cachedLead = getCachedGetData(`/bank/leads/${leadId}`)
+    || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId)
+    || findCachedGetItem("/bank/analytics", (item) => item.id === leadId || item.caseId === leadId);
+  const [lead, setLead] = useState(() => cachedLead);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedLead);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
     setError(null);
@@ -586,7 +591,7 @@ export function BankManagerLeadDetailPage() {
       const response = await api.get(`/bank/leads/${leadId}`);
       setLead(response.data);
     } catch (err) {
-      setLead(null);
+      setLead((current) => current || null);
       setError({
         status: err.response?.status || 0,
         message: err.response?.data?.message || err.message || "Unable to load this lead.",
@@ -600,7 +605,7 @@ export function BankManagerLeadDetailPage() {
   useEffect(() => { loadLead(); }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <DetailSkeleton />;
+  if (loading && !lead) return <DetailSkeleton />;
   if (!lead) {
     if (error?.status === 403) return <DetailState title="Access denied" message="This lead is outside your authorized bank or branch scope." requestId={error.requestId} onRetry={() => loadLead()} tone="amber" />;
     if (error?.status === 404) return <DetailState title="Lead not found" message="This lead may have been removed or the link is no longer valid." requestId={error.requestId} onRetry={() => loadLead()} />;

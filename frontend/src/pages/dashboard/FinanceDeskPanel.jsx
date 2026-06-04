@@ -5,7 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
@@ -107,8 +107,9 @@ function Table({ headers, rows, loading, page, total, onPage }) {
 }
 
 function useSalespersons({ includeInactive = false } = {}) {
-  const [salespersons, setSalespersons] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedSalespersons = getCachedGetData("/dealer/salespersons", { includeInactive }) || getCachedGetData("/dealer/salespersons");
+  const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
+  const [loading, setLoading] = useState(() => !cachedSalespersons);
   const loadSalespersons = useCallback(async () => {
     setLoading(true);
     try {
@@ -223,8 +224,9 @@ export function FinanceDeskPanel({ mode = "total" }) {
 
 function StaffManagementScreen() {
   const navigate = useNavigate();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedStaff = getCachedGetData("/dealer/staff");
+  const [rows, setRows] = useState(() => cachedStaff || []);
+  const [loading, setLoading] = useState(() => !cachedStaff);
   const [form, setForm] = useState(emptyStaff);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
@@ -373,8 +375,10 @@ function StaffManagementScreen() {
 export function FinanceStaffDetailPage() {
   const { employeeId } = useParams();
   const navigate = useNavigate();
-  const [employee, setEmployee] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedEmployee = getCachedGetData(`/dealer/staff/${encodeURIComponent(employeeId)}`)
+    || findCachedGetItem("/dealer/staff", (item) => item.id === employeeId || item.email === employeeId || item.employeeId === employeeId);
+  const [employee, setEmployee] = useState(() => cachedEmployee);
+  const [loading, setLoading] = useState(() => !cachedEmployee);
   const [error, setError] = useState("");
 
   const loadEmployee = useCallback(async () => {
@@ -384,7 +388,7 @@ export function FinanceStaffDetailPage() {
       const response = await api.get(`/dealer/staff/${encodeURIComponent(employeeId)}`);
       setEmployee(response.data || null);
     } catch (err) {
-      setEmployee(null);
+      setEmployee((current) => current || null);
       setError(err.response?.data?.message || "Unable to load employee profile");
     } finally {
       setLoading(false);
@@ -405,7 +409,7 @@ export function FinanceStaffDetailPage() {
     }
   };
 
-  if (loading) return <DetailPageSkeleton />;
+  if (loading && !employee) return <DetailPageSkeleton />;
   if (!employee) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">{error || "Employee not found."}</section>;
 
   const profile = [
@@ -1144,8 +1148,10 @@ function Field({ label, children, error }) {
 export function FinanceLeadDetailPage() {
   const { leadId } = useParams();
   const navigate = useNavigate();
-  const [lead, setLead] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedLead = getCachedGetData(`/dealer/leads/${leadId}`)
+    || findCachedGetItem("/dealer/leads", (item) => item.id === leadId || item.caseId === leadId);
+  const [lead, setLead] = useState(() => cachedLead);
+  const [loading, setLoading] = useState(() => !cachedLead);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -1153,7 +1159,7 @@ export function FinanceLeadDetailPage() {
       const response = await api.get(`/dealer/leads/${leadId}`);
       setLead(response.data);
     } catch {
-      setLead(null);
+      setLead((current) => current || null);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -1164,7 +1170,7 @@ export function FinanceLeadDetailPage() {
   }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <DetailPageSkeleton />;
+  if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="card p-5 text-sm text-slate-500">Lead not found.</section>;
 
   return (

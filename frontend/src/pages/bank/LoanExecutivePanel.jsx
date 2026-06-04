@@ -6,7 +6,7 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -214,8 +214,10 @@ export function LoanExecutivePanel({ mode = "leads" }) {
 
 export function LoanExecutiveLeadDetailPage() {
   const { leadId } = useParams();
-  const [lead, setLead] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedLead = getCachedGetData(`/bank/leads/${leadId}`)
+    || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId);
+  const [lead, setLead] = useState(() => cachedLead);
+  const [loading, setLoading] = useState(() => !cachedLead);
   const [sanctionFile, setSanctionFile] = useState(null);
   const [uploadingSanction, setUploadingSanction] = useState(false);
   const [message, setMessage] = useState("");
@@ -226,7 +228,7 @@ export function LoanExecutiveLeadDetailPage() {
       const response = await api.get(`/bank/leads/${leadId}`);
       setLead(response.data);
     } catch {
-      setLead(null);
+      setLead((current) => current || null);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -237,7 +239,7 @@ export function LoanExecutiveLeadDetailPage() {
   }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <DetailPageSkeleton />;
+  if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   const documents = lead.documents || [];
   const bankDocuments = lead.bankDocuments || [];

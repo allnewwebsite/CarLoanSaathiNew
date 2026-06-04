@@ -5,7 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -87,8 +87,9 @@ function useGmLeads(filters = {}) {
 }
 
 function useSalespersons() {
-  const [salespersons, setSalespersons] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cachedSalespersons = getCachedGetData("/gm/salespersons");
+  const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
+  const [loading, setLoading] = useState(() => !cachedSalespersons);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -288,8 +289,10 @@ export function GmTrackingPanel({ mode = "total" }) {
 
 export function GmLeadDetailPage() {
   const { leadId } = useParams();
-  const [lead, setLead] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const cachedLead = getCachedGetData(`/gm/leads/${leadId}`)
+    || findCachedGetItem("/gm/leads", (item) => item.id === leadId || item.caseId === leadId);
+  const [lead, setLead] = useState(() => cachedLead);
+  const [loading, setLoading] = useState(() => !cachedLead);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -297,7 +300,7 @@ export function GmLeadDetailPage() {
       const response = await api.get(`/gm/leads/${leadId}`);
       setLead(response.data);
     } catch {
-      setLead(null);
+      setLead((current) => current || null);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -308,7 +311,7 @@ export function GmLeadDetailPage() {
   }, [loadLead]);
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
 
-  if (loading) return <DetailPageSkeleton />;
+  if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
 
   return (

@@ -118,6 +118,13 @@ function DataTable({ title, headers, rows, loading, page, total, onPage, onExpor
 }
 
 function useAdminEcosystem() {
+  const cachedEcosystem = getCachedGetData("/admin/ecosystem") || {};
+  const cachedAnalytics = getCachedGetData("/admin/analytics") || {};
+  const cachedAuditLogs = getCachedGetData("/admin/audit-logs") || [];
+  const cachedAdminState = {
+    ...cachedEcosystem,
+    auditLogs: cachedAuditLogs.length ? cachedAuditLogs : cachedEcosystem.auditLogs || [],
+  };
   const [state, setState] = useState({
     leads: [],
     onboardingRequests: [],
@@ -141,9 +148,10 @@ function useAdminEcosystem() {
     loginActivity: [],
     users: [],
     auditLogs: [],
+    ...cachedAdminState,
   });
-  const [analytics, setAnalytics] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState(cachedAnalytics);
+  const [loading, setLoading] = useState(() => !cachedEcosystem || !Object.keys(cachedEcosystem).length);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -485,7 +493,8 @@ function PageTitle({ mode }) {
 }
 
 function SystemSettings({ data }) {
-  const [settings, setSettings] = useState(null);
+  const cachedSettings = getCachedGetData("/admin/workflow/settings");
+  const [settings, setSettings] = useState(() => cachedSettings || null);
   const [message, setMessage] = useState("");
   useEffect(() => {
     api.get("/admin/workflow/settings").then((response) => setSettings(response.data || {})).catch(() => setSettings({}));
@@ -530,7 +539,7 @@ export function SuperAdminLeadDetailPage() {
   const data = useAdminEcosystem();
   const lead = data.leads.find((item) => item.id === leadId || item.caseId === leadId);
   const documents = useMemo(() => [...(data.documents || []), ...(data.bankDocuments || [])].filter((item) => item.leadId === (lead?.id || leadId)), [data.bankDocuments, data.documents, lead, leadId]);
-  if (data.loading) return <DetailPageSkeleton />;
+  if (data.loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   return (
     <section className="space-y-5">
@@ -562,7 +571,7 @@ export function SuperAdminDealershipDetailPage() {
   const dealer = data.pendingDealershipApprovals.find((item) => item.id === id)
     || data.onboardingRequests.find((item) => item.id === id)
     || data.dealerships.find((item) => item.id === id || item.loginEmail === id);
-  if (data.loading) return <DetailPageSkeleton />;
+  if (data.loading && !dealer) return <DetailPageSkeleton />;
   if (!dealer) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Dealership not found.</section>;
   const email = dealer.loginEmail || dealer.id;
   const leads = data.leads.filter((lead) => [lead.dealerEmail, lead.dealershipEmail, lead.createdBy].includes(email));
@@ -625,7 +634,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
       setBusy(false);
     }
   };
-  if (data.loading) return <DetailPageSkeleton />;
+  if (data.loading && !item) return <DetailPageSkeleton />;
   if (!item) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Application not found.</section>;
   const sections = type === "banks"
     ? [
