@@ -31,13 +31,17 @@ function scopeFromRole(role) {
 }
 
 function scopeFromPath(path = browserPath()) {
+  return scopeForPortalPath(path) || sessionStorage.getItem(ACTIVE_SCOPE_KEY) || "finance";
+}
+
+function scopeForPortalPath(path = browserPath()) {
   const normalized = String(path || "").toLowerCase();
   if (normalized.startsWith("/gm")) return "gm";
   if (normalized.startsWith("/finance") || normalized.startsWith("/dealer")) return "finance";
   if (normalized.startsWith("/bank-manager") || normalized.startsWith("/bank")) return "bank-manager";
   if (normalized.startsWith("/loan-executive") || normalized.startsWith("/executive")) return "loan-executive";
   if (normalized.startsWith("/admin") || normalized.startsWith("/super-admin")) return "admin";
-  return sessionStorage.getItem(ACTIVE_SCOPE_KEY) || "finance";
+  return null;
 }
 
 function scopedKey(key, scope = scopeFromPath()) {
@@ -63,11 +67,12 @@ export function authPersistenceMode() {
 }
 
 export function getStoredToken() {
+  const portalScope = scopeForPortalPath();
   const scope = scopeFromPath();
   const scoped = sessionStorage.getItem(scopedKey(TOKEN_KEY, scope));
   if (scoped) return scoped;
   const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
-  if (activeScope && activeScope !== scope) {
+  if (!portalScope && activeScope && activeScope !== scope) {
     const activeScoped = sessionStorage.getItem(scopedKey(TOKEN_KEY, activeScope));
     if (activeScoped) return activeScoped;
   }
@@ -75,11 +80,12 @@ export function getStoredToken() {
 }
 
 export function getStoredUser() {
+  const portalScope = scopeForPortalPath();
   const scope = scopeFromPath();
   const scoped = parseJson(sessionStorage.getItem(scopedKey(USER_KEY, scope)));
   if (scoped) return scoped;
   const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
-  if (activeScope && activeScope !== scope) {
+  if (!portalScope && activeScope && activeScope !== scope) {
     const activeScoped = parseJson(sessionStorage.getItem(scopedKey(USER_KEY, activeScope)));
     if (activeScoped) return activeScoped;
   }

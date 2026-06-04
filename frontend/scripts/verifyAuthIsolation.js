@@ -64,6 +64,10 @@ setPath("/loan-executive/leads");
 storeAuthSession(session("executive@example.com", "loan-executive"), "loan-executive-token");
 assert(getStoredToken() === "loan-executive-token", "Loan executive token was not stored in executive scope.");
 
+setPath("/admin/leads");
+assert(getStoredToken() === null, "Portal path borrowed a token from another active portal.");
+assert(getStoredUser() === null, "Portal path borrowed a user from another active portal.");
+
 setPath("/bank-manager/leads");
 assert(getStoredToken() === "bank-manager-token", "Loan executive login overwrote bank manager token.");
 

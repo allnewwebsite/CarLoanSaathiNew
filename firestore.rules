@@ -121,6 +121,24 @@ service cloud.firestore {
         && request.resource.data.bankId == resource.data.bankId;
     }
 
+    function ownDealerRegistration(data) {
+      return signedIn()
+        && data.dealerUid == request.auth.uid
+        && data.email == email();
+    }
+
+    function pendingDealerAccountWrite(data, accountId) {
+      return signedIn()
+        && accountId == request.auth.uid
+        && data.uid == request.auth.uid
+        && data.email == email()
+        && data.accountApproved == false
+        && data.accountActive == false
+        && data.registrationCompleted == true
+        && data.registrationSubmitted == true
+        && data.approvalStatus == "pending";
+    }
+
     match /users/{userId} {
       allow read: if approved()
         && (request.auth.uid == userId || email() == userId);
@@ -252,6 +270,34 @@ service cloud.firestore {
       allow read: if isSuperAdmin()
         || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
       allow create, update, delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /dealerRegistrationDocuments/{documentId} {
+      allow read: if isSuperAdmin()
+        || (signedIn() && resource.data.dealerUid == request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.dealerUid == request.auth.uid
+        && request.resource.data.verified == false;
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /dealerRegistrations/{dealerId} {
+      allow read: if isSuperAdmin()
+        || (signedIn() && dealerId == request.auth.uid && resource.data.email == email());
+      allow create, update: if ownDealerRegistration(request.resource.data)
+        && dealerId == request.auth.uid
+        && request.resource.data.registrationStatus == "pending-approval";
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /pendingDealerAccounts/{accountId} {
+      allow read: if isSuperAdmin()
+        || (signedIn() && accountId == request.auth.uid && resource.data.email == email());
+      allow create, update: if pendingDealerAccountWrite(request.resource.data, accountId);
+      allow delete: if false;
       allow read, write: if isSuperAdmin();
     }
 
