@@ -5,9 +5,11 @@ import { clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, upda
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
+const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
+const AUTH_REQUEST_TIMEOUT_MS = 60000;
 
 function normalizeApiUrl(url) {
-  const trimmed = String(url || "").trim().replace(/\/+$|\s+/g, "");
+  const trimmed = String(url || "").trim().replace(/\/+$/, "");
   if (!trimmed) return trimmed;
   if (trimmed.endsWith("/api")) return trimmed;
   return `${trimmed.replace(/\/+$/, "")}/api`;
@@ -55,7 +57,7 @@ function apiBaseUrl() {
 
 export const api = axios.create({
   baseURL: apiBaseUrl(),
-  timeout: 15000,
+  timeout: DEFAULT_REQUEST_TIMEOUT_MS,
   withCredentials: false,
 });
 
@@ -77,11 +79,12 @@ function shouldRefreshToken(token) {
 }
 
 function authEndpoint(url = "") {
-  return String(url).startsWith("/auth/login")
-    || String(url).startsWith("/auth/session/restore")
-    || String(url).startsWith("/auth/account-lookup")
-    || String(url).startsWith("/auth/login-failure")
-    || String(url).startsWith("/auth/password-reset");
+  const path = String(url).split("?")[0];
+  return path === "/auth/login"
+    || path === "/auth/session/restore"
+    || path === "/auth/account-lookup"
+    || path === "/auth/login-failure"
+    || path.startsWith("/auth/password-reset");
 }
 
 function loginPathForRole(role, fallback = "/finance/login") {
@@ -123,6 +126,11 @@ function redirectToLoginForRole(role, fallback = "/finance/login") {
 
 function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function shouldRetryAuthNetworkError(error) {
+  if (!authEndpoint(error.config?.url) || error.config?._authNetworkRetry) return false;
+  return error.code === "ERR_NETWORK" || error.code === "ECONNABORTED" || !error.response;
 }
 
 export async function ensureApiReady({ onStatus, maxWaitMs = 65000 } = {}) {
@@ -215,6 +223,9 @@ export async function warmupPortalRoute(role) {
 api.interceptors.request.use(async (config) => {
   let token = getStoredToken();
   const isAuthEndpoint = authEndpoint(config.url);
+  if (isAuthEndpoint) {
+    config.timeout = Math.max(Number(config.timeout) || 0, AUTH_REQUEST_TIMEOUT_MS);
+  }
   if (token && !isAuthEndpoint && shouldRefreshToken(token)) {
     token = await refreshSessionToken().catch(() => token);
   }
@@ -233,6 +244,11 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (shouldRetryAuthNetworkError(error)) {
+      error.config._authNetworkRetry = true;
+      await sleep(1200);
+      return api(error.config);
+    }
     if (error.code === "ECONNABORTED") {
       error.message = "Request timed out. Please try again.";
     } else if (error.code === "ERR_NETWORK" || !error.response) {
