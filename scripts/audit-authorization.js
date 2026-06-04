@@ -20,6 +20,7 @@ const router = read("frontend/src/routes/router.jsx");
 const requireRole = read("backend/middleware/requireRole.js");
 const auth = read("backend/middleware/auth.js");
 const authController = read("backend/controllers/auth.controller.js");
+const securityMiddleware = read("backend/middleware/securityMiddleware.js");
 const identityService = read("backend/services/identity.service.js");
 const timelineController = read("backend/controllers/timeline.controller.js");
 const timelineService = read("backend/services/timeline.service.js");
@@ -67,6 +68,11 @@ assertCheck(
 assertCheck(
   "identity collision clears stale frontend session",
   apiClient.includes('"IDENTITY_COLLISION"'),
+);
+assertCheck(
+  "CORS allows portal header required by login",
+  securityMiddleware.includes('"X-CLS-Portal"'),
+  "Browser login preflight must allow X-CLS-Portal or every portal login is blocked as a network error.",
 );
 assertCheck(
   "timeline list is tenant-scoped beyond role visibility",
