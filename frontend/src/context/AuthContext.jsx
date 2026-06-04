@@ -161,7 +161,6 @@ export function AuthProvider({ children }) {
     try {
       response = await api.post("/auth/login", loginPayload, {
         headers: { "Content-Type": "application/json" },
-        transformRequest: [(data) => JSON.stringify(data)],
       });
     } catch (error) {
       if (error?.response?.status === 401 || error?.response?.status === 404 || error?.response?.status === 403) {
