@@ -7,6 +7,8 @@ const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.c
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 const AUTH_REQUEST_TIMEOUT_MS = 60000;
+const GET_CACHE_TTL_MS = 20000;
+const APP_CHECK_CACHE_TTL_MS = 4 * 60 * 1000;
 
 function normalizeApiUrl(url) {
   const trimmed = String(url || "").trim().replace(/\/+$/, "");
@@ -62,6 +64,70 @@ export const api = axios.create({
 });
 
 let refreshPromise = null;
+const getCache = new Map();
+let appCheckCache = { token: "", expiresAt: 0, promise: null };
+
+function stableParams(params) {
+  if (!params) return "";
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+}
+
+function cacheKey(config = {}) {
+  const method = String(config.method || "get").toLowerCase();
+  if (method !== "get" || authEndpoint(config.url)) return "";
+  return `${config.baseURL || apiBaseUrl()}|${config.url || ""}|${stableParams(config.params)}|${requestPortalHeader()}`;
+}
+
+function cachedResponse(config) {
+  const key = cacheKey(config);
+  if (!key) return null;
+  const entry = getCache.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) return null;
+  return { ...entry.response, config, request: { cached: true } };
+}
+
+function rememberGetResponse(response) {
+  const key = cacheKey(response.config);
+  if (!key) return;
+  getCache.set(key, {
+    expiresAt: Date.now() + Number(response.config?.cacheTtlMs || GET_CACHE_TTL_MS),
+    response: {
+      data: response.data,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    },
+  });
+}
+
+function invalidateGetCache() {
+  getCache.clear();
+}
+
+async function appCheckHeaderToken() {
+  if (!appCheck) return "";
+  if (appCheckCache.token && appCheckCache.expiresAt > Date.now()) return appCheckCache.token;
+  if (!appCheckCache.promise) {
+    appCheckCache.promise = getToken(appCheck, false)
+      .then((token) => {
+        appCheckCache = {
+          token: token?.token || "",
+          expiresAt: Date.now() + APP_CHECK_CACHE_TTL_MS,
+          promise: null,
+        };
+        return appCheckCache.token;
+      })
+      .catch(() => {
+        appCheckCache.promise = null;
+        return "";
+      });
+  }
+  return appCheckCache.promise;
+}
 
 function jwtPayload(token) {
   try {
@@ -229,6 +295,11 @@ api.interceptors.request.use(async (config) => {
   const isAuthEndpoint = authEndpoint(config.url);
   config.headers = config.headers || {};
   config.headers["X-CLS-Portal"] = requestPortalHeader();
+  const cached = cachedResponse(config);
+  if (cached) {
+    config.adapter = () => Promise.resolve(cached);
+    return config;
+  }
   if (isAuthEndpoint) {
     config.timeout = Math.max(Number(config.timeout) || 0, AUTH_REQUEST_TIMEOUT_MS);
   }
@@ -236,19 +307,17 @@ api.interceptors.request.use(async (config) => {
     token = await refreshSessionToken().catch(() => token);
   }
   if (token && !isAuthEndpoint) config.headers.Authorization = `Bearer ${token}`;
-  if (appCheck) {
-    try {
-      const appCheckToken = await getToken(appCheck, false);
-      if (appCheckToken?.token) config.headers["X-Firebase-AppCheck"] = appCheckToken.token;
-    } catch {
-      // Backend decides whether App Check is mandatory.
-    }
-  }
+  const appCheckToken = await appCheckHeaderToken();
+  if (appCheckToken) config.headers["X-Firebase-AppCheck"] = appCheckToken;
   return config;
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (!response.request?.cached) rememberGetResponse(response);
+    if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) invalidateGetCache();
+    return response;
+  },
   async (error) => {
     if (shouldRetryAuthNetworkError(error)) {
       error.config._authNetworkRetry = true;

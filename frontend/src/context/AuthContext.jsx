@@ -108,8 +108,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredToken()));
-  const [authReady, setAuthReady] = useState(false);
-  const [sessionChecking, setSessionChecking] = useState(Boolean(getStoredToken() || getStoredUser()));
+  const [authReady, setAuthReady] = useState(() => Boolean(getStoredToken() || getStoredUser()));
+  const [sessionChecking, setSessionChecking] = useState(false);
   const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
   const applySession = (session, token, options = {}) => {
     storeAuthSession(session, token, options);
@@ -161,27 +161,7 @@ export function AuthProvider({ children }) {
 
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
-    let idToken = "";
-    try {
-      await setPersistence(auth, browserSessionPersistence);
-      const credential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
-      await credential.user.reload();
-      if (credential.user.emailVerified !== true) {
-        const error = new Error("Please verify your email address before logging in.");
-        error.code = "EMAIL_NOT_VERIFIED";
-        setFirebaseUser(credential.user);
-        throw error;
-      }
-      setFirebaseUser(credential.user);
-      idToken = await credential.user.getIdToken(true);
-    } catch (error) {
-      if (error.code === "EMAIL_NOT_VERIFIED") throw error;
-      idToken = "";
-    }
-
-    const loginPayload = idToken
-      ? { idToken, portal, targetPortal }
-      : { email: normalizedEmail, password, portal, targetPortal };
+    const loginPayload = { email: normalizedEmail, password, portal, targetPortal };
 
     let response;
     try {
@@ -199,7 +179,7 @@ export function AuthProvider({ children }) {
     const session = sessionFromResponse(response);
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token);
-    await detachFirebaseCredentialSession();
+    detachFirebaseCredentialSession();
     return session;
   };
 
@@ -288,7 +268,7 @@ export function AuthProvider({ children }) {
       setSessionChecking(false);
       return undefined;
     }
-    validateSession({ showLoading: true });
+    validateSession({ showLoading: false });
     const interval = window.setInterval(() => {
       const current = getStoredUser();
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();

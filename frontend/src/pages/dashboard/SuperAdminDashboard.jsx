@@ -5,6 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api } from "../../services/api.js";
 
@@ -297,9 +298,10 @@ function AdminListPage({ mode }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("search") || "");
+  const debouncedSearch = useDebouncedValue(search, 180);
   const [updatingId, setUpdatingId] = useState("");
   const leadFilter = params.get("status") || LEAD_STATUSES.NEW;
-  const pageData = useAdminPanelData(mode, search, leadFilter);
+  const pageData = useAdminPanelData(mode, debouncedSearch, leadFilter);
   const refresh = pageData.load;
 
   const updateLeadStatus = async (lead, nextStatus) => {

@@ -61,6 +61,17 @@ assertCheck(
   authContext.includes("shouldClearSessionForError") && !authContext.includes('window.addEventListener("focus", onFocus)'),
 );
 assertCheck(
+  "stored JWT renders without blocking session spinner",
+  authContext.includes("useState(() => Boolean(getStoredToken() || getStoredUser()))")
+    && authContext.includes("const [sessionChecking, setSessionChecking] = useState(false)")
+    && authContext.includes("validateSession({ showLoading: false })"),
+);
+assertCheck(
+  "email login avoids duplicate Firebase client sign-in",
+  authContext.includes("const loginPayload = { email: normalizedEmail, password, portal, targetPortal }")
+    && !authContext.includes("idToken = await credential.user.getIdToken(true)"),
+);
+assertCheck(
   "cross-tab logout is portal scoped",
   authSessionManager.includes('payload: type === "logout" ? { scope: scopeFromPath(), ...payload } : payload')
     && authContext.includes("eventScope !== currentScope"),
@@ -68,6 +79,17 @@ assertCheck(
 assertCheck(
   "identity collision clears stale frontend session",
   apiClient.includes('"IDENTITY_COLLISION"'),
+);
+assertCheck(
+  "API client caches GET and App Check token for fast tab switching",
+  apiClient.includes("const getCache = new Map()")
+    && apiClient.includes("APP_CHECK_CACHE_TTL_MS")
+    && apiClient.includes("config.adapter = () => Promise.resolve(cached)"),
+);
+assertCheck(
+  "tables retain rows during refresh",
+  read("frontend/src/components/OperationalTable.jsx").includes("const visibleRows = rows")
+    && read("frontend/src/components/OperationalTable.jsx").includes("loading && !hasRows"),
 );
 assertCheck(
   "CORS allows portal header required by login",

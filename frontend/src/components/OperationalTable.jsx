@@ -115,7 +115,7 @@ export function OperationalTable({
   action = null,
 }) {
   const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
-  const visibleRows = loading ? [] : rows;
+  const visibleRows = rows;
   const hasRows = visibleRows.length > 0;
   const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
   const gridTemplateColumns = headers.map(columnTemplate).join(" ");
@@ -137,7 +137,7 @@ export function OperationalTable({
             </div>
           </div>
 
-          {loading && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
+          {loading && !hasRows && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
           {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
 
           {hasRows && useVirtual && (
@@ -162,8 +162,8 @@ export function OperationalTable({
             </div>
           )}
         </div>
-        {!loading && hasRows ? <MobileRows headers={headers} rows={visibleRows} /> : null}
-        {loading ? <MobileSkeletonRows /> : null}
+        {hasRows ? <MobileRows headers={headers} rows={visibleRows} /> : null}
+        {loading && !hasRows ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
       </div>
       {onPage ? (
