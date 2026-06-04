@@ -1,12 +1,23 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { ROLES, dashboardPathForRole, isKnownRole, loginPathForRole, passwordPathForRole, requiresPasswordChange } from "../auth/roleSystem.js";
+import { useEffect } from "react";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { ROLES, isKnownRole, loginPathForRole, passwordPathForRole, requiresPasswordChange } from "../auth/roleSystem.js";
 import { DetailPageSkeleton } from "../components/ui/Loading.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { clearAuthStorage } from "../services/authSessionManager.js";
 
 export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const fallbackLogin = loginPath || loginPathForRole(user?.role);
+  const portalRoleMismatch = Boolean(!loading && user && isKnownRole(user.role) && allowedRoles.length && !allowedRoles.includes(user.role));
+
+  useEffect(() => {
+    if (!portalRoleMismatch) return;
+    clearAuthStorage();
+    navigate(loginPathForRole(user.role), { replace: true, state: { reason: "portal-role-mismatch" } });
+  }, [navigate, portalRoleMismatch, user?.role]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
@@ -27,8 +38,12 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   if (requiresPasswordChange(user) && passwordRoute && !allowedPasswordRoutes.includes(location.pathname)) {
     return <Navigate to={passwordRoute} replace />;
   }
-  if (allowedRoles.length && !allowedRoles.includes(user.role)) {
-    return <Navigate to={dashboardPathForRole(user.role)} replace />;
+  if (portalRoleMismatch) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <DetailPageSkeleton />
+      </main>
+    );
   }
   return <Outlet />;
 }

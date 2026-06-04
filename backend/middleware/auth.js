@@ -5,6 +5,31 @@ import { getRecord, updateRecord } from "../services/firestore.service.js";
 import { findIdentityCandidates, resolveCanonicalIdentity } from "../services/identity.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 
+const ROLE_PORTALS = {
+  "finance-desk": "finance",
+  "gm-sm": "finance",
+  "bank-manager": "bank",
+  "loan-executive": "bank",
+  "super-admin": "admin",
+};
+
+function portalForRole(role) {
+  return ROLE_PORTALS[String(role || "").trim().toLowerCase()] || "";
+}
+
+function requestedPortal(req) {
+  const headerPortal = String(req.headers["x-cls-portal"] || "").trim().toLowerCase();
+  if (["finance", "dealer", "gm"].includes(headerPortal)) return "finance";
+  if (["bank", "executive", "bank-manager", "loan-executive"].includes(headerPortal)) return "bank";
+  if (["admin", "super-admin"].includes(headerPortal)) return "admin";
+
+  const path = String(req.originalUrl || req.path || "").toLowerCase();
+  if (path.startsWith("/api/admin")) return "admin";
+  if (path.startsWith("/api/bank")) return "bank";
+  if (path.startsWith("/api/dealer") || path.startsWith("/api/gm")) return "finance";
+  return "";
+}
+
 async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
@@ -126,9 +151,23 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "session_revoked");
       return res.status(401).json({ message: "Session revoked. Please login again.", code: "SESSION_REVOKED" });
     }
+    if (tokenUser.uid && account.uid && String(tokenUser.uid).trim() !== String(account.uid).trim()) {
+      observeAuthFailure(req, "session_uid_changed");
+      return res.status(401).json({ message: "Session identity changed. Please login again.", code: "SESSION_UID_CHANGED" });
+    }
     if (tokenUser.role && tokenUser.role !== account.role) {
       observeAuthFailure(req, "session_role_changed");
       return res.status(401).json({ message: "Account role changed. Please login again.", code: "SESSION_ROLE_CHANGED" });
+    }
+    const accountPortal = portalForRole(account.role);
+    if (!tokenUser.portal || tokenUser.portal !== accountPortal || (tokenUser.scope && tokenUser.scope !== accountPortal)) {
+      observeAuthFailure(req, "session_portal_changed");
+      return res.status(401).json({ message: "Session portal changed. Please login again.", code: "SESSION_PORTAL_CHANGED" });
+    }
+    const requestPortal = requestedPortal(req);
+    if (requestPortal && requestPortal !== accountPortal) {
+      observeAuthFailure(req, "session_portal_forbidden");
+      return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN", redirectToPortal: accountPortal });
     }
     if (tokenUser.sessionId) {
       const session = await getRecord("userSessions", tokenUser.sessionId).catch(() => null);
@@ -136,7 +175,8 @@ export async function authenticate(req, res, next) {
       const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
       const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
       const roleChanged = session && session.role && session.role !== account.role;
-      if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged) {
+      const portalChanged = session && session.portal && session.portal !== accountPortal;
+      if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged || portalChanged) {
         observeAuthFailure(req, "session_invalid");
         return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
       }
@@ -162,6 +202,8 @@ export async function authenticate(req, res, next) {
       accountActive: account.accountActive !== false,
       emailVerified: true,
       sessionId: tokenUser.sessionId || null,
+      portal: accountPortal,
+      scope: accountPortal,
     };
     if (passwordChangeRequired(account) && !authUrlAllowedDuringPasswordChange(req)) {
       observeAuthFailure(req, "password_change_required");

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { getToken } from "firebase/app-check";
 import { appCheck } from "./firebase.js";
-import { clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
+import { clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
@@ -118,6 +118,10 @@ function loginPathForCurrentPortal(fallback = "/finance/login") {
   return fallback;
 }
 
+function requestPortalHeader() {
+  return getCurrentPortalScope() || loginPathForCurrentPortal().replace(/^\//, "").split("/")[0] || "finance";
+}
+
 function redirectToLoginForRole(role, fallback = "/finance/login") {
   if (typeof window === "undefined" || currentLoginPath()) return;
   const target = loginPathForRole(role, fallback || loginPathForCurrentPortal());
@@ -162,7 +166,7 @@ async function refreshSessionToken() {
     refreshPromise = axios.post(`${apiBaseUrl()}/auth/session/refresh`, null, {
       timeout: 10000,
       withCredentials: false,
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, "X-CLS-Portal": requestPortalHeader() },
     }).then((response) => {
       if (response.data?.token) {
         updateStoredToken(response.data.token);
@@ -223,6 +227,8 @@ export async function warmupPortalRoute(role) {
 api.interceptors.request.use(async (config) => {
   let token = getStoredToken();
   const isAuthEndpoint = authEndpoint(config.url);
+  config.headers = config.headers || {};
+  config.headers["X-CLS-Portal"] = requestPortalHeader();
   if (isAuthEndpoint) {
     config.timeout = Math.max(Number(config.timeout) || 0, AUTH_REQUEST_TIMEOUT_MS);
   }
@@ -277,15 +283,20 @@ api.interceptors.response.use(
       }
     } else if ([401, 403, 423].includes(error.response?.status) && [
       "ACCOUNT_DELETED",
+      "ACCOUNT_DISABLED",
       "ACCOUNT_INACTIVE",
+      "IDENTITY_COLLISION",
       "ACCOUNT_LOCKED",
       "ACCOUNT_NOT_ACTIVE",
       "BANK_ACCOUNT_INACTIVE",
       "DEALER_ACCOUNT_INACTIVE",
       "INVALID_SESSION",
       "JWT_REQUIRED",
+      "PORTAL_FORBIDDEN",
       "SESSION_ROLE_CHANGED",
       "SESSION_EXPIRED",
+      "SESSION_PORTAL_CHANGED",
+      "SESSION_UID_CHANGED",
       "SESSION_REVOKED",
     ].includes(error.response?.data?.code)) {
       const stored = getStoredUser();

@@ -187,6 +187,8 @@ async function createUserSession({ req, user }) {
     sessionId,
     email: user.email,
     role: user.role,
+    portal: user.portal || portalForRole(user.role),
+    scope: user.scope || user.portal || portalForRole(user.role),
     dealershipId: user.dealershipId || null,
     bankId: user.bankId || null,
     branchId: user.branchId || null,
@@ -844,6 +846,8 @@ export async function login(req, res, next) {
       uid: firebaseUid || account.uid || normalizedEmail,
       email: normalizedEmail,
       role: account.role,
+      portal: portalForRole(account.role),
+      scope: portalForRole(account.role),
       approved: true,
       active: true,
       accountStatus: "active",
@@ -909,6 +913,7 @@ export async function login(req, res, next) {
 export async function restoreSession(req, res, next) {
   try {
     const { idToken } = req.body;
+    const requestedPortal = normalizePortal(req.body.portal);
     if (!idToken) return res.status(400).json({ message: "Firebase authentication token is required" });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
@@ -924,6 +929,10 @@ export async function restoreSession(req, res, next) {
     if (!account?.role || !ROLE_ROUTES[account.role]) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-account-not-approved", req });
       return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
+    }
+    if (!portalAllowsRole(requestedPortal, account.role)) {
+      await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-wrong-portal", req });
+      return res.status(403).json(wrongPortalPayload(account));
     }
     if (!accountActive(account)) {
       const inactive = inactiveAccountMessage(account);
@@ -945,6 +954,8 @@ export async function restoreSession(req, res, next) {
       uid: firebaseUid || account.uid || normalizedEmail,
       email: normalizedEmail,
       role: account.role,
+      portal: portalForRole(account.role),
+      scope: portalForRole(account.role),
       approved: true,
       active: true,
       accountStatus: "active",
@@ -989,7 +1000,7 @@ export async function refreshSession(req, res, next) {
     const email = String(req.user?.email || "").trim().toLowerCase();
     const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session", code: "INVALID_SESSION" });
-    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
+    const account = await resolveCanonicalIdentity({ uid, email });
     if (!account?.role || !ROLE_ROUTES[account.role]) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
@@ -999,7 +1010,8 @@ export async function refreshSession(req, res, next) {
     }
     if (req.user.sessionId) {
       const sessionRecord = await getRecord("userSessions", req.user.sessionId).catch(() => null);
-      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role) {
+      const accountPortal = portalForRole(account.role);
+      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role || (sessionRecord.portal && sessionRecord.portal !== accountPortal)) {
         return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
       }
     }
@@ -1009,6 +1021,8 @@ export async function refreshSession(req, res, next) {
       uid: account.uid || account.email || email,
       email,
       role: account.role,
+      portal: portalForRole(account.role),
+      scope: portalForRole(account.role),
       approved: account.approved === true,
       active: account.active !== false,
       accountStatus: account.accountStatus || account.status || "active",
@@ -1119,7 +1133,7 @@ export async function validatePasswordReset(req, res, next) {
     if (firebaseUser.emailVerified !== true) {
       return res.status(403).json({ message: "Verify your email before resetting password.", code: "EMAIL_NOT_VERIFIED" });
     }
-    const account = await resolveCanonicalIdentity({ uid: firebaseUser.uid, email }).catch(() => null)
+    const account = await resolveCanonicalIdentity({ uid: firebaseUser.uid, email })
       || (await findIdentityCandidates({ uid: firebaseUser.uid, email })).find((item) => item.role);
     if (!account) return res.status(404).json({ message: "No account found with this email address." });
     if (!accountActive(account)) {
@@ -1139,7 +1153,7 @@ export async function session(req, res, next) {
     if (!email) return res.status(401).json({ message: "Invalid session" });
     if (req.user?.role === "super-admin") return res.json({ user: req.user });
 
-    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
+    const account = await resolveCanonicalIdentity({ uid, email });
     if (!account) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
@@ -1205,7 +1219,7 @@ export async function completeForcedPasswordChange(req, res, next) {
     const email = String(req.user?.email || "").trim().toLowerCase();
     const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
-    const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);
+    const account = await resolveCanonicalIdentity({ uid, email });
     if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();

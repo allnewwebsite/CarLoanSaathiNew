@@ -29,6 +29,153 @@ function asList(value) {
   return Array.isArray(value) ? value : [value];
 }
 
+function normalize(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function valuesMatch(values, targets) {
+  const normalizedTargets = asList(targets).map(normalize).filter(Boolean);
+  if (!normalizedTargets.length) return false;
+  return asList(values).map(normalize).filter(Boolean).some((value) => normalizedTargets.includes(value));
+}
+
+function roleCanSeeEvent(event, role) {
+  const visibility = asList(event.visibility).map(normalize).filter(Boolean);
+  if (role === "super-admin") return true;
+  return visibility.length > 0 && visibility.includes(normalize(role));
+}
+
+function leadDealershipValues(lead = {}) {
+  return [lead.dealershipId, lead.dealershipEmail, lead.dealerEmail, lead.createdBy];
+}
+
+function eventDealershipValues(event = {}) {
+  return [
+    event.dealershipId,
+    event.dealershipEmail,
+    event.metadata?.dealershipId,
+    event.metadata?.dealershipEmail,
+    event.metadata?.dealerEmail,
+  ];
+}
+
+function leadBankValues(lead = {}) {
+  return [
+    lead.bankId,
+    lead.assignedBankId,
+    lead.assignedPartnerId,
+    lead.bankPartner,
+    lead.assignedBankName,
+    lead.preferredBank,
+  ];
+}
+
+function eventBankValues(event = {}) {
+  return [
+    event.bankId,
+    event.partnerId,
+    event.metadata?.bankId,
+    event.metadata?.assignedBankId,
+    event.metadata?.assignedPartnerId,
+    event.metadata?.bankPartner,
+    event.metadata?.assignedBankName,
+    event.metadata?.preferredBank,
+  ];
+}
+
+function leadBranchValues(lead = {}) {
+  return [
+    lead.branchId,
+    lead.bankBranchId,
+    lead.selectedBankBranchId,
+    lead.ifscCode,
+    lead.bankIfsc,
+    lead.assignedBankIfsc,
+    lead.bankBranchCity,
+    lead.branchCity,
+    lead.routingCity,
+  ];
+}
+
+function eventBranchValues(event = {}) {
+  return [
+    event.branchId,
+    event.metadata?.branchId,
+    event.metadata?.bankBranchId,
+    event.metadata?.selectedBankBranchId,
+    event.metadata?.ifscCode,
+    event.metadata?.bankIfsc,
+    event.metadata?.assignedBankIfsc,
+    event.metadata?.bankBranchCity,
+    event.metadata?.branchCity,
+    event.metadata?.routingCity,
+  ];
+}
+
+function leadExecutiveValues(lead = {}) {
+  return [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName];
+}
+
+function eventExecutiveValues(event = {}) {
+  return [
+    event.assignedExecutiveId,
+    event.assignedExecutiveEmail,
+    event.metadata?.assignedExecutiveId,
+    event.metadata?.assignedExecutiveEmail,
+    event.metadata?.assignedExecutiveMobile,
+    event.metadata?.executiveName,
+  ];
+}
+
+function actorBankValues(actor = {}) {
+  return [actor.bankId, actor.partnerId, actor.uid, actor.email, actor.bankName, actor.companyName];
+}
+
+function actorBranchValues(actor = {}) {
+  return [actor.branchId, actor.bankBranchId, actor.ifsc, actor.ifscCode, actor.bankIfsc, actor.branchCity, actor.city, actor.operatingCity];
+}
+
+function actorExecutiveValues(actor = {}) {
+  return [actor.uid, actor.email, actor.mobile, actor.name, actor.fullName];
+}
+
+function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
+  const role = normalize(actor.role);
+  const actorEmail = normalize(actor.email || actor.uid);
+  const actorDealershipId = normalize(actor.dealershipId || actorEmail);
+
+  if (role === "super-admin") return true;
+
+  if (["finance-desk", "gm-sm"].includes(role)) {
+    return valuesMatch(eventDealershipValues(event), [actorDealershipId, actorEmail])
+      || valuesMatch(leadDealershipValues(lead), [actorDealershipId, actorEmail]);
+  }
+
+  if (role === "loan-executive") {
+    return valuesMatch(eventExecutiveValues(event), actorExecutiveValues(actor))
+      || valuesMatch(leadExecutiveValues(lead), actorExecutiveValues(actor));
+  }
+
+  if (role === "bank-manager") {
+    const sameBank = valuesMatch(eventBankValues(event), actorBankValues(actor))
+      || valuesMatch(leadBankValues(lead), actorBankValues(actor));
+    if (!sameBank) return false;
+    const branchTargets = actorBranchValues(actor).map(normalize).filter(Boolean);
+    if (!branchTargets.length) return true;
+    const scopedBranchValues = [...eventBranchValues(event), ...leadBranchValues(lead)].map(normalize).filter(Boolean);
+    return !scopedBranchValues.length || scopedBranchValues.some((value) => branchTargets.includes(value));
+  }
+
+  return false;
+}
+
+export async function canReadTimelineLead(actor = {}, leadId) {
+  if (normalize(actor.role) === "super-admin") return true;
+  const lead = await getRecord("leads", leadId);
+  if (!lead) return false;
+  return canReadScopedTimeline({ event: { leadId }, lead, actor });
+}
+
 function eventText(event) {
   return [
     event.leadId,
@@ -130,15 +277,14 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
     where,
     orderBy: "createdAt",
     direction: "desc",
-    limit: page * limit,
+    limit: Math.min(Math.max(page * limit * 3, limit), 300),
     search,
     searchFields: ["title", "description", "actorName", "actorId", "leadId", "caseId"],
   });
   let events = result.data;
-  events = events.filter((event) => {
-    const visibility = asList(event.visibility);
-    const visible = role === "super-admin" || !visibility.length || visibility.includes(role);
-    if (!visible) return false;
+  const leadCache = new Map();
+  events = (await Promise.all(events.map(async (event) => {
+    if (!roleCanSeeEvent(event, role)) return null;
     if (leadId && event.leadId !== leadId) return false;
     if (eventType && event.eventType !== eventType) return false;
     if (status && event.metadata?.status !== status && event.metadata?.nextStatus !== status) return false;
@@ -149,8 +295,15 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       const { start, end } = dateWindow(dateFilter);
       if (created < start || created > end) return false;
     }
-    return true;
-  });
+    let lead = null;
+    if (event.leadId) {
+      if (!leadCache.has(event.leadId)) {
+        leadCache.set(event.leadId, await getRecord("leads", event.leadId).catch(() => null));
+      }
+      lead = leadCache.get(event.leadId);
+    }
+    return canReadScopedTimeline({ event, lead, actor }) ? event : null;
+  }))).filter(Boolean);
 
   events.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const start = (page - 1) * limit;

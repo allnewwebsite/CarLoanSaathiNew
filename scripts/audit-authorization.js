@@ -13,9 +13,16 @@ function assertCheck(name, condition, detail = "") {
 }
 
 const frontendGuard = read("frontend/src/routes/RoleProtectedRoute.jsx");
+const authContext = read("frontend/src/context/AuthContext.jsx");
+const authSessionManager = read("frontend/src/services/authSessionManager.js");
+const apiClient = read("frontend/src/services/api.js");
 const router = read("frontend/src/routes/router.jsx");
 const requireRole = read("backend/middleware/requireRole.js");
 const auth = read("backend/middleware/auth.js");
+const authController = read("backend/controllers/auth.controller.js");
+const identityService = read("backend/services/identity.service.js");
+const timelineController = read("backend/controllers/timeline.controller.js");
+const timelineService = read("backend/services/timeline.service.js");
 const firestoreRules = read("firestore.rules");
 const storageRules = read("storage.rules");
 
@@ -39,6 +46,43 @@ assertCheck(
   auth.includes("verifiedAccountFromTokenUser") && auth.includes("resolveCanonicalIdentity"),
 );
 assertCheck("backend auth rejects unverified email", auth.includes("EMAIL_NOT_VERIFIED"));
+assertCheck(
+  "single active identity is enforced per email",
+  identityService.includes("if (activeCandidates.length > 1)") && identityService.includes('error.code = "IDENTITY_COLLISION"'),
+);
+assertCheck(
+  "session refresh does not mask identity collision",
+  authController.includes("const account = await resolveCanonicalIdentity({ uid, email });")
+    && !authController.includes("const account = await resolveCanonicalIdentity({ uid, email }).catch(() => null);"),
+);
+assertCheck(
+  "tab focus cannot auto-clear session on network failure",
+  authContext.includes("shouldClearSessionForError") && !authContext.includes('window.addEventListener("focus", onFocus)'),
+);
+assertCheck(
+  "cross-tab logout is portal scoped",
+  authSessionManager.includes('payload: type === "logout" ? { scope: scopeFromPath(), ...payload } : payload')
+    && authContext.includes("eventScope !== currentScope"),
+);
+assertCheck(
+  "identity collision clears stale frontend session",
+  apiClient.includes('"IDENTITY_COLLISION"'),
+);
+assertCheck(
+  "timeline list is tenant-scoped beyond role visibility",
+  timelineService.includes("canReadScopedTimeline") && timelineService.includes("canReadScopedTimeline({ event, lead, actor })"),
+  "Shared /api/timeline must filter every returned row by dealership, bank, branch, or executive ownership.",
+);
+assertCheck(
+  "timeline lead access reuses tenant-scoped helper",
+  timelineController.includes("canReadTimelineLead(req.user, req.params.leadId)") && !timelineController.includes("managerCity === leadCity"),
+  "Lead timeline access must not use city-only bank-manager matching.",
+);
+assertCheck(
+  "timeline events without visibility are not visible to non-admins",
+  timelineService.includes("return visibility.length > 0 && visibility.includes(normalize(role))"),
+  "Missing visibility must not become an all-role data leak.",
+);
 assertCheck("Firestore denies default wildcard", firestoreRules.includes("match /{document=**}") && firestoreRules.includes("allow read, write: if false"));
 assertCheck("Firestore protects system counters", firestoreRules.includes("match /systemCounters/{id}") && firestoreRules.includes("allow read, write: if false"));
 assertCheck("Firestore audit logs are immutable from client", firestoreRules.includes("match /auditLogs/{logId}") && firestoreRules.includes("allow write: if false"));

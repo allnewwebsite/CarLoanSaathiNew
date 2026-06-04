@@ -14,7 +14,7 @@ import {
 } from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
-import { AUTH_STATES, clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
+import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
@@ -76,6 +76,32 @@ function registrationAccountError(message, code) {
   const error = new Error(message);
   error.code = code;
   return error;
+}
+
+function shouldClearSessionForError(error) {
+  const status = error?.response?.status;
+  const code = error?.response?.data?.code;
+  if (!status || status >= 500 || error.code === "ERR_NETWORK" || error.code === "ECONNABORTED") return false;
+  return [
+    "ACCOUNT_DELETED",
+    "ACCOUNT_DISABLED",
+    "ACCOUNT_INACTIVE",
+    "ACCOUNT_LOCKED",
+    "ACCOUNT_NOT_ACTIVE",
+    "APPROVAL_PENDING",
+    "BANK_ACCOUNT_INACTIVE",
+    "DEALER_ACCOUNT_INACTIVE",
+    "EMAIL_NOT_VERIFIED",
+    "IDENTITY_COLLISION",
+    "INVALID_SESSION",
+    "JWT_REQUIRED",
+    "PORTAL_FORBIDDEN",
+    "SESSION_EXPIRED",
+    "SESSION_PORTAL_CHANGED",
+    "SESSION_REVOKED",
+    "SESSION_ROLE_CHANGED",
+    "SESSION_UID_CHANGED",
+  ].includes(code);
 }
 
 export function AuthProvider({ children }) {
@@ -244,7 +270,11 @@ export function AuthProvider({ children }) {
       applySession(session, token);
       return session;
     } catch (error) {
-      await clearLocalSession({ signOutFirebase: false, reason: "session-invalid" });
+      if (shouldClearSessionForError(error)) {
+        await clearLocalSession({ signOutFirebase: false, reason: error?.response?.data?.code || "session-invalid" });
+      } else {
+        setAuthStatus(getStoredUser() ? AUTH_STATES.AUTHENTICATED : AUTH_STATES.UNAUTHORIZED);
+      }
       if (!silent) throw error;
       return null;
     } finally {
@@ -263,11 +293,8 @@ export function AuthProvider({ children }) {
       const current = getStoredUser();
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
     }, 60000);
-    const onFocus = () => validateSession();
-    window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
     };
   }, [authReady]);
 
@@ -296,6 +323,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => subscribeAuthEvents((event) => {
     if (event?.type !== "logout") return;
+    const eventScope = event.payload?.scope;
+    const currentScope = getCurrentPortalScope();
+    if (eventScope && currentScope && eventScope !== currentScope) return;
     clearLocalSession({ signOutFirebase: false, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
   }), []);
 

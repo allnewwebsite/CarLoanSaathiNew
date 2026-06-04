@@ -44,6 +44,10 @@ function scopeForPortalPath(path = browserPath()) {
   return null;
 }
 
+export function getCurrentPortalScope() {
+  return scopeForPortalPath();
+}
+
 function scopedKey(key, scope = scopeFromPath()) {
   return `${key}:${scope}`;
 }
@@ -137,8 +141,11 @@ export function clearAuthStorage() {
 }
 
 export function publishAuthEvent(type, payload = {}) {
-  if (type === "logout") return;
-  const event = { type, payload, at: Date.now() };
+  const event = {
+    type,
+    payload: type === "logout" ? { scope: scopeFromPath(), ...payload } : payload,
+    at: Date.now(),
+  };
   localStorage.setItem(AUTH_CHANNEL, JSON.stringify(event));
   localStorage.removeItem(AUTH_CHANNEL);
   if ("BroadcastChannel" in window) {

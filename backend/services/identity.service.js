@@ -64,8 +64,7 @@ export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
 export async function resolveCanonicalIdentity({ uid = "", email = "", portal = "" } = {}) {
   const candidates = await findIdentityCandidates({ uid, email });
   const activeCandidates = candidates.filter(activeIdentity);
-  const activeRoles = new Set(activeCandidates.map((record) => record.role).filter(Boolean));
-  if (activeRoles.size > 1) {
+  if (activeCandidates.length > 1) {
     const error = new Error("Multiple active identities exist for this email. Contact support.");
     error.status = 409;
     error.code = "IDENTITY_COLLISION";
