@@ -113,6 +113,19 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function approvalStatusOf(record) {
+  return String(record?.status || record?.approvalStatus || "pending").trim().toLowerCase();
+}
+
+function finalApprovalStatus(record) {
+  return ["approved", "rejected", "suspended", "deleted", "disabled", "inactive"].includes(approvalStatusOf(record));
+}
+
+function pendingApprovalStatus(record) {
+  if (record?.accountApproved === true || record?.approved === true) return false;
+  return !finalApprovalStatus(record);
+}
+
 function ecosystemLimit(value, fallback = 50) {
   const parsed = Number(value || fallback);
   return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : fallback;
@@ -504,7 +517,8 @@ export async function getPendingBankApprovals(req, res, next) {
     const status = String(req.query.status || "pending").trim().toLowerCase();
     const search = String(req.query.search || "").trim().toLowerCase();
     const requests = (await listRecords("pendingBankApprovals")).filter((item) => {
-      const statusOk = String(item.status || "").toLowerCase() === status;
+      const itemStatus = approvalStatusOf(item);
+      const statusOk = status === "pending" ? pendingApprovalStatus(item) : itemStatus === status;
       const typeOk = (item.accountType || item.type || "bank") === "bank";
       const text = [item.id, item.bankName, item.companyName, item.bankBranchLocation, item.branchLocation, item.ifsc, item.managerName, item.mobile, item.email, item.status].filter(Boolean).join(" ").toLowerCase();
       return typeOk && statusOk && (!search || text.includes(search));
@@ -752,9 +766,9 @@ export async function approveBankApproval(req, res, next) {
   try {
     const request = await getRecord("pendingBankApprovals", req.params.id);
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
-    const requestStatus = String(request.status || request.approvalStatus || "pending").toLowerCase();
+    const requestStatus = approvalStatusOf(request);
     if (requestStatus === "approved") return res.status(409).json({ message: "Bank branch is already approved" });
-    if (!["pending", "submitted"].includes(requestStatus)) return res.status(400).json({ message: "Application is not pending" });
+    if (!pendingApprovalStatus(request)) return res.status(400).json({ message: "Application is not pending" });
     const now = new Date().toISOString();
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     if (!bankEmail) return res.status(400).json({ message: "Bank manager email is missing on this approval request" });

@@ -37,6 +37,20 @@ function leadStatus(lead) {
   return normalizeStatus(lead.status || LEAD_STATUSES.NEW);
 }
 
+function approvalStatusOf(item) {
+  return String(item?.status || item?.approvalStatus || "pending").trim().toLowerCase();
+}
+
+function finalApprovalStatus(item) {
+  return ["approved", "rejected", "suspended", "deleted", "disabled", "inactive"].includes(approvalStatusOf(item));
+}
+
+function canActOnApproval(item) {
+  if (!item) return false;
+  if (item.accountApproved === true || item.approved === true) return false;
+  return !finalApprovalStatus(item);
+}
+
 function workflowStatus(value) {
   const normalized = normalizeStatus(value);
   if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
@@ -636,6 +650,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
   };
   if (data.loading && !item) return <DetailPageSkeleton />;
   if (!item) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Application not found.</section>;
+  const canAct = canActOnApproval(item);
   const sections = type === "banks"
     ? [
       ["Bank Details", [["Bank Name", item.bankName || item.companyName], ["Email", item.email], ["Mobile", item.mobile]]],
@@ -683,9 +698,9 @@ export function SuperAdminApprovalDetailPage({ type }) {
         {actionError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</div> : null}
         <textarea className="mt-3 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason required only when rejecting" value={reason} onChange={(event) => setReason(event.target.value)} />
         <div className="mt-3 flex flex-wrap gap-2">
-          <button disabled={busy || !["pending", "submitted"].includes(String(item.status || item.approvalStatus || "pending").toLowerCase())} onClick={approve} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Approve</button>
-          <button disabled={busy || !["pending", "submitted"].includes(String(item.status || item.approvalStatus || "pending").toLowerCase()) || !reason.trim()} onClick={reject} className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Reject</button>
-          <button disabled={busy || item.status === "suspended"} onClick={suspend} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 disabled:opacity-50">Suspend</button>
+          <button disabled={busy || !canAct} onClick={approve} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Approve</button>
+          <button disabled={busy || !canAct || !reason.trim()} onClick={reject} className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Reject</button>
+          <button disabled={busy || finalApprovalStatus(item)} onClick={suspend} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 disabled:opacity-50">Suspend</button>
         </div>
       </section>
     </section>
