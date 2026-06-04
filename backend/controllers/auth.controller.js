@@ -437,24 +437,34 @@ function wrongPortalPayload(account = {}) {
 
 async function accountPresentation(email, account = {}) {
   const result = {};
-  if (["finance-desk", "gm-sm"].includes(account.role)) {
-    const dealershipId = account.dealershipId || email;
-    const dealership = await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId);
-    result.dealershipName = dealership?.dealershipName || dealership?.name || dealership?.dealershipBrand || "";
-    result.dealerCity = dealership?.city || dealership?.dealershipCity || "";
-  }
-  if (["bank-manager", "loan-executive"].includes(account.role)) {
-    const bankId = account.bankId || email;
-    const [branchManager, bankPartner, bankApproval, executive] = await Promise.all([
-      getRecord("branchManagers", email).catch(() => null),
-      getRecord("bankPartners", bankId).catch(() => null),
-      getRecord("pendingBankApprovals", bankId).catch(() => null),
-      account.role === "loan-executive" ? getRecord("loanExecutives", email).catch(() => null) : Promise.resolve(null),
-    ]);
-    const profile = branchManager || executive || bankPartner || bankApproval || {};
-    result.bankName = profile.bankName || profile.companyName || bankPartner?.bankName || bankPartner?.companyName || account.bankName || "";
-    result.bankIfsc = profile.ifsc || profile.bankIfsc || profile.ifscCode || bankPartner?.ifsc || "";
-    result.bankBranchLocation = profile.bankBranchLocation || profile.branchLocation || profile.branchCity || profile.city || account.branchId || "";
+  try {
+    if (["finance-desk", "gm-sm"].includes(account.role)) {
+      const dealershipId = account.dealershipId || email;
+      const dealership = await getRecord("dealerships", dealershipId).catch(() => null)
+        || await getRecord("approvedDealerships", dealershipId).catch(() => null);
+      result.dealershipName = dealership?.dealershipName || dealership?.name || dealership?.dealershipBrand || account.dealershipName || "";
+      result.dealerCity = dealership?.city || dealership?.dealershipCity || account.dealerCity || "";
+    }
+    if (["bank-manager", "loan-executive"].includes(account.role)) {
+      const bankId = account.bankId || email;
+      const [branchManager, bankPartner, bankApproval, executive] = await Promise.all([
+        getRecord("branchManagers", email).catch(() => null),
+        getRecord("bankPartners", bankId).catch(() => null),
+        getRecord("pendingBankApprovals", bankId).catch(() => null),
+        account.role === "loan-executive" ? getRecord("loanExecutives", email).catch(() => null) : Promise.resolve(null),
+      ]);
+      const profile = branchManager || executive || bankPartner || bankApproval || {};
+      result.bankName = profile.bankName || profile.companyName || bankPartner?.bankName || bankPartner?.companyName || account.bankName || "";
+      result.bankIfsc = profile.ifsc || profile.bankIfsc || profile.ifscCode || bankPartner?.ifsc || account.bankIfsc || "";
+      result.bankBranchLocation = profile.bankBranchLocation || profile.branchLocation || profile.branchCity || profile.city || account.branchId || "";
+    }
+  } catch (error) {
+    logWarn("Account presentation lookup skipped", {
+      email,
+      role: account.role,
+      code: error.code,
+      message: error.message,
+    });
   }
   return result;
 }
