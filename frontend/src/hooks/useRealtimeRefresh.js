@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, limit, orderBy, query, where } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../services/firebaseDb.js";
+import { invalidateGetCache } from "../services/api.js";
 import { subscribeRealtime } from "../services/realtimeManager.js";
 
 const MAX_VISIBLE_ROWS = 50;
+const AUTO_REFRESH_MS = 30000;
 
 function safeLimit(value) {
   return Math.min(Math.max(Number(value || 10), 1), MAX_VISIBLE_ROWS);
@@ -53,14 +55,47 @@ function debounceCallback(callback, delay) {
   };
 }
 
-export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700 }) {
-  const [health, setHealth] = useState({ connected: false, error: "" });
+function runFreshRefresh(callback) {
+  if (typeof callback !== "function") return;
+  invalidateGetCache();
+  callback({ silent: true });
+}
+
+export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = AUTO_REFRESH_MS } = {}) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
 
   useEffect(() => {
+    if (!enabled || typeof onRefresh !== "function") return undefined;
+    const refresh = () => {
+      if (document.hidden) return;
+      runFreshRefresh(refreshRef.current);
+    };
+    const onVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    const timer = window.setInterval(refresh, Math.max(Number(intervalMs) || AUTO_REFRESH_MS, 10000));
+    window.addEventListener("online", refresh);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [enabled, intervalMs, onRefresh]);
+}
+
+export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700 }) {
+  const [health, setHealth] = useState({ connected: false, error: "" });
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+  useBackgroundRefresh({ onRefresh, enabled });
+
+  useEffect(() => {
     if (!enabled || !queryFactory || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => refreshRef.current?.({ silent: true }), debounceMs);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), debounceMs);
     return subscribeRealtime({
       key,
       queryFactory,
@@ -83,10 +118,11 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }
   const specs = useMemo(() => roleLeadQueries(user, rowLimit), [rowLimit, user?.bankId, user?.dealershipId, user?.email, user?.role, user?.uid]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
+  useBackgroundRefresh({ onRefresh, enabled });
 
   useEffect(() => {
     if (!enabled || !specs.length || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => refreshRef.current?.({ silent: true }), 700);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 700);
     const unsubscribers = specs.map((spec) => subscribeRealtime({
       key: spec.key,
       queryFactory: spec.factory,
@@ -101,10 +137,11 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
   const documentLeadIds = useMemo(() => [...new Set([lead?.id, lead?.caseId, leadId].filter(Boolean))], [lead?.caseId, lead?.id, leadId]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), intervalMs: 45000 });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => refreshRef.current?.({ silent: true }), 600);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 600);
     const specs = [
       {
         key: `lead-detail:${leadId}`,
@@ -128,10 +165,11 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
 export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), intervalMs: 45000 });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => refreshRef.current?.({ silent: true }), 500);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 500);
     return subscribeRealtime({
       key: `timeline:${leadId}`,
       queryFactory: () => query(collection(db, "leadTimeline"), where("leadId", "==", leadId), orderBy("createdAt", "asc"), limit(50)),

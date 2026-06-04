@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -90,16 +90,17 @@ function useSalespersons() {
   const cachedSalespersons = getCachedGetData("/gm/salespersons");
   const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
   const [loading, setLoading] = useState(() => !cachedSalespersons);
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/gm/salespersons");
       setSalespersons(response.data || []);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useBackgroundRefresh({ onRefresh: load });
   return { salespersons, loading };
 }
 

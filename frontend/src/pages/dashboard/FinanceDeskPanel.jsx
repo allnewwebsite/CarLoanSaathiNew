@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -110,16 +110,17 @@ function useSalespersons({ includeInactive = false } = {}) {
   const cachedSalespersons = getCachedGetData("/dealer/salespersons", { includeInactive }) || getCachedGetData("/dealer/salespersons");
   const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
   const [loading, setLoading] = useState(() => !cachedSalespersons);
-  const loadSalespersons = useCallback(async () => {
-    setLoading(true);
+  const loadSalespersons = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/dealer/salespersons", { params: { includeInactive } });
       setSalespersons(response.data || []);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [includeInactive]);
   useEffect(() => { loadSalespersons(); }, [loadSalespersons]);
+  useBackgroundRefresh({ onRefresh: loadSalespersons });
   return { salespersons, loading, loadSalespersons };
 }
 
@@ -234,17 +235,18 @@ function StaffManagementScreen() {
   const [busy, setBusy] = useState(false);
   const [credentials, setCredentials] = useState(null);
 
-  const loadStaff = useCallback(async () => {
-    setLoading(true);
+  const loadStaff = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/dealer/staff");
       setRows(response.data || []);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { loadStaff(); }, [loadStaff]);
+  useBackgroundRefresh({ onRefresh: loadStaff });
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -638,8 +640,8 @@ function BankTieUpsScreen() {
   const [loading, setLoading] = useState(() => !cachedTieUps);
   const [saving, setSaving] = useState(false);
 
-  const loadTieUps = useCallback(async () => {
-    setLoading(true);
+  const loadTieUps = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const response = await api.get("/dealer/bank-tieups");
@@ -656,15 +658,16 @@ function BankTieUpsScreen() {
       setAvailableBranches(allBranches.filter((branch) => branch.active !== false && branch.approved !== false));
       setSelectedBranchIds(currentTieUps.map((branch) => bankKey(branch)).filter(Boolean));
     } catch (requestError) {
-      setAvailableBranches([]);
-      setSelectedBranchIds([]);
+      setAvailableBranches((current) => current.length ? current : []);
+      setSelectedBranchIds((current) => current.length ? current : []);
       setError("Unable to load banks. Please try again.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { loadTieUps(); }, [loadTieUps]);
+  useBackgroundRefresh({ onRefresh: loadTieUps });
 
   const cities = useMemo(() => [...new Set(availableBranches.map((branch) => branch.city).filter(Boolean))].sort(), [availableBranches]);
   const states = useMemo(() => [...new Set(availableBranches.map((branch) => branch.state).filter(Boolean))].sort(), [availableBranches]);

@@ -3,7 +3,7 @@ import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -175,16 +175,17 @@ function useExecutives() {
   const cached = getCachedGetData("/bank/executives");
   const [rows, setRows] = useState(() => responseRows({ data: cached }));
   const [loading, setLoading] = useState(() => !cached);
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/bank/executives");
       setRows(responseRows(response));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useBackgroundRefresh({ onRefresh: load });
   return { rows, loading, load };
 }
 
@@ -532,13 +533,17 @@ function ExecutiveCasesPage() {
   const navigate = useNavigate();
   const [payload, setPayload] = useState({ data: [], executive: null });
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let active = true;
-    api.get(`/bank/executives/${executiveId}/cases`).then((response) => {
-      if (active) setPayload({ data: responseRows(response), executive: response.data?.executive || null });
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/bank/executives/${executiveId}/cases`);
+      setPayload({ data: responseRows(response), executive: response.data?.executive || null });
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, [executiveId]);
+  useEffect(() => { load(); }, [load]);
+  useBackgroundRefresh({ onRefresh: load });
   const rows = payload.data.map((lead) => ({
     key: lead.id,
     cells: [

@@ -148,7 +148,7 @@ export function prefetchGet(url, params = null, options = {}) {
   }).catch(() => null);
 }
 
-function invalidateGetCache() {
+export function invalidateGetCache() {
   getCache.clear();
 }
 
