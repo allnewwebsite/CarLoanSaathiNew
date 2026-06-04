@@ -153,11 +153,16 @@ export function AuthProvider({ children }) {
       idToken = "";
     }
 
+    const loginPayload = idToken
+      ? { idToken, portal, targetPortal }
+      : { email: normalizedEmail, password, portal, targetPortal };
+
     let response;
     try {
-      response = await api.post("/auth/login", idToken
-        ? { idToken, portal, targetPortal }
-        : { email: normalizedEmail, password, portal, targetPortal });
+      response = await api.post("/auth/login", loginPayload, {
+        headers: { "Content-Type": "application/json" },
+        transformRequest: [(data) => JSON.stringify(data)],
+      });
     } catch (error) {
       if (error?.response?.status === 401 || error?.response?.status === 404 || error?.response?.status === 403) {
         const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);

@@ -161,7 +161,14 @@ export function LoginPage({ portal = "dealer" }) {
       return;
     }
     try {
-      await ensureApiReady({ onStatus: setMessage });
+      try {
+        await ensureApiReady({ onStatus: setMessage });
+      } catch (warmupError) {
+        console.warn("Auth warmup failed; continuing with direct login request.", {
+          code: warmupError?.code,
+          message: warmupError?.message,
+        });
+      }
       setMessage("");
       const session = await loginWithEmailPassword({ email, password, portal: authPortal, targetPortal: portal, rememberMe });
       if (rememberMe) storeRememberedLogin(portal, normalizedEmail, session.role);

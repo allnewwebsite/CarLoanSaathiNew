@@ -73,6 +73,17 @@ app.use(cors(corsOptions()));
 app.options("*", cors(corsOptions()));
 app.use(globalRateLimit);
 app.use(express.json({ limit: "2mb" }));
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400 && "body" in error) {
+    return res.status(400).json({
+      success: false,
+      code: "MALFORMED_JSON",
+      message: "Request body must be valid JSON.",
+      requestId: req.requestId,
+    });
+  }
+  return next(error);
+});
 if (process.env.NODE_ENV !== "production") {
   app.use("/uploads", express.static("uploads"));
 }
