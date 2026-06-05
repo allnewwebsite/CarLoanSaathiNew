@@ -21,6 +21,7 @@ import {
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { cached } from "../services/ttlCache.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -42,14 +43,16 @@ function dealerEmail(req) {
 
 async function financeDeskContext(req) {
   const email = dealerEmail(req);
-  const desk = await getRecord("financeDesks", email).catch(() => null)
-    || (await findRecordsByField("financeDesks", "officialEmail", email, 3))[0]
-    || (await findRecordsByField("financeDesks", "email", email, 3))[0]
-    || (await findRecordsByField("financeDesks", "dealershipEmail", email, 3))[0]
-    || null;
-  const dealershipEmail = desk?.dealershipEmail || email;
-  const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("dealers", dealershipEmail) || {};
-  return { email, dealershipEmail, desk, dealership };
+  return cached(`context:finance:${email}`, 15000, async () => {
+    const desk = await getRecord("financeDesks", email).catch(() => null)
+      || (await findRecordsByField("financeDesks", "officialEmail", email, 3))[0]
+      || (await findRecordsByField("financeDesks", "email", email, 3))[0]
+      || (await findRecordsByField("financeDesks", "dealershipEmail", email, 3))[0]
+      || null;
+    const dealershipEmail = desk?.dealershipEmail || email;
+    const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("dealers", dealershipEmail) || {};
+    return { email, dealershipEmail, desk, dealership };
+  });
 }
 
 function owned(leads, email, dealershipEmail = email) {

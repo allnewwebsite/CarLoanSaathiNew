@@ -2,6 +2,7 @@ import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logWarn } from "./logger.service.js";
+import { recordFirestoreRead } from "./requestScope.service.js";
 
 const memoryStore = {
   leads: [],
@@ -147,6 +148,7 @@ export async function listRecords(collection) {
   }
   if (!firestore) return memoryStore[collection] || [];
   const snapshot = await firestore.collection(collection).get();
+  recordFirestoreRead({ collection, operation: "list", documentsReturned: snapshot.size, estimatedReads: snapshot.size });
   const pairs = snapshot.docs
     .map((doc) => ({ doc, record: { id: doc.id, ...doc.data() } }))
     .sort((left, right) => String(right.record.createdAt || "").localeCompare(String(left.record.createdAt || "")));
@@ -160,6 +162,7 @@ export async function findRecordsByField(collection, field, value, limit = 10) {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 25);
   if (!firestore) return (memoryStore[collection] || []).filter((item) => item[field] === value).slice(0, safeLimit);
   const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
+  recordFirestoreRead({ collection, operation: "find", documentsReturned: snapshot.size, estimatedReads: snapshot.size, limit: safeLimit });
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
@@ -246,6 +249,7 @@ async function fallbackIndexedQuery({ collection, where, orderBy, direction, saf
   }
   const fallbackLimit = Math.min(Math.max(safeLimit * 5, safeLimit), maxLimit);
   const snapshot = await ref.limit(fallbackLimit).get();
+  recordFirestoreRead({ collection, operation: "query-fallback", documentsReturned: snapshot.size, estimatedReads: snapshot.size, limit: fallbackLimit });
   let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
   rows = applySearch(rows, search, searchFields);
   rows = rows.sort((left, right) => {
@@ -331,6 +335,7 @@ export async function queryRecords(collection, {
     throw error;
   }
   let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  recordFirestoreRead({ collection, operation: "query", documentsReturned: rows.length, estimatedReads: snapshot.size, limit: safeLimit });
   rows = applySearch(rows, search, searchFields);
   const hasMore = rows.length > safeLimit;
   rows = rows.slice(0, safeLimit);
@@ -353,9 +358,11 @@ export async function countRecords(collection, { where = [] } = {}) {
     }
     if (typeof ref.count === "function") {
       const snapshot = await ref.count().get();
+      recordFirestoreRead({ collection, operation: "count", documentsReturned: 1, estimatedReads: 1 });
       return snapshot.data().count || 0;
     }
     const snapshot = await ref.select().get();
+    recordFirestoreRead({ collection, operation: "count-fallback", documentsReturned: snapshot.size, estimatedReads: snapshot.size });
     return snapshot.size;
   });
 }

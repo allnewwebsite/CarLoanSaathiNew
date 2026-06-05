@@ -4,6 +4,8 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord, updateRecord } from "../services/firestore.service.js";
 import { findIdentityCandidates, resolveCanonicalIdentity } from "../services/identity.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
+import { cached } from "../services/ttlCache.service.js";
+import { setRequestScopeUser } from "../services/requestScope.service.js";
 
 const ROLE_PORTALS = {
   "finance-desk": "finance",
@@ -34,11 +36,11 @@ async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
   const dealershipId = String(user.dealershipId || email).trim().toLowerCase();
-  const account = await resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null);
+  const account = await cached(`auth:dealer-account:${user.uid || email}:${email}`, 15000, () => resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null));
   if (user?.role === "super-admin") {
     return Boolean(account && account.role === "super-admin" && account.approved === true && account.active !== false);
   }
-  const dealership = await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId);
+  const dealership = await cached(`auth:dealership:${dealershipId}`, 15000, async () => await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId));
   return Boolean(
     account
     && account.approved === true
@@ -55,9 +57,9 @@ async function dealerAccountIsActive(user) {
 async function verifiedAccountFromTokenUser(tokenUser = {}) {
   const email = String(tokenUser.email || "").trim().toLowerCase();
   const uid = String(tokenUser.uid || "").trim();
-  let account = await resolveCanonicalIdentity({ uid, email });
+  let account = await cached(`auth:identity:${uid}:${email}`, 15000, () => resolveCanonicalIdentity({ uid, email }));
   if (!account) {
-    const candidates = await findIdentityCandidates({ uid, email });
+    const candidates = await cached(`auth:candidates:${uid}:${email}`, 15000, () => findIdentityCandidates({ uid, email }));
     account = candidates.find((item) => item.role);
   }
   if (!account) {
@@ -106,12 +108,14 @@ function passwordChangePathForRole(role) {
 
 async function firebaseEmailVerified(email) {
   if (!firebaseAdmin || !email) return true;
-  try {
+  return cached(`auth:firebase-email-verified:${email}`, 60000, async () => {
+    try {
     const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     return firebaseUser.emailVerified === true;
-  } catch {
+    } catch {
     return false;
-  }
+    }
+  });
 }
 
 export async function authenticate(req, res, next) {
@@ -170,7 +174,7 @@ export async function authenticate(req, res, next) {
       return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN", redirectToPortal: accountPortal });
     }
     if (tokenUser.sessionId) {
-      const session = await getRecord("userSessions", tokenUser.sessionId).catch(() => null);
+      const session = await cached(`auth:session:${tokenUser.sessionId}`, 8000, () => getRecord("userSessions", tokenUser.sessionId).catch(() => null));
       const expired = session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now();
       const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
       const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
@@ -180,10 +184,13 @@ export async function authenticate(req, res, next) {
         observeAuthFailure(req, "session_invalid");
         return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
       }
-      updateRecord("userSessions", session.id, {
-        lastSeenAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      }).catch(() => {});
+      const lastSeenAgeMs = session.lastSeenAt ? Date.now() - new Date(session.lastSeenAt).getTime() : Infinity;
+      if (lastSeenAgeMs > 2 * 60 * 1000) {
+        updateRecord("userSessions", session.id, {
+          lastSeenAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+        }).catch(() => {});
+      }
     }
     if (!(await firebaseEmailVerified(email))) {
       observeAuthFailure(req, "email_not_verified");
@@ -205,6 +212,7 @@ export async function authenticate(req, res, next) {
       portal: accountPortal,
       scope: accountPortal,
     };
+    setRequestScopeUser(req.user);
     if (passwordChangeRequired(account) && !authUrlAllowedDuringPasswordChange(req)) {
       observeAuthFailure(req, "password_change_required");
       return res.status(403).json({

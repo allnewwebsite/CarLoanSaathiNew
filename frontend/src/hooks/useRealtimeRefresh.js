@@ -7,6 +7,10 @@ import { subscribeRealtime } from "../services/realtimeManager.js";
 
 const MAX_VISIBLE_ROWS = 50;
 const AUTO_REFRESH_MS = 30000;
+const REFRESH_COOLDOWN_MS = 12000;
+let globalRefreshTimer = 0;
+let globalRefreshInFlight = false;
+let globalLastRefreshAt = 0;
 
 function safeLimit(value) {
   return Math.min(Math.max(Number(value || 10), 1), MAX_VISIBLE_ROWS);
@@ -55,13 +59,26 @@ function debounceCallback(callback, delay) {
   };
 }
 
-function runFreshRefresh(callback) {
+function runFreshRefresh(callback, { force = false } = {}) {
   if (typeof callback !== "function") return;
+  const elapsed = Date.now() - globalLastRefreshAt;
+  if (!force && (globalRefreshInFlight || elapsed < REFRESH_COOLDOWN_MS)) return;
+  globalRefreshInFlight = true;
+  globalLastRefreshAt = Date.now();
   invalidateGetCache({ prefix: "/dealer/" });
   invalidateGetCache({ prefix: "/gm/" });
   invalidateGetCache({ prefix: "/bank/" });
   invalidateGetCache({ prefix: "/admin/" });
-  callback({ silent: true });
+  Promise.resolve(callback({ silent: true }))
+    .finally(() => {
+      globalRefreshInFlight = false;
+    });
+}
+
+function scheduleFreshRefresh(callback, delay = 250) {
+  if (typeof callback !== "function") return;
+  window.clearTimeout(globalRefreshTimer);
+  globalRefreshTimer = window.setTimeout(() => runFreshRefresh(callback), delay);
 }
 
 export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = AUTO_REFRESH_MS } = {}) {
@@ -72,12 +89,12 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = A
     if (!enabled || typeof onRefresh !== "function") return undefined;
     const refresh = () => {
       if (document.hidden) return;
-      runFreshRefresh(refreshRef.current);
+      scheduleFreshRefresh(refreshRef.current);
     };
     const onVisible = () => {
       if (!document.hidden) refresh();
     };
-    const timer = window.setInterval(refresh, Math.max(Number(intervalMs) || AUTO_REFRESH_MS, 10000));
+    const timer = window.setInterval(() => runFreshRefresh(refreshRef.current, { force: true }), Math.max(Number(intervalMs) || AUTO_REFRESH_MS, 30000));
     window.addEventListener("online", refresh);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", onVisible);
@@ -98,7 +115,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
 
   useEffect(() => {
     if (!enabled || !queryFactory || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), debounceMs);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), debounceMs);
     return subscribeRealtime({
       key,
       queryFactory,
@@ -125,7 +142,7 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }
 
   useEffect(() => {
     if (!enabled || !specs.length || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 700);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 700);
     const unsubscribers = specs.map((spec) => subscribeRealtime({
       key: spec.key,
       queryFactory: spec.factory,
@@ -144,7 +161,7 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 600);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 600);
     const specs = [
       {
         key: `lead-detail:${leadId}`,
@@ -172,7 +189,7 @@ export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current), 500);
+    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 500);
     return subscribeRealtime({
       key: `timeline:${leadId}`,
       queryFactory: () => query(collection(db, "leadTimeline"), where("leadId", "==", leadId), orderBy("createdAt", "asc"), limit(50)),

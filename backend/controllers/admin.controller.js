@@ -14,6 +14,7 @@ import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { cached } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import {
   registerBankBranchAdmin,
@@ -127,9 +128,9 @@ function pendingApprovalStatus(record) {
   return !finalApprovalStatus(record);
 }
 
-function ecosystemLimit(value, fallback = 50) {
+function ecosystemLimit(value, fallback = 5) {
   const parsed = Number(value || fallback);
-  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : fallback;
+  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 10) : fallback;
 }
 
 async function boundedList(collection, limit, mapper = (item) => item) {
@@ -1261,7 +1262,7 @@ export async function processAdminSlaBreaches(_req, res, next) {
 
 export async function getAdminAuditLogs(req, res, next) {
   try {
-    res.json(await getAuditLogs(req.query));
+    res.json(await cached(`admin:audit:${JSON.stringify(req.query || {})}`, 15000, () => getAuditLogs({ ...req.query, limit: Math.min(Number(req.query.limit || 20), 20) })));
   } catch (error) {
     next(error);
   }
@@ -1277,7 +1278,7 @@ export async function getAdminPartners(_req, res, next) {
 
 export async function getAdminAnalytics(_req, res, next) {
   try {
-    const metrics = await computeLeadMetrics();
+    const metrics = await cached("admin:analytics", 15000, () => computeLeadMetrics());
     res.json({
       totalLeads: metrics.totalLeads,
       approvedLeads: metrics.approved,
@@ -1292,8 +1293,15 @@ export async function getAdminAnalytics(_req, res, next) {
 
 export async function getAdminEcosystem(req, res, next) {
   try {
+    const cacheKey = `admin:ecosystem:${JSON.stringify({
+      ecosystemLimit: req.query.ecosystemLimit || "",
+      limit: req.query.limit || "",
+      cursor: req.query.cursor || "",
+    })}`;
+    const payload = await cached(cacheKey, 15000, async () => {
     const limit = ecosystemLimit(req.query.ecosystemLimit);
-    const leadPage = await queryAllLeads({ query: { limit: req.query.limit || 100, cursor: req.query.cursor } });
+    const leadLimit = Math.min(Math.max(Number(req.query.limit || 10), 1), 20);
+    const leadPage = await queryAllLeads({ query: { limit: leadLimit, cursor: req.query.cursor } });
     const [
       onboardingRequests,
       dealerships,
@@ -1350,7 +1358,7 @@ export async function getAdminEcosystem(req, res, next) {
       .slice(0, limit)
       .map(safeAdminUser);
 
-    res.json({
+    return {
       leads: leadPage.data,
       leadPagination: { nextCursor: leadPage.nextCursor, hasMore: leadPage.hasMore, limit: leadPage.limit },
       onboardingRequests,
@@ -1373,7 +1381,9 @@ export async function getAdminEcosystem(req, res, next) {
       pendingGoogleAccounts,
       loginActivity,
       users: visibleUsers,
+    };
     });
+    res.json(payload);
   } catch (error) {
     next(error);
   }

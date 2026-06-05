@@ -31,7 +31,8 @@ export async function createNotification({
   source = "api",
   requestId = null,
 }) {
-  const lead = leadId ? await getRecord("leads", leadId) : null;
+  const needsLeadSnapshot = leadId && (!meta.caseId || !dealershipId || !bankId || !assignedExecutiveId);
+  const lead = needsLeadSnapshot ? await getRecord("leads", leadId) : null;
   const caseId = lead?.caseId || meta.caseId || null;
   const targetUserId = userId || recipientId || partnerId || dealerEmail || null;
   const rendered = renderNotificationTemplate(type, { ...meta, title, message, caseId });
@@ -64,6 +65,13 @@ export async function createNotification({
     requestId,
     expiresAt: new Date(Date.now() + GOVERNANCE_LIMITS.notifications.ttlDays * 24 * 60 * 60 * 1000).toISOString(),
     meta,
+    leadSnapshot: {
+      leadId: leadId || null,
+      caseId,
+      customerName: meta.customerName || lead?.fullName || lead?.customerName || null,
+      assignedUser: meta.assignedUser || meta.executiveName || lead?.assignedExecutiveName || lead?.assignedExecutiveEmail || null,
+      status: meta.status || lead?.status || null,
+    },
   });
   syncNotificationProjectionSoon(notification);
   await createRecord("notificationLogs", {

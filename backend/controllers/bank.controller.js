@@ -16,6 +16,7 @@ import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { cached } from "../services/ttlCache.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -61,6 +62,8 @@ async function deleteMatchingRecords(collection, predicate) {
 
 async function currentPartner(req) {
   const email = userEmail(req);
+  const cacheKey = `context:bank:${req.user?.role || ""}:${req.user?.uid || ""}:${email}`;
+  return cached(cacheKey, 15000, async () => {
   if (req.user?.role === "loan-executive") {
     const executive = await getRecord("loanExecutives", email);
     if (executive) return { ...executive, roleType: "loan-executive" };
@@ -93,6 +96,7 @@ async function currentPartner(req) {
     || (await findRecordsByField("bankPartners", "email", email, 3))[0]
     || null;
   return partner ? { ...partner, roleType: req.user?.role || partner.role } : null;
+  });
 }
 
 function partnerCanAccessLead(partner, lead) {

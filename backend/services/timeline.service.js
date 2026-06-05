@@ -282,8 +282,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
     searchFields: ["title", "description", "actorName", "actorId", "leadId", "caseId"],
   });
   let events = result.data;
-  const leadCache = new Map();
-  events = (await Promise.all(events.map(async (event) => {
+  const prelim = events.map((event) => {
     if (!roleCanSeeEvent(event, role)) return null;
     if (leadId && event.leadId !== leadId) return false;
     if (eventType && event.eventType !== eventType) return false;
@@ -295,15 +294,24 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       const { start, end } = dateWindow(dateFilter);
       if (created < start || created > end) return false;
     }
-    let lead = null;
-    if (event.leadId) {
-      if (!leadCache.has(event.leadId)) {
-        leadCache.set(event.leadId, await getRecord("leads", event.leadId).catch(() => null));
-      }
-      lead = leadCache.get(event.leadId);
-    }
-    return canReadScopedTimeline({ event, lead, actor }) ? event : null;
-  }))).filter(Boolean);
+    if (canReadScopedTimeline({ event, lead: null, actor })) return event;
+    return { ...event, __needsLeadScope: true };
+  }).filter(Boolean);
+
+  const leadCache = new Map();
+  const needsLead = [...new Set(prelim.filter((event) => event.__needsLeadScope && event.leadId).map((event) => event.leadId))];
+  await Promise.all(needsLead.map(async (id) => {
+    leadCache.set(id, await getRecord("leads", id).catch(() => null));
+  }));
+
+  events = prelim
+    .map((event) => {
+      if (!event.__needsLeadScope) return event;
+      const { __needsLeadScope, ...cleanEvent } = event;
+      const lead = leadCache.get(event.leadId) || null;
+      return canReadScopedTimeline({ event: cleanEvent, lead, actor }) ? cleanEvent : null;
+    })
+    .filter(Boolean);
 
   events.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const start = (page - 1) * limit;

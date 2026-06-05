@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { listRecords } from "./firestore.service.js";
+import { queryRecords } from "./firestore.service.js";
+import { cached } from "./ttlCache.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicRoot = path.resolve(__dirname, "../../frontend/public");
@@ -241,35 +242,42 @@ function sanitizePublicBranch(branch = {}) {
 }
 
 export async function getBrands() {
-  const records = await listRecords("brands");
-  return mergeCatalog(fallbackBrands, normalizeFirestoreList(records), "slug");
+  return cached("catalog:brands", 10 * 60 * 1000, async () => {
+    const records = await queryRecords("brands", { limit: 18, maxLimit: 18, fields: ["name", "slug", "logo", "createdAt"] }).then((page) => page.data).catch(() => []);
+    return mergeCatalog(fallbackBrands, normalizeFirestoreList(records), "slug");
+  });
 }
 
 export async function getBanks() {
-  const records = await listRecords("banks");
+  return cached("catalog:banks", 10 * 60 * 1000, async () => {
+  const records = await queryRecords("banks", { where: [{ field: "approved", value: true }], limit: 18, maxLimit: 18, fields: ["bankName", "name", "companyName", "slug", "logo", "ifsc", "ifscCode", "branchName", "branchLocation", "city", "state", "district", "bankCode", "active", "approved", "status", "approvalStatus"] }).then((page) => page.data).catch(() => []);
   const publicBanks = normalizeFirestoreList(records)
     .filter(activeApproved)
     .map(sanitizePublicBank)
     .filter((bank) => bank.name && bank.slug);
   return mergeCatalog(fallbackBanks, publicBanks, "name");
+  });
 }
 
 export async function getBranches() {
-  const records = await listRecords("branches");
+  return cached("catalog:branches", 10 * 60 * 1000, async () => {
+  const records = await queryRecords("branches", { where: [{ field: "approved", value: true }], limit: 18, maxLimit: 18, fields: ["bankCode", "ifscCode", "ifsc", "bankIfsc", "bankName", "bankPartner", "name", "branchName", "bankBranchLocation", "branchLocation", "branchCity", "city", "state", "district", "active", "approved", "status", "approvalStatus"] }).then((page) => page.data).catch(() => []);
   return normalizeFirestoreList(records)
     .filter(activeApproved)
     .map(sanitizePublicBranch)
     .filter((branch) => branch.id);
+  });
 }
 
 export async function getHomeContent() {
-  const records = await listRecords("homeContent");
+  const records = await cached("catalog:home-content", 10 * 60 * 1000, () => queryRecords("homeContent", { limit: 1, maxLimit: 1 }).then((page) => page.data).catch(() => []));
   if (records.length) return records[0];
   return fallbackHomeContent;
 }
 
 export async function getCarsByBrand(brandSlug) {
-  const records = await listRecords("cars");
+  return cached(`catalog:cars:${brandSlug}`, 10 * 60 * 1000, async () => {
+  const records = await queryRecords("cars", { where: [{ field: "brandSlug", value: brandSlug }], limit: 18, maxLimit: 18 }).then((page) => page.data).catch(() => []);
   const firestoreCars = normalizeFirestoreList(records.filter((car) => car.brandSlug === brandSlug || car.brand === brandSlug));
 
   const brand = fallbackBrands.find((item) => item.slug === brandSlug);
@@ -314,4 +322,5 @@ export async function getCarsByBrand(brandSlug) {
   });
 
   return models.sort((a, b) => a.name.localeCompare(b.name));
+  });
 }

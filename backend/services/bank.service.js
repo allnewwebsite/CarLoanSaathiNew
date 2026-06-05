@@ -3,14 +3,19 @@ import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { logInfo, logWarn, logError } from "./logger.service.js";
+import { cached, clearCachedValue } from "./ttlCache.service.js";
 
 async function boundedBankSourceRecords(collection) {
-  const pages = await Promise.all([
-    queryRecords(collection, { where: [{ field: "approved", value: true }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
-    queryRecords(collection, { where: [{ field: "status", value: "active" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
-    queryRecords(collection, { where: [{ field: "approvalStatus", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
-  ]);
-  return [...new Map(pages.flatMap((page) => page.data || []).map((item) => [item.id, item])).values()];
+  const fields = ["id", "bankId", "ifscCode", "ifsc", "bankIfsc", "bankName", "name", "companyName", "branchName", "branchLocation", "bankBranchLocation", "city", "branchCity", "state", "contactPerson", "managerName", "phone", "mobile", "email", "officialEmail", "approved", "active", "status", "approvalStatus", "approvedAt", "createdAt", "updatedAt"];
+  for (const where of [
+    [{ field: "approvalStatus", value: "approved" }],
+    [{ field: "approved", value: true }],
+    [{ field: "status", value: "active" }],
+  ]) {
+    const page = await queryRecords(collection, { where, limit: 50, maxLimit: 50, fields }).catch(() => ({ data: [] }));
+    if (page.data?.length) return page.data;
+  }
+  return [];
 }
 
 /**
@@ -149,6 +154,7 @@ export async function approveBankBranch(bankId, req = null) {
     ifscCode: bank.ifscCode,
     bankName: bank.bankName,
   });
+  clearCachedValue("bank:active-branches");
 
   return updated;
 }
@@ -190,6 +196,7 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
     ifscCode: bank.ifscCode,
     reason,
   });
+  clearCachedValue("bank:active-branches");
 
   return updated;
 }
@@ -198,15 +205,16 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  * Get all approved and active banks
  */
 export async function getActiveBankBranches() {
+  return cached("bank:active-branches", 60000, async () => {
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
     boundedBankSourceRecords("banks"),
     boundedBankSourceRecords("bankPartners"),
     boundedBankSourceRecords("branches"),
     boundedBankSourceRecords("branchManagers"),
     Promise.all([
-      queryRecords("pendingBankApprovals", { where: [{ field: "approvalStatus", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
-      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
-      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "active" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+      queryRecords("pendingBankApprovals", { where: [{ field: "approvalStatus", value: "approved" }], limit: 50, maxLimit: 50 }).catch(() => ({ data: [] })),
+      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "approved" }], limit: 50, maxLimit: 50 }).catch(() => ({ data: [] })),
+      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "active" }], limit: 50, maxLimit: 50 }).catch(() => ({ data: [] })),
     ]).then((pages) => [...new Map(pages.flatMap((page) => page.data || []).map((item) => [item.id, item])).values()]),
   ]);
 
@@ -271,6 +279,7 @@ export async function getActiveBankBranches() {
 
   return [...byIfsc.values()]
     .sort((left, right) => `${left.bankName} ${left.ifscCode}`.localeCompare(`${right.bankName} ${right.ifscCode}`));
+  });
 }
 
 /**

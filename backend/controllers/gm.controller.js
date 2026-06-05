@@ -2,6 +2,7 @@ import { findRecordsByField, getRecord, queryRecords } from "../services/firesto
 import { logInfo } from "../services/logger.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
+import { cached } from "../services/ttlCache.service.js";
 
 function userEmail(req) {
   return req.user?.email || req.user?.uid;
@@ -11,10 +12,12 @@ async function dealershipEmailForGm(req) {
   if (req.user?.dealershipId) return req.user.dealershipId;
   const email = userEmail(req);
   if (!email) return null;
+  return cached(`context:gm:${email}`, 15000, async () => {
   const manager = await getRecord("dealershipManagers", email);
   if (manager?.dealershipEmail) return manager.dealershipEmail;
   const dealership = await getRecord("dealerships", email) || await getRecord("dealers", email);
   return dealership ? email : null;
+  });
 }
 
 function belongsToDealership(lead, dealershipEmail) {

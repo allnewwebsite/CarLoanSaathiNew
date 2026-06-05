@@ -44,7 +44,6 @@ const navByRole = {
 };
 
 const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
-const pageSize = 10;
 const notificationPrefetch = { url: "/notifications", params: { limit: 20 } };
 
 function withCommonPrefetch(specs = []) {
@@ -59,51 +58,15 @@ function withCommonPrefetch(specs = []) {
 
 function prefetchSpecsForRoute(to) {
   const path = String(to || "").split("?")[0];
-  const financeBase = [
-    { url: "/dashboard/fast" },
-    { url: "/dealer/leads", params: { page: 1, limit: pageSize } },
-    { url: "/dealer/salespersons" },
-    { url: "/dealer/staff" },
-    { url: "/dealer/bank-tieups" },
-  ];
-  if (path.startsWith("/finance/bank-tieups")) return withCommonPrefetch([{ url: "/dealer/bank-tieups" }, { url: "/dashboard/fast" }]);
-  if (path.startsWith("/finance/salespersons") || path.startsWith("/finance/active-salespersons")) return withCommonPrefetch([{ url: "/dealer/salespersons" }, { url: "/dealer/leads", params: { page: 1, limit: pageSize } }, { url: "/dashboard/fast" }]);
-  if (path.startsWith("/finance/manage-staff")) return withCommonPrefetch([{ url: "/dealer/staff" }, { url: "/dashboard/fast" }]);
-  if (path.startsWith("/finance/add-lead")) return withCommonPrefetch([{ url: "/dealer/bank-tieups" }, { url: "/dealer/salespersons" }, { url: "/dashboard/fast" }]);
-  if (path.startsWith("/finance")) return withCommonPrefetch(financeBase);
-
-  const gmBase = [
-    { url: "/dashboard/fast" },
-    { url: "/gm/leads", params: { page: 1, limit: pageSize } },
-    { url: "/gm/salespersons" },
-  ];
-  if (path.startsWith("/gm")) return withCommonPrefetch(gmBase);
-
-  const bankManagerBase = [
-    { url: "/dashboard/fast" },
-    { url: "/bank/leads", params: { page: 1, limit: pageSize, search: "", status: "" } },
-    { url: "/bank/executives" },
-    { url: "/bank/analytics" },
-  ];
-  if (path.startsWith("/bank-manager")) return withCommonPrefetch(bankManagerBase);
+  if (path.startsWith("/finance")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
+  if (path.startsWith("/gm")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
+  if (path.startsWith("/bank-manager")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
 
   if (path.startsWith("/loan-executive")) return withCommonPrefetch([
     { url: "/dashboard/fast" },
-    { url: "/bank/leads", params: { page: 1, limit: pageSize, search: "", status: "" } },
   ]);
 
-  const adminBase = [
-    { url: "/dashboard/fast" },
-    { url: "/admin/ecosystem" },
-    { url: "/admin/analytics" },
-    { url: "/admin/audit-logs" },
-    { url: "/admin/leads", params: { search: "" } },
-    { url: "/admin/approvals/dealerships", params: { status: "pending", search: "" } },
-    { url: "/admin/approvals/banks", params: { status: "pending", search: "" } },
-  ];
-  if (path.startsWith("/admin/dealerships")) return withCommonPrefetch([...adminBase, { url: "/admin/approvals/dealerships", params: { status: "approved", search: "" } }]);
-  if (path.startsWith("/admin/banks")) return withCommonPrefetch([...adminBase, { url: "/admin/approvals/banks", params: { status: "approved", search: "" } }]);
-  if (path.startsWith("/admin")) return withCommonPrefetch(adminBase);
+  if (path.startsWith("/admin")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
   return withCommonPrefetch([]);
 }
 
@@ -215,17 +178,6 @@ export function DashboardLayout() {
     : ["finance-desk", "gm-sm"].includes(user?.role)
       ? [["Dealership", user.dealershipName || "Dealership"]]
       : [];
-
-  useEffect(() => {
-    const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250));
-    const cancel = window.cancelIdleCallback || window.clearTimeout;
-    const handle = schedule(() => {
-      nav.forEach((item, index) => {
-        window.setTimeout(() => prefetchDashboardRoute(item.to), index * 90);
-      });
-    });
-    return () => cancel(handle);
-  }, [nav]);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50">
