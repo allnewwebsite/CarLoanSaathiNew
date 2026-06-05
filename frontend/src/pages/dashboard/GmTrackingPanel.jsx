@@ -7,6 +7,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -26,13 +27,11 @@ function moneyValue(value) {
 }
 
 function dateValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatPortalDate(value);
 }
 
 function timeValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return formatPortalTime(value);
 }
 
 function workflowStatus(value) {
@@ -328,10 +327,14 @@ export function GmLeadDetailPage() {
       <div className="grid gap-3 md:grid-cols-4">
         {[["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Salesperson", lead.assignedSalesperson || lead.salespersonName], ["Current Status", statusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+      </section>
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={docs.map((type) => {
         const document = (lead.documents || []).find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
         const url = document?.url || document?.fileUrl || document?.downloadUrl;
-        return { key: type, cells: [type, url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", display(document?.createdAt || document?.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
+        return { key: type, cells: [type, url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", formatPortalDateTime(document?.createdAt || document?.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
       })} loading={false} />
     </section>
   );

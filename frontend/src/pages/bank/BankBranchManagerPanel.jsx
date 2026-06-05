@@ -6,6 +6,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -54,18 +55,15 @@ function numberValue(value) {
 }
 
 function dateValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatPortalDate(value);
 }
 
 function timeValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return formatPortalTime(value);
 }
 
 function dateTime(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatPortalDateTime(value);
 }
 
 function workflowStatus(value) {
@@ -646,6 +644,10 @@ export function BankManagerLeadDetailPage() {
       <div className="grid gap-3 md:grid-cols-4">
         {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Current Status", leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+      </section>
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

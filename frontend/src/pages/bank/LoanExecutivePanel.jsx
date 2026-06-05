@@ -8,6 +8,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as lea
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -27,18 +28,15 @@ function moneyValue(value) {
 }
 
 function dateValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatPortalDate(value);
 }
 
 function timeValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return formatPortalTime(value);
 }
 
 function dateTime(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatPortalDateTime(value);
 }
 
 function executiveStatusLabel(lead) {
@@ -187,7 +185,11 @@ function TotalLeadsPage({ mode }) {
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         dateValue(lead.createdAt),
         timeValue(lead.createdAt),
-        <select key="status" className="h-9 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#0d47a1]" value={workflowStatus(lead.status)} onChange={(event) => updateStatus(lead, event.target.value)}>{statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>,
+        executiveStatusLabel(lead),
+        <select key="status-action" className="h-9 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#0d47a1]" value="" onChange={(event) => updateStatus(lead, event.target.value)}>
+          <option value="">Update Status</option>
+          {statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>,
         <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">Request Pending Docs</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
@@ -208,7 +210,7 @@ function TotalLeadsPage({ mode }) {
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Update Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
     </section>
@@ -280,6 +282,10 @@ export function LoanExecutiveLeadDetailPage() {
     <section className="space-y-4">
       <PageTitle title="Customer Documents" />
       <div className="grid gap-3 md:grid-cols-4">{[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Current Status", executiveStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}</div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+      </section>
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Zoom", "Download", "Uploaded Timestamp"]} rows={rows} loading={false} />
       {canShowSanction ? (
         <section className="rounded-lg border border-slate-200 bg-white p-4">

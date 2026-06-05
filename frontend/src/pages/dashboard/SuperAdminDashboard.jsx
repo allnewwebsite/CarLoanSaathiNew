@@ -8,6 +8,7 @@ import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStat
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../services/api.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -29,8 +30,7 @@ function caseId(lead) {
 }
 
 function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatPortalDateTime(value);
 }
 
 function leadStatus(lead) {
@@ -268,13 +268,11 @@ function responseRows(response) {
 }
 
 function generatedDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatPortalDate(value);
 }
 
 function generatedTime(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  return formatPortalTime(value);
 }
 
 const STATUS_FILTERS = BANK_STATUS_OPTIONS.map((value) => ({ label: statusLabel(value), value }));
@@ -561,6 +559,10 @@ export function SuperAdminLeadDetailPage() {
       <div className="grid gap-3 md:grid-cols-4">
         {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], ["Status", statusLabel(leadStatus(lead))], ["SLA", slaState(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+      </section>
       <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={(documents.length ? documents : [
         { id: "aadhaar", type: "Aadhaar" },
         { id: "pan", type: "PAN" },

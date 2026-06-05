@@ -7,6 +7,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { formatPortalDate, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
@@ -56,13 +57,11 @@ function moneyValue(value) {
 }
 
 function dateValue(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return formatPortalDate(value);
 }
 
 function dateTime(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatPortalDateTime(value);
 }
 
 function caseId(lead) {
@@ -92,15 +91,7 @@ function financeStatus(lead) {
 
 function StatusBadge({ lead }) {
   const label = financeStatus(lead);
-  const tone = {
-    Disbursed: "bg-slate-800 text-white",
-    New: "bg-slate-100 text-slate-700",
-    "Rejected With Reason": "bg-rose-50 text-rose-700",
-    Rejected: "bg-rose-50 text-rose-700",
-    "Pending Documents": "bg-amber-50 text-amber-700",
-    "Bank Process": "bg-blue-50 text-[#0d47a1]",
-  }[label] || "bg-slate-100 text-slate-700";
-  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}>{label}</span>;
+  return <span className="text-xs font-normal text-slate-700">{label}</span>;
 }
 
 function Table({ headers, rows, loading, page, total, hasMore, onPage }) {
@@ -1260,6 +1251,10 @@ export function FinanceLeadDocumentsPage() {
         <p className="mt-1 text-sm text-slate-500">Case ID: {caseId(lead || { id: leadId })}</p>
         {message ? <p className="mt-3 rounded-md bg-blue-50 px-3 py-2 text-sm text-[#0d47a1]">{message}</p> : null}
       </div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+      </section>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {documentTypes.map((type) => {
           const doc = uploaded(type);
