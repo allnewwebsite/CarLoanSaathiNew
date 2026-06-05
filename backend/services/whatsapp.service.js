@@ -1,4 +1,4 @@
-import { createRecord, listRecords, updateRecord } from "./firestore.service.js";
+import { createRecord, queryRecords, updateRecord } from "./firestore.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
 
 const DEFAULT_PROVIDER = process.env.WHATSAPP_PROVIDER || "cloud-api";
@@ -166,8 +166,14 @@ async function sendViaProvider(item) {
 export async function processWhatsAppQueue({ limit = 25 } = {}) {
   const settings = await getWorkflowSettings();
   const maxRetries = Number(settings.notificationSettings?.maxRetries || 3);
-  const queue = (await listRecords("whatsappQueue"))
-    .filter((item) => ["queued", "failed"].includes(item.status) && Number(item.retryCount || 0) < maxRetries)
+  const pages = await Promise.all([
+    queryRecords("whatsappQueue", { where: [{ field: "status", value: "queued" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
+    queryRecords("whatsappQueue", { where: [{ field: "status", value: "failed" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
+  ]);
+  const queue = pages
+    .flatMap((page) => page.data || [])
+    .filter((item) => Number(item.retryCount || 0) < maxRetries)
+    .sort((left, right) => String(left.createdAt || "").localeCompare(String(right.createdAt || "")))
     .slice(0, limit);
 
   const results = [];

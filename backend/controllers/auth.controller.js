@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { jwtSecret, superAdminEmail } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
-import { createRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, findRecordsByField, getRecord, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { writeAuditLog } from "../services/audit.service.js";
 import { logError, logInfo, logWarn } from "../services/logger.service.js";
 import {
@@ -174,7 +174,7 @@ async function createUserSession({ req, user }) {
   const now = new Date().toISOString();
   const sessionId = crypto.randomUUID();
   const userAgent = req.headers["user-agent"] || "";
-  const activeSessions = (await listRecords("userSessions")).filter((session) => session.email === user.email && session.revoked !== true);
+  const activeSessions = (await findRecordsByField("userSessions", "email", user.email, 25)).filter((session) => session.revoked !== true);
   const sorted = activeSessions.sort((left, right) => String(right.loginAt || "").localeCompare(String(left.loginAt || "")));
   const revoke = sorted.slice(Math.max(MAX_CONCURRENT_SESSIONS - 1, 0));
   await Promise.all(revoke.map((session) => updateRecord("userSessions", session.id, {
@@ -272,7 +272,7 @@ async function clearTransientLoginLock(email, account = {}) {
 
 export async function revokeUserSessions(email, reason = "admin-revoked") {
   const now = new Date().toISOString();
-  const sessions = (await listRecords("userSessions")).filter((session) => session.email === email && session.revoked !== true);
+  const sessions = (await findRecordsByField("userSessions", "email", email, 25)).filter((session) => session.revoked !== true);
   await Promise.all(sessions.map((session) => updateRecord("userSessions", session.id, {
     revoked: true,
     revokedAt: now,
@@ -284,7 +284,7 @@ export async function revokeUserSessions(email, reason = "admin-revoked") {
 
 async function createPendingGoogleAccount({ decoded, portal, reason }) {
   const email = String(decoded.email || "").toLowerCase();
-  const existing = (await listRecords("pendingGoogleAccounts")).find((item) => item.email === email && item.status === "pending");
+  const existing = (await findRecordsByField("pendingGoogleAccounts", "email", email, 5)).find((item) => item.status === "pending");
   if (existing) return existing;
   return createRecord("pendingGoogleAccounts", {
     email,
@@ -333,6 +333,28 @@ function emailMatchesRecord(record = {}, email) {
   ].some((value) => String(value || "").trim().toLowerCase() === normalized);
 }
 
+function uniqueAuthRecords(records = []) {
+  const seen = new Set();
+  return records.filter((record) => {
+    const key = record?.id || `${record?.uid || ""}:${record?.email || ""}:${record?.role || ""}`;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function firstLookup(lookups = []) {
+  for (const lookup of lookups) {
+    const result = await lookup().catch(() => null);
+    if (Array.isArray(result)) {
+      if (result[0]) return result[0];
+    } else if (result) {
+      return result;
+    }
+  }
+  return null;
+}
+
 function uidMatchesRecord(record = {}, email, uid) {
   if (!uid) return true;
   const recordUid = String(record.uid || record.authUid || "").trim();
@@ -348,8 +370,14 @@ async function updatePasswordLifecycleRecords(email, role, patch) {
       : ["dealershipManagers", "dealerStaff"];
 
   await Promise.all(linkedCollections.map(async (collection) => {
-    const records = await listRecords(collection).catch(() => []);
-    const matches = records.filter((record) => emailMatchesRecord(record, email));
+    const pages = await Promise.all([
+      getRecord(collection, email).then((record) => record ? [record] : []).catch(() => []),
+      findRecordsByField(collection, "email", email, 10).catch(() => []),
+      findRecordsByField(collection, "officialEmail", email, 10).catch(() => []),
+      findRecordsByField(collection, "loginEmail", email, 10).catch(() => []),
+      findRecordsByField(collection, "dealershipEmail", email, 10).catch(() => []),
+    ]);
+    const matches = uniqueAuthRecords(pages.flat()).filter((record) => emailMatchesRecord(record, email));
     await Promise.all(matches.map((record) => upsertRecord(collection, record.id || email, {
       ...record,
       ...patch,
@@ -472,34 +500,39 @@ async function accountPresentation(email, account = {}) {
 }
 
 async function dealerRegistrationStatus(email) {
-  const registrations = await listRecords("pendingDealerAccounts");
-  const registration = registrations.find((item) => item.email === email);
-  if (!registration) return null;
-  const [onboardingRequests, approvalRequests] = await Promise.all([
-    listRecords("onboardingRequests"),
-    listRecords("pendingDealershipApprovals"),
+  const registration = await firstLookup([
+    () => getRecord("pendingDealerAccounts", email),
+    () => findRecordsByField("pendingDealerAccounts", "email", email, 5),
   ]);
-  const linkedOnboarding = onboardingRequests.find((item) =>
-    item.id === registration.onboardingRequestId
-    || item.loginEmail === email
-    || item.primaryGoogleEmail === email
-  );
-  const linkedApproval = approvalRequests.find((item) =>
-    item.id === registration.approvalRequestId
-    || item.onboardingRequestId === registration.onboardingRequestId
-    || item.loginEmail === email
-    || item.primaryGoogleEmail === email
-  );
+  if (!registration) return null;
+  const [linkedOnboarding, linkedApproval] = await Promise.all([
+    firstLookup([
+      () => getRecord("onboardingRequests", registration.onboardingRequestId),
+      () => findRecordsByField("onboardingRequests", "loginEmail", email, 5),
+      () => findRecordsByField("onboardingRequests", "primaryGoogleEmail", email, 5),
+    ]),
+    firstLookup([
+      () => getRecord("pendingDealershipApprovals", registration.approvalRequestId),
+      () => findRecordsByField("pendingDealershipApprovals", "loginEmail", email, 5),
+      () => findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", email, 5),
+    ]),
+  ]);
   const dealership = await getRecord("dealerships", email) || await getRecord("approvedDealerships", email);
   return linkedOnboarding || linkedApproval || dealership ? registration : null;
 }
 
 async function bankRegistrationStatus(email) {
-  const registrations = await listRecords("pendingBankAccounts");
-  const registration = registrations.find((item) => item.email === email);
+  const registration = await firstLookup([
+    () => getRecord("pendingBankAccounts", email),
+    () => findRecordsByField("pendingBankAccounts", "email", email, 5),
+  ]);
   if (!registration) {
-    const approvals = await listRecords("pendingBankApprovals");
-    const approval = approvals.find((item) => item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email);
+    const approval = await firstLookup([
+      () => getRecord("pendingBankApprovals", email),
+      () => findRecordsByField("pendingBankApprovals", "email", email, 5),
+      () => findRecordsByField("pendingBankApprovals", "officialEmail", email, 5),
+      () => findRecordsByField("pendingBankApprovals", "primaryGoogleEmail", email, 5),
+    ]);
     if (!approval) return null;
     return {
       email,
@@ -513,10 +546,24 @@ async function bankRegistrationStatus(email) {
       liveBankProfileFound: approval.status === "approved",
     };
   }
-  const approvals = await listRecords("pendingBankApprovals");
-  const approval = approvals.find((item) => item.id === registration.approvalRequestId || item.email === email || item.officialEmail === email || item.primaryGoogleEmail === email);
-  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === email || item.officialEmail === email || item.id === email);
-  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === email || item.officialEmail === email || item.id === email);
+  const [approval, bankPartner, branchManager] = await Promise.all([
+    firstLookup([
+      () => getRecord("pendingBankApprovals", registration.approvalRequestId),
+      () => findRecordsByField("pendingBankApprovals", "email", email, 5),
+      () => findRecordsByField("pendingBankApprovals", "officialEmail", email, 5),
+      () => findRecordsByField("pendingBankApprovals", "primaryGoogleEmail", email, 5),
+    ]),
+    firstLookup([
+      () => getRecord("bankPartners", email),
+      () => findRecordsByField("bankPartners", "email", email, 5),
+      () => findRecordsByField("bankPartners", "officialEmail", email, 5),
+    ]),
+    firstLookup([
+      () => getRecord("branchManagers", email),
+      () => findRecordsByField("branchManagers", "email", email, 5),
+      () => findRecordsByField("branchManagers", "officialEmail", email, 5),
+    ]),
+  ]);
   return {
     ...registration,
     linkedApprovalFound: Boolean(approval),
@@ -564,11 +611,14 @@ function bankLoginGate(registration) {
 
 async function approvedDealerAccess(email, account) {
   const dealershipEmail = account?.dealershipId || email;
-  const registrations = await listRecords("pendingDealerAccounts").catch((error) => {
+  const registration = await firstLookup([
+    () => getRecord("pendingDealerAccounts", dealershipEmail),
+    () => findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 5),
+    () => findRecordsByField("pendingDealerAccounts", "email", email, 5),
+  ]).catch((error) => {
     logWarn("Auth pending dealer account lookup failed", { error: error.message });
-    return [];
+    return null;
   });
-  const registration = registrations.find((item) => item.email === dealershipEmail || item.email === email);
   const dealership = await getRecord("dealerships", dealershipEmail).catch(() => null) || await getRecord("approvedDealerships", dealershipEmail).catch(() => null);
   const activeApprovedAccount = account?.approved === true
     && account?.active === true
@@ -1278,14 +1328,12 @@ export async function getLoginActivity(req, res, next) {
     const canViewRequested = req.user?.role === "super-admin"
       || String(req.user?.email || "").toLowerCase() === email;
     if (!canViewRequested) return res.status(403).json({ message: "Access denied" });
-    const activities = (await listRecords("loginActivity"))
-      .filter((item) => item.email === email)
-      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
-      .slice(0, 100);
-    const sessions = (await listRecords("userSessions"))
-      .filter((item) => item.email === email)
-      .sort((left, right) => String(right.loginAt || "").localeCompare(String(left.loginAt || "")))
-      .slice(0, 50);
+    const [activitiesPage, sessionsPage] = await Promise.all([
+      queryRecords("loginActivity", { where: [{ field: "email", value: email }], orderBy: "createdAt", direction: "desc", limit: 100, maxLimit: 100 }),
+      queryRecords("userSessions", { where: [{ field: "email", value: email }], orderBy: "loginAt", direction: "desc", limit: 50, maxLimit: 50 }),
+    ]);
+    const activities = activitiesPage.data;
+    const sessions = sessionsPage.data;
     res.json({ role, activities, sessions });
   } catch (error) {
     next(error);
@@ -1307,7 +1355,7 @@ export async function forceLogoutUser(req, res, next) {
 
 export async function approvePendingGoogleAccount(req, res, next) {
   try {
-    const request = (await listRecords("pendingGoogleAccounts")).find((item) => item.id === req.params.id);
+    const request = await getRecord("pendingGoogleAccounts", req.params.id);
     if (!request) return res.status(404).json({ message: "Pending account not found" });
     const role = String(req.body.role || request.requestedRole || "").trim();
     if (!ROLE_ROUTES[role]) return res.status(400).json({ message: "Valid role is required" });
@@ -1336,7 +1384,7 @@ export async function rejectPendingGoogleAccount(req, res, next) {
   try {
     const reason = String(req.body.reason || "").trim();
     if (!reason) return res.status(400).json({ message: "Rejection reason is required" });
-    const request = (await listRecords("pendingGoogleAccounts")).find((item) => item.id === req.params.id);
+    const request = await getRecord("pendingGoogleAccounts", req.params.id);
     if (!request) return res.status(404).json({ message: "Pending account not found" });
     const updated = await updateRecord("pendingGoogleAccounts", request.id, { status: "rejected", rejectionReason: reason, rejectedBy: req.user?.email, rejectedAt: new Date().toISOString() });
     res.json({ message: "Account rejected", request: updated });

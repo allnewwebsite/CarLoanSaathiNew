@@ -1,4 +1,4 @@
-import { createRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { createRecord, findRecordsByField, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
@@ -35,8 +35,8 @@ function tieUpFromBank({ dealershipId, bank, ifscCode, active = true, now, creat
 }
 
 async function activeTieUpRecords(dealershipId) {
-  const records = await listRecords(TIE_UP_COLLECTION);
-  return records.filter((record) => record.dealershipId === dealershipId && record.active === true);
+  return (await findRecordsByField(TIE_UP_COLLECTION, "dealershipId", dealershipId, 100))
+    .filter((record) => record.active === true);
 }
 
 async function upsertTieUpRecord(dealershipId, bank, ifscCode, req = null, active = true, createdAt = null) {

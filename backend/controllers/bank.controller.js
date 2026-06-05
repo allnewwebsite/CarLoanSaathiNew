@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
@@ -88,8 +88,9 @@ async function currentPartner(req) {
     };
   }
 
-  const partners = await listRecords("bankPartners");
-  const partner = partners.find((item) => item.email === email || item.id === email) || null;
+  const partner = await getRecord("bankPartners", email).catch(() => null)
+    || (await findRecordsByField("bankPartners", "email", email, 3))[0]
+    || null;
   return partner ? { ...partner, roleType: req.user?.role || partner.role } : null;
 }
 
@@ -319,15 +320,19 @@ async function attachExecutiveMobile(partner, leads) {
 
 async function liveBankRegistrationForAccount(account) {
   if (!account?.email) return { approval: null, bankPartner: null, branchManager: null, live: false };
-  const approvals = await listRecords("pendingBankApprovals");
-  const approval = approvals.find((item) =>
-    item.id === account.approvalRequestId
-    || item.email === account.email
-    || item.officialEmail === account.email
-    || item.primaryGoogleEmail === account.email
-  ) || null;
-  const bankPartner = (await listRecords("bankPartners")).find((item) => item.email === account.email || item.officialEmail === account.email || item.id === account.email) || null;
-  const branchManager = (await listRecords("branchManagers")).find((item) => item.email === account.email || item.officialEmail === account.email || item.id === account.email) || null;
+  const approval = await getRecord("pendingBankApprovals", account.approvalRequestId || "").catch(() => null)
+    || (await findRecordsByField("pendingBankApprovals", "email", account.email, 3))[0]
+    || (await findRecordsByField("pendingBankApprovals", "officialEmail", account.email, 3))[0]
+    || (await findRecordsByField("pendingBankApprovals", "primaryGoogleEmail", account.email, 3))[0]
+    || null;
+  const bankPartner = await getRecord("bankPartners", account.email).catch(() => null)
+    || (await findRecordsByField("bankPartners", "email", account.email, 3))[0]
+    || (await findRecordsByField("bankPartners", "officialEmail", account.email, 3))[0]
+    || null;
+  const branchManager = await getRecord("branchManagers", account.email).catch(() => null)
+    || (await findRecordsByField("branchManagers", "email", account.email, 3))[0]
+    || (await findRecordsByField("branchManagers", "officialEmail", account.email, 3))[0]
+    || null;
   return { approval, bankPartner, branchManager, live: Boolean(approval || bankPartner || branchManager) };
 }
 
@@ -381,7 +386,9 @@ export async function registerBankPartner(req, res, next) {
     const email = String(req.body.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Email is required" });
     const now = new Date().toISOString();
-    let pendingAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === email);
+    let pendingAccount = await getRecord("pendingBankAccounts", email).catch(() => null)
+      || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
+      || null;
     if (!pendingAccount) {
       pendingAccount = await createRecord("pendingBankAccounts", {
         uid: req.body.bankUid || email,
@@ -479,7 +486,9 @@ export async function startBankRegistration(req, res, next) {
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
     const now = new Date().toISOString();
-    let existing = (await listRecords("pendingBankAccounts")).find((item) => item.email === email);
+    let existing = await getRecord("pendingBankAccounts", email).catch(() => null)
+      || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
+      || null;
     const live = existing ? await liveBankRegistrationForAccount(existing) : { live: false };
     if (existing && !live.live) {
       existing = await updateRecord("pendingBankAccounts", existing.id, {
@@ -562,7 +571,9 @@ export async function getBankRegistrationStatus(req, res, next) {
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
-    const account = (await listRecords("pendingBankAccounts")).find((item) => item.email === email);
+    const account = await getRecord("pendingBankAccounts", email).catch(() => null)
+      || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
+      || null;
     const live = account ? await liveBankRegistrationForAccount(account) : { live: false };
     const active = live.branchManager?.active !== false && live.bankPartner?.active !== false;
     if (account?.approvalStatus === "approved" && account.accountApproved === true && account.accountActive === true && active) {
@@ -825,15 +836,24 @@ export async function removeBankExecutive(req, res, next) {
       deleted[collection] = await deleteMatchingRecords(collection, matchesExecutive);
     }
 
-    const leads = await listRecords("leads").catch(() => []);
-    const affectedLeads = leads.filter((lead) =>
-      lead.bankId === identity.bankId
-      && (
-        (uid && String(lead.assignedExecutiveId || "").trim() === uid)
-        || (email && cleanText(lead.assignedExecutiveEmail) === email)
-        || (email && cleanText(lead.assignedExecutiveId) === email)
-      )
-    );
+    const affectedPages = await Promise.all([
+      uid ? queryRecords("leads", {
+        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveId", value: uid }],
+        limit: 100,
+        maxLimit: 100,
+      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+      email ? queryRecords("leads", {
+        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveEmail", value: email }],
+        limit: 100,
+        maxLimit: 100,
+      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+      email ? queryRecords("leads", {
+        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveId", value: email }],
+        limit: 100,
+        maxLimit: 100,
+      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+    ]);
+    const affectedLeads = [...new Map(affectedPages.flatMap((page) => page.data).map((lead) => [lead.id, lead])).values()];
     await Promise.all(affectedLeads.map((lead) => updateRecord("leads", lead.id, {
       assignedExecutiveId: null,
       assignedExecutiveEmail: null,
@@ -1132,8 +1152,14 @@ export async function acceptBankLead(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
-    const assignments = await listRecords("leadAssignments");
-    const assignment = assignments.find((item) => item.leadId === lead.id && (item.partnerId === partner.id || item.partnerId === partner.email));
+    const assignments = await queryRecords("leadAssignments", {
+      where: [{ field: "leadId", value: lead.id }],
+      orderBy: "leadId",
+      direction: "asc",
+      limit: 25,
+      maxLimit: 25,
+    }).catch(() => ({ data: [] }));
+    const assignment = assignments.data.find((item) => item.partnerId === partner.id || item.partnerId === partner.email);
     if (assignment) await updateRecord("leadAssignments", assignment.id, { status: "accepted", acceptedAt: new Date().toISOString() });
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({

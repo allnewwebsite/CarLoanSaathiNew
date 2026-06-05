@@ -1,8 +1,17 @@
-import { createRecord, getRecord, listRecords, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { logInfo, logWarn, logError } from "./logger.service.js";
+
+async function boundedBankSourceRecords(collection) {
+  const pages = await Promise.all([
+    queryRecords(collection, { where: [{ field: "approved", value: true }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+    queryRecords(collection, { where: [{ field: "status", value: "active" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+    queryRecords(collection, { where: [{ field: "approvalStatus", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+  ]);
+  return [...new Map(pages.flatMap((page) => page.data || []).map((item) => [item.id, item])).values()];
+}
 
 /**
  * Validate IFSC code format and uniqueness
@@ -190,11 +199,15 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  */
 export async function getActiveBankBranches() {
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
-    listRecords("banks").catch(() => []),
-    listRecords("bankPartners").catch(() => []),
-    listRecords("branches").catch(() => []),
-    listRecords("branchManagers").catch(() => []),
-    listRecords("pendingBankApprovals").catch(() => []),
+    boundedBankSourceRecords("banks"),
+    boundedBankSourceRecords("bankPartners"),
+    boundedBankSourceRecords("branches"),
+    boundedBankSourceRecords("branchManagers"),
+    Promise.all([
+      queryRecords("pendingBankApprovals", { where: [{ field: "approvalStatus", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "approved" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+      queryRecords("pendingBankApprovals", { where: [{ field: "status", value: "active" }], limit: 500, maxLimit: 500 }).catch(() => ({ data: [] })),
+    ]).then((pages) => [...new Map(pages.flatMap((page) => page.data || []).map((item) => [item.id, item])).values()]),
   ]);
 
   const normalizeBank = (bank) => {

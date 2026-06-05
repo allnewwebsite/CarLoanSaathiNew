@@ -1,4 +1,4 @@
-import { listRecords, upsertRecord } from "./firestore.service.js";
+import { getRecord, upsertRecord } from "./firestore.service.js";
 
 export const defaultWorkflowSettings = {
   id: "workflow",
@@ -30,8 +30,7 @@ export const defaultWorkflowSettings = {
 };
 
 export async function getWorkflowSettings() {
-  const settings = await listRecords("settings");
-  return settings.find((item) => item.id === "workflow") || defaultWorkflowSettings;
+  return await getRecord("settings", "workflow").catch(() => null) || defaultWorkflowSettings;
 }
 
 export async function updateWorkflowSettings(payload) {

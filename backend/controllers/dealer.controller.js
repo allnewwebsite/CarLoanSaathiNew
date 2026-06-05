@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
@@ -41,8 +41,11 @@ function dealerEmail(req) {
 
 async function financeDeskContext(req) {
   const email = dealerEmail(req);
-  const desks = await listRecords("financeDesks");
-  const desk = desks.find((item) => item.officialEmail === email || item.email === email || item.dealershipEmail === email || item.id === email);
+  const desk = await getRecord("financeDesks", email).catch(() => null)
+    || (await findRecordsByField("financeDesks", "officialEmail", email, 3))[0]
+    || (await findRecordsByField("financeDesks", "email", email, 3))[0]
+    || (await findRecordsByField("financeDesks", "dealershipEmail", email, 3))[0]
+    || null;
   const dealershipEmail = desk?.dealershipEmail || email;
   const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("dealers", dealershipEmail) || {};
   return { email, dealershipEmail, desk, dealership };
@@ -130,6 +133,15 @@ function staffEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function uniqueRecords(records = []) {
+  const byId = new Map();
+  records.flat().filter(Boolean).forEach((item) => {
+    const key = item.id || item.email || item.officialEmail || JSON.stringify(item);
+    if (!byId.has(key)) byId.set(key, item);
+  });
+  return [...byId.values()];
+}
+
 async function deleteMatchingRecords(collection, predicate) {
   const records = await listRecords(collection).catch(() => []);
   const matches = records.filter(predicate);
@@ -138,13 +150,25 @@ async function deleteMatchingRecords(collection, predicate) {
 }
 
 async function buildDealerStaffRows(dealershipEmail, dealership = {}, currentEmail = "") {
-  const [dealerStaff, financeDesks, financeDesk, dealershipManagers, users, loginActivity] = await Promise.all([
-    listRecords("dealerStaff"),
-    listRecords("financeDesks"),
-    listRecords("financeDesk"),
-    listRecords("dealershipManagers"),
-    listRecords("users"),
-    listRecords("loginActivity").catch(() => []),
+  const [dealerStaff, financeDesks, financeDesk, dealershipManagers, users] = await Promise.all([
+    findRecordsByField("dealerStaff", "dealershipId", dealershipEmail, 100),
+    Promise.all([
+      findRecordsByField("financeDesks", "dealershipId", dealershipEmail, 50),
+      findRecordsByField("financeDesks", "dealershipEmail", dealershipEmail, 50),
+      getRecord("financeDesks", dealershipEmail).catch(() => null),
+    ]).then(uniqueRecords),
+    Promise.all([
+      findRecordsByField("financeDesk", "dealershipId", dealershipEmail, 50),
+      findRecordsByField("financeDesk", "dealershipEmail", dealershipEmail, 50),
+    ]).then(uniqueRecords),
+    Promise.all([
+      findRecordsByField("dealershipManagers", "dealershipId", dealershipEmail, 50),
+      findRecordsByField("dealershipManagers", "dealershipEmail", dealershipEmail, 50),
+    ]).then(uniqueRecords),
+    Promise.all([
+      findRecordsByField("users", "dealershipId", dealershipEmail, 100),
+      findRecordsByField("users", "dealershipEmail", dealershipEmail, 100),
+    ]).then(uniqueRecords),
   ]);
   const rows = new Map();
   const add = (item, source) => {
@@ -160,9 +184,6 @@ async function buildDealerStaffRows(dealershipEmail, dealership = {}, currentEma
       branch: item.branch || item.city || dealership.city || dealership.registeredCity || dealership.dealershipName,
       city: item.city || dealership.city || dealership.registeredCity || "",
     });
-    const lastLogin = loginActivity
-      .filter((activity) => staffEmail(activity.email) === email && String(activity.status || "").toLowerCase().includes("login"))
-      .sort((left, right) => String(right.loginAt || right.createdAt || "").localeCompare(String(left.loginAt || left.createdAt || "")))[0];
     rows.set(email, mergeStaffRows(rows.get(email), {
       ...row,
       protected: email === staffEmail(dealershipEmail) || email === staffEmail(currentEmail),
@@ -171,7 +192,7 @@ async function buildDealerStaffRows(dealershipEmail, dealership = {}, currentEma
       authAccountId: item.uid || rows.get(email)?.authAccountId || email,
       createdAt: item.createdAt || rows.get(email)?.createdAt || "",
       createdBy: item.createdByDealerAdminId || item.createdBy || rows.get(email)?.createdBy || "",
-      lastLoginAt: item.lastLoginAt || lastLogin?.loginAt || lastLogin?.createdAt || rows.get(email)?.lastLoginAt || "",
+      lastLoginAt: item.lastLoginAt || rows.get(email)?.lastLoginAt || "",
       assignedDealership: item.dealershipName || dealership.dealershipName || dealership.name || dealershipEmail,
       dealershipId: item.dealershipId || item.dealershipEmail || dealershipEmail,
     }));
@@ -204,21 +225,19 @@ function runDealerLeadSideEffects(label, tasks = []) {
 
 async function liveDealerRegistrationForAccount(account) {
   if (!account?.email) return { linkedOnboarding: null, linkedApproval: null, dealership: null, live: false };
-  const [onboardingRequests, approvalRequests] = await Promise.all([
-    listRecords("onboardingRequests"),
-    listRecords("pendingDealershipApprovals"),
+  const [linkedOnboarding, linkedApproval] = await Promise.all([
+    getRecord("onboardingRequests", account.onboardingRequestId || "").catch(() => null)
+      .then(async (direct) => direct
+        || (await findRecordsByField("onboardingRequests", "loginEmail", account.email, 3))[0]
+        || (await findRecordsByField("onboardingRequests", "primaryGoogleEmail", account.email, 3))[0]
+        || null),
+    getRecord("pendingDealershipApprovals", account.approvalRequestId || "").catch(() => null)
+      .then(async (direct) => direct
+        || (account.onboardingRequestId ? (await findRecordsByField("pendingDealershipApprovals", "onboardingRequestId", account.onboardingRequestId, 3))[0] : null)
+        || (await findRecordsByField("pendingDealershipApprovals", "loginEmail", account.email, 3))[0]
+        || (await findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", account.email, 3))[0]
+        || null),
   ]);
-  const linkedOnboarding = onboardingRequests.find((item) =>
-    item.id === account.onboardingRequestId
-    || item.loginEmail === account.email
-    || item.primaryGoogleEmail === account.email
-  ) || null;
-  const linkedApproval = approvalRequests.find((item) =>
-    item.id === account.approvalRequestId
-    || item.onboardingRequestId === account.onboardingRequestId
-    || item.loginEmail === account.email
-    || item.primaryGoogleEmail === account.email
-  ) || null;
   const dealership = await getRecord("dealerships", account.email) || await getRecord("approvedDealerships", account.email);
   return { linkedOnboarding, linkedApproval, dealership, live: Boolean(linkedOnboarding || linkedApproval || dealership) };
 }
@@ -234,7 +253,9 @@ export async function startDealerRegistration(req, res, next) {
     if (!email) return res.status(400).json({ message: "Account email is required" });
 
     const now = new Date().toISOString();
-    let existing = (await listRecords("pendingDealerAccounts")).find((item) => item.email === email);
+    let existing = await getRecord("pendingDealerAccounts", email).catch(() => null)
+      || (await findRecordsByField("pendingDealerAccounts", "email", email, 3))[0]
+      || null;
     const existingLive = existing ? await liveDealerRegistrationForAccount(existing) : { live: false };
     if (existing && !existingLive.live) {
       existing = await updateRecord("pendingDealerAccounts", existing.id, {
@@ -354,26 +375,24 @@ export async function getDealerRegistrationStatus(req, res, next) {
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
 
-    const pendingAccounts = await listRecords("pendingDealerAccounts");
-    const users = await listRecords("users");
-    const user = users.find((item) => item.email === email);
+    const user = await getRecord("users", email).catch(() => null)
+      || (await findRecordsByField("users", "email", email, 3))[0]
+      || null;
     const dealershipEmail = user?.dealershipId || email;
-    const account = pendingAccounts.find((item) => item.email === dealershipEmail || item.email === email);
-    const [onboardingRequests, approvalRequests] = await Promise.all([
-      listRecords("onboardingRequests"),
-      listRecords("pendingDealershipApprovals"),
-    ]);
-    const linkedOnboarding = account ? onboardingRequests.find((item) =>
-      item.id === account.onboardingRequestId
-      || item.loginEmail === account.email
-      || item.primaryGoogleEmail === account.email
-    ) : null;
-    const linkedApproval = account ? approvalRequests.find((item) =>
-      item.id === account.approvalRequestId
-      || item.onboardingRequestId === account.onboardingRequestId
-      || item.loginEmail === account.email
-      || item.primaryGoogleEmail === account.email
-    ) : null;
+    const account = await getRecord("pendingDealerAccounts", dealershipEmail).catch(() => null)
+      || await getRecord("pendingDealerAccounts", email).catch(() => null)
+      || (await findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 3))[0]
+      || (await findRecordsByField("pendingDealerAccounts", "email", email, 3))[0]
+      || null;
+    const linkedOnboarding = account ? await getRecord("onboardingRequests", account.onboardingRequestId || "").catch(() => null)
+      || (await findRecordsByField("onboardingRequests", "loginEmail", account.email, 3))[0]
+      || (await findRecordsByField("onboardingRequests", "primaryGoogleEmail", account.email, 3))[0]
+      || null : null;
+    const linkedApproval = account ? await getRecord("pendingDealershipApprovals", account.approvalRequestId || "").catch(() => null)
+      || (account.onboardingRequestId ? (await findRecordsByField("pendingDealershipApprovals", "onboardingRequestId", account.onboardingRequestId, 3))[0] : null)
+      || (await findRecordsByField("pendingDealershipApprovals", "loginEmail", account.email, 3))[0]
+      || (await findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", account.email, 3))[0]
+      || null : null;
     const dealership = await getRecord("dealerships", dealershipEmail) || await getRecord("approvedDealerships", dealershipEmail);
     const activeApprovedUser = user?.approved === true
       && user?.active === true
@@ -546,13 +565,11 @@ export async function registerDealerOnboarding(req, res, next) {
 
     const loginEmail = required(req.body.primaryGoogleEmail || req.body.loginEmail || req.body.officialDealershipEmail, "Official login email").toLowerCase();
     const now = new Date().toISOString();
-    const pendingAccounts = await listRecords("pendingDealerAccounts");
-    let pendingAccount = pendingAccounts.find((item) =>
-      item.email === loginEmail
-      || item.id === req.body.registrationId
-      || item.uid === req.body.dealerUid
-      || item.id === req.body.dealerUid
-    );
+    let pendingAccount = await getRecord("pendingDealerAccounts", req.body.registrationId || loginEmail).catch(() => null)
+      || await getRecord("pendingDealerAccounts", req.body.dealerUid || "").catch(() => null)
+      || (await findRecordsByField("pendingDealerAccounts", "email", loginEmail, 3))[0]
+      || (req.body.dealerUid ? (await findRecordsByField("pendingDealerAccounts", "uid", req.body.dealerUid, 3))[0] : null)
+      || null;
     if (!pendingAccount) {
       pendingAccount = await createRecord("pendingDealerAccounts", {
         uid: req.body.dealerUid || loginEmail,
@@ -969,8 +986,7 @@ export async function getDealerSalespersons(req, res, next) {
   try {
     const { dealershipEmail } = await financeDeskContext(req);
     const includeInactive = String(req.query.includeInactive || "") === "true";
-    const salespersons = (await listRecords("salespersons"))
-      .filter((person) => person.dealershipId === dealershipEmail)
+    const salespersons = (await findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100))
       .filter((person) => includeInactive || person.active !== false)
       .map((person) => ({
         id: person.id,
@@ -1101,7 +1117,7 @@ export async function createDealerStaff(req, res, next) {
     if (!/^[6-9]\d{9}$/.test(mobile)) return res.status(400).json({ message: "Enter a valid 10-digit mobile number" });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid official email" });
 
-    const existingStaff = (await listRecords("dealerStaff")).filter((item) => item.dealershipId === dealershipEmail && item.active !== false);
+    const existingStaff = (await findRecordsByField("dealerStaff", "dealershipId", dealershipEmail, 100)).filter((item) => item.active !== false);
     if (existingStaff.some((item) => item.email === email)) return res.status(409).json({ message: "Official email already exists for this dealership" });
     if (existingStaff.some((item) => item.mobile === mobile)) return res.status(409).json({ message: "Mobile number already exists for this dealership" });
     if (existingStaff.some((item) => String(item.employeeId || "").toLowerCase() === employeeId.toLowerCase())) return res.status(409).json({ message: "Employee ID already exists for this dealership" });
@@ -1292,7 +1308,7 @@ export async function createDealerSalesperson(req, res, next) {
     const email = required(req.body.email || req.body.mailId, "Mail ID").toLowerCase();
     if (!/^[6-9]\d{9}$/.test(mobile)) return res.status(400).json({ message: "Enter a valid 10-digit mobile number" });
 
-    const existing = (await listRecords("salespersons")).filter((person) => person.dealershipId === dealershipEmail && person.active !== false);
+    const existing = (await findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100)).filter((person) => person.active !== false);
     if (existing.some((person) => person.mobile === mobile)) return res.status(409).json({ message: "Mobile number already exists for this dealership" });
     if (existing.some((person) => String(person.jobId || "").toLowerCase() === jobId.toLowerCase())) return res.status(409).json({ message: "Job ID already exists for this dealership" });
     if (existing.some((person) => String(person.email || "").toLowerCase() === email)) return res.status(409).json({ message: "Mail ID already exists for this dealership" });
@@ -1373,8 +1389,9 @@ export async function getDealerProfile(req, res, next) {
         financeDesk: desk || null,
       });
     }
-    const profiles = await listRecords("dealerProfiles");
-    const profile = profiles.find((item) => item.email === email) || {
+    const profile = await getRecord("dealerProfiles", email).catch(() => null)
+      || (await findRecordsByField("dealerProfiles", "email", email, 3))[0]
+      || {
       email,
       dealershipId: dealershipEmail,
       dealershipCity: desk?.city || "",
@@ -1392,8 +1409,9 @@ export async function getDealerProfile(req, res, next) {
 export async function updateDealerProfile(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
-    const profiles = await listRecords("dealerProfiles");
-    const existing = profiles.find((item) => item.email === email);
+    const existing = await getRecord("dealerProfiles", email).catch(() => null)
+      || (await findRecordsByField("dealerProfiles", "email", email, 3))[0]
+      || null;
     const bankPartners = branchIdsFromRequest(req.body.dealershipBankPartners || req.body.bankBranchIds || req.body.bankBranchId || []);
     const payload = {
       email,

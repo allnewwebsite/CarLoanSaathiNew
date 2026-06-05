@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { countRecords, createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { processSlaBreaches } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
@@ -54,8 +54,8 @@ function sameText(left, right) {
 async function enrichAdminLeadRows(leads = []) {
   if (!leads.length) return leads;
   const [bankPartners, bankApprovals] = await Promise.all([
-    listRecords("bankPartners").catch(() => []),
-    listRecords("pendingBankApprovals").catch(() => []),
+    listRecentRecords("bankPartners", { limit: 200 }).catch(() => []),
+    listRecentRecords("pendingBankApprovals", { limit: 200 }).catch(() => []),
   ]);
   const banks = [...bankPartners, ...bankApprovals];
   return leads.map((lead) => {
@@ -132,8 +132,8 @@ function ecosystemLimit(value, fallback = 50) {
 }
 
 async function boundedList(collection, limit, mapper = (item) => item) {
-  const rows = await listRecords(collection);
-  return rows.slice(0, limit).map(mapper);
+  const rows = await listRecentRecords(collection, { limit });
+  return rows.map(mapper);
 }
 
 function safeAdminUser(user = {}) {
@@ -188,6 +188,18 @@ function safeDocument(item = {}) {
   };
 }
 
+async function firstAdminLookup(lookups = []) {
+  for (const lookup of lookups) {
+    const result = await lookup().catch(() => null);
+    if (Array.isArray(result)) {
+      if (result[0]) return result[0];
+    } else if (result) {
+      return result;
+    }
+  }
+  return null;
+}
+
 function requestLoginEmail(request) {
   return normalizeEmail(request.loginEmail || request.primaryGoogleEmail || request.dealership?.loginEmail || request.financeDesk?.officialEmail || request.dealership?.officialDealershipEmail);
 }
@@ -226,16 +238,15 @@ async function resolveDealershipApprovalRequest(id) {
   });
   if (!pendingAccount) return null;
 
-  const approvals = await listRecords("pendingDealershipApprovals");
   const loginEmail = normalizeEmail(pendingAccount.email || pendingAccount.loginEmail || pendingAccount.primaryGoogleEmail);
-  const approval = approvals.find((item) =>
-    item.pendingDealerAccountId === pendingAccount.id
-    || item.pendingDealerRegistrationId === pendingAccount.id
-    || item.onboardingRequestId === pendingAccount.onboardingRequestId
-    || item.id === pendingAccount.approvalRequestId
-    || normalizeEmail(item.loginEmail) === loginEmail
-    || normalizeEmail(item.primaryGoogleEmail) === loginEmail
-  );
+  const approval = await firstAdminLookup([
+    () => getRecord("pendingDealershipApprovals", pendingAccount.approvalRequestId),
+    () => findRecordsByField("pendingDealershipApprovals", "pendingDealerAccountId", pendingAccount.id, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "pendingDealerRegistrationId", pendingAccount.id, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "onboardingRequestId", pendingAccount.onboardingRequestId, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "loginEmail", loginEmail, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", loginEmail, 5),
+  ]);
   return approval || {
     ...pendingAccount,
     id: pendingAccount.approvalRequestId || pendingAccount.id,
@@ -347,15 +358,15 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     });
   }
 
-  const pendingAccounts = await listRecords("pendingDealerAccounts");
-  const pendingAccount = pendingAccounts.find((item) =>
-    item.id === request.pendingDealerAccountId
-    || item.id === request.pendingDealerRegistrationId
-    || item.email === loginEmail
-    || item.uid === request.dealerUid
-    || item.onboardingRequestId === request.id
-    || item.approvalRequestId === request.approvalRequestId
-  );
+  const pendingAccount = await firstAdminLookup([
+    () => getRecord("pendingDealerAccounts", request.pendingDealerAccountId),
+    () => getRecord("pendingDealerAccounts", request.pendingDealerRegistrationId),
+    () => getRecord("pendingDealerAccounts", loginEmail),
+    () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
+    () => findRecordsByField("pendingDealerAccounts", "uid", request.dealerUid, 5),
+    () => findRecordsByField("pendingDealerAccounts", "onboardingRequestId", request.id, 5),
+    () => findRecordsByField("pendingDealerAccounts", "approvalRequestId", request.approvalRequestId, 5),
+  ]);
   if (pendingAccount) {
     await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, {
       registrationSubmitted: true,
@@ -368,13 +379,12 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     });
   }
 
-  const approvals = await listRecords("pendingDealershipApprovals");
-  const approval = approvals.find((item) =>
-    item.id === request.approvalRequestId
-    || item.onboardingRequestId === request.id
-    || item.loginEmail === loginEmail
-    || item.primaryGoogleEmail === loginEmail
-  );
+  const approval = await firstAdminLookup([
+    () => getRecord("pendingDealershipApprovals", request.approvalRequestId),
+    () => findRecordsByField("pendingDealershipApprovals", "onboardingRequestId", request.id, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "loginEmail", loginEmail, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", loginEmail, 5),
+  ]);
   if (approval) {
     await updateRecordIfExists("pendingDealershipApprovals", approval.id, {
       status: "approved",
@@ -386,12 +396,12 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     });
   }
 
-  const queueItem = (await listRecords("dealerApprovalQueue")).find((item) =>
-    item.pendingDealershipApprovalId === approval?.id
-    || item.pendingDealerAccountId === pendingAccount?.id
-    || item.onboardingRequestId === request.id
-    || item.loginEmail === loginEmail
-  );
+  const queueItem = await firstAdminLookup([
+    () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", approval?.id, 5),
+    () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", pendingAccount?.id, 5),
+    () => findRecordsByField("dealerApprovalQueue", "onboardingRequestId", request.id, 5),
+    () => findRecordsByField("dealerApprovalQueue", "loginEmail", loginEmail, 5),
+  ]);
   if (queueItem) {
     await updateRecordIfExists("dealerApprovalQueue", queueItem.id, {
       status: "approved",
@@ -466,7 +476,7 @@ export async function getAdminLeads(req, res, next) {
 
 export async function getAdminOnboardingRequests(req, res, next) {
   try {
-    const requests = await listRecords("onboardingRequests");
+    const requests = await listRecentRecords("onboardingRequests", { limit: req.query.limit || 100 });
     const status = String(req.query.status || "").trim();
     const search = String(req.query.search || "").trim().toLowerCase();
     const filtered = requests.filter((request) => {
@@ -491,20 +501,33 @@ export async function getPendingDealershipApprovals(req, res, next) {
   try {
     const status = String(req.query.status || "pending").trim().toLowerCase();
     const search = String(req.query.search || "").trim().toLowerCase();
-    const requests = (await listRecords("pendingDealershipApprovals")).filter((item) => {
+    const page = await queryRecords("pendingDealershipApprovals", {
+      ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: req.query.limit || 100,
+      maxLimit: 100,
+    });
+    const requests = page.data.filter((item) => {
       const statusOk = !status || String(item.status || "").toLowerCase() === status;
       const typeOk = (item.accountType || item.type || "dealership") === "dealership";
       const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.gstin, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
       return typeOk && statusOk && (!search || text.includes(search));
     });
-    const [logs, dealerships] = await Promise.all([listRecords("approvalLogs"), listRecords("dealerships")]);
+    const [logsPage, dealershipCount] = await Promise.all([
+      queryRecords("approvalLogs", { orderBy: "createdAt", direction: "desc", limit: 100, maxLimit: 100 }),
+      countRecords("dealerships"),
+    ]);
+    const logs = logsPage.data;
     res.json({
       data: requests,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
       meta: {
         pending: requests.filter((item) => item.status === "pending").length,
         approvedToday: logs.filter((item) => item.entityType === "dealership" && item.newStatus === "approved" && today(item.createdAt || item.approvedAt)).length,
         rejectedToday: logs.filter((item) => item.entityType === "dealership" && item.newStatus === "rejected" && today(item.createdAt)).length,
-        activeDealerships: dealerships.filter((item) => item.active !== false).length,
+        activeDealerships: dealershipCount,
       },
     });
   } catch (error) {
@@ -516,14 +539,21 @@ export async function getPendingBankApprovals(req, res, next) {
   try {
     const status = String(req.query.status || "pending").trim().toLowerCase();
     const search = String(req.query.search || "").trim().toLowerCase();
-    const requests = (await listRecords("pendingBankApprovals")).filter((item) => {
+    const page = await queryRecords("pendingBankApprovals", {
+      ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: req.query.limit || 100,
+      maxLimit: 100,
+    });
+    const requests = page.data.filter((item) => {
       const itemStatus = approvalStatusOf(item);
       const statusOk = status === "pending" ? pendingApprovalStatus(item) : itemStatus === status;
       const typeOk = (item.accountType || item.type || "bank") === "bank";
       const text = [item.id, item.bankName, item.companyName, item.bankBranchLocation, item.branchLocation, item.ifsc, item.managerName, item.mobile, item.email, item.status].filter(Boolean).join(" ").toLowerCase();
       return typeOk && statusOk && (!search || text.includes(search));
     });
-    res.json({ data: requests });
+    res.json({ data: requests, nextCursor: page.nextCursor, hasMore: page.hasMore });
   } catch (error) {
     next(error);
   }
@@ -533,12 +563,19 @@ export async function getApprovalLogs(req, res, next) {
   try {
     const status = String(req.query.status || "").trim().toLowerCase();
     const entityType = String(req.query.entityType || "").trim().toLowerCase();
-    const logs = (await listRecords("approvalLogs")).filter((item) => {
+    const page = await queryRecords("approvalLogs", {
+      ...(entityType ? { where: [{ field: "entityType", value: entityType }] } : {}),
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: req.query.limit || 100,
+      maxLimit: 100,
+    });
+    const logs = page.data.filter((item) => {
       const statusOk = !status || String(item.newStatus || "").toLowerCase() === status;
       const typeOk = !entityType || String(item.entityType || "").toLowerCase() === entityType;
       return statusOk && typeOk;
     });
-    res.json(logs);
+    res.json({ data: logs, nextCursor: page.nextCursor, hasMore: page.hasMore });
   } catch (error) {
     next(error);
   }
@@ -600,10 +637,16 @@ export async function approveDealershipApproval(req, res, next) {
     const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
     if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     if (!pendingAccountId && loginEmail) {
-      const pendingAccount = (await listRecords("pendingDealerAccounts")).find((item) => item.email === loginEmail);
+      const pendingAccount = await firstAdminLookup([
+        () => getRecord("pendingDealerAccounts", loginEmail),
+        () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
+      ]);
       if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     }
-    const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === (request.pendingDealerAccountId || request.pendingDealerRegistrationId));
+    const queueItem = await firstAdminLookup([
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
+    ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
@@ -624,7 +667,10 @@ export async function rejectDealershipApproval(req, res, next) {
     const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, { status: "rejected", rejectedAt: now, rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
     if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Rejected", active: false, rejectionReason: reason });
     if (request.pendingDealerAccountId || request.pendingDealerRegistrationId) await updateRecordIfExists("pendingDealerAccounts", request.pendingDealerAccountId || request.pendingDealerRegistrationId, { registrationSubmitted: true, approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
-    const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === (request.pendingDealerAccountId || request.pendingDealerRegistrationId));
+    const queueItem = await firstAdminLookup([
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
+    ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "rejected", approvalStatus: "rejected", rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "dealership-rejected", title: "Dealership rejected", message: reason, recipientRole: "finance-desk", recipientId: request.loginEmail, dealerEmail: request.loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, priority: "high", meta: { dealershipName: request.dealershipName, reason } });
@@ -662,7 +708,10 @@ export async function suspendDealershipApproval(req, res, next) {
     if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Suspended", active: false, accountActive: false, suspensionReason: reason });
     const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
     if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
-    const queueItem = (await listRecords("dealerApprovalQueue")).find((item) => item.pendingDealershipApprovalId === request.id || item.pendingDealerAccountId === pendingAccountId);
+    const queueItem = await firstAdminLookup([
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
+      () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", pendingAccountId, 5),
+    ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "suspended", approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
@@ -847,11 +896,14 @@ export async function approveBankApproval(req, res, next) {
       approvedBy: req.user?.email || "super-admin",
     };
     const updated = await updateRecordIfExists("pendingBankApprovals", request.id, approvalPatch);
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) =>
-      normalizeEmail(item.email || item.officialEmail || item.primaryGoogleEmail) === bankEmail
-      || item.approvalRequestId === request.id
-      || item.pendingBankApprovalId === request.id
-    );
+    const pendingBankAccount = await firstAdminLookup([
+      () => getRecord("pendingBankAccounts", bankEmail),
+      () => findRecordsByField("pendingBankAccounts", "email", bankEmail, 5),
+      () => findRecordsByField("pendingBankAccounts", "officialEmail", bankEmail, 5),
+      () => findRecordsByField("pendingBankAccounts", "primaryGoogleEmail", bankEmail, 5),
+      () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
+      () => findRecordsByField("pendingBankAccounts", "pendingBankApprovalId", request.id, 5),
+    ]);
     if (pendingBankAccount) {
       await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, {
         registrationSubmitted: true,
@@ -903,7 +955,11 @@ export async function rejectBankApproval(req, res, next) {
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     const now = new Date().toISOString();
     const updated = await updateRecordIfExists("pendingBankApprovals", request.id, { status: "rejected", rejectedAt: now, rejectedBy: req.user?.email || "super-admin", rejectionReason: reason });
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === bankEmail || item.approvalRequestId === request.id);
+    const pendingBankAccount = await firstAdminLookup([
+      () => getRecord("pendingBankAccounts", bankEmail),
+      () => findRecordsByField("pendingBankAccounts", "email", bankEmail, 5),
+      () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
+    ]);
     if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "rejected", accountApproved: false, accountActive: false, rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "bank-rejected", title: "Bank branch rejected", message: reason, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankEmail, phoneNumber: request.mobile, priority: "high", meta: { bankName: request.bankName || request.companyName, reason } });
@@ -933,7 +989,11 @@ export async function suspendBankApproval(req, res, next) {
       await upsertRecord("branchManagers", bankId, { email: bankId, status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
       await upsertRecord("users", bankId, { uid: bankId, email: bankId, role: "bank-manager", approved: true, active: false, accountActive: false, status: "suspended" });
     }
-    const pendingBankAccount = (await listRecords("pendingBankAccounts")).find((item) => item.email === request.email || item.approvalRequestId === request.id);
+    const pendingBankAccount = await firstAdminLookup([
+      () => getRecord("pendingBankAccounts", request.email),
+      () => findRecordsByField("pendingBankAccounts", "email", request.email, 5),
+      () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
+    ]);
     if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
@@ -998,8 +1058,7 @@ export async function deleteBankPermanently(req, res, next) {
 
 export async function updateAdminOnboardingRequest(req, res, next) {
   try {
-    const requests = await listRecords("onboardingRequests");
-    const request = requests.find((item) => item.id === req.params.id);
+    const request = await getRecord("onboardingRequests", req.params.id);
     if (!request) return res.status(404).json({ message: "Onboarding request not found" });
 
     const status = String(req.body.status || "").trim();
@@ -1052,11 +1111,12 @@ export async function updateAdminOnboardingRequest(req, res, next) {
     if (active) {
       await activateDealerAccessFromRequest({ request, req, now });
     } else if (status === "Rejected") {
-      const pendingAccount = (await listRecords("pendingDealerAccounts")).find((item) =>
-        item.email === loginEmail
-        || item.onboardingRequestId === request.id
-        || item.approvalRequestId === request.approvalRequestId
-      );
+      const pendingAccount = await firstAdminLookup([
+        () => loginEmail ? getRecord("pendingDealerAccounts", loginEmail) : null,
+        () => loginEmail ? findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5) : [],
+        () => findRecordsByField("pendingDealerAccounts", "onboardingRequestId", request.id, 5),
+        () => request.approvalRequestId ? findRecordsByField("pendingDealerAccounts", "approvalRequestId", request.approvalRequestId, 5) : [],
+      ]);
       if (pendingAccount) {
         await updateRecord("pendingDealerAccounts", pendingAccount.id, {
           approvalStatus: "rejected",
@@ -1157,14 +1217,15 @@ export async function freezeAdminPartner(req, res, next) {
 
 export async function getAdminWorkflowLogs(req, res, next) {
   try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
     const [assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
-      listRecords("leadAssignments"),
-      listRecords("slaLogs"),
-      listRecords("reassignmentLogs"),
-      listRecords("payouts"),
-      listRecords("commissions"),
-      listRecords("notifications"),
-      listRecords("settings"),
+      listRecentRecords("leadAssignments", { limit }),
+      listRecentRecords("slaLogs", { limit }),
+      listRecentRecords("reassignmentLogs", { limit }),
+      listRecentRecords("payouts", { limit }),
+      listRecentRecords("commissions", { limit }),
+      listRecentRecords("notifications", { limit }),
+      listRecentRecords("settings", { limit: 50 }),
     ]);
     res.json({ assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings });
   } catch (error) {
@@ -1191,7 +1252,7 @@ export async function getAdminAuditLogs(req, res, next) {
 
 export async function getAdminPartners(_req, res, next) {
   try {
-    res.json(await listRecords("bankPartners"));
+    res.json(await listRecentRecords("bankPartners", { limit: 100 }));
   } catch (error) {
     next(error);
   }
@@ -1257,7 +1318,7 @@ export async function getAdminEcosystem(req, res, next) {
       boundedList("approvalLogs", limit),
       boundedList("pendingGoogleAccounts", limit),
       boundedList("loginActivity", limit, safeLoginActivity),
-      listRecords("users"),
+      listRecentRecords("users", { limit }),
     ]);
     const activeDealershipIds = new Set(dealerships
       .filter((item) => item.active !== false && item.accountActive !== false && !["deleted", "inactive", "suspended"].includes(String(item.status || "").toLowerCase()))

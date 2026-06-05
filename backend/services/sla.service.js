@@ -1,4 +1,4 @@
-import { createRecord, listRecords, updateRecord } from "./firestore.service.js";
+import { createRecord, queryRecords, updateRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
@@ -38,8 +38,14 @@ export async function createSlaLog({ lead, assignment, status = "pending" }) {
 }
 
 export async function updateSlaForLead(lead, status) {
-  const logs = await listRecords("slaLogs");
-  const log = logs.find((item) => item.leadId === lead.id && item.status !== "expired");
+  const logs = await queryRecords("slaLogs", {
+    where: [{ field: "leadId", value: lead.id }],
+    orderBy: "leadId",
+    direction: "asc",
+    limit: 10,
+    maxLimit: 10,
+  }).catch(() => ({ data: [] }));
+  const log = logs.data.find((item) => item.status !== "expired");
   if (!log) return null;
 
   const now = new Date();
@@ -129,8 +135,14 @@ export async function expireAssignment({ lead, assignment, reason }) {
     expiredAt: new Date().toISOString(),
     reason,
   });
-  const logs = await listRecords("slaLogs");
-  const log = logs.find((item) => item.assignmentId === assignment.id);
+  const logs = await queryRecords("slaLogs", {
+    where: [{ field: "assignmentId", value: assignment.id }],
+    orderBy: "assignmentId",
+    direction: "asc",
+    limit: 5,
+    maxLimit: 5,
+  }).catch(() => ({ data: [] }));
+  const log = logs.data[0];
   if (log) await updateRecord("slaLogs", log.id, { status: "expired", expiredAt: new Date().toISOString(), slaScore: 0 });
   await addTimelineEvent({
     leadId: lead.id,

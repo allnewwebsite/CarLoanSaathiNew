@@ -163,6 +163,30 @@ export async function findRecordsByField(collection, field, value, limit = 10) {
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
+export async function findFirstRecordByFields(collection, fields = {}, limit = 5) {
+  const entries = Object.entries(fields).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  if (!entries.length) return null;
+  if (!firestore) {
+    return (memoryStore[collection] || []).find((item) => entries.some(([field, value]) => item[field] === value || (field === "id" && item.id === value))) || null;
+  }
+  const directId = fields.id ? await getRecord(collection, fields.id).catch(() => null) : null;
+  if (directId) return directId;
+  const pages = await Promise.all(entries
+    .filter(([field]) => field !== "id")
+    .map(([field, value]) => findRecordsByField(collection, field, value, limit).catch(() => [])));
+  return pages.flat()[0] || null;
+}
+
+export async function listRecentRecords(collection, { limit = 50, orderBy = "createdAt", direction = "desc", fields = [] } = {}) {
+  return queryRecords(collection, {
+    orderBy,
+    direction,
+    limit,
+    maxLimit: Math.min(Math.max(Number(limit) || 50, 1), 500),
+    fields,
+  }).then((page) => page.data);
+}
+
 function parseCursor(cursor) {
   if (!cursor) return null;
   try {
@@ -300,7 +324,7 @@ export async function queryRecords(collection, {
       return ref.get();
     });
   } catch (error) {
-    if (collection === "leads" && isMissingCompositeIndexError(error) && where.length) {
+    if (isMissingCompositeIndexError(error) && where.length) {
       return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit });
     }
     throw error;

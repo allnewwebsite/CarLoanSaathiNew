@@ -1,4 +1,4 @@
-import { getRecord, listRecords, queryRecords } from "../services/firestore.service.js";
+import { findRecordsByField, getRecord, queryRecords } from "../services/firestore.service.js";
 import { logInfo } from "../services/logger.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
@@ -89,10 +89,9 @@ export async function getGmSalespersons(req, res, next) {
     const leadsPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
     const leads = leadsPage.data;
     const inactiveStatuses = new Set(["inactive", "removed", "deleted"]);
-    const salespersons = (await listRecords("salespersons"))
+    const salespersons = (await findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100))
       .filter((person) => (
-        person.dealershipId === dealershipEmail
-        && person.active !== false
+        person.active !== false
         && !inactiveStatuses.has(String(person.status || "").toLowerCase())
       ))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
