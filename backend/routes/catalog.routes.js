@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { getPublicHomeContent, listBanks, listBranches, listBrands, listCarsByBrand } from "../controllers/catalog.controller.js";
+import { publicCatalogRateLimit } from "../middleware/securityMiddleware.js";
 
 const router = Router();
 
+router.use(publicCatalogRateLimit);
 router.get("/brands", listBrands);
 router.get("/banks", listBanks);
 router.get("/branches", listBranches);

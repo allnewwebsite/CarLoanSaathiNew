@@ -89,6 +89,14 @@ export const publicLeadRateLimit = rateLimit({
   message: { message: "Too many loan applications from this network. Try again later." },
 });
 
+export const publicCatalogRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: numberEnv("PUBLIC_CATALOG_RATE_LIMIT_MAX", 120),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many catalog requests. Try again later." },
+});
+
 export const monitoringRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
   limit: numberEnv("MONITORING_RATE_LIMIT_MAX", 60),

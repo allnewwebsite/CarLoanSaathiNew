@@ -183,6 +183,63 @@ function mergeCatalog(fallbackItems, firestoreItems, key = "slug") {
   return Array.from(merged.values()).filter((item) => item.name && item.slug);
 }
 
+function publicBankName(bank = {}) {
+  return bank.bankName || bank.name || bank.companyName || bank.bank || "";
+}
+
+function activeApproved(item = {}) {
+  const status = String(item.status || item.approvalStatus || item.publicStatus || "").trim().toLowerCase();
+  const rejected = ["rejected", "suspended", "disabled", "inactive", "hidden", "deleted"].includes(status);
+  return item.active === true
+    && item.approved === true
+    && item.hidden !== true
+    && item.disabled !== true
+    && !rejected;
+}
+
+function sanitizePublicBank(bank = {}) {
+  const name = publicBankName(bank);
+  const ifsc = String(bank.ifsc || bank.ifscCode || bank.bankIfsc || "").trim().toUpperCase();
+  const branchName = bank.branchName || bank.branchLocation || bank.bankBranchLocation || bank.city || "";
+  return {
+    id: bank.bankCode || bank.slug || ifsc || slugify(name),
+    name,
+    bankName: name,
+    slug: bank.slug || slugify(name || ifsc),
+    ifsc,
+    ifscCode: ifsc,
+    branchName,
+    branchLocation: branchName,
+    city: bank.city || bank.branchCity || bank.branchLocation || bank.bankBranchLocation || "",
+    state: bank.state || "",
+    district: bank.district || "",
+    bankCode: bank.bankCode || "",
+    publicStatus: "approved",
+  };
+}
+
+function sanitizePublicBranch(branch = {}) {
+  const ifsc = String(branch.ifscCode || branch.ifsc || branch.bankIfsc || "").trim().toUpperCase();
+  const bankName = branch.bankName || branch.bankPartner || branch.name || "";
+  const branchName = branch.branchName || branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "";
+  return {
+    id: branch.bankCode || ifsc || branch.id || "",
+    bankId: branch.bankCode || ifsc || branch.bankPartnerId || branch.bankId || "",
+    bankName,
+    branchName,
+    ifscCode: ifsc,
+    ifsc,
+    branchLocation: branch.bankBranchLocation || branch.branchLocation || branch.branchCity || branch.city || "",
+    city: branch.city || branch.branchCity || branch.bankBranchLocation || branch.branchLocation || "",
+    state: branch.state || "",
+    district: branch.district || "",
+    bankCode: branch.bankCode || "",
+    publicStatus: "approved",
+    active: true,
+    approved: true,
+  };
+}
+
 export async function getBrands() {
   const records = await listRecords("brands");
   return mergeCatalog(fallbackBrands, normalizeFirestoreList(records), "slug");
@@ -190,25 +247,18 @@ export async function getBrands() {
 
 export async function getBanks() {
   const records = await listRecords("banks");
-  return mergeCatalog(fallbackBanks, normalizeFirestoreList(records), "name");
+  const publicBanks = normalizeFirestoreList(records)
+    .filter(activeApproved)
+    .map(sanitizePublicBank)
+    .filter((bank) => bank.name && bank.slug);
+  return mergeCatalog(fallbackBanks, publicBanks, "name");
 }
 
 export async function getBranches() {
   const records = await listRecords("branches");
   return normalizeFirestoreList(records)
-    .filter((branch) => branch.active !== false && branch.status !== "inactive")
-    .map((branch) => ({
-      id: branch.id || branch.ifsc || branch.ifscCode || branch.branchLocation || "",
-      bankId: branch.bankPartnerId || branch.bankId || branch.bankPartner || branch.id || "",
-      bankName: branch.bankName || branch.bankPartner || "",
-      branchName: branch.branchName || branch.bankBranchLocation || branch.branchLocation || branch.branchCity || "",
-      ifscCode: branch.ifscCode || branch.ifsc || branch.bankIfsc || "",
-      branchLocation: branch.bankBranchLocation || branch.branchLocation || branch.branchCity || branch.city || "",
-      city: branch.city || branch.branchCity || branch.bankBranchLocation || branch.branchLocation || "",
-      state: branch.state || "",
-      active: branch.active !== false,
-      approved: branch.approved !== false,
-    }))
+    .filter(activeApproved)
+    .map(sanitizePublicBranch)
     .filter((branch) => branch.id);
 }
 

@@ -10,6 +10,9 @@
     "maintenance": "node scripts/runMaintenance.js",
     "backfill:metrics": "node scripts/backfillMetrics.js",
     "backfill:executive-assignments": "node scripts/backfillExecutiveAssignments.js",
+    "backup:firestore": "node scripts/backupFirestore.js",
+    "restore:firestore": "node scripts/restoreFirestore.js",
+    "verify:backup": "node scripts/verifyBackup.js",
     "migrate:lead-branches": "node scripts/migrateLegacyLeadBranches.js",
     "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "load:seed": "node scripts/seedLoadTestData.js"

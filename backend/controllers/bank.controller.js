@@ -347,6 +347,46 @@ async function assignedLeadsForPartner(partner, query = {}) {
   return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
+async function clearExecutiveLeadAssignments({ identity, uid, email, removedAt, batchSize = 250 }) {
+  const seen = new Set();
+  const specs = [
+    uid ? { field: "assignedExecutiveId", value: uid } : null,
+    email ? { field: "assignedExecutiveEmail", value: email } : null,
+    email ? { field: "assignedExecutiveId", value: email } : null,
+  ].filter(Boolean);
+  let affectedLeadCount = 0;
+
+  for (const spec of specs) {
+    for (;;) {
+      const page = await queryRecords("leads", {
+        where: [{ field: "bankId", value: identity.bankId }, spec],
+        limit: batchSize,
+        maxLimit: batchSize,
+      }).catch(() => ({ data: [] }));
+      if (!page.data.length) break;
+
+      const uniqueLeads = page.data.filter((lead) => {
+        if (seen.has(lead.id)) return false;
+        seen.add(lead.id);
+        return true;
+      });
+
+      await Promise.all(uniqueLeads.map((lead) => updateRecord("leads", lead.id, {
+        assignedExecutiveId: null,
+        assignedExecutiveEmail: null,
+        assignedExecutiveName: null,
+        assignedExecutiveMobile: null,
+        updatedAt: removedAt,
+      })));
+      affectedLeadCount += uniqueLeads.length;
+
+      if (page.data.length < batchSize) break;
+    }
+  }
+
+  return affectedLeadCount;
+}
+
 async function requireAssignedLead(req) {
   const partner = await currentPartner(req);
   if (!partner) {
@@ -837,31 +877,7 @@ export async function removeBankExecutive(req, res, next) {
       deleted[collection] = await deleteMatchingRecords(collection, matchesExecutive);
     }
 
-    const affectedPages = await Promise.all([
-      uid ? queryRecords("leads", {
-        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveId", value: uid }],
-        limit: 100,
-        maxLimit: 100,
-      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-      email ? queryRecords("leads", {
-        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveEmail", value: email }],
-        limit: 100,
-        maxLimit: 100,
-      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-      email ? queryRecords("leads", {
-        where: [{ field: "bankId", value: identity.bankId }, { field: "assignedExecutiveId", value: email }],
-        limit: 100,
-        maxLimit: 100,
-      }).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-    ]);
-    const affectedLeads = [...new Map(affectedPages.flatMap((page) => page.data).map((lead) => [lead.id, lead])).values()];
-    await Promise.all(affectedLeads.map((lead) => updateRecord("leads", lead.id, {
-      assignedExecutiveId: null,
-      assignedExecutiveEmail: null,
-      assignedExecutiveName: null,
-      assignedExecutiveMobile: null,
-      updatedAt: removedAt,
-    })));
+    const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, removedAt });
 
     await revokeUserSessions(email, "bank-executive-permanent-delete").catch(() => {});
     let authDeleted = false;
@@ -880,9 +896,9 @@ export async function removeBankExecutive(req, res, next) {
       actionType: "BANK_EXECUTIVE_REMOVED",
       oldValue: executive.status,
       newValue: "deleted",
-      meta: { executiveId: executive.id, bankId: identity.bankId, email, uid, deleted, affectedLeadCount: affectedLeads.length, authDeleted },
+      meta: { executiveId: executive.id, bankId: identity.bankId, email, uid, deleted, affectedLeadCount, authDeleted },
     });
-    res.json({ message: "Executive permanently removed", deleted, affectedLeadCount: affectedLeads.length, authDeleted });
+    res.json({ message: "Executive permanently removed", deleted, affectedLeadCount, authDeleted });
   } catch (error) {
     next(error);
   }
