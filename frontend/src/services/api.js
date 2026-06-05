@@ -7,7 +7,8 @@ const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.c
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 const AUTH_REQUEST_TIMEOUT_MS = 60000;
-const GET_CACHE_TTL_MS = 20000;
+const GET_CACHE_TTL_MS = 5 * 60 * 1000;
+const GET_STALE_TTL_MS = 30 * 60 * 1000;
 const APP_CHECK_CACHE_TTL_MS = 4 * 60 * 1000;
 
 function normalizeApiUrl(url) {
@@ -91,7 +92,7 @@ function cachedResponse(config) {
   const key = cacheKey(config);
   if (!key) return null;
   const entry = getCache.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) return null;
+  if (!entry || entry.stale || entry.expiresAt <= Date.now()) return null;
   return { ...entry.response, config, request: { cached: true } };
 }
 
@@ -102,6 +103,8 @@ function rememberGetResponse(response) {
     url: response.config?.url || "",
     params: response.config?.params || null,
     expiresAt: Date.now() + Number(response.config?.cacheTtlMs || GET_CACHE_TTL_MS),
+    staleUntil: Date.now() + GET_STALE_TTL_MS,
+    stale: false,
     response: {
       data: response.data,
       status: response.status,
@@ -111,18 +114,20 @@ function rememberGetResponse(response) {
   });
 }
 
-export function getCachedGetData(url, params = null) {
+export function getCachedGetData(url, params = null, { includeStale = true } = {}) {
   const key = getCacheKey(url, params);
   if (!key) return null;
   const entry = getCache.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) return null;
+  if (!entry) return null;
+  const now = Date.now();
+  if (entry.expiresAt <= now && (!includeStale || entry.staleUntil <= now)) return null;
   return entry.response.data;
 }
 
 export function findCachedGetItem(url, matcher) {
   if (typeof matcher !== "function") return null;
   for (const entry of getCache.values()) {
-    if (!entry || entry.expiresAt <= Date.now() || entry.url !== url) continue;
+    if (!entry || (entry.expiresAt <= Date.now() && entry.staleUntil <= Date.now()) || entry.url !== url) continue;
     const payload = entry.response?.data;
     const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
     const found = rows.find(matcher);
@@ -148,8 +153,17 @@ export function prefetchGet(url, params = null, options = {}) {
   }).catch(() => null);
 }
 
-export function invalidateGetCache() {
-  getCache.clear();
+export function invalidateGetCache({ url, prefix } = {}) {
+  const now = Date.now();
+  for (const [key, entry] of getCache.entries()) {
+    if (!entry) continue;
+    const matches = url ? entry.url === url : prefix ? String(entry.url || "").startsWith(prefix) : true;
+    if (!matches) continue;
+    entry.stale = true;
+    entry.expiresAt = now - 1;
+    entry.staleUntil = Math.max(entry.staleUntil || 0, now + GET_STALE_TTL_MS);
+    getCache.set(key, entry);
+  }
 }
 
 async function appCheckHeaderToken() {
@@ -359,7 +373,15 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => {
     if (!response.request?.cached) rememberGetResponse(response);
-    if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) invalidateGetCache();
+    if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) {
+      const url = String(response.config?.url || "");
+      if (url.startsWith("/bank/")) invalidateGetCache({ prefix: "/bank/" });
+      else if (url.startsWith("/dealer/") || url.startsWith("/documents/")) invalidateGetCache({ prefix: "/dealer/" });
+      else if (url.startsWith("/gm/")) invalidateGetCache({ prefix: "/gm/" });
+      else if (url.startsWith("/admin/")) invalidateGetCache({ prefix: "/admin/" });
+      else if (url.startsWith("/notifications")) invalidateGetCache({ prefix: "/notifications" });
+      else invalidateGetCache();
+    }
     return response;
   },
   async (error) => {

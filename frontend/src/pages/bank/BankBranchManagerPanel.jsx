@@ -165,7 +165,7 @@ function useBankLeads(search, status = "") {
     }
   }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
 
-  useEffect(() => { load(page); }, [load, page]);
+  useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
@@ -185,7 +185,7 @@ function useExecutives() {
       if (!silent) setLoading(false);
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
   useBackgroundRefresh({ onRefresh: load });
   return { rows, loading, load };
 }
@@ -289,7 +289,7 @@ function AnalyticsPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: Boolean(cachedAnalytics) }); }, [load]);
   useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize });
   const emptyLoading = loading && !data;
 

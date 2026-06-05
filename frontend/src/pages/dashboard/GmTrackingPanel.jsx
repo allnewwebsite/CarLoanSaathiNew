@@ -94,7 +94,7 @@ function useGmLeads(filters = {}) {
     }
   }, [filters.search, filters.status, filters.salespersonId, cursorParamsForPage, rememberNextCursor]);
   useEffect(() => {
-    load();
+    load({ silent: Boolean(cached) });
   }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize });
   return { leads, total, hasMore, loading, load };
@@ -113,7 +113,7 @@ function useSalespersons() {
       if (!silent) setLoading(false);
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: Boolean(cachedSalespersons) }); }, [load]);
   useBackgroundRefresh({ onRefresh: load });
   return { salespersons, loading };
 }

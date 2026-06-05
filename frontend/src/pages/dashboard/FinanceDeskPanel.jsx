@@ -111,7 +111,7 @@ function useSalespersons({ includeInactive = false } = {}) {
       if (!silent) setLoading(false);
     }
   }, [includeInactive]);
-  useEffect(() => { loadSalespersons(); }, [loadSalespersons]);
+  useEffect(() => { loadSalespersons({ silent: Boolean(cachedSalespersons) }); }, [loadSalespersons]);
   useBackgroundRefresh({ onRefresh: loadSalespersons });
   return { salespersons, loading, loadSalespersons };
 }
@@ -144,7 +144,7 @@ function useDealerLeads(filters = {}) {
   }, [filters.status, filters.salespersonId, filters.search, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => {
-    loadLeads();
+    loadLeads({ silent: Boolean(cachedPayload) });
   }, [loadLeads]);
   useRoleLeadRealtime({ onRefresh: loadLeads, pageSize });
   return { leads, total, hasMore, loading, loadLeads };
@@ -243,7 +243,7 @@ function StaffManagementScreen() {
     }
   }, []);
 
-  useEffect(() => { loadStaff(); }, [loadStaff]);
+  useEffect(() => { loadStaff({ silent: Boolean(cachedStaff) }); }, [loadStaff]);
   useBackgroundRefresh({ onRefresh: loadStaff });
 
   const update = (field, value) => {
@@ -664,7 +664,7 @@ function BankTieUpsScreen() {
     }
   }, []);
 
-  useEffect(() => { loadTieUps(); }, [loadTieUps]);
+  useEffect(() => { loadTieUps({ silent: Boolean(cachedTieUps) }); }, [loadTieUps]);
   useBackgroundRefresh({ onRefresh: loadTieUps });
 
   const cities = useMemo(() => [...new Set(availableBranches.map((branch) => branch.city).filter(Boolean))].sort(), [availableBranches]);

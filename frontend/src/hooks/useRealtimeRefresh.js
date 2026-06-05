@@ -57,7 +57,10 @@ function debounceCallback(callback, delay) {
 
 function runFreshRefresh(callback) {
   if (typeof callback !== "function") return;
-  invalidateGetCache();
+  invalidateGetCache({ prefix: "/dealer/" });
+  invalidateGetCache({ prefix: "/gm/" });
+  invalidateGetCache({ prefix: "/bank/" });
+  invalidateGetCache({ prefix: "/admin/" });
   callback({ silent: true });
 }
 

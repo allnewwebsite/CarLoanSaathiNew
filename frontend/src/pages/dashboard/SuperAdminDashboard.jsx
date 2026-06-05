@@ -182,7 +182,7 @@ function useAdminEcosystem() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: Boolean(cachedEcosystem && Object.keys(cachedEcosystem).length) }); }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
   return { ...state, analytics, loading, load };
 }
@@ -324,7 +324,7 @@ function useAdminPanelData(mode, search, leadFilter) {
     }
   }, [leadFilter, mode, search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
   return { rows, loading, load };
 }

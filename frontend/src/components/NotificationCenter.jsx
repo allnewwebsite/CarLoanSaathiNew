@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { notificationQueryForUser } from "../hooks/useRealtimeRefresh.js";
-import { api } from "../services/api.js";
+import { api, getCachedGetData } from "../services/api.js";
 import { subscribeRealtime } from "../services/realtimeManager.js";
 
 function formatDate(value) {
@@ -17,14 +17,15 @@ function priorityClass(priority) {
 
 export function NotificationCenter() {
   const { user } = useAuth();
+  const initialPayload = getCachedGetData("/notifications", { limit: 20 });
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([]);
-  const [unread, setUnread] = useState(0);
+  const [items, setItems] = useState(() => initialPayload?.data || []);
+  const [unread, setUnread] = useState(() => initialPayload?.unread || 0);
   const [filter, setFilter] = useState("");
   const [toast, setToast] = useState("");
   const seenIds = useRef(new Set());
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
     const nextItems = response.data.data || [];
     setItems(nextItems);
@@ -33,7 +34,7 @@ export function NotificationCenter() {
   }, [filter]);
 
   useEffect(() => {
-    load().then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
+    load({ silent: true }).then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
   }, [filter]);
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export function NotificationCenter() {
       skipInitial: false,
       onChange: async () => {
         const previous = seenIds.current;
-        const nextItems = await load().catch(() => []);
+        const nextItems = await load({ silent: true }).catch(() => []);
         const fresh = nextItems.find((item) => !previous.has(item.id));
         nextItems.forEach((item) => previous.add(item.id));
         if (fresh && !fresh.read) {
@@ -52,13 +53,13 @@ export function NotificationCenter() {
           window.setTimeout(() => setToast(""), 3500);
         }
       },
-      onError: () => load().catch(() => {}),
+      onError: () => load({ silent: true }).catch(() => {}),
     });
   }, [filter, load, user]);
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);
-    await load();
+    await load({ silent: true });
   };
 
   return (

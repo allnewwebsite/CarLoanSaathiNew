@@ -19,6 +19,8 @@ import { auth } from "../services/firebase.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
 const AuthContext = createContext(null);
+const SESSION_VALIDATE_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
 
 function actionCodeSettings() {
   const url = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL || `${window.location.origin}/dealer/login`;
@@ -248,6 +250,11 @@ export function AuthProvider({ children }) {
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
       applySession(session, token);
+      try {
+        sessionStorage.setItem(SESSION_VALIDATE_KEY, String(Date.now()));
+      } catch {
+        // Validation timestamp is only a performance hint.
+      }
       return session;
     } catch (error) {
       if (shouldClearSessionForError(error)) {
@@ -268,11 +275,17 @@ export function AuthProvider({ children }) {
       setSessionChecking(false);
       return undefined;
     }
-    validateSession({ showLoading: false });
+    let recentlyValidated = false;
+    try {
+      recentlyValidated = Date.now() - Number(sessionStorage.getItem(SESSION_VALIDATE_KEY) || 0) < SESSION_VALIDATE_INTERVAL_MS;
+    } catch {
+      recentlyValidated = false;
+    }
+    if (!recentlyValidated) validateSession({ showLoading: false });
     const interval = window.setInterval(() => {
       const current = getStoredUser();
       if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
-    }, 60000);
+    }, SESSION_VALIDATE_INTERVAL_MS);
     return () => {
       window.clearInterval(interval);
     };
