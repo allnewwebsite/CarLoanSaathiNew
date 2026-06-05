@@ -11,6 +11,7 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
+import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
@@ -1152,6 +1153,7 @@ export async function acceptBankLead(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
+    syncLeadProjectionSoon(updated);
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "leadId",
@@ -1187,6 +1189,7 @@ export async function rejectBankLead(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.REJECTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks });
+    syncLeadProjectionSoon(updated);
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1223,6 +1226,7 @@ export async function reassignBankLead(req, res, next) {
     }
     const reason = String(req.body.reason || "manager-reassignment").trim();
     const updated = await reassignLeadToNextBranchExecutive(lead.id, reason, partner.email || partner.id || "bank-manager");
+    syncLeadProjectionSoon(updated);
     await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
     res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
   } catch (error) {
@@ -1288,6 +1292,7 @@ export async function updateBankLeadStatus(req, res, next) {
       } : {}),
     };
     const updated = await updateRecord("leads", lead.id, statusPayload);
+    syncLeadProjectionSoon(updated);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
     res.json({ message: "Lead status updated", lead: updated });
     setImmediate(() => {
@@ -1341,6 +1346,7 @@ export async function updateBankLeadRemarks(req, res, next) {
     const remarks = String(req.body.remarks || "").trim();
     const { partner, lead } = await requireAssignedLead(req);
     const updated = await updateRecord("leads", lead.id, { bankRemarks: remarks });
+    syncLeadProjectionSoon(updated);
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.INTERNAL_REMARKS_ADDED,
@@ -1382,7 +1388,7 @@ export async function uploadBankLeadDocument(req, res, next) {
     });
     const isSanction = String(document.documentType || "").includes("sanction");
     if (isSanction) {
-      await updateRecord("leads", lead.id, {
+      const updatedLead = await updateRecord("leads", lead.id, {
         sanctionLetterUrl: uploaded?.url || null,
         sanctionLetterStoragePath: uploaded?.storagePath || null,
         sanctionLetterDocumentId: document.id,
@@ -1390,6 +1396,7 @@ export async function uploadBankLeadDocument(req, res, next) {
         sanctionLetterUploadedBy: partner.email || req.user?.email || null,
         updatedAt: new Date().toISOString(),
       });
+      syncLeadProjectionSoon(updatedLead);
     }
     await addTimelineEvent({
       leadId: lead.id,

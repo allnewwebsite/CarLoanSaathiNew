@@ -6,6 +6,7 @@ import { getWorkflowSettings } from "./settings.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { countOpenExecutiveLeads } from "./leadQuery.service.js";
+import { syncLeadProjectionSoon } from "./projection.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 
 function queueIdForLead(lead) {
@@ -115,7 +116,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       leadId: lead.id,
       admin: true,
     });
-    await updateRecord("leads", lead.id, {
+    const updatedLead = await updateRecord("leads", lead.id, {
       matchedDealerships: matchingDealerships.map((dealer) => ({
         dealershipName: dealer.dealershipName,
         dealershipEmail: dealer.loginEmail || dealer.officialDealershipEmail,
@@ -124,6 +125,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       distributionCity: routingCity,
       routingCity,
     });
+    syncLeadProjectionSoon(updatedLead);
     return null;
   }
 
@@ -160,7 +162,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
     reason,
   };
 
-  await updateRecord("leads", lead.id, {
+  const assignedLead = await updateRecord("leads", lead.id, {
     status: LEAD_STATUSES.NEW,
     assignedPartnerId: partner.id,
     bankId: partner.bankId || partner.id,
@@ -187,6 +189,7 @@ export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reaso
       city: dealer.city,
     })),
   });
+  syncLeadProjectionSoon(assignedLead);
 
   await upsertRecord("partnerQueues", queueId, {
     queueKey: queueId,
@@ -358,11 +361,12 @@ export async function retrieveAndReassignLead(leadId, reason = "manual-reassignm
     meta: { caseId: lead.caseId, dealershipId: lead.dealershipId, bankId: lead.bankId },
   });
 
-  await updateRecord("leads", leadId, {
+  const retrievedLead = await updateRecord("leads", leadId, {
     assignmentStatus: "retrieved",
     assignedPartnerId: null,
     bankPartner: null,
   });
+  syncLeadProjectionSoon(retrievedLead);
 
   const freshLead = await getRecord("leads", leadId);
   const assignment = await assignLeadRoundRobin(freshLead, { excludePartnerIds: excluded, reason });
@@ -447,6 +451,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       requestedBy,
     }],
   });
+  syncLeadProjectionSoon(updated);
 
   const assignmentsPage = await queryRecords("leadAssignments", {
     where: [{ field: "leadId", value: leadId }, { field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],

@@ -7,6 +7,7 @@ import { DOMAIN_EVENTS, emitDomainEvent, onDomainEvent } from "./eventBus.servic
 import { renderNotificationTemplate } from "./notificationTemplates.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
+import { syncNotificationProjectionSoon } from "./projection.service.js";
 
 export async function createNotification({
   type,
@@ -64,6 +65,7 @@ export async function createNotification({
     expiresAt: new Date(Date.now() + GOVERNANCE_LIMITS.notifications.ttlDays * 24 * 60 * 60 * 1000).toISOString(),
     meta,
   });
+  syncNotificationProjectionSoon(notification);
   await createRecord("notificationLogs", {
     notificationId: notification.id,
     userId: targetUserId,
@@ -175,6 +177,7 @@ export async function markNotificationRead(id, actor = {}) {
     throw error;
   }
   const updated = await updateRecord("notifications", id, { read: true, readAt: new Date().toISOString() });
+  syncNotificationProjectionSoon(updated);
   await createRecord("notificationLogs", {
     notificationId: id,
     userId: actor.email || actor.uid,

@@ -5,6 +5,7 @@ import { createShortLivedDocumentUrl, uploadLeadDocument } from "../services/sto
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidDocumentStatusTransition, DOCUMENT_STATUSES, LEAD_STATUSES } from "../utils/status.constants.js";
 import { ALERT_SEVERITY, recordOperationalEvent } from "../services/observability.service.js";
+import { syncLeadProjectionSoon } from "../services/projection.service.js";
 
 function canUploadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -135,11 +136,12 @@ export async function updateDocumentStatus(req, res, next) {
     });
     const needsDocumentFollowup = [DOCUMENT_STATUSES.PENDING, DOCUMENT_STATUSES.REQUESTED, DOCUMENT_STATUSES.REJECTED].includes(nextStatus);
     if (needsDocumentFollowup) {
-      await updateRecord("leads", document.leadId, {
+      const updatedLead = await updateRecord("leads", document.leadId, {
         status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
         pendingDocuments: [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), document.type].filter(Boolean))],
         pendingDocumentReason: req.body.note || `${document.type || "Document"} needs attention`,
       });
+      syncLeadProjectionSoon(updatedLead);
       await createNotification({
         type: "pending-documents",
         title: "Pending document requested",

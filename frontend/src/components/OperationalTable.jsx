@@ -100,7 +100,7 @@ function MobileSkeletonRows({ rows = 4 }) {
   );
 }
 
-export function OperationalTable({
+export const OperationalTable = memo(function OperationalTable({
   title,
   headers,
   rows,
@@ -177,5 +177,5 @@ export function OperationalTable({
       ) : null}
     </section>
   );
-}
+});
 

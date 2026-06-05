@@ -13,6 +13,7 @@ import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import {
   registerBankBranchAdmin,
@@ -1168,6 +1169,7 @@ export async function updateAdminLeadStatus(req, res, next) {
     if (!existing) return res.status(404).json({ message: "Lead not found" });
     const status = assertValidStatusTransition(existing?.status, req.body.status);
     const lead = await updateRecord("leads", req.params.id, { status });
+    syncLeadProjectionSoon(lead);
     await updateSlaForLead(lead, status);
     await ensureCommissionForLead(lead, status);
     const statusLabel = STATUS_LABELS[status] || status;

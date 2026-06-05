@@ -9,6 +9,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
+import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -902,6 +903,7 @@ export async function createDealerLead(req, res, next) {
     }
 
     runDealerLeadSideEffects("dealer-lead-created", [
+      () => syncLeadProjectionSoon(responseLead),
       () => writeAuditLog({
         req,
         actionType: AUDIT_ACTIONS.LEAD_CREATED,

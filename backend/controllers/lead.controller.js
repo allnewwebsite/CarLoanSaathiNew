@@ -11,6 +11,7 @@ import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analytics
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
+import { syncLeadProjectionSoon } from "../services/projection.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -89,6 +90,7 @@ export async function createLead(req, res, next) {
       routingCity: dealershipCity,
     });
     runLeadSideEffects("authenticated-lead-created", [
+      () => syncLeadProjectionSoon(lead),
       () => writeAuditLog({
         req,
         actionType: AUDIT_ACTIONS.LEAD_CREATED,
@@ -127,6 +129,7 @@ export async function createPublicLead(req, res, next) {
       status: LEAD_STATUSES.NEW,
     });
     runLeadSideEffects("finance-lead-created", [
+      () => syncLeadProjectionSoon(lead),
       () => addTimelineEvent({
         leadId: lead.id,
         eventType: TIMELINE_EVENTS.LEAD_CREATED,
@@ -176,6 +179,7 @@ export async function createPublicLeadIntake(req, res, next) {
       userAgentHash: req.headers["user-agent"] ? Buffer.from(String(req.headers["user-agent"])).toString("base64url").slice(0, 24) : null,
     });
     runLeadSideEffects("public-lead-created", [
+      () => syncLeadProjectionSoon(lead),
       () => addTimelineEvent({
         leadId: lead.id,
         eventType: TIMELINE_EVENTS.LEAD_CREATED,
@@ -283,6 +287,7 @@ export async function updateLeadStatus(req, res, next) {
       statusUpdatedBy: req.user?.email || req.user?.uid || null,
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
+    syncLeadProjectionSoon(lead);
     const processingTimeMinutes = existing.createdAt ? Math.max(Math.round((Date.now() - new Date(existing.createdAt).getTime()) / 60000), 0) : 0;
     queueSafeAnalyticsEvent(ANALYTICS_EVENTS.STATUS_CHANGED, {
       lead,

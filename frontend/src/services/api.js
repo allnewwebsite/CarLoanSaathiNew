@@ -10,6 +10,10 @@ const AUTH_REQUEST_TIMEOUT_MS = 60000;
 const GET_CACHE_TTL_MS = 5 * 60 * 1000;
 const GET_STALE_TTL_MS = 30 * 60 * 1000;
 const APP_CHECK_CACHE_TTL_MS = 4 * 60 * 1000;
+const GET_CACHE_STORAGE_KEY = "cls_get_cache_v3";
+const GET_CACHE_MAX_ENTRIES = 180;
+const NOTIFICATION_CACHE_TTL_MS = 60 * 1000;
+const STATIC_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function normalizeApiUrl(url) {
   const trimmed = String(url || "").trim().replace(/\/+$/, "");
@@ -67,6 +71,80 @@ export const api = axios.create({
 let refreshPromise = null;
 const getCache = new Map();
 let appCheckCache = { token: "", expiresAt: 0, promise: null };
+let getCacheHydrated = false;
+let getCachePersistTimer = null;
+
+function browserStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateGetCache() {
+  if (getCacheHydrated) return;
+  getCacheHydrated = true;
+  const storage = browserStorage();
+  if (!storage) return;
+  try {
+    const raw = storage.getItem(GET_CACHE_STORAGE_KEY);
+    const entries = raw ? JSON.parse(raw) : [];
+    const now = Date.now();
+    if (!Array.isArray(entries)) return;
+    entries.forEach(([key, entry]) => {
+      if (!key || !entry?.response || Number(entry.staleUntil || 0) <= now) return;
+      getCache.set(key, entry);
+    });
+  } catch {
+    getCache.clear();
+  }
+}
+
+function trimGetCache() {
+  if (getCache.size <= GET_CACHE_MAX_ENTRIES) return;
+  const sorted = [...getCache.entries()].sort(([, left], [, right]) => Number(left.staleUntil || 0) - Number(right.staleUntil || 0));
+  sorted.slice(0, Math.max(0, sorted.length - GET_CACHE_MAX_ENTRIES)).forEach(([key]) => getCache.delete(key));
+}
+
+function persistGetCache() {
+  const storage = browserStorage();
+  if (!storage) return;
+  try {
+    trimGetCache();
+    const now = Date.now();
+    const entries = [...getCache.entries()].filter(([, entry]) => entry?.response && Number(entry.staleUntil || 0) > now);
+    storage.setItem(GET_CACHE_STORAGE_KEY, JSON.stringify(entries));
+  } catch {
+    // Persistent cache is an optimization only.
+  }
+}
+
+function scheduleGetCachePersist() {
+  if (typeof window === "undefined") return;
+  if (getCachePersistTimer) window.clearTimeout(getCachePersistTimer);
+  getCachePersistTimer = window.setTimeout(persistGetCache, 250);
+}
+
+function cacheTtlForUrl(url = "") {
+  const path = String(url || "");
+  if (path.startsWith("/notifications") || path.endsWith("/notifications")) return NOTIFICATION_CACHE_TTL_MS;
+  if (
+    path.includes("/salespersons")
+    || path.includes("/staff")
+    || path.includes("/executives")
+    || path.includes("/bank-tieups")
+    || path.includes("/workflow/settings")
+    || path.includes("/ecosystem")
+    || path.startsWith("/banks")
+    || path.startsWith("/branches")
+    || path.startsWith("/brands")
+  ) {
+    return STATIC_CACHE_TTL_MS;
+  }
+  return GET_CACHE_TTL_MS;
+}
 
 function stableParams(params) {
   if (!params) return "";
@@ -89,6 +167,7 @@ function cacheKey(config = {}) {
 }
 
 function cachedResponse(config) {
+  hydrateGetCache();
   const key = cacheKey(config);
   if (!key) return null;
   const entry = getCache.get(key);
@@ -97,13 +176,15 @@ function cachedResponse(config) {
 }
 
 function rememberGetResponse(response) {
+  hydrateGetCache();
   const key = cacheKey(response.config);
   if (!key) return;
+  const now = Date.now();
   getCache.set(key, {
     url: response.config?.url || "",
     params: response.config?.params || null,
-    expiresAt: Date.now() + Number(response.config?.cacheTtlMs || GET_CACHE_TTL_MS),
-    staleUntil: Date.now() + GET_STALE_TTL_MS,
+    expiresAt: now + Number(response.config?.cacheTtlMs || cacheTtlForUrl(response.config?.url)),
+    staleUntil: now + GET_STALE_TTL_MS,
     stale: false,
     response: {
       data: response.data,
@@ -112,9 +193,12 @@ function rememberGetResponse(response) {
       headers: response.headers,
     },
   });
+  trimGetCache();
+  scheduleGetCachePersist();
 }
 
 export function getCachedGetData(url, params = null, { includeStale = true } = {}) {
+  hydrateGetCache();
   const key = getCacheKey(url, params);
   if (!key) return null;
   const entry = getCache.get(key);
@@ -125,6 +209,7 @@ export function getCachedGetData(url, params = null, { includeStale = true } = {
 }
 
 export function findCachedGetItem(url, matcher) {
+  hydrateGetCache();
   if (typeof matcher !== "function") return null;
   for (const entry of getCache.values()) {
     if (!entry || (entry.expiresAt <= Date.now() && entry.staleUntil <= Date.now()) || entry.url !== url) continue;
@@ -154,6 +239,7 @@ export function prefetchGet(url, params = null, options = {}) {
 }
 
 export function invalidateGetCache({ url, prefix } = {}) {
+  hydrateGetCache();
   const now = Date.now();
   for (const [key, entry] of getCache.entries()) {
     if (!entry) continue;
@@ -164,6 +250,7 @@ export function invalidateGetCache({ url, prefix } = {}) {
     entry.staleUntil = Math.max(entry.staleUntil || 0, now + GET_STALE_TTL_MS);
     getCache.set(key, entry);
   }
+  scheduleGetCachePersist();
 }
 
 async function appCheckHeaderToken() {
