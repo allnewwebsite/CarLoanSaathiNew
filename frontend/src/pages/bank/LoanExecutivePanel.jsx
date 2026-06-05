@@ -6,6 +6,7 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -66,8 +67,8 @@ function PageTitle({ title }) {
   return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Loan Executive</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1></div>;
 }
 
-function Table({ title, headers, rows, loading, page, total, onPage }) {
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
+function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
 
 function useExecutiveLeads({ search, status }) {
@@ -77,22 +78,28 @@ function useExecutiveLeads({ search, status }) {
   const cachedRows = responseRows({ data: cached });
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
+  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {
-      const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search, status: status ? apiStatus(status) : "" } });
-      setRows(responseRows(response));
-      setTotal(response.data?.total || responseRows(response).length);
+      const targetPage = Math.max(Number(nextPage || 1), 1);
+      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status: status ? apiStatus(status) : "", ...cursorParamsForPage(targetPage) } });
+      const nextRows = responseRows(response);
+      setRows(nextRows);
+      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
+      rememberNextCursor(targetPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!options.silent) setLoading(false);
     }
-  }, [page, search, status]);
+  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
   useEffect(() => { load(page); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, loading, page, onPage, load };
+  return { rows, total, hasMore, loading, page, onPage, load };
 }
 
 function RejectModal({ lead, onClose, onSaved }) {
@@ -143,7 +150,7 @@ function TotalLeadsPage({ mode }) {
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
   const status = mode === "status" ? params.get("status") || LEAD_STATUSES.NEW : "";
-  const { rows, total, loading, page, onPage, load } = useExecutiveLeads({ search, status });
+  const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search, status });
 
   const updateStatus = async (lead, nextStatus) => {
     setStatusError("");
@@ -201,7 +208,7 @@ function TotalLeadsPage({ mode }) {
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
     </section>

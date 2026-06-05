@@ -5,6 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -48,8 +49,8 @@ function statusLabel(lead) {
   return standardStatusLabel(status);
 }
 
-function Table({ title, headers, rows, loading, page, total, onPage }) {
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
+function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
 
 function SectionTitle({ title, subtitle }) {
@@ -66,24 +67,30 @@ function useGmLeads(filters = {}) {
   const cached = getCachedGetData("/gm/leads", initialParams);
   const [leads, setLeads] = useState(() => cached?.data || []);
   const [total, setTotal] = useState(() => cached?.total || 0);
+  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
   const load = useCallback(async (next = {}) => {
     const silent = next.silent === true;
     if (!silent) setLoading(true);
     try {
       const { silent: _silent, ...params } = next;
-      const response = await api.get("/gm/leads", { params: { page: 1, limit: pageSize, ...filters, ...params } });
-      setLeads(response.data?.data || []);
-      setTotal(response.data?.total || 0);
+      const targetPage = Math.max(Number(params.page || 1), 1);
+      const response = await api.get("/gm/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
+      const rows = response.data?.data || [];
+      setLeads(rows);
+      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
+      rememberNextCursor(targetPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + rows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.search, filters.status, filters.salespersonId]);
+  }, [filters.search, filters.status, filters.salespersonId, cursorParamsForPage, rememberNextCursor]);
   useEffect(() => {
     load();
   }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize });
-  return { leads, total, loading, load };
+  return { leads, total, hasMore, loading, load };
 }
 
 function useSalespersons() {
@@ -163,7 +170,7 @@ function TotalLeadsScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const search = params.get("search") || "";
-  const { leads, total, loading, load } = useGmLeads({ search });
+  const { leads, total, hasMore, loading, load } = useGmLeads({ search });
   const updateSearch = (value) => {
     setPage(1);
     setParams(value ? { search: value, page: "1" } : { page: "1" });
@@ -177,7 +184,7 @@ function TotalLeadsScreen() {
     <section className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All leads created by this dealership." />
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" defaultValue={search} onChange={(event) => updateSearch(event.target.value)} /></div>
-      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Current Status", "Generated Date", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Current Status", "Generated Date", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -211,7 +218,7 @@ function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status") || LEAD_STATUSES.NEW;
   const [page, setPage] = useState(Number(params.get("page") || 1));
-  const { leads, total, loading, load } = useGmLeads({ status });
+  const { leads, total, hasMore, loading, load } = useGmLeads({ status });
   const choose = (nextStatus) => {
     setPage(1);
     setParams({ status: nextStatus, page: "1" });
@@ -228,7 +235,7 @@ function StatusScreen() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statusCards.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-lg border p-4 text-left text-sm font-semibold ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700 hover:border-[#0d47a1]/40"}`}>{item.label}</button>)}
       </div>
-      <Table title="Status Cases" headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Rejection Reason", "Last Updated Date", "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Last Updated Date", "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Status Cases" headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Rejection Reason", "Last Updated Date", "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", "Current Status", "Last Updated Date", "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -238,7 +245,7 @@ function AllCasesScreen() {
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const salespersonId = params.get("salespersonId") || "";
   const { salespersons } = useSalespersons();
-  const { leads, total, loading, load } = useGmLeads({ salespersonId });
+  const { leads, total, hasMore, loading, load } = useGmLeads({ salespersonId });
   const filter = (value) => {
     setPage(1);
     setParams(value ? { salespersonId: value, page: "1" } : { page: "1" });
@@ -257,7 +264,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -266,7 +273,7 @@ function SalespersonCasesScreen() {
   const { salespersonId } = useParams();
   const { salespersons } = useSalespersons();
   const salesperson = salespersons.find((person) => person.id === salespersonId);
-  const { leads, total, loading, load } = useGmLeads({ salespersonId });
+  const { leads, total, hasMore, loading, load } = useGmLeads({ salespersonId });
   const [page, setPage] = useState(1);
   const pageTo = (nextPage) => {
     setPage(nextPage);
@@ -275,7 +282,7 @@ function SalespersonCasesScreen() {
   return (
     <section className="space-y-4">
       <SectionTitle title={salesperson ? `${salesperson.name} Cases` : "Salesperson Cases"} subtitle="Only cases linked to this salesperson." />
-      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Generated Date", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }

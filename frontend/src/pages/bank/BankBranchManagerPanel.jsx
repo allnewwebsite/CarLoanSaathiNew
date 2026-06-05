@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -85,8 +86,8 @@ function responseRows(response) {
   return Array.isArray(response?.data?.data) ? response.data.data : Array.isArray(response?.data) ? response.data : [];
 }
 
-function Table({ title, headers, rows, loading, page, total, onPage }) {
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
+function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
 
 function MetricCard({ label, value, subtext }) {
@@ -151,24 +152,30 @@ function useBankLeads(search, status = "") {
   const cachedRows = responseRows({ data: cached });
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
+  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const response = await api.get("/bank/leads", { params: { page: nextPage, limit: pageSize, search, status } });
-      setRows(responseRows(response));
-      setTotal(response.data?.total || responseRows(response).length);
+      const targetPage = Math.max(Number(nextPage || 1), 1);
+      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, ...cursorParamsForPage(targetPage) } });
+      const nextRows = responseRows(response);
+      setRows(nextRows);
+      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
+      rememberNextCursor(targetPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status]);
+  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, loading, page, onPage, load };
+  return { rows, total, hasMore, loading, page, onPage, load };
 }
 
 function useExecutives() {
@@ -192,7 +199,7 @@ function useExecutives() {
 function TotalLeadsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { rows, total, loading, page, onPage, load } = useBankLeads(search);
+  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads(search);
   const [actionError, setActionError] = useState("");
   const tableRows = rows.map((lead) => ({
     key: lead.id,
@@ -224,7 +231,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -234,7 +241,7 @@ function StatusPage() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status") || LEAD_STATUSES.NEW;
   const [search, setSearch] = useState(params.get("search") || "");
-  const { rows, total, loading, page, onPage } = useBankLeads(search, status);
+  const { rows, total, hasMore, loading, page, onPage } = useBankLeads(search, status);
   const choose = (nextStatus) => setParams({ status: nextStatus, page: "1", ...(search ? { search } : {}) });
   const tableRows = rows.map((lead) => ({
     key: lead.id,
@@ -264,7 +271,7 @@ function StatusPage() {
       <div className="flex flex-wrap gap-2">
         {BANK_STATUS_OPTIONS.map((value) => <button key={value} onClick={() => choose(value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{standardStatusLabel(value)}</button>)}
       </div>
-      <Table title="Status Cases" headers={headers} rows={tableRows} loading={loading} page={page} total={total} onPage={onPage} />
+      <Table title="Status Cases" headers={headers} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }

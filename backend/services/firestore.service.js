@@ -1,6 +1,6 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
-import { assertLeadQueryScoped, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
+import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logWarn } from "./logger.service.js";
 
 const memoryStore = {
@@ -284,6 +284,7 @@ export async function queryRecords(collection, {
   const safeLimit = Math.min(clampQueryLimit(limit, 20), maxLimit);
   const parsedCursor = parseCursor(cursor);
   const pageNumber = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : null;
+  assertPaginationSafe({ page: pageNumber, limit: safeLimit, cursor, collection });
   const offset = !parsedCursor && pageNumber && pageNumber > 1 ? (pageNumber - 1) * safeLimit : 0;
   if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: Boolean(allowGlobal) });
 

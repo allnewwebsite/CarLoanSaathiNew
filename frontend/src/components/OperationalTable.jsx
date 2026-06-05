@@ -107,6 +107,7 @@ export function OperationalTable({
   loading,
   page,
   total,
+  hasMore,
   onPage,
   pageSize = 10,
   virtualizeAt = 25,
@@ -114,7 +115,8 @@ export function OperationalTable({
   rowHeight = 32,
   action = null,
 }) {
-  const pages = Math.max(Math.ceil((total || rows.length) / pageSize), 1);
+  const knownTotal = Number.isFinite(Number(total)) && Number(total) > 0;
+  const pages = knownTotal ? Math.max(Math.ceil(Number(total) / pageSize), 1) : Math.max(page + (hasMore ? 1 : 0), 1);
   const visibleRows = rows;
   const hasRows = visibleRows.length > 0;
   const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
@@ -169,8 +171,8 @@ export function OperationalTable({
       {onPage ? (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">
           <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Prev</button>
-          <span className="text-xs text-slate-500">Page {page} of {pages}</span>
-          <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Next</button>
+          <span className="text-xs text-slate-500">{knownTotal ? `Page ${page} of ${pages}` : `Page ${page}`}</span>
+          <button disabled={knownTotal ? page >= pages : !hasMore} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-50">Next</button>
         </div>
       ) : null}
     </section>

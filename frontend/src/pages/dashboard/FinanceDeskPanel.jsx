@@ -5,6 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 
 const pageSize = 10;
@@ -102,8 +103,8 @@ function StatusBadge({ lead }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}>{label}</span>;
 }
 
-function Table({ headers, rows, loading, page, total, onPage }) {
-  return <OperationalTable headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} />;
+function Table({ headers, rows, loading, page, total, hasMore, onPage }) {
+  return <OperationalTable headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
 
 function useSalespersons({ includeInactive = false } = {}) {
@@ -130,26 +131,32 @@ function useDealerLeads(filters = {}) {
   const cachedPayload = Array.isArray(cached) ? { data: cached, total: cached.length } : cached;
   const [leads, setLeads] = useState(() => cachedPayload?.data || []);
   const [total, setTotal] = useState(() => cachedPayload?.total || 0);
+  const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload?.hasMore || cachedPayload?.nextCursor));
   const [loading, setLoading] = useState(() => !cachedPayload);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.search || ""]);
   const loadLeads = useCallback(async (next = {}) => {
     const silent = next.silent === true;
     if (!silent) setLoading(true);
     try {
       const { silent: _silent, ...params } = next;
-      const response = await api.get("/dealer/leads", { params: { page: 1, limit: pageSize, ...filters, ...params } });
+      const targetPage = Math.max(Number(params.page || 1), 1);
+      const response = await api.get("/dealer/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
       const payload = Array.isArray(response.data) ? { data: response.data, total: response.data.length } : response.data;
-      setLeads(payload.data || []);
-      setTotal(payload.total || 0);
+      const rows = payload.data || [];
+      setLeads(rows);
+      setHasMore(Boolean(payload.hasMore || payload.nextCursor));
+      rememberNextCursor(targetPage, payload.nextCursor);
+      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (targetPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.status, filters.salespersonId, filters.search]);
+  }, [filters.status, filters.salespersonId, filters.search, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
   useRoleLeadRealtime({ onRefresh: loadLeads, pageSize });
-  return { leads, total, loading, loadLeads };
+  return { leads, total, hasMore, loading, loadLeads };
 }
 
 function DocumentsButton({ lead }) {
@@ -461,7 +468,7 @@ export function FinanceStaffDetailPage() {
 
 function TotalLeadsScreen() {
   const [page, setPage] = useState(1);
-  const { leads, total, loading, loadLeads } = useDealerLeads();
+  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads();
   const pageTo = (nextPage) => {
     setPage(nextPage);
     loadLeads({ page: nextPage });
@@ -469,7 +476,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1082,7 +1089,7 @@ function AllCasesScreen() {
   const search = params.get("search") || "";
   const { salespersons } = useSalespersons();
   const filters = useMemo(() => ({ salespersonId, search }), [salespersonId, search]);
-  const { leads, total, loading, loadLeads } = useDealerLeads(filters);
+  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads(filters);
   const updateFilter = (next) => {
     const merged = { salespersonId, search, page: "1", ...next };
     Object.keys(merged).forEach((key) => !merged[key] && delete merged[key]);
@@ -1104,7 +1111,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1113,7 +1120,7 @@ function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const status = params.get("status") || LEAD_STATUSES.NEW;
-  const { leads, total, loading, loadLeads } = useDealerLeads({ status });
+  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status });
   const choose = (value) => {
     setPage(1);
     setParams({ status: value, page: "1" });
@@ -1130,7 +1137,7 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} onPage={pageTo} />
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }

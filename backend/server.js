@@ -25,7 +25,7 @@ import { attachApiResponse } from "./utils/apiResponse.js";
 import { auditMiddleware } from "./middleware/auditMiddleware.js";
 import { logError, logInfo } from "./services/logger.service.js";
 import { initBackendMonitoring } from "./services/monitoring.service.js";
-import { logQueueDisabled, queueHealth } from "./services/queue.service.js";
+import { addQueueJob, logQueueDisabled, queueEnabled, queueHealth, QUEUE_NAMES } from "./services/queue.service.js";
 import { registerQueueWorkers } from "./services/queueWorkers.service.js";
 import { registerScheduledOperations } from "./services/scheduler.service.js";
 import { markWorkerHealth, observabilitySnapshot, productionHealth } from "./services/health.service.js";
@@ -181,26 +181,58 @@ function shutdown(signal) {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
+function runWorkerTick({ workerName, queueName, jobName, payload = {}, inlineTask, fallback, healthKey, errorMessage }) {
+  markWorkerHealth(healthKey);
+  if (queueEnabled()) {
+    addQueueJob(queueName, jobName, payload, { priority: "low", fallback })
+      .catch((error) => logError(errorMessage, { error: error.message }));
+    return;
+  }
+  inlineTask().catch((error) => logError(errorMessage, { error: error.message }));
+}
+
 if (process.env.DISABLE_SLA_ENGINE !== "true") {
   const intervalMs = Number(process.env.SLA_ENGINE_INTERVAL_MS || 60_000);
   setInterval(() => {
-    markWorkerHealth("slaWorkerLastRunAt");
-    processSlaBreaches().catch((error) => logError("SLA engine failed", { error: error.message }));
+    runWorkerTick({
+      workerName: "sla",
+      queueName: QUEUE_NAMES.SLA,
+      jobName: "sla-breach-sweep",
+      inlineTask: processSlaBreaches,
+      fallback: processSlaBreaches,
+      healthKey: "slaWorkerLastRunAt",
+      errorMessage: "SLA engine failed",
+    });
   }, intervalMs).unref();
 }
 
 if (process.env.DISABLE_WHATSAPP_QUEUE !== "true") {
   const intervalMs = Number(process.env.WHATSAPP_QUEUE_INTERVAL_MS || 30_000);
   setInterval(() => {
-    markWorkerHealth("whatsappWorkerLastRunAt");
-    processWhatsAppQueue().catch((error) => logError("WhatsApp queue failed", { error: error.message }));
+    runWorkerTick({
+      workerName: "whatsapp",
+      queueName: QUEUE_NAMES.WHATSAPP,
+      jobName: "whatsapp-queue-sweep",
+      inlineTask: processWhatsAppQueue,
+      fallback: processWhatsAppQueue,
+      healthKey: "whatsappWorkerLastRunAt",
+      errorMessage: "WhatsApp queue failed",
+    });
   }, intervalMs).unref();
 }
 
 if (process.env.DISABLE_NOTIFICATION_WORKER !== "true") {
   const intervalMs = Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS || 15_000);
   setInterval(() => {
-    markWorkerHealth("notificationWorkerLastRunAt");
-    processNotificationEvents().catch((error) => logError("Notification worker failed", { error: error.message }));
+    runWorkerTick({
+      workerName: "notifications",
+      queueName: QUEUE_NAMES.NOTIFICATIONS,
+      jobName: "notification-events-sweep",
+      payload: { jobKind: "notification-events-sweep" },
+      inlineTask: processNotificationEvents,
+      fallback: processNotificationEvents,
+      healthKey: "notificationWorkerLastRunAt",
+      errorMessage: "Notification worker failed",
+    });
   }, intervalMs).unref();
 }

@@ -22,6 +22,9 @@ const zeroMetrics = {
   slaBreaches: 0,
   completedLeads: 0,
   processingTimeTotalMinutes: 0,
+  activeDealerships: 0,
+  bankPartners: 0,
+  activeBanks: 0,
 };
 
 function dayKey(value = new Date().toISOString()) {

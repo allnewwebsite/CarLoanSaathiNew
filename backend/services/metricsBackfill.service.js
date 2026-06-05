@@ -1,4 +1,4 @@
-import { getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
+import { countRecords, getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { decorateMetric } from "./analyticsEngine.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
@@ -14,6 +14,9 @@ const zero = {
   slaBreaches: 0,
   completedLeads: 0,
   processingTimeTotalMinutes: 0,
+  activeDealerships: 0,
+  bankPartners: 0,
+  activeBanks: 0,
 };
 
 function dayKey(value = new Date().toISOString()) {
@@ -83,6 +86,17 @@ export async function rebuildHistoricalMetrics({ limit = 250, dryRun = true, run
     });
   } while (cursor);
 
+  const platformCounters = {
+    activeDealerships: await countRecords("dealerships", { where: [{ field: "active", value: true }] }).catch(() => 0),
+    bankPartners: await countRecords("bankPartners", { where: [{ field: "active", value: true }] }).catch(() => 0),
+    activeBanks: await countRecords("banks", { where: [{ field: "active", value: true }] }).catch(() => 0),
+  };
+  const globalKey = "metrics/global";
+  map.set(globalKey, {
+    ...(map.get(globalKey) || { ...zero, id: "global", scopeType: "global", scopeId: "global", period: null }),
+    ...platformCounters,
+  });
+
   if (!dryRun) {
     for (const [key, value] of map.entries()) {
       const [collection, id] = key.split("/");
@@ -94,7 +108,7 @@ export async function rebuildHistoricalMetrics({ limit = 250, dryRun = true, run
     }
   }
 
-  const summary = { runId, processed, metricDocuments: map.size, dryRun };
+  const summary = { runId, processed, metricDocuments: map.size, platformCounters, dryRun };
   logInfo("Historical metrics backfill completed", summary);
   return summary;
 }

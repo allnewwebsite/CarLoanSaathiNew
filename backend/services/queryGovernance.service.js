@@ -6,6 +6,8 @@ export const QUERY_LIMITS = Object.freeze({
   maxLimit: Number(process.env.FIRESTORE_MAX_PAGE_SIZE || 100),
   timeoutMs: Number(process.env.FIRESTORE_QUERY_TIMEOUT_MS || 8000),
   slowQueryMs: Number(process.env.FIRESTORE_SLOW_QUERY_MS || 1200),
+  cursorOnly: String(process.env.FIRESTORE_CURSOR_ONLY || "").toLowerCase() === "true",
+  maxOffsetRows: Number(process.env.FIRESTORE_MAX_OFFSET_ROWS || 500),
 });
 
 const leadScopeFields = new Set(["dealershipId", "bankId", "assignedExecutiveId", "assignedExecutiveEmail", "caseId"]);
@@ -25,6 +27,31 @@ export function assertLeadQueryScoped(where = [], { allowGlobal = false } = {}) 
     error.code = "UNSCOPED_LEAD_QUERY";
     throw error;
   }
+  return true;
+}
+
+export function assertPaginationSafe({ page = null, limit = QUERY_LIMITS.defaultLimit, cursor = null, collection = "" } = {}) {
+  const pageNumber = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : null;
+  if (!pageNumber || pageNumber <= 1 || cursor) return true;
+  if (QUERY_LIMITS.cursorOnly) {
+    const error = new Error("Cursor pagination is required for this production query");
+    error.status = 400;
+    error.code = "CURSOR_PAGINATION_REQUIRED";
+    throw error;
+  }
+  const offsetRows = (pageNumber - 1) * clampQueryLimit(limit);
+  if (offsetRows > QUERY_LIMITS.maxOffsetRows) {
+    const error = new Error("Requested page is too deep; use cursor pagination");
+    error.status = 400;
+    error.code = "OFFSET_PAGE_TOO_DEEP";
+    throw error;
+  }
+  logWarn("Offset pagination used; migrate caller to cursor pagination", {
+    collection,
+    page: pageNumber,
+    limit,
+    offsetRows,
+  });
   return true;
 }
 

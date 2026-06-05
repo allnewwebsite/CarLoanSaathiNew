@@ -1,4 +1,4 @@
-import { countRecords, createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { countRecords, createRecord, deleteRecord, findRecordsByField, getRecord, incrementRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { processSlaBreaches } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
@@ -198,6 +198,15 @@ async function firstAdminLookup(lookups = []) {
     }
   }
   return null;
+}
+
+async function incrementPlatformCounters(increments = {}) {
+  return incrementRecord("metrics", "global", increments, {
+    activeDealerships: 0,
+    bankPartners: 0,
+    activeBanks: 0,
+    updatedAt: new Date().toISOString(),
+  }).catch(() => null);
 }
 
 function requestLoginEmail(request) {
@@ -649,6 +658,7 @@ export async function approveDealershipApproval(req, res, next) {
     ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
+    await incrementPlatformCounters({ activeDealerships: 1 });
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
     res.json({ message: "Dealership approved", request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now } });
@@ -714,6 +724,7 @@ export async function suspendDealershipApproval(req, res, next) {
     ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "suspended", approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
+    await incrementPlatformCounters({ activeDealerships: -1 });
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     res.json({ message: "Dealership suspended", request: updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now } });
   } catch (error) {
@@ -804,6 +815,7 @@ export async function deleteDealershipPermanently(req, res, next) {
     }
 
     await approvalLog({ req, entityType: "dealership", entityId: id, previousStatus: request.status || "unknown", newStatus: "deleted", rejectionReason: "Permanently deleted by Super Admin" });
+    await incrementPlatformCounters({ activeDealerships: -1 });
     await writeAuditLog({ req, actionType: "DEALERSHIP_DELETED_PERMANENTLY", oldValue: request.status || "", newValue: "deleted", meta: { id, loginEmail, deleted, authDeleted, deletedAt: now } });
     res.json({ message: "Dealership permanently deleted", id, loginEmail, deleted, authDeleted });
   } catch (error) {
@@ -938,6 +950,7 @@ export async function approveBankApproval(req, res, next) {
       });
     }
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
+    await incrementPlatformCounters({ bankPartners: 1, activeBanks: 1 });
     await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: partnerId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId: partnerId } });
     res.json({ message: "Bank approved", request: updated || { ...request, status: "approved", approvedAt: now } });
@@ -996,6 +1009,7 @@ export async function suspendBankApproval(req, res, next) {
     ]);
     if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
+    await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1 });
     await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     res.json({ message: "Bank suspended", request: updated || { ...request, status: "suspended", suspendedAt: now, suspensionReason: reason } });
   } catch (error) {
@@ -1050,6 +1064,7 @@ export async function deleteBankPermanently(req, res, next) {
     }
 
     await writeAuditLog({ req, actionType: "BANK_DELETED", oldValue: request.status, newValue: "deleted", meta: { bankEmail, bankName, ifsc, deleted, authDeleted } });
+    await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1 });
     res.json({ message: "Bank permanently deleted", deleted, authDeleted });
   } catch (error) {
     next(error);
