@@ -1,4 +1,5 @@
 import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
+import { cached } from "./ttlCache.service.js";
 
 export const TIMELINE_EVENTS = {
   LEAD_CREATED: "lead-created",
@@ -227,30 +228,44 @@ export async function addTimelineEvent({
   type = "system",
   meta = {},
   metadata = {},
+  leadSnapshot = null,
   visibility,
 }) {
-  const lead = leadId ? await getRecord("leads", leadId) : null;
+  const metaPayload = { ...meta, ...metadata };
+  delete metaPayload.leadSnapshot;
+  const snapshot = leadSnapshot || metadata.leadSnapshot || meta.leadSnapshot || null;
+  const hasScope = Boolean(
+    snapshot
+    || metaPayload.caseId
+    || metaPayload.dealershipId
+    || metaPayload.dealershipEmail
+    || metaPayload.bankId
+    || metaPayload.assignedExecutiveId
+    || metaPayload.assignedExecutiveEmail
+  );
+  const lead = snapshot || (leadId && !hasScope ? await cached(`timeline:lead-snapshot:${leadId}`, 30000, () => getRecord("leads", leadId)) : null);
   return createRecord("leadTimeline", {
     leadId,
-    caseId: lead?.caseId || metadata.caseId || meta.caseId || null,
+    caseId: lead?.caseId || metaPayload.caseId || null,
     eventType: eventType || type,
     title,
     description,
     actorId: actorId || actor || "system",
     actorName: actorName || actor || "System",
     actorRole: actorRole || type || "system",
-    branchId: branchId || metadata.branchId || meta.branchId || null,
-    dealershipId: dealershipId || metadata.dealershipId || meta.dealershipId || lead?.dealershipId || lead?.dealershipEmail || null,
-    dealershipEmail: lead?.dealershipEmail || lead?.dealerEmail || metadata.dealershipEmail || meta.dealershipEmail || null,
-    bankId: lead?.bankId || metadata.bankId || meta.bankId || null,
-    assignedExecutiveId: lead?.assignedExecutiveId || metadata.assignedExecutiveId || meta.assignedExecutiveId || null,
-    assignedExecutiveEmail: lead?.assignedExecutiveEmail || metadata.assignedExecutiveEmail || meta.assignedExecutiveEmail || null,
-    metadata: { ...meta, ...metadata },
+    branchId: branchId || metaPayload.branchId || null,
+    dealershipId: dealershipId || metaPayload.dealershipId || lead?.dealershipId || lead?.dealershipEmail || null,
+    dealershipEmail: lead?.dealershipEmail || lead?.dealerEmail || metaPayload.dealershipEmail || null,
+    bankId: lead?.bankId || metaPayload.bankId || null,
+    assignedExecutiveId: lead?.assignedExecutiveId || metaPayload.assignedExecutiveId || null,
+    assignedExecutiveEmail: lead?.assignedExecutiveEmail || metaPayload.assignedExecutiveEmail || null,
+    metadata: metaPayload,
     visibility: visibility || ["finance-desk", "gm-sm", "bank-manager", "loan-executive", "super-admin"],
   });
 }
 
 export async function getTimelineForLead(leadId) {
+  return cached(`timeline:lead:${leadId}:v1`, 10000, async () => {
   const result = await queryRecords("leadTimeline", {
     where: [{ field: "leadId", value: leadId }],
     orderBy: "createdAt",
@@ -258,6 +273,7 @@ export async function getTimelineForLead(leadId) {
     limit: 100,
   });
   return result.data;
+  });
 }
 
 export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
@@ -301,7 +317,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
   const leadCache = new Map();
   const needsLead = [...new Set(prelim.filter((event) => event.__needsLeadScope && event.leadId).map((event) => event.leadId))];
   await Promise.all(needsLead.map(async (id) => {
-    leadCache.set(id, await getRecord("leads", id).catch(() => null));
+    leadCache.set(id, await cached(`timeline:lead-scope:${id}`, 30000, () => getRecord("leads", id)).catch(() => null));
   }));
 
   events = prelim

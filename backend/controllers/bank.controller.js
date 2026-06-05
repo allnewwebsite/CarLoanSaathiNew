@@ -16,7 +16,7 @@ import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
-import { cached } from "../services/ttlCache.service.js";
+import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -424,6 +424,11 @@ async function requireAssignedLead(req) {
     throw error;
   }
   return { partner, lead };
+}
+
+function clearLeadDetailCaches(leadId) {
+  clearCachedValue(`lead-detail:${leadId}:`);
+  clearCachedValue(`timeline:lead:${leadId}:`);
 }
 
 export async function registerBankPartner(req, res, next) {
@@ -989,29 +994,33 @@ export async function getBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
     const [hydratedLead] = await attachExecutiveMobile(partner, [lead]);
-    const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
-    const leadDocuments = async (collection) => {
-      const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
-        where: [{ field: "leadId", value: leadId }],
-        orderBy: "leadId",
-        direction: "asc",
-        limit: 50,
-        maxLimit: 50,
+    const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
+      const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
+      const leadDocuments = async (collection) => {
+        const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
+          where: [{ field: "leadId", value: leadId }],
+          orderBy: "leadId",
+          direction: "asc",
+          limit: 50,
+          maxLimit: 50,
+        })));
+        const byId = new Map();
+        pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
+        return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
+      };
+      const [documents, bankDocuments] = await Promise.all([
+        leadDocuments("documents"),
+        leadDocuments("bankDocuments"),
+      ]);
+      const hydrateDocumentUrls = async (rows) => Promise.all(rows.map(async (document) => ({
+        ...document,
+        url: document.url || document.fileUrl || document.downloadUrl || await createShortLivedDocumentUrl(document.storagePath || document.filePath),
       })));
-      const byId = new Map();
-      pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
-      return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
-    };
-    const [documents, bankDocuments] = await Promise.all([
-      leadDocuments("documents"),
-      leadDocuments("bankDocuments"),
-    ]);
-    const hydrateDocumentUrls = async (rows) => Promise.all(rows.map(async (document) => ({
-      ...document,
-      url: document.url || document.fileUrl || document.downloadUrl || await createShortLivedDocumentUrl(document.storagePath || document.filePath),
-    })));
-    const hydratedDocuments = await hydrateDocumentUrls(documents);
-    const hydratedBankDocuments = await hydrateDocumentUrls(bankDocuments);
+      return {
+        hydratedDocuments: await hydrateDocumentUrls(documents),
+        hydratedBankDocuments: await hydrateDocumentUrls(bankDocuments),
+      };
+    });
     res.json({
       ...hydratedLead,
       documents: hydratedDocuments,
@@ -1026,7 +1035,8 @@ export async function getBankAnalytics(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const leads = await assignedLeadsForPartner(partner, { limit: 100 });
+    const analyticsCacheKey = `bank:analytics:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`;
+    const leads = await cached(analyticsCacheKey, 15000, () => assignedLeadsForPartner(partner, { limit: 100 }));
     const today = new Date().toISOString().slice(0, 10);
     const identity = bankIdentity(partner);
     const activeStatuses = [
@@ -1139,7 +1149,7 @@ export async function getBankNotifications(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const leads = await assignedLeadsForPartner(partner);
+    const leads = await cached(`bank:notifications:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`, 15000, () => assignedLeadsForPartner(partner));
     const rows = leads
       .filter((lead) => {
         const status = normalizeStatus(lead.status);
@@ -1173,6 +1183,7 @@ export async function acceptBankLead(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
+    clearLeadDetailCaches(lead.id);
     syncLeadProjectionSoon(updated);
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
@@ -1193,6 +1204,7 @@ export async function acceptBankLead(req, res, next) {
       actorRole: req.user?.role || "bank",
       branchId: partner.branchId || null,
       metadata: { status: nextStatus, customerName: lead.fullName },
+      leadSnapshot: lead,
     });
     await writeAuditLog({ req, actionType: "BANK_ACCEPT", newValue: nextStatus, leadId: lead.id });
     res.json({ message: "Lead accepted", lead: updated });
@@ -1209,6 +1221,7 @@ export async function rejectBankLead(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.REJECTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks });
+    clearLeadDetailCaches(lead.id);
     syncLeadProjectionSoon(updated);
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
@@ -1220,6 +1233,7 @@ export async function rejectBankLead(req, res, next) {
       actorRole: req.user?.role || "bank",
       branchId: partner.branchId || null,
       metadata: { reason, remarks, status: nextStatus, customerName: lead.fullName },
+      leadSnapshot: lead,
     });
     await addTimelineEvent({
       leadId: lead.id,
@@ -1229,6 +1243,7 @@ export async function rejectBankLead(req, res, next) {
       actorName: partner.email || partner.name || partner.fullName,
       actorRole: req.user?.role || "bank",
       metadata: { reason, remarks },
+      leadSnapshot: lead,
     });
     await createNotification({ type: "rejection", title: "Lead rejected", message: remarks ? `${reason} - ${remarks}` : reason, leadId: lead.id, partnerId: partner.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, priority: "high", meta: { customerName: lead.fullName, reason, remarks } });
     await writeAuditLog({ req, actionType: "BANK_REJECT", newValue: reason, leadId: lead.id });
@@ -1312,6 +1327,7 @@ export async function updateBankLeadStatus(req, res, next) {
       } : {}),
     };
     const updated = await updateRecord("leads", lead.id, statusPayload);
+    clearLeadDetailCaches(lead.id);
     syncLeadProjectionSoon(updated);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
     res.json({ message: "Lead status updated", lead: updated });
@@ -1336,6 +1352,7 @@ export async function updateBankLeadStatus(req, res, next) {
           actorRole: req.user?.role || "bank",
           branchId: partner.branchId || null,
           metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocumentReason },
+          leadSnapshot: updated,
         }),
         createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } }),
         writeAuditLog({
@@ -1366,6 +1383,7 @@ export async function updateBankLeadRemarks(req, res, next) {
     const remarks = String(req.body.remarks || "").trim();
     const { partner, lead } = await requireAssignedLead(req);
     const updated = await updateRecord("leads", lead.id, { bankRemarks: remarks });
+    clearLeadDetailCaches(lead.id);
     syncLeadProjectionSoon(updated);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1375,6 +1393,7 @@ export async function updateBankLeadRemarks(req, res, next) {
       actorName: partner.email || partner.name || partner.fullName,
       actorRole: req.user?.role || "bank",
       metadata: { remarks },
+      leadSnapshot: lead,
     });
     await writeAuditLog({ req, actionType: "REMARKS_CHANGE", newValue: remarks, leadId: lead.id });
     res.json({ message: "Remarks saved", lead: updated });
@@ -1406,6 +1425,7 @@ export async function uploadBankLeadDocument(req, res, next) {
       documentType: req.body.documentType || "query-document",
       ...uploaded,
     });
+    clearLeadDetailCaches(lead.id);
     const isSanction = String(document.documentType || "").includes("sanction");
     if (isSanction) {
       const updatedLead = await updateRecord("leads", lead.id, {
@@ -1426,6 +1446,7 @@ export async function uploadBankLeadDocument(req, res, next) {
       actorName: partner.email || partner.name || partner.fullName,
       actorRole: req.user?.role || "bank",
       metadata: { documentId: document.id, documentType: document.documentType },
+      leadSnapshot: lead,
     });
     await createNotification({ type: "documents-uploaded", title: "Document uploaded", message: `${document.documentType} uploaded for lead ${lead.caseId || lead.id}`, leadId: lead.id, dealerEmail: lead.dealerEmail, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, documents: [document.documentType] } });
     await writeAuditLog({ req, actionType: "DOCUMENT_UPLOAD", newValue: document.documentType, leadId: lead.id });
@@ -1465,7 +1486,8 @@ export async function deleteBankLeadDocument(req, res, next) {
     }
     await deleteLeadDocument(document.storagePath);
     await deleteRecord("bankDocuments", document.id);
-    await addTimelineEvent({ leadId: lead.id, eventType: TIMELINE_EVENTS.DOCUMENT_REPLACED, title: "Document Removed", description: document.documentType, actorName: partner.email || partner.name || partner.fullName, actorRole: req.user?.role || "bank", metadata: { documentType: document.documentType } });
+    clearLeadDetailCaches(lead.id);
+    await addTimelineEvent({ leadId: lead.id, eventType: TIMELINE_EVENTS.DOCUMENT_REPLACED, title: "Document Removed", description: document.documentType, actorName: partner.email || partner.name || partner.fullName, actorRole: req.user?.role || "bank", metadata: { documentType: document.documentType }, leadSnapshot: lead });
     await writeAuditLog({ req, actionType: "DOCUMENT_DELETE", oldValue: document.documentType, leadId: lead.id });
     res.json({ message: "Document deleted" });
   } catch (error) {
