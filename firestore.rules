@@ -108,6 +108,25 @@ service cloud.firestore {
         );
     }
 
+    function canReadNotification(data) {
+      return isSuperAdmin()
+        || (approved() && data.userId == request.auth.uid)
+        || (approved() && data.recipientId == email())
+        || ((isFinanceDesk() || isGmSm()) && data.dealershipId == dealershipId())
+        || (isBankManager() && data.bankId == bankId() && sameBranch(data))
+        || (isLoanExecutive()
+          && (
+            data.assignedExecutiveId == request.auth.uid
+            || data.assignedExecutiveId == email()
+            || data.assignedExecutiveEmail == email()
+            || data.recipientId == email()
+          ));
+    }
+
+    function safeNotificationReadUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt", "updatedAt"]);
+    }
+
     function immutableUserSecurityFields() {
       return request.resource.data.uid == resource.data.uid
         && request.resource.data.email == resource.data.email
@@ -186,18 +205,8 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read, update: if isSuperAdmin()
-        || (approved() && resource.data.userId == request.auth.uid)
-        || (approved() && resource.data.recipientId == email())
-        || ((isFinanceDesk() || isGmSm()) && resource.data.dealershipId == dealershipId())
-        || (isBankManager() && resource.data.bankId == bankId() && sameBranch(resource.data))
-        || (isLoanExecutive()
-          && (
-            resource.data.assignedExecutiveId == request.auth.uid
-            || resource.data.assignedExecutiveId == email()
-            || resource.data.assignedExecutiveEmail == email()
-            || resource.data.recipientId == email()
-          ));
+      allow read: if canReadNotification(resource.data);
+      allow update: if canReadNotification(resource.data) && safeNotificationReadUpdate();
       allow create, delete: if false;
       allow read, write: if isSuperAdmin();
     }
@@ -392,7 +401,7 @@ service cloud.firestore {
       // Read: Finance desk can see approved/active banks; super admin can see all
       allow read: if isSuperAdmin()
         || (isFinanceDesk() && approved() && resource.data.approved == true && resource.data.active == true)
-        || (isBankManager() && resource.data.id == bankId());
+        || (isBankManager() && approved() && resource.data.id == bankId());
       
       // Write: Super admin only
       allow create, update, delete: if isSuperAdmin();
