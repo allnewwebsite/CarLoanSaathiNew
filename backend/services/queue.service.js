@@ -18,6 +18,29 @@ const priorityMap = { critical: 1, high: 2, medium: 5, low: 9 };
 const queues = new Map();
 const workers = new Map();
 let redisConnection = null;
+const queueCircuitBreakers = new Map();
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function cooldownMsForError(error) {
+  const message = String(error?.message || error || "");
+  if (/RESOURCE_EXHAUSTED|quota exceeded/i.test(message)) {
+    return Number(process.env.FIRESTORE_QUOTA_COOLDOWN_MS || 5 * 60 * 1000);
+  }
+  if (/Firestore query timed out/i.test(message)) {
+    return Number(process.env.FIRESTORE_TIMEOUT_COOLDOWN_MS || 60 * 1000);
+  }
+  return 0;
+}
+
+async function waitForQueueCircuit(name) {
+  const breaker = queueCircuitBreakers.get(name);
+  const waitMs = Number(breaker?.until || 0) - Date.now();
+  if (waitMs <= 0) return;
+  await sleep(Math.min(waitMs, Number(process.env.QUEUE_CIRCUIT_MAX_WAIT_MS || 30_000)));
+}
 
 export function queueEnabled() {
   return Boolean(process.env.REDIS_URL);
@@ -75,7 +98,26 @@ export async function addQueueJob(name, jobName, payload = {}, options = {}) {
 
 export function registerWorker(name, processor, { concurrency = 5 } = {}) {
   if (!queueEnabled() || workers.has(name)) return null;
-  const worker = new Worker(name, async (job) => processor(job.data, job), {
+  const worker = new Worker(name, async (job) => {
+    await waitForQueueCircuit(name);
+    try {
+      return await processor(job.data, job);
+    } catch (error) {
+      const cooldownMs = cooldownMsForError(error);
+      if (cooldownMs > 0) {
+        const until = Date.now() + cooldownMs;
+        queueCircuitBreakers.set(name, { until, reason: error.message });
+        logWarn("Queue cooldown opened", {
+          queue: name,
+          jobId: job.id,
+          cooldownMs,
+          reason: error.message,
+          resumeAt: new Date(until).toISOString(),
+        });
+      }
+      throw error;
+    }
+  }, {
     connection: connection(),
     concurrency: Number(process.env[`QUEUE_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_CONCURRENCY`] || concurrency),
   });
