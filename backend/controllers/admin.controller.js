@@ -1235,17 +1235,72 @@ export async function freezeAdminPartner(req, res, next) {
 
 export async function getAdminWorkflowLogs(req, res, next) {
   try {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 250);
-    const [assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
-      listRecentRecords("leadAssignments", { limit }),
-      listRecentRecords("slaLogs", { limit }),
-      listRecentRecords("reassignmentLogs", { limit }),
-      listRecentRecords("payouts", { limit }),
-      listRecentRecords("commissions", { limit }),
-      listRecentRecords("notifications", { limit }),
-      listRecentRecords("settings", { limit: 50 }),
-    ]);
-    res.json({ assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings });
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+    const logType = String(req.query.logType || "").trim();
+    const search = String(req.query.search || "").trim();
+    const where = logType ? [{ field: "logType", value: logType }] : [];
+    const cacheKey = `admin:workflow-logs:${JSON.stringify({
+      limit,
+      cursor: req.query.cursor || "",
+      logType,
+      search,
+    })}`;
+    const payload = await cached(cacheKey, 15000, async () => {
+      const page = await queryRecords("workflowLogViews", {
+        where,
+        orderBy: "timestamp",
+        direction: "desc",
+        limit,
+        maxLimit: 100,
+        cursor: req.query.cursor || null,
+        search,
+        searchFields: ["title", "summary", "actorEmail", "leadId", "caseId", "entityId", "status", "action"],
+        fields: ["id", "sourceId", "sourceCollection", "logType", "timestamp", "createdAt", "updatedAt", "leadId", "caseId", "entityId", "actorEmail", "actorName", "status", "action", "title", "summary"],
+      });
+      let rows = page.data || [];
+      if (!rows.length && !logType && !search && !req.query.cursor) {
+        const fallbackLimit = Math.min(limit, 25);
+        const [assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
+          listRecentRecords("leadAssignments", { limit: fallbackLimit }),
+          listRecentRecords("slaLogs", { limit: fallbackLimit }),
+          listRecentRecords("reassignmentLogs", { limit: fallbackLimit }),
+          listRecentRecords("payouts", { limit: fallbackLimit }),
+          listRecentRecords("commissions", { limit: fallbackLimit }),
+          listRecentRecords("notifications", { limit: fallbackLimit }),
+          listRecentRecords("settings", { limit: fallbackLimit }),
+        ]);
+        rows = [
+          ...assignments.map((item) => ({ ...item, logType: "leadAssignments" })),
+          ...slaLogs.map((item) => ({ ...item, logType: "slaLogs" })),
+          ...reassignmentLogs.map((item) => ({ ...item, logType: "reassignmentLogs" })),
+          ...payouts.map((item) => ({ ...item, logType: "payouts" })),
+          ...commissions.map((item) => ({ ...item, logType: "commissions" })),
+          ...notifications.map((item) => ({ ...item, logType: "notifications" })),
+          ...settings.map((item) => ({ ...item, logType: "settings" })),
+        ]
+          .sort((left, right) => String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || "")))
+          .slice(0, limit);
+      }
+      const grouped = {
+        assignments: rows.filter((item) => item.logType === "leadAssignments"),
+        slaLogs: rows.filter((item) => item.logType === "slaLogs"),
+        reassignmentLogs: rows.filter((item) => item.logType === "reassignmentLogs"),
+        payouts: rows.filter((item) => item.logType === "payouts"),
+        commissions: rows.filter((item) => item.logType === "commissions"),
+        notifications: rows.filter((item) => item.logType === "notifications"),
+        settings: rows.filter((item) => item.logType === "settings"),
+      };
+      return {
+        ...grouped,
+        data: rows,
+        pagination: {
+          limit: page.limit,
+          nextCursor: page.nextCursor,
+          hasMore: Boolean(page.nextCursor),
+        },
+      };
+    });
+    res.json(payload);
   } catch (error) {
     next(error);
   }

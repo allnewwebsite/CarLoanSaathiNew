@@ -1,3 +1,5 @@
+import { recordCacheEvent } from "./requestScope.service.js";
+
 const cache = new Map();
 const pending = new Map();
 
@@ -9,8 +11,10 @@ export function getCachedValue(key) {
   const entry = cache.get(key);
   if (!entry || entry.expiresAt <= now()) {
     cache.delete(key);
+    recordCacheEvent(false);
     return null;
   }
+  recordCacheEvent(true);
   return entry.value;
 }
 

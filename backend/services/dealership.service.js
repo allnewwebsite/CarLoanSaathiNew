@@ -4,6 +4,7 @@ import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { getActiveBankBranches, getBankByIFSC } from "./bank.service.js";
 import { logInfo } from "./logger.service.js";
+import { cached } from "./ttlCache.service.js";
 
 const TIE_UP_COLLECTION = "dealershipBankTieUps";
 
@@ -47,31 +48,53 @@ async function upsertTieUpRecord(dealershipId, bank, ifscCode, req = null, activ
   return payload;
 }
 
+function branchCatalogRow(branch) {
+  return {
+    id: branch.ifscCode,
+    bankId: branch.bankId,
+    branchId: branch.branchId || branch.bankId,
+    bankBranchId: branch.bankBranchId || branch.branchId || branch.bankId,
+    ifscCode: branch.ifscCode,
+    bankName: branch.bankName,
+    branchName: branch.branchName,
+    address: branch.address || "",
+    city: branch.city || "",
+    state: branch.state || "",
+    contactPerson: branch.contactPerson || "",
+    phone: branch.phone || "",
+    email: branch.email || "",
+    approved: branch.approved === true,
+    active: branch.active !== false,
+    approvalStatus: branch.approvalStatus || "approved",
+  };
+}
+
+async function getBankBranchCatalog() {
+  return cached("bank-branch-catalog:available:v1", 300000, async () => {
+    const fields = ["id", "bankId", "branchId", "bankBranchId", "ifscCode", "bankName", "branchName", "address", "city", "state", "contactPerson", "phone", "email", "approved", "active", "approvalStatus", "updatedAt"];
+    const page = await queryRecords("bankBranchCatalog", {
+      where: [{ field: "approved", value: true }],
+      orderBy: "bankName",
+      direction: "asc",
+      limit: 100,
+      maxLimit: 100,
+      fields,
+    }).catch(() => ({ data: [] }));
+    const catalogRows = (page.data || [])
+      .filter((branch) => branch.active !== false && branch.ifscCode && branch.bankName && branch.branchName)
+      .map(branchCatalogRow);
+    if (catalogRows.length) return catalogRows;
+    return (await getActiveBankBranches()).map(branchCatalogRow);
+  });
+}
+
 /**
  * Get all available bank branches for a dealership to tie up with
  * Automatically loads all approved and active bank branches
  * No static lists - fully dynamic
  */
 export async function getAvailableBankBranches() {
-  const branches = await getActiveBankBranches();
-  return branches.map((branch) => ({
-    id: branch.ifscCode,
-    bankId: branch.bankId,
-    branchId: branch.bankId,
-    bankBranchId: branch.bankId,
-    ifscCode: branch.ifscCode,
-    bankName: branch.bankName,
-    branchName: branch.branchName,
-    address: branch.address,
-    city: branch.city,
-    state: branch.state,
-    contactPerson: branch.contactPerson,
-    phone: branch.phone,
-    email: branch.email,
-    approved: branch.approved === true,
-    active: branch.active !== false,
-    approvalStatus: branch.approvalStatus || "approved",
-  }));
+  return getBankBranchCatalog();
 }
 
 /**
@@ -85,12 +108,17 @@ export async function getDealershipBankTieUps(dealershipId) {
     throw error;
   }
 
-  const relationTieUps = await activeTieUpRecords(dealershipId);
+  const [relationTieUps, availableBranches] = await Promise.all([
+    activeTieUpRecords(dealershipId),
+    getBankBranchCatalog(),
+  ]);
+  const branchesByIfsc = new Map(availableBranches.map((branch) => [String(branch.ifscCode || "").toUpperCase(), branch]));
   if (relationTieUps.length > 0) {
     const activeTieUps = [];
     for (const tieUp of relationTieUps) {
       try {
-        const bank = await getBankByIFSC(tieUp.ifscCode);
+        const bank = branchesByIfsc.get(String(tieUp.ifscCode || "").toUpperCase());
+        if (!bank) throw new Error("Bank branch not available");
         if (bank.approved !== true || bank.active === false) continue;
         activeTieUps.push({
           id: bank.ifscCode,
@@ -126,7 +154,8 @@ export async function getDealershipBankTieUps(dealershipId) {
   const tieUps = [];
   for (const ifscCode of tieUpIFSCs) {
     try {
-      const bank = await getBankByIFSC(ifscCode);
+      const bank = branchesByIfsc.get(String(ifscCode || "").toUpperCase());
+      if (!bank) throw new Error("Bank branch not available");
       tieUps.push({
         id: bank.ifscCode,
         bankId: bank.id,

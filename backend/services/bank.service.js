@@ -112,6 +112,8 @@ export async function registerBankBranch(payload, req = null) {
     branchName,
     approved: bank.approved,
   });
+  clearCachedValue("bank:active-branches");
+  clearCachedValue("bank-branch-catalog:available:v1");
 
   return bank;
 }
@@ -155,6 +157,7 @@ export async function approveBankBranch(bankId, req = null) {
     bankName: bank.bankName,
   });
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank-branch-catalog:available:v1");
 
   return updated;
 }
@@ -197,6 +200,7 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
     reason,
   });
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank-branch-catalog:available:v1");
 
   return updated;
 }
@@ -206,6 +210,35 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  */
 export async function getActiveBankBranches() {
   return cached("bank:active-branches", 60000, async () => {
+  const catalog = await queryRecords("bankBranchCatalog", {
+    where: [{ field: "approved", value: true }],
+    orderBy: "bankName",
+    direction: "asc",
+    limit: 100,
+    maxLimit: 100,
+    fields: ["id", "bankId", "branchId", "bankBranchId", "ifscCode", "bankName", "branchName", "address", "city", "state", "contactPerson", "phone", "email", "approved", "active", "approvalStatus", "approvedAt"],
+  }).catch(() => ({ data: [] }));
+  const catalogRows = (catalog.data || [])
+    .filter((bank) => bank.active !== false && bank.ifscCode && bank.bankName && bank.branchName)
+    .map((bank) => ({
+      bankId: bank.bankId || bank.id || bank.ifscCode,
+      id: bank.id || bank.ifscCode,
+      ifscCode: bank.ifscCode,
+      bankName: bank.bankName,
+      branchName: bank.branchName,
+      address: bank.address || "",
+      city: bank.city || "",
+      state: bank.state || "Haryana",
+      contactPerson: bank.contactPerson || "",
+      phone: bank.phone || "",
+      email: bank.email || "",
+      approvedAt: bank.approvedAt || null,
+      approvalStatus: bank.approvalStatus || "approved",
+      approved: true,
+      active: true,
+    }));
+  if (catalogRows.length) return catalogRows;
+
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
     boundedBankSourceRecords("banks"),
     boundedBankSourceRecords("bankPartners"),
@@ -371,6 +404,8 @@ export async function updateBankBranch(bankId, payload, req = null) {
       meta: { bankId, ifscCode: bank.ifscCode },
     });
   }
+  clearCachedValue("bank:active-branches");
+  clearCachedValue("bank-branch-catalog:available:v1");
 
   return updated;
 }

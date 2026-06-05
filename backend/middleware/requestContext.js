@@ -14,7 +14,7 @@ export function requestContext(req, res, next) {
     res.on("finish", () => {
       const durationMs = Date.now() - res.locals.startedAt;
       const responseBytes = Number(res.getHeader("content-length") || 0) || null;
-      flushFirestoreReadReport();
+      flushFirestoreReadReport({ statusCode: res.statusCode, durationMs, responseBytes });
       observeApiRequest(req, res, durationMs).catch(() => {});
       if (durationMs >= 500) {
         const tier = durationMs >= 2000 ? "2000ms" : durationMs >= 1000 ? "1000ms" : "500ms";

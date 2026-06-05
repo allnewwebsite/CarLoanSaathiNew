@@ -53,6 +53,9 @@ const memoryStore = {
   archivedLeads: [],
   archivalLogs: [],
   systemCounters: [],
+  workflowLogViews: [],
+  workflowLogArchives: [],
+  bankBranchCatalog: [],
 };
 
 let memoryBackfillCounter = 0;
@@ -133,9 +136,13 @@ export async function createRecord(collection, payload) {
   if (!firestore) {
     memoryStore[collection] = memoryStore[collection] || [];
     memoryStore[collection].push(record);
+    await syncWriteProjections(collection, record);
     return record;
   }
   await firestore.collection(collection).doc(record.id).set(record);
+  await syncWriteProjections(collection, record).catch((error) => {
+    logWarn("Projection write skipped after create", { collection, error: error.message });
+  });
   return record;
 }
 
@@ -227,6 +234,111 @@ function selectFields(record, fields = []) {
     if (Object.prototype.hasOwnProperty.call(record, field)) next[field] = record[field];
     return next;
   }, { id: record.id });
+}
+
+const WORKFLOW_LOG_SOURCES = new Set([
+  "leadAssignments",
+  "slaLogs",
+  "reassignmentLogs",
+  "payouts",
+  "commissions",
+  "notifications",
+  "settings",
+]);
+
+const BANK_CATALOG_SOURCES = new Set([
+  "banks",
+  "bankPartners",
+  "branches",
+  "branchManagers",
+  "pendingBankApprovals",
+]);
+
+function safeProjectionId(...parts) {
+  return parts
+    .filter(Boolean)
+    .join("__")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, 240);
+}
+
+function workflowLogProjection(collection, record = {}) {
+  const timestamp = record.updatedAt || record.createdAt || record.timestamp || record.approvedAt || record.completedAt || new Date().toISOString();
+  return {
+    id: safeProjectionId(collection, record.id || timestamp),
+    sourceCollection: collection,
+    sourceId: record.id || null,
+    logType: collection,
+    timestamp,
+    createdAt: record.createdAt || timestamp,
+    updatedAt: record.updatedAt || timestamp,
+    leadId: record.leadId || record.caseId || record.entityId || record.targetId || null,
+    caseId: record.caseId || null,
+    entityId: record.entityId || record.targetId || record.leadId || null,
+    actorEmail: record.actorEmail || record.createdBy || record.updatedBy || record.approvedBy || record.userEmail || record.recipientEmail || null,
+    actorName: record.actorName || record.createdByName || record.userName || null,
+    status: record.status || record.newStatus || record.approvalStatus || null,
+    action: record.action || record.actionType || record.type || record.eventType || collection,
+    title: record.title || record.subject || record.action || record.actionType || collection,
+    summary: record.message || record.description || record.reason || record.title || record.action || record.actionType || "",
+  };
+}
+
+function bankBranchCatalogProjection(collection, record = {}) {
+  const ifscCode = String(record.ifscCode || record.ifsc || record.bankIfsc || "").trim().toUpperCase();
+  if (!ifscCode) return null;
+  const status = String(record.status || record.approvalStatus || "").trim().toLowerCase();
+  const approved = record.approved === true || ["approved", "active"].includes(status);
+  const active = record.active !== false && status !== "suspended" && status !== "rejected";
+  const bankName = String(record.bankName || record.name || record.companyName || "").trim();
+  const branchName = String(record.branchName || record.branchLocation || record.bankBranchLocation || record.city || "").trim();
+  if (!bankName || !branchName) return null;
+  return {
+    id: ifscCode,
+    sourceCollection: collection,
+    sourceId: record.id || null,
+    bankId: record.bankId || record.id || ifscCode,
+    branchId: record.branchId || record.id || record.bankId || ifscCode,
+    bankBranchId: record.bankBranchId || record.branchId || record.id || record.bankId || ifscCode,
+    ifscCode,
+    bankName,
+    branchName,
+    address: record.address || "",
+    city: String(record.city || record.branchCity || record.branchLocation || record.bankBranchLocation || "").trim(),
+    state: String(record.state || "Haryana").trim(),
+    contactPerson: record.contactPerson || record.managerName || "",
+    phone: record.phone || record.mobile || "",
+    email: record.email || record.officialEmail || "",
+    approvalStatus: approved ? "approved" : (record.approvalStatus || record.status || "pending"),
+    approved,
+    active,
+    approvedAt: record.approvedAt || null,
+    createdAt: record.createdAt || new Date().toISOString(),
+    updatedAt: record.updatedAt || new Date().toISOString(),
+  };
+}
+
+async function writeProjectionRecord(collection, id, payload) {
+  if (!payload || !id) return;
+  if (!firestore) {
+    memoryStore[collection] = memoryStore[collection] || [];
+    const index = memoryStore[collection].findIndex((item) => item.id === id);
+    if (index >= 0) memoryStore[collection][index] = { ...memoryStore[collection][index], ...payload };
+    else memoryStore[collection].push({ id, ...payload });
+    return;
+  }
+  await firestore.collection(collection).doc(id).set(payload, { merge: true });
+}
+
+export async function syncWriteProjections(collection, record = {}) {
+  if (WORKFLOW_LOG_SOURCES.has(collection)) {
+    const projection = workflowLogProjection(collection, record);
+    await writeProjectionRecord("workflowLogViews", projection.id, projection);
+  }
+  if (BANK_CATALOG_SOURCES.has(collection)) {
+    const projection = bankBranchCatalogProjection(collection, record);
+    if (projection) await writeProjectionRecord("bankBranchCatalog", projection.id, projection);
+  }
 }
 
 function isMissingCompositeIndexError(error) {
@@ -371,6 +483,7 @@ export async function getRecord(collection, id) {
   if (!firestore) return (memoryStore[collection] || []).find((item) => item.id === id || (collection === "leads" && item.caseId === id)) || null;
   const ref = await resolveDocumentRef(collection, id);
   const doc = await ref.get();
+  recordFirestoreRead({ collection, operation: "get", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   if (!doc.exists) return null;
   return { ...doc.data(), id: doc.id };
 }
@@ -385,12 +498,18 @@ export async function updateRecord(collection, id, payload) {
       updated = { ...item, ...update };
       return updated;
     });
+    await syncWriteProjections(collection, updated);
     return updated;
   }
   const ref = await resolveDocumentRef(collection, id);
   await ref.update(update);
   const doc = await ref.get();
-  return { ...doc.data(), id: doc.id };
+  recordFirestoreRead({ collection, operation: "update-readback", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
+  const record = { ...doc.data(), id: doc.id };
+  await syncWriteProjections(collection, record).catch((error) => {
+    logWarn("Projection write skipped after update", { collection, id, error: error.message });
+  });
+  return record;
 }
 
 export async function upsertRecord(collection, id, payload) {
@@ -401,14 +520,22 @@ export async function upsertRecord(collection, id, payload) {
     const index = memoryStore[collection].findIndex((item) => item.id === id);
     if (index >= 0) {
       memoryStore[collection][index] = { ...memoryStore[collection][index], ...update };
+      await syncWriteProjections(collection, memoryStore[collection][index]);
       return memoryStore[collection][index];
     }
     const record = { id, ...update, createdAt: new Date().toISOString() };
     memoryStore[collection].push(record);
+    await syncWriteProjections(collection, record);
     return record;
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
-  return { id, ...update };
+  const doc = await firestore.collection(collection).doc(id).get();
+  recordFirestoreRead({ collection, operation: "upsert-readback", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
+  const record = { id: doc.id, ...doc.data() };
+  await syncWriteProjections(collection, record).catch((error) => {
+    logWarn("Projection write skipped after upsert", { collection, id, error: error.message });
+  });
+  return record;
 }
 
 export async function incrementRecord(collection, id, increments = {}, base = {}) {
