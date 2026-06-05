@@ -10,7 +10,7 @@ import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LAB
 import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
-import { logInfo } from "../services/logger.service.js";
+import { logError, logInfo } from "../services/logger.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
@@ -1288,43 +1288,49 @@ export async function updateBankLeadStatus(req, res, next) {
       } : {}),
     };
     const updated = await updateRecord("leads", lead.id, statusPayload);
-    await updateSlaForLead(updated, normalizedStatus);
-    await ensureCommissionForLead(updated, normalizedStatus);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: normalizedStatus === LEAD_STATUSES.APPROVED
-        ? TIMELINE_EVENTS.APPROVAL
-        : normalizedStatus === LEAD_STATUSES.REJECTED
-          ? TIMELINE_EVENTS.REJECTION
-          : normalizedStatus === LEAD_STATUSES.DISBURSED
-            ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-            : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
-              ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
-              : TIMELINE_EVENTS.STATUS_CHANGED,
-      title: `Status: ${statusLabel}`,
-      description: pendingDocument ? `${pendingDocument}: ${pendingDocumentReason || "Document requested"}` : `Bank updated status to ${statusLabel}`,
-      actorName: partner.email || partner.name || partner.fullName,
-      actorRole: req.user?.role || "bank",
-      branchId: partner.branchId || null,
-      metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocumentReason },
-    });
-    await createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } });
-    await writeAuditLog({
-      req,
-      actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
-        ? AUDIT_ACTIONS.DISBURSED
-        : normalizedStatus === LEAD_STATUSES.REJECTED
-          ? AUDIT_ACTIONS.REJECTED
-          : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
-            ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
-            : AUDIT_ACTIONS.STATUS_UPDATED,
-      oldValue: lead.status,
-      newValue: normalizedStatus,
-      leadId: lead.id,
-      meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId },
-    });
     res.json({ message: "Lead status updated", lead: updated });
+    setImmediate(() => {
+      Promise.allSettled([
+        updateSlaForLead(updated, normalizedStatus),
+        ensureCommissionForLead(updated, normalizedStatus),
+        addTimelineEvent({
+          leadId: lead.id,
+          eventType: normalizedStatus === LEAD_STATUSES.APPROVED
+            ? TIMELINE_EVENTS.APPROVAL
+            : normalizedStatus === LEAD_STATUSES.REJECTED
+              ? TIMELINE_EVENTS.REJECTION
+              : normalizedStatus === LEAD_STATUSES.DISBURSED
+                ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
+                : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
+                  ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
+                  : TIMELINE_EVENTS.STATUS_CHANGED,
+          title: `Status: ${statusLabel}`,
+          description: pendingDocument ? `${pendingDocument}: ${pendingDocumentReason || "Document requested"}` : `Bank updated status to ${statusLabel}`,
+          actorName: partner.email || partner.name || partner.fullName,
+          actorRole: req.user?.role || "bank",
+          branchId: partner.branchId || null,
+          metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocumentReason },
+        }),
+        createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } }),
+        writeAuditLog({
+          req,
+          actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
+            ? AUDIT_ACTIONS.DISBURSED
+            : normalizedStatus === LEAD_STATUSES.REJECTED
+              ? AUDIT_ACTIONS.REJECTED
+              : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
+                ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
+                : AUDIT_ACTIONS.STATUS_UPDATED,
+          oldValue: lead.status,
+          newValue: normalizedStatus,
+          leadId: lead.id,
+          meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId },
+        }),
+      ]).then((results) => {
+        results.filter((result) => result.status === "rejected").forEach((result) => logError("Bank status side effect failed", { error: result.reason?.message || String(result.reason), leadId: lead.id, status: normalizedStatus }));
+      });
+    });
   } catch (error) {
     next(error);
   }

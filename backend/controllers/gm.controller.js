@@ -128,8 +128,15 @@ export async function getGmLead(req, res, next) {
       limit: 50,
       maxLimit: 50,
     });
+    const bankDocumentsPage = await queryRecords("bankDocuments", {
+      where: [{ field: "leadId", value: lead.id }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 50,
+      maxLimit: 50,
+    }).catch(() => ({ data: [] }));
     const documents = documentsPage.data;
-    res.json({ ...lead, documents });
+    res.json({ ...lead, documents, bankDocuments: bankDocumentsPage.data || [] });
   } catch (error) {
     next(error);
   }

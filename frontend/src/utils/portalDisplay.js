@@ -65,3 +65,18 @@ export function loanExecutiveRemark(lead) {
   ];
   return candidates.map(cleanPortalText).find(Boolean) || "-";
 }
+
+export function bankDocumentRows(lead) {
+  const rows = Array.isArray(lead?.bankDocuments) ? lead.bankDocuments : [];
+  if (rows.length) return rows;
+  if (lead?.sanctionLetterUrl) {
+    return [{
+      id: lead.sanctionLetterDocumentId || "sanction-letter",
+      documentType: "Sanction Letter",
+      url: lead.sanctionLetterUrl,
+      uploadedAt: lead.sanctionLetterUploadedAt,
+      uploadedBy: lead.sanctionLetterUploadedBy,
+    }];
+  }
+  return [];
+}

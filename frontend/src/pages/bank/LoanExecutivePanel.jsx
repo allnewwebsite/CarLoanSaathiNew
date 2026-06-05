@@ -8,12 +8,19 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as lea
 import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusOptions = BANK_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
+const statusOptions = [
+  LEAD_STATUSES.CONTACTED,
+  LEAD_STATUSES.DOCUMENT_RECEIVED,
+  LEAD_STATUSES.UNDER_BANK_PROCESS,
+  LEAD_STATUSES.DISBURSED,
+  LEAD_STATUSES.REJECTED,
+].map((value) => ({ label: leadStatusLabel(value), value }));
+const statusFilters = BANK_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
 
 function display(value) {
   return value || "-";
@@ -27,16 +34,12 @@ function moneyValue(value) {
   return `Rs. ${money.format(Number(value || 0))}`;
 }
 
-function dateValue(value) {
-  return formatPortalDate(value);
-}
-
-function timeValue(value) {
-  return formatPortalTime(value);
-}
-
 function dateTime(value) {
   return formatPortalDateTime(value);
+}
+
+function generatedAt(lead) {
+  return dateTime(lead.generatedAt || lead.createdAt);
 }
 
 function executiveStatusLabel(lead) {
@@ -137,6 +140,52 @@ function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMEN
   );
 }
 
+function StatusUpdateModal({ lead, onClose, onSaved }) {
+  const [status, setStatus] = useState(LEAD_STATUSES.CONTACTED);
+  const [remarks, setRemarks] = useState("");
+  const [sanctionFile, setSanctionFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!status) return;
+    setBusy(true);
+    try {
+      await api.patch(`/bank/leads/${lead.id}/status`, { status, remarks, rejectionReason: status === LEAD_STATUSES.REJECTED ? remarks : undefined });
+      if (status === LEAD_STATUSES.DISBURSED && sanctionFile) {
+        const form = new FormData();
+        form.append("document", sanctionFile);
+        form.append("documentType", "sanction-letter");
+        await api.post(`/bank/leads/${lead.id}/documents`, form, { headers: { "Content-Type": "multipart/form-data" } });
+      }
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title="Update Lead Status" onClose={onClose}>
+      <label className="text-sm font-medium text-slate-700">
+        Status
+        <select className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1]" value={status} onChange={(event) => setStatus(event.target.value)}>
+          {statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
+      </label>
+      <label className="mt-3 block text-sm font-medium text-slate-700">
+        Remark
+        <textarea className="mt-2 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder={status === LEAD_STATUSES.REJECTED ? "Rejection reason" : "Executive remark"} value={remarks} onChange={(event) => setRemarks(event.target.value)} />
+      </label>
+      {status === LEAD_STATUSES.DISBURSED ? (
+        <label className="mt-3 block text-sm font-medium text-slate-700">
+          Sanction Letter
+          <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setSanctionFile(event.target.files?.[0] || null)} className="mt-2 block w-full rounded-md border border-slate-200 text-sm text-slate-600 file:mr-3 file:h-10 file:border-0 file:bg-slate-50 file:px-3 file:text-sm file:font-medium file:text-slate-700" />
+        </label>
+      ) : null}
+      <button disabled={busy || (status === LEAD_STATUSES.REJECTED && !remarks.trim())} onClick={submit} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+        {busy ? "Saving..." : "Save Status"}
+      </button>
+    </Modal>
+  );
+}
+
 function Modal({ title, children, onClose }) {
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"><section className="w-full max-w-xl rounded-lg bg-white p-5 shadow-lg"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-semibold text-slate-900">{title}</h2><button onClick={onClose}><X className="h-5 w-5" /></button></div><div className="mt-4">{children}</div></section></div>;
 }
@@ -154,6 +203,7 @@ function TotalLeadsPage({ mode }) {
     setStatusError("");
     if (nextStatus === "REJECTED_REASON") return setModal({ type: "reject", lead });
     if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus)) return setModal({ type: "docs", lead, status: nextStatus });
+    if (nextStatus === "STATUS_UPDATE") return setModal({ type: "status", lead });
     try {
       await api.patch(`/bank/leads/${lead.id}/status`, { status: nextStatus });
       load(page);
@@ -183,13 +233,9 @@ function TotalLeadsPage({ mode }) {
         display(lead.city || lead.dealershipCity),
         moneyValue(lead.onRoadPrice || lead.carOnRoadPrice),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-        dateValue(lead.createdAt),
-        timeValue(lead.createdAt),
+        generatedAt(lead),
         executiveStatusLabel(lead),
-        <select key="status-action" className="h-9 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-[#0d47a1]" value="" onChange={(event) => updateStatus(lead, event.target.value)}>
-          <option value="">Update Status</option>
-          {statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-        </select>,
+        <button key="status-action" onClick={() => updateStatus(lead, "STATUS_UPDATE")} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Update</button>,
         <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">Request Pending Docs</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
@@ -208,11 +254,12 @@ function TotalLeadsPage({ mode }) {
           <input className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Search cases" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
       </div>
-      {mode === "status" ? <div className="flex flex-wrap gap-2">{statusOptions.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
+      {mode === "status" ? <div className="flex flex-wrap gap-2">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Current Lead Status", "Update Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Current Lead Status", "Update Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
+      {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
     </section>
   );
 }

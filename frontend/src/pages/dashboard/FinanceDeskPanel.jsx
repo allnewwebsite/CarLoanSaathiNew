@@ -7,7 +7,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { formatPortalDate, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
@@ -1244,6 +1244,7 @@ export function FinanceLeadDocumentsPage() {
   };
 
   const uploaded = (type) => docs.find((doc) => String(doc.type || "").toLowerCase() === type.toLowerCase());
+  const bankDocs = bankDocumentRows(lead);
   return (
     <section className="space-y-5">
       <div className="card p-5">
@@ -1281,6 +1282,25 @@ export function FinanceLeadDocumentsPage() {
           );
         })}
       </div>
+      {bankDocs.length ? (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="text-base font-semibold text-slate-900">Bank Uploaded Documents</h2>
+          <div className="mt-3 grid gap-2">
+            {bankDocs.map((doc) => {
+              const url = doc.url || doc.fileUrl || doc.downloadUrl;
+              return (
+                <div key={doc.id || doc.documentType || doc.type} className="flex flex-col gap-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-slate-900">{doc.documentType || doc.type || "Bank Document"}</p>
+                    <p className="text-xs text-slate-500">{dateTime(doc.uploadedAt || doc.createdAt)} by {display(doc.uploadedBy)}</p>
+                  </div>
+                  {url ? <a href={url} target="_blank" rel="noreferrer" className="text-xs font-medium text-[#0d47a1]">Preview / Download</a> : <span className="text-xs text-slate-500">Stored in application</span>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }

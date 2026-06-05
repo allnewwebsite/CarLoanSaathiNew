@@ -6,7 +6,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -54,16 +54,12 @@ function numberValue(value) {
   return money.format(Number(value || 0));
 }
 
-function dateValue(value) {
-  return formatPortalDate(value);
-}
-
-function timeValue(value) {
-  return formatPortalTime(value);
-}
-
 function dateTime(value) {
   return formatPortalDateTime(value);
+}
+
+function generatedAt(lead) {
+  return dateTime(lead.generatedAt || lead.createdAt);
 }
 
 function workflowStatus(value) {
@@ -208,8 +204,7 @@ function TotalLeadsPage() {
       display(lead.city || lead.dealershipCity),
       moneyValue(lead.onRoadPrice || lead.carOnRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      dateValue(lead.createdAt),
-      timeValue(lead.createdAt),
+      generatedAt(lead),
       display(lead.assignedExecutiveName),
       display(lead.assignedExecutiveMobile || lead.executiveMobile),
       leadStatusLabel(lead),
@@ -229,7 +224,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated Date", "Case Generated Time", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -623,6 +618,7 @@ export function BankManagerLeadDetailPage() {
   }
 
   const documents = [...(lead.documents || [])];
+  const bankDocs = bankDocumentRows(lead);
   const rows = customerDocumentTypes.map((type) => {
     const doc = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
     const url = doc?.url || doc?.fileUrl || doc?.downloadUrl;
@@ -663,6 +659,18 @@ export function BankManagerLeadDetailPage() {
         </div>
       </div>
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={rows} loading={false} />
+      <Table title="Bank Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={bankDocs.map((document) => {
+        const url = document?.url || document?.fileUrl || document?.downloadUrl;
+        return {
+          key: document.id || document.documentType || document.type,
+          cells: [
+            display(document.documentType || document.type),
+            url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application",
+            dateTime(document?.createdAt || document?.uploadedAt),
+            url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-",
+          ],
+        };
+      })} loading={false} />
     </section>
   );
 }

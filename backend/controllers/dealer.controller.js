@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
@@ -1352,7 +1352,14 @@ export async function getDealerLead(req, res, next) {
     const { email, dealershipEmail } = await financeDeskContext(req);
     const lead = await getRecord("leads", req.params.id);
     if (!lead || !owned([lead], email, dealershipEmail).length) return res.status(404).json({ message: "Lead not found" });
-    res.json(lead);
+    const bankDocumentsPage = await queryRecords("bankDocuments", {
+      where: [{ field: "leadId", value: lead.id }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 50,
+      maxLimit: 50,
+    }).catch(() => ({ data: [] }));
+    res.json({ ...lead, bankDocuments: bankDocumentsPage.data || [] });
   } catch (error) {
     next(error);
   }
