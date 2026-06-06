@@ -93,6 +93,15 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "bankBranchCity", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bankId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]

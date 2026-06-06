@@ -253,6 +253,16 @@ export function invalidateGetCache({ url, prefix } = {}) {
   scheduleGetCachePersist();
 }
 
+function emitDataMutation(url = "") {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("cls:data-mutated", {
+    detail: {
+      url,
+      at: Date.now(),
+    },
+  }));
+}
+
 async function appCheckHeaderToken() {
   if (!appCheck) return "";
   if (appCheckCache.token && appCheckCache.expiresAt > Date.now()) return appCheckCache.token;
@@ -462,12 +472,15 @@ api.interceptors.response.use(
     if (!response.request?.cached) rememberGetResponse(response);
     if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) {
       const url = String(response.config?.url || "");
-      if (url.startsWith("/bank/")) invalidateGetCache({ prefix: "/bank/" });
-      else if (url.startsWith("/dealer/") || url.startsWith("/documents/")) invalidateGetCache({ prefix: "/dealer/" });
+      if (url.startsWith("/bank/leads/") || url.startsWith("/documents/")) {
+        invalidateGetCache();
+      } else if (url.startsWith("/bank/")) invalidateGetCache({ prefix: "/bank/" });
+      else if (url.startsWith("/dealer/")) invalidateGetCache({ prefix: "/dealer/" });
       else if (url.startsWith("/gm/")) invalidateGetCache({ prefix: "/gm/" });
       else if (url.startsWith("/admin/")) invalidateGetCache({ prefix: "/admin/" });
       else if (url.startsWith("/notifications")) invalidateGetCache({ prefix: "/notifications" });
       else invalidateGetCache();
+      emitDataMutation(url);
     }
     return response;
   },

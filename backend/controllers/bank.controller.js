@@ -11,7 +11,7 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
-import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
@@ -432,12 +432,18 @@ function clearLeadDetailCaches(leadId) {
 }
 
 function clearBankSummaryCaches() {
+  clearCachedValue("admin:");
+  clearCachedValue("dealer:");
+  clearCachedValue("finance:");
+  clearCachedValue("gm:");
   clearCachedValue("bank:analytics:");
   clearCachedValue("bank:notifications:");
   clearCachedValue("bank:executives:");
   clearCachedValue("bank:executive-cases:");
+  clearCachedValue("bank:leads:");
   clearCachedValue("gm:notifications:");
   clearCachedValue("gm:salespersons:");
+  clearCachedValue("lead-query:");
 }
 
 export async function registerBankPartner(req, res, next) {
@@ -1372,7 +1378,7 @@ export async function updateBankLeadStatus(req, res, next) {
     const updated = await updateRecord("leads", lead.id, statusPayload);
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
-    syncLeadProjectionSoon(updated);
+    await syncLeadProjection(updated);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
     const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
     res.json({ message: "Lead status updated", lead: updated });

@@ -38,15 +38,16 @@ function roleLeadQueries(user, rowLimit) {
     ].filter(Boolean);
   }
   if (user.role === "bank-manager" && user.bankId) {
+    const branchConstraints = user.branchId ? [where("bankBranchCity", "==", user.branchId)] : [];
     return [{
-      key: `notifications:bank:${user.bankId}:lead-signal`,
-      factory: () => query(collection(db, "notifications"), where("bankId", "==", user.bankId), orderBy("createdAt", "desc"), limit(20)),
+      key: `leads:bank:${user.bankId}:${user.branchId || "all"}:${rowLimit}`,
+      factory: () => query(collection(db, "leads"), where("bankId", "==", user.bankId), ...branchConstraints, orderBy("createdAt", "desc"), limit(rowLimit)),
     }];
   }
   if (user.role === "super-admin") {
     return [{
-      key: "operational-events:admin:lead-signal",
-      factory: () => query(collection(db, "operationalEvents"), orderBy("createdAt", "desc"), limit(10)),
+      key: `leads:admin:${rowLimit}`,
+      factory: () => query(collection(db, "leads"), orderBy("createdAt", "desc"), limit(rowLimit)),
     }];
   }
   return [];
@@ -77,6 +78,19 @@ function runFreshRefresh(callback, { force = false } = {}) {
     });
 }
 
+function runInstantRefresh(callback) {
+  if (typeof callback !== "function" || globalRefreshInFlight) return;
+  globalRefreshInFlight = true;
+  globalLastRefreshAt = 0;
+  invalidateGetCache();
+  Promise.resolve()
+    .then(() => callback({ silent: true }))
+    .finally(() => {
+      globalRefreshInFlight = false;
+      globalLastRefreshAt = Date.now();
+    });
+}
+
 function scheduleFreshRefresh(callback, delay = 250) {
   if (typeof callback !== "function") return;
   window.clearTimeout(globalRefreshTimer);
@@ -97,13 +111,16 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = A
       if (!document.hidden) refresh();
     };
     const timer = window.setInterval(() => runFreshRefresh(refreshRef.current, { force: true }), Math.max(Number(intervalMs) || AUTO_REFRESH_MS, 30000));
+    const onMutation = () => runInstantRefresh(refreshRef.current);
     window.addEventListener("online", refresh);
     window.addEventListener("focus", refresh);
+    window.addEventListener("cls:data-mutated", onMutation);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("online", refresh);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("cls:data-mutated", onMutation);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [enabled, intervalMs]);
@@ -117,7 +134,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
 
   useEffect(() => {
     if (!enabled || !queryFactory || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), debounceMs);
+    const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), debounceMs);
     return subscribeRealtime({
       key,
       queryFactory,
@@ -144,7 +161,7 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }
 
   useEffect(() => {
     if (!enabled || !specs.length || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 700);
+    const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), 300);
     const unsubscribers = specs.map((spec) => subscribeRealtime({
       key: spec.key,
       queryFactory: spec.factory,
@@ -163,7 +180,7 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 600);
+    const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), 250);
     const specs = [
       {
         key: `lead-detail:${leadId}`,
@@ -191,7 +208,7 @@ export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
-    const debouncedRefresh = debounceCallback(() => runFreshRefresh(refreshRef.current, { force: true }), 500);
+    const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), 250);
     return subscribeRealtime({
       key: `timeline:${leadId}`,
       queryFactory: () => query(collection(db, "leadTimeline"), where("leadId", "==", leadId), orderBy("createdAt", "asc"), limit(50)),
