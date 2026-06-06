@@ -1,4 +1,5 @@
-import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
+import { createRecord, queryRecords } from "./firestore.service.js";
+import { queryTimelineProjection, syncTimelineProjectionSoon } from "./projection.service.js";
 import { cached } from "./ttlCache.service.js";
 
 export const TIMELINE_EVENTS = {
@@ -172,9 +173,8 @@ function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
 
 export async function canReadTimelineLead(actor = {}, leadId) {
   if (normalize(actor.role) === "super-admin") return true;
-  const lead = await getRecord("leads", leadId);
-  if (!lead) return false;
-  return canReadScopedTimeline({ event: { leadId }, lead, actor });
+  const projected = await queryTimelineProjection({ leadId, actor, query: { limit: 1 } }).catch(() => null);
+  return Boolean(projected?.data?.length);
 }
 
 function eventText(event) {
@@ -243,8 +243,8 @@ export async function addTimelineEvent({
     || metaPayload.assignedExecutiveId
     || metaPayload.assignedExecutiveEmail
   );
-  const lead = snapshot || (leadId && !hasScope ? await cached(`timeline:lead-snapshot:${leadId}`, 30000, () => getRecord("leads", leadId)) : null);
-  return createRecord("leadTimeline", {
+  const lead = snapshot || null;
+  const event = await createRecord("leadTimeline", {
     leadId,
     caseId: lead?.caseId || metaPayload.caseId || null,
     eventType: eventType || type,
@@ -262,6 +262,8 @@ export async function addTimelineEvent({
     metadata: metaPayload,
     visibility: visibility || ["finance-desk", "gm-sm", "bank-manager", "loan-executive", "super-admin"],
   });
+  syncTimelineProjectionSoon(event);
+  return event;
 }
 
 export async function getTimelineForLead(leadId) {
@@ -277,6 +279,15 @@ export async function getTimelineForLead(leadId) {
 }
 
 export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
+  const projected = await queryTimelineProjection({ leadId, query, actor }).catch(() => null);
+  if (projected?.data?.length) {
+    return {
+      data: projected.data,
+      total: projected.data.length,
+      page: Math.max(Number(query.page || 1), 1),
+      limit: projected.limit || Math.min(Math.max(Number(query.limit || 20), 1), 100),
+    };
+  }
   const page = Math.max(Number(query.page || 1), 1);
   const limit = Math.min(Math.max(Number(query.limit || 20), 1), 100);
   const search = String(query.search || "").trim().toLowerCase();
@@ -298,7 +309,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
     searchFields: ["title", "description", "actorName", "actorId", "leadId", "caseId"],
   });
   let events = result.data;
-  const prelim = events.map((event) => {
+  events = events.map((event) => {
     if (!roleCanSeeEvent(event, role)) return null;
     if (leadId && event.leadId !== leadId) return false;
     if (eventType && event.eventType !== eventType) return false;
@@ -311,23 +322,8 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       if (created < start || created > end) return false;
     }
     if (canReadScopedTimeline({ event, lead: null, actor })) return event;
-    return { ...event, __needsLeadScope: true };
+    return null;
   }).filter(Boolean);
-
-  const leadCache = new Map();
-  const needsLead = [...new Set(prelim.filter((event) => event.__needsLeadScope && event.leadId).map((event) => event.leadId))];
-  await Promise.all(needsLead.map(async (id) => {
-    leadCache.set(id, await cached(`timeline:lead-scope:${id}`, 30000, () => getRecord("leads", id)).catch(() => null));
-  }));
-
-  events = prelim
-    .map((event) => {
-      if (!event.__needsLeadScope) return event;
-      const { __needsLeadScope, ...cleanEvent } = event;
-      const lead = leadCache.get(event.leadId) || null;
-      return canReadScopedTimeline({ event: cleanEvent, lead, actor }) ? cleanEvent : null;
-    })
-    .filter(Boolean);
 
   events.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const start = (page - 1) * limit;

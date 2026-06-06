@@ -1,4 +1,4 @@
-import { countRecords, createRecord, deleteRecord, findRecordsByField, getRecord, incrementRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { countRecords, createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, incrementRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { processSlaBreaches } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
@@ -13,7 +13,7 @@ import { logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
-import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { queryLeadProjectionForUser, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import {
@@ -425,11 +425,36 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
   return { loginEmail, dealership, pendingAccount, approval };
 }
 
-async function deleteMatchingRecords(collection, matcher) {
+async function deleteMatchingRecords(collection, matcher, indexedQueries = []) {
+  if (indexedQueries.length) {
+    const counts = await Promise.all(indexedQueries.map((where) => deleteRecordsByQuery(collection, { where }).catch(() => 0)));
+    return counts.reduce((sum, count) => sum + count, 0);
+  }
   const records = await listRecords(collection);
   const matches = records.filter(matcher);
   await Promise.all(matches.map((item) => deleteRecord(collection, item.id)));
   return matches.length;
+}
+
+async function candidateRecordsByQueries(collection, directIds = [], indexedQueries = []) {
+  const byId = new Map();
+  await Promise.all(directIds.map(async (id) => {
+    const record = await getRecord(collection, id).catch(() => null);
+    if (record?.id) byId.set(record.id, record);
+  }));
+  await Promise.all(indexedQueries.map(async (where) => {
+    const page = await queryRecords(collection, {
+      where,
+      orderBy: where[0]?.field || "createdAt",
+      direction: "asc",
+      limit: 100,
+      maxLimit: 100,
+    }).catch(() => ({ data: [] }));
+    page.data.forEach((record) => {
+      if (record?.id) byId.set(record.id, record);
+    });
+  }));
+  return [...byId.values()];
 }
 
 async function firebaseUidForEmail(email) {
@@ -737,10 +762,11 @@ export async function suspendDealershipApproval(req, res, next) {
 export async function deleteDealershipPermanently(req, res, next) {
   try {
     const id = String(req.params.id || "").trim();
-    const onboardingRequests = await listRecords("onboardingRequests");
-    const pendingApprovals = await listRecords("pendingDealershipApprovals");
-    const onboardingRequest = onboardingRequests.find((item) => item.id === id);
-    const approvalRequest = pendingApprovals.find((item) => item.id === id || item.onboardingRequestId === id);
+    const [onboardingRequest, pendingCandidates] = await Promise.all([
+      getRecord("onboardingRequests", id).catch(() => null),
+      candidateRecordsByQueries("pendingDealershipApprovals", [id], [[{ field: "onboardingRequestId", value: id }]]),
+    ]);
+    const approvalRequest = pendingCandidates.find((item) => item.id === id || item.onboardingRequestId === id);
     const request = onboardingRequest || approvalRequest || await getRecord("dealerships", id) || await getRecord("approvedDealerships", id);
     if (!request) return res.status(404).json({ message: "Dealership record not found" });
 
@@ -793,6 +819,26 @@ export async function deleteDealershipPermanently(req, res, next) {
       deleted[collection] = (deleted[collection] || 0) + 1;
     }
 
+    const indexedDealerQueries = [
+      ...[...emails].flatMap((email) => [
+        [{ field: "email", value: email }],
+        [{ field: "uid", value: email }],
+        [{ field: "loginEmail", value: email }],
+        [{ field: "primaryGoogleEmail", value: email }],
+        [{ field: "dealerEmail", value: email }],
+        [{ field: "dealershipEmail", value: email }],
+        [{ field: "officialEmail", value: email }],
+        [{ field: "officialDealershipEmail", value: email }],
+        [{ field: "createdBy", value: email }],
+        [{ field: "dealershipId", value: email }],
+      ]),
+      onboardingRequest?.id ? [{ field: "onboardingRequestId", value: onboardingRequest.id }] : null,
+      approvalRequest?.id ? [{ field: "pendingDealershipApprovalId", value: approvalRequest.id }] : null,
+      approvalRequest?.id ? [{ field: "approvalRequestId", value: approvalRequest.id }] : null,
+      id ? [{ field: "pendingDealerAccountId", value: id }] : null,
+      id ? [{ field: "pendingDealerRegistrationId", value: id }] : null,
+    ].filter(Boolean);
+
     for (const collection of [
       "pendingDealerAccounts",
       "pendingGoogleAccounts",
@@ -807,7 +853,7 @@ export async function deleteDealershipPermanently(req, res, next) {
       "notifications",
       "cityMappings",
     ]) {
-      deleted[collection] = (deleted[collection] || 0) + await deleteMatchingRecords(collection, matchesDealer);
+      deleted[collection] = (deleted[collection] || 0) + await deleteMatchingRecords(collection, matchesDealer, indexedDealerQueries);
     }
 
     const authDeleted = {};
@@ -1022,8 +1068,9 @@ export async function suspendBankApproval(req, res, next) {
 export async function deleteBankPermanently(req, res, next) {
   try {
     const id = String(req.params.id || "").trim();
-    const approvals = await listRecords("pendingBankApprovals");
-    const request = approvals.find((item) => item.id === id) || await getRecord("bankPartners", id) || await getRecord("banks", id);
+    const request = await getRecord("pendingBankApprovals", id).catch(() => null)
+      || await getRecord("bankPartners", id).catch(() => null)
+      || await getRecord("banks", id).catch(() => null);
     if (!request) return res.status(404).json({ message: "Bank record not found" });
 
     const bankEmail = normalizeEmail(request.email || request.officialEmail || id);
@@ -1046,8 +1093,23 @@ export async function deleteBankPermanently(req, res, next) {
       return (bankEmail && values.includes(bankEmail)) || (bankName && names.includes(bankName)) || (ifsc && ifscValues.includes(ifsc));
     };
 
+    const indexedBankQueries = [
+      bankEmail ? [{ field: "email", value: bankEmail }] : null,
+      bankEmail ? [{ field: "officialEmail", value: bankEmail }] : null,
+      bankEmail ? [{ field: "managerEmail", value: bankEmail }] : null,
+      bankEmail ? [{ field: "branchManagerId", value: bankEmail }] : null,
+      id ? [{ field: "approvalRequestId", value: id }] : null,
+      ifsc ? [{ field: "ifsc", value: ifsc.toUpperCase() }] : null,
+      ifsc ? [{ field: "ifscCode", value: ifsc.toUpperCase() }] : null,
+      bankName ? [{ field: "bankName", value: request.bankName || request.companyName || request.name }] : null,
+      bankName ? [{ field: "companyName", value: request.bankName || request.companyName || request.name }] : null,
+      bankName ? [{ field: "name", value: request.bankName || request.companyName || request.name }] : null,
+      id ? [{ field: "bankId", value: id }] : null,
+      id ? [{ field: "bankPartnerId", value: id }] : null,
+    ].filter(Boolean);
+
     for (const collection of ["pendingBankApprovals", "pendingBankAccounts", "bankPartners", "banks", "branches", "branchManagers", "loanExecutives", "users", "dealershipBankTieUps"]) {
-      const records = await listRecords(collection);
+      const records = await candidateRecordsByQueries(collection, [id, bankEmail, ifsc].filter(Boolean), indexedBankQueries);
       const matches = records.filter(matchesBank);
       for (const record of matches) {
         const email = normalizeEmail(record.email || record.officialEmail || record.managerEmail || record.id);
@@ -1348,96 +1410,108 @@ export async function getAdminAnalytics(_req, res, next) {
 
 export async function getAdminEcosystem(req, res, next) {
   try {
-    const cacheKey = `admin:ecosystem:${JSON.stringify({
-      ecosystemLimit: req.query.ecosystemLimit || "",
-      limit: req.query.limit || "",
-      cursor: req.query.cursor || "",
-    })}`;
-    const payload = await cached(cacheKey, 15000, async () => {
     const limit = ecosystemLimit(req.query.ecosystemLimit);
     const leadLimit = Math.min(Math.max(Number(req.query.limit || 10), 1), 20);
-    const leadPage = await queryAllLeads({ query: { limit: leadLimit, cursor: req.query.cursor } });
-    const [
-      onboardingRequests,
-      dealerships,
-      financeDesks,
-      dealershipManagers,
-      bankPartners,
-      banks,
-      branches,
-      branchManagers,
-      loanExecutives,
-      assignments,
-      slaLogs,
-      reassignmentLogs,
-      documents,
-      bankDocuments,
-      pendingDealershipApprovals,
-      pendingBankApprovals,
-      approvalLogs,
-      pendingGoogleAccounts,
-      loginActivity,
-      users,
-    ] = await Promise.all([
-      boundedList("onboardingRequests", limit),
-      boundedList("dealerships", limit),
-      boundedList("financeDesks", limit),
-      boundedList("dealershipManagers", limit),
-      boundedList("bankPartners", limit),
-      boundedList("banks", limit),
-      boundedList("branches", limit),
-      boundedList("branchManagers", limit),
-      boundedList("loanExecutives", limit),
-      boundedList("leadAssignments", limit),
-      boundedList("slaLogs", limit),
-      boundedList("reassignmentLogs", limit),
-      boundedList("documents", limit, safeDocument),
-      boundedList("bankDocuments", limit, safeDocument),
-      boundedList("pendingDealershipApprovals", limit),
-      boundedList("pendingBankApprovals", limit),
-      boundedList("approvalLogs", limit),
-      boundedList("pendingGoogleAccounts", limit),
-      boundedList("loginActivity", limit, safeLoginActivity),
-      listRecentRecords("users", { limit }),
-    ]);
-    const activeDealershipIds = new Set(dealerships
-      .filter((item) => item.active !== false && item.accountActive !== false && !["deleted", "inactive", "suspended"].includes(String(item.status || "").toLowerCase()))
-      .flatMap((item) => [item.id, item.loginEmail, item.primaryGoogleEmail, item.officialDealershipEmail])
-      .map(normalizeEmail)
-      .filter(Boolean));
-    const isActiveDealerScoped = (item) => activeDealershipIds.has(normalizeEmail(item.dealershipEmail || item.dealershipId || item.loginEmail || item.id));
-    const visibleFinanceDesks = financeDesks.filter(isActiveDealerScoped);
-    const visibleDealershipManagers = dealershipManagers.filter(isActiveDealerScoped);
-    const visibleUsers = users
-      .filter((item) => !["finance-desk", "gm-sm"].includes(item.role) || isActiveDealerScoped(item))
-      .slice(0, limit)
-      .map(safeAdminUser);
 
-    return {
-      leads: leadPage.data,
-      leadPagination: { nextCursor: leadPage.nextCursor, hasMore: leadPage.hasMore, limit: leadPage.limit },
-      onboardingRequests,
-      dealerships,
-      financeDesks: visibleFinanceDesks,
-      dealershipManagers: visibleDealershipManagers,
-      bankPartners,
-      banks,
-      branches,
-      branchManagers,
-      loanExecutives,
-      assignments,
-      slaLogs,
-      reassignmentLogs,
-      documents,
-      bankDocuments,
-      pendingDealershipApprovals,
-      pendingBankApprovals,
-      approvalLogs,
-      pendingGoogleAccounts,
-      loginActivity,
-      users: visibleUsers,
-    };
+    const overviewMetricsPromise = cached("admin:ecosystem:overview:v2", 30000, async () => {
+      const metrics = await computeLeadMetrics();
+      const [dealershipsCount, banksCount, pendingDealerships, pendingBanks] = await Promise.all([
+        countRecords("dealerships").catch(() => 0),
+        countRecords("bankPartners").catch(() => 0),
+        countRecords("pendingDealershipApprovals", { where: [{ field: "status", value: "pending" }] }).catch(() => 0),
+        countRecords("pendingBankApprovals", { where: [{ field: "status", value: "pending" }] }).catch(() => 0),
+      ]);
+      return { metrics, dealershipsCount, banksCount, pendingDealerships, pendingBanks };
     });
+
+    const leadSummaryPromise = cached(`admin:ecosystem:leads:${leadLimit}:${req.query.cursor || ""}:v2`, 15000, async () => {
+      const projected = await queryLeadProjectionForUser({ user: req.user, query: { limit: leadLimit, cursor: req.query.cursor } }).catch(() => null);
+      if (projected?.data?.length) return projected;
+      return queryAllLeads({ query: { limit: leadLimit, cursor: req.query.cursor } });
+    });
+
+    const recentActivityPromise = cached("admin:ecosystem:activity:v2", 30000, async () => (
+      listRecentRecords("workflowLogViews", {
+        limit: 5,
+        orderBy: "timestamp",
+        fields: ["id", "logType", "timestamp", "actorEmail", "status", "action", "title", "summary", "leadId", "caseId"],
+      }).catch(() => [])
+    ));
+
+    const approvalsSummaryPromise = cached("admin:ecosystem:approvals:v2", 30000, async () => {
+      const [onboardingRequests, pendingDealershipApprovals, pendingBankApprovals, pendingGoogleAccounts] = await Promise.all([
+        boundedList("onboardingRequests", 5),
+        boundedList("pendingDealershipApprovals", 5),
+        boundedList("pendingBankApprovals", 5),
+        boundedList("pendingGoogleAccounts", 5),
+      ]);
+      return { onboardingRequests, pendingDealershipApprovals, pendingBankApprovals, pendingGoogleAccounts };
+    });
+
+    const bankSummaryPromise = cached("admin:ecosystem:banks:v2", 30000, async () => {
+      const [bankPartners, branches, branchManagers, loanExecutives] = await Promise.all([
+        boundedList("bankPartners", 5),
+        boundedList("bankBranchCatalog", 10),
+        boundedList("branchManagers", 5),
+        boundedList("loanExecutives", 5),
+      ]);
+      return { bankPartners, banks: bankPartners, branches, branchManagers, loanExecutives };
+    });
+
+    const dealershipSummaryPromise = cached("admin:ecosystem:dealerships:v2", 30000, async () => {
+      const [dealerships, financeDesks, dealershipManagers] = await Promise.all([
+        boundedList("dealerships", 5),
+        boundedList("financeDesks", 5),
+        boundedList("dealershipManagers", 5),
+      ]);
+      return { dealerships, financeDesks, dealershipManagers };
+    });
+
+    const [overviewMetrics, leadPage, recentActivity, approvalsSummary, bankSummary, dealershipSummary] = await Promise.all([
+      overviewMetricsPromise,
+      leadSummaryPromise,
+      recentActivityPromise,
+      approvalsSummaryPromise,
+      bankSummaryPromise,
+      dealershipSummaryPromise,
+    ]);
+
+    const payload = {
+      leads: leadPage.data || [],
+      leadPagination: { nextCursor: leadPage.nextCursor, hasMore: leadPage.hasMore, limit: leadPage.limit || leadLimit },
+      onboardingRequests: approvalsSummary.onboardingRequests,
+      dealerships: dealershipSummary.dealerships,
+      financeDesks: dealershipSummary.financeDesks,
+      dealershipManagers: dealershipSummary.dealershipManagers,
+      bankPartners: bankSummary.bankPartners,
+      banks: bankSummary.banks,
+      branches: bankSummary.branches,
+      branchManagers: bankSummary.branchManagers,
+      loanExecutives: bankSummary.loanExecutives,
+      assignments: [],
+      slaLogs: [],
+      reassignmentLogs: [],
+      documents: [],
+      bankDocuments: [],
+      pendingDealershipApprovals: approvalsSummary.pendingDealershipApprovals,
+      pendingBankApprovals: approvalsSummary.pendingBankApprovals,
+      approvalLogs: [],
+      pendingGoogleAccounts: approvalsSummary.pendingGoogleAccounts,
+      loginActivity: [],
+      users: [],
+      sections: {
+        overviewMetrics,
+        recentActivity,
+        approvalsSummary,
+        bankSummary,
+        dealershipSummary,
+        leadSummary: {
+          totalLeads: overviewMetrics.metrics?.totalLeads || 0,
+          preview: leadPage.data || [],
+          pagination: { nextCursor: leadPage.nextCursor, hasMore: leadPage.hasMore, limit: leadPage.limit || leadLimit },
+        },
+      },
+    };
     res.json(payload);
   } catch (error) {
     next(error);

@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
@@ -9,7 +9,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
-import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { queryStaffViewProjection, syncLeadProjectionSoon, syncStaffViewProjectionSoon } from "../services/projection.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -158,7 +158,11 @@ function uniqueRecords(records = []) {
   return [...byId.values()];
 }
 
-async function deleteMatchingRecords(collection, predicate) {
+async function deleteMatchingRecords(collection, predicate, indexedQueries = []) {
+  if (indexedQueries.length) {
+    const counts = await Promise.all(indexedQueries.map((where) => deleteRecordsByQuery(collection, { where }).catch(() => 0)));
+    return counts.reduce((sum, count) => sum + count, 0);
+  }
   const records = await listRecords(collection).catch(() => []);
   const matches = records.filter(predicate);
   await Promise.all(matches.map((item) => deleteRecord(collection, item.id)));
@@ -1028,7 +1032,10 @@ export async function getDealerSalespersons(req, res, next) {
 export async function getDealerStaff(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
+    const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: req.query }).catch(() => null);
+    if (projected?.length) return res.json(projected);
     const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
+    staff.forEach((row) => syncStaffViewProjectionSoon({ ...row, dealershipId: dealershipEmail, dealershipEmail }));
     res.json(staff);
   } catch (error) {
     next(error);
@@ -1039,7 +1046,8 @@ export async function getDealerStaffDetail(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
     const staffId = decodeURIComponent(req.params.id || "");
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
+    const staff = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { limit: 100 } }).catch(() => null)
+      || await buildDealerStaffRows(dealershipEmail, dealership, email);
     const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
     if (!employee) return res.status(404).json({ message: "Employee not found" });
     res.json(employee);
@@ -1258,6 +1266,7 @@ export async function createDealerStaff(req, res, next) {
       accountType,
     });
     await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
+    syncStaffViewProjectionSoon(staffPayload);
     res.status(201).json({
       ...staffPayload,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/finance/login`,
@@ -1286,14 +1295,29 @@ export async function deleteDealerStaff(req, res, next) {
     const deleted = {};
 
     for (const collection of ["dealerStaff", "financeDesks", "financeDesk", "dealershipManagers", "users"]) {
-      deleted[collection] = await deleteMatchingRecords(collection, (item) => belongsToDealer(item) && emailMatches(item));
+      deleted[collection] = await deleteMatchingRecords(collection, (item) => belongsToDealer(item) && emailMatches(item), [
+        [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
+        [{ field: "dealershipEmail", value: dealershipEmail }, { field: "email", value: email }],
+        [{ field: "dealershipId", value: dealershipEmail }, { field: "officialEmail", value: email }],
+        [{ field: "dealershipEmail", value: dealershipEmail }, { field: "officialEmail", value: email }],
+      ]);
     }
     for (const collection of ["loginActivity", "authAuditLogs", "notifications"]) {
       deleted[collection] = await deleteMatchingRecords(collection, (item) =>
         emailMatches(item)
         || staffEmail(item.recipientId || item.userEmail || item.actorEmail || item.createdBy || item.updatedBy) === email
-      );
+      , [
+        [{ field: "email", value: email }],
+        [{ field: "recipientId", value: email }],
+        [{ field: "userEmail", value: email }],
+        [{ field: "actorEmail", value: email }],
+        [{ field: "createdBy", value: email }],
+        [{ field: "updatedBy", value: email }],
+      ]);
     }
+    deleted.staffViewProjection = await deleteRecordsByQuery("staffViewProjection", {
+      where: [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
+    }).catch(() => 0);
 
     await revokeUserSessions(email, "dealer-staff-permanent-delete").catch(() => {});
     let authDeleted = false;

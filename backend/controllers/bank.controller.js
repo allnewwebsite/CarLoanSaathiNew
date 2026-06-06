@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
@@ -11,7 +11,16 @@ import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
-import { syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
+import {
+  getLeadDetailProjection,
+  queryExecutiveSummaryProjection,
+  queryNotificationProjectionForUser,
+  queryTimelineProjection,
+  syncExecutiveSummaryProjectionSoon,
+  syncLeadDetailProjection,
+  syncLeadProjection,
+  syncLeadProjectionSoon,
+} from "../services/projection.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
@@ -53,7 +62,11 @@ function anyMatch(values, targets) {
   return values.some((value) => targets.some((target) => sameText(value, target)));
 }
 
-async function deleteMatchingRecords(collection, predicate) {
+async function deleteMatchingRecords(collection, predicate, indexedQueries = []) {
+  if (indexedQueries.length) {
+    const counts = await Promise.all(indexedQueries.map((where) => deleteRecordsByQuery(collection, { where }).catch(() => 0)));
+    return counts.reduce((sum, count) => sum + count, 0);
+  }
   const records = await listRecords(collection).catch(() => []);
   const matches = records.filter(predicate);
   await Promise.all(matches.map((item) => deleteRecord(collection, item.id)));
@@ -724,6 +737,8 @@ export async function getBankExecutives(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view executives" });
     const identity = bankIdentity(partner);
+    const projected = await queryExecutiveSummaryProjection({ bankId: identity.bankId, query: req.query }).catch(() => null);
+    if (projected?.length) return res.json({ data: projected });
     const [executivesPage, leads] = await cached(`bank:executives:${identity.bankId}:${partner.email || partner.id}`, 15000, () => Promise.all([
       queryRecords("loanExecutives", {
         where: [{ field: "bankId", value: identity.bankId }],
@@ -757,6 +772,10 @@ export async function getBankExecutives(req, res, next) {
           status: executive.active === false ? "inactive" : executive.status || "active",
         };
       });
+    rows.forEach((row) => syncExecutiveSummaryProjectionSoon(row, {
+      totalAssignedCases: row.totalAssignedCases,
+      currentActiveCases: row.currentActiveCases,
+    }));
     res.json({ data: rows });
   } catch (error) {
     next(error);
@@ -899,7 +918,11 @@ export async function removeBankExecutive(req, res, next) {
     };
 
     for (const collection of ["loanExecutives", "users"]) {
-      deleted[collection] = await deleteMatchingRecords(collection, matchesExecutive);
+      deleted[collection] = await deleteMatchingRecords(collection, matchesExecutive, [
+        [{ field: "email", value: email }],
+        [{ field: "officialEmail", value: email }],
+        ...(uid ? [[{ field: "uid", value: uid }], [{ field: "authUid", value: uid }]] : []),
+      ]);
     }
 
     const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, removedAt });
@@ -1022,6 +1045,16 @@ export async function getBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
     const [hydratedLead] = await attachExecutiveMobile(partner, [lead]);
+    const projection = await getLeadDetailProjection(hydratedLead.id).catch(() => null);
+    if (projection?.documents || projection?.bankDocuments) {
+      return res.json({
+        ...hydratedLead,
+        ...projection,
+        id: hydratedLead.id,
+        documents: projection.documents || [],
+        bankDocuments: projection.bankDocuments || [],
+      });
+    }
     const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
       const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
       const leadDocuments = async (collection) => {
@@ -1049,6 +1082,10 @@ export async function getBankLead(req, res, next) {
         hydratedBankDocuments: await hydrateDocumentUrls(bankDocuments),
       };
     });
+    syncLeadDetailProjection(hydratedLead, {
+      documents: hydratedDocuments,
+      bankDocuments: hydratedBankDocuments,
+    }).catch(() => {});
     res.json({
       ...hydratedLead,
       documents: hydratedDocuments,
@@ -1177,6 +1214,8 @@ export async function getBankNotifications(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
+    const projected = await queryNotificationProjectionForUser({ user: req.user, query: { ...req.query, limit: req.query.limit || 40 } }).catch(() => null);
+    if (projected?.data?.length) return res.json(projected.data);
     const leads = await cached(`bank:notifications:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`, 15000, () => assignedLeadsForPartner(partner));
     const rows = leads
       .filter((lead) => {
@@ -1552,6 +1591,8 @@ export async function deleteBankLeadDocument(req, res, next) {
 export async function getBankLeadTimeline(req, res, next) {
   try {
     await requireAssignedLead(req);
+    const projected = await queryTimelineProjection({ leadId: req.params.id, actor: req.user, query: req.query }).catch(() => null);
+    if (projected?.data?.length) return res.json(projected.data);
     res.json(await getTimelineForLead(req.params.id));
   } catch (error) {
     next(error);

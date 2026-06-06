@@ -32,8 +32,7 @@ export async function createNotification({
   requestId = null,
   leadSnapshot = null,
 }) {
-  const needsLeadSnapshot = leadId && !leadSnapshot && (!meta.caseId || !dealershipId || !bankId || !assignedExecutiveId);
-  const lead = leadSnapshot || (needsLeadSnapshot ? await getRecord("leads", leadId) : null);
+  const lead = leadSnapshot || null;
   const caseId = lead?.caseId || meta.caseId || null;
   const targetUserId = userId || recipientId || partnerId || dealerEmail || null;
   const rendered = renderNotificationTemplate(type, { ...meta, title, message, caseId });

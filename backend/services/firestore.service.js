@@ -571,3 +571,47 @@ export async function deleteRecord(collection, id) {
   await ref.delete();
   return true;
 }
+
+export async function deleteRecordsByIds(collection, ids = []) {
+  const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!uniqueIds.length) return 0;
+  if (!firestore) {
+    const before = (memoryStore[collection] || []).length;
+    memoryStore[collection] = (memoryStore[collection] || []).filter((item) => !uniqueIds.includes(String(item.id || "")));
+    return before - memoryStore[collection].length;
+  }
+  await Promise.all(uniqueIds.map((id) => deleteRecord(collection, id)));
+  return uniqueIds.length;
+}
+
+export async function deleteRecordsByQuery(collection, {
+  where = [],
+  limit = 250,
+  maxPasses = 20,
+} = {}) {
+  const clauses = where.filter((clause) => clause?.field && clause.value !== undefined && clause.value !== null && clause.value !== "");
+  if (!clauses.length) {
+    const error = new Error("Refusing unscoped deleteRecordsByQuery call");
+    error.status = 400;
+    error.code = "UNSCOPED_DELETE_QUERY";
+    throw error;
+  }
+  const safeLimit = Math.min(Math.max(Number(limit) || 250, 1), 500);
+  let deleted = 0;
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    const page = await queryRecords(collection, {
+      where: clauses,
+      orderBy: clauses[0].field,
+      direction: "asc",
+      limit: safeLimit,
+      maxLimit: safeLimit,
+      fields: ["id"],
+      allowGlobal: collection === "leads",
+    });
+    const ids = page.data.map((item) => item.id).filter(Boolean);
+    if (!ids.length) break;
+    deleted += await deleteRecordsByIds(collection, ids);
+    if (ids.length < safeLimit) break;
+  }
+  return deleted;
+}
