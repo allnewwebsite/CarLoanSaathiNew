@@ -210,6 +210,8 @@ export const router = createBrowserRouter([
       { path: "manage-executive", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="manage-executive" /> }] },
       { path: "executives", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="executives" /> }] },
       { path: "executives/:executiveId/cases", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="executive-cases" /> }] },
+      { path: "dealerships", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="dealerships" /> }] },
+      { path: "dealerships/:dealershipId/disbursed", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="dealership-disbursed" /> }] },
       { path: "leads/:leadId", element: <DashboardLayout />, children: [{ index: true, element: <BankManagerLeadDetailPage /> }] },
       { path: "incoming", element: <Navigate to="/bank-manager/leads" replace /> },
       { path: "assigned", element: <Navigate to="/bank-manager/leads" replace /> },

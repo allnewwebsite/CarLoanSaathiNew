@@ -749,6 +749,26 @@
       ]
     },
     {
+      "collectionGroup": "bankViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankDealershipViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "lastLeadAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "executiveViews",
       "queryScope": "COLLECTION",
       "fields": [

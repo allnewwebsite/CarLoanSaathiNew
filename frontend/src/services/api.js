@@ -134,6 +134,7 @@ function cacheTtlForUrl(url = "") {
     path.includes("/salespersons")
     || path.includes("/staff")
     || path.includes("/executives")
+    || path.includes("/dealerships")
     || path.includes("/bank-tieups")
     || path.includes("/workflow/settings")
     || path.includes("/ecosystem")

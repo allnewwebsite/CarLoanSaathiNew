@@ -13,7 +13,9 @@ import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "..
 import { logError, logInfo } from "../services/logger.service.js";
 import {
   getLeadDetailProjection,
+  queryBankDealershipProjection,
   queryExecutiveSummaryProjection,
+  queryLeadProjectionForUser,
   queryNotificationProjectionForUser,
   queryTimelineProjection,
   syncExecutiveSummaryProjectionSoon,
@@ -453,10 +455,51 @@ function clearBankSummaryCaches() {
   clearCachedValue("bank:notifications:");
   clearCachedValue("bank:executives:");
   clearCachedValue("bank:executive-cases:");
+  clearCachedValue("bank:dealerships:");
   clearCachedValue("bank:leads:");
   clearCachedValue("gm:notifications:");
   clearCachedValue("gm:salespersons:");
   clearCachedValue("lead-query:");
+}
+
+function dealershipIdentityFromLead(lead = {}) {
+  const dealershipId = String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").trim();
+  if (!dealershipId) return null;
+  return {
+    dealershipId,
+    dealershipName: lead.dealershipName || lead.dealerName || lead.dealerBusinessName || lead.dealershipEmail || lead.dealerEmail || dealershipId,
+    dealershipEmail: lead.dealershipEmail || lead.dealerEmail || "",
+    dealerName: lead.dealerName || lead.dealershipName || "",
+    dealerMobile: lead.dealerMobile || lead.dealershipMobile || "",
+    city: lead.dealershipCity || lead.dealerCity || lead.city || "",
+    dealershipCity: lead.dealershipCity || lead.dealerCity || lead.city || "",
+    bankName: lead.bankName || lead.assignedBankName || "",
+    bankIfsc: lead.assignedBankIfsc || lead.ifscCode || "",
+  };
+}
+
+function groupDealershipsFromLeads(leads = []) {
+  const grouped = new Map();
+  for (const lead of leads) {
+    const identity = dealershipIdentityFromLead(lead);
+    if (!identity) continue;
+    const current = grouped.get(identity.dealershipId) || {
+      id: identity.dealershipId,
+      ...identity,
+      totalCases: 0,
+      activeCases: 0,
+      totalDisbursedCases: 0,
+      firstLeadAt: lead.createdAt || lead.generatedAt || lead.updatedAt || null,
+      lastLeadAt: lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || lead.generatedAt || null,
+    };
+    current.totalCases += 1;
+    if (normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED) current.totalDisbursedCases += 1;
+    if (![LEAD_STATUSES.DISBURSED, LEAD_STATUSES.REJECTED].includes(normalizeStatus(lead.status))) current.activeCases += 1;
+    const leadTime = lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || lead.generatedAt;
+    if (leadTime && (!current.lastLeadAt || String(leadTime) > String(current.lastLeadAt))) current.lastLeadAt = leadTime;
+    grouped.set(identity.dealershipId, current);
+  }
+  return [...grouped.values()].sort((left, right) => String(right.lastLeadAt || "").localeCompare(String(left.lastLeadAt || "")));
 }
 
 export async function registerBankPartner(req, res, next) {
@@ -727,6 +770,48 @@ export async function getBankLeads(req, res, next) {
       dataCount: data.length,
     });
     return res.json(JSON.parse(responseJson));
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getBankDealerships(req, res, next) {
+  try {
+    const partner = await currentPartner(req);
+    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view dealership activity" });
+    const identity = bankIdentity(partner);
+    const cacheKey = `bank:dealerships:${identity.bankId}:${req.query.page || 1}:${req.query.limit || 20}:${String(req.query.search || "").trim().toLowerCase()}`;
+    const projected = await cached(cacheKey, 20000, () => queryBankDealershipProjection({ bankId: identity.bankId, query: req.query }).catch(() => null));
+    if (projected?.data?.length) return res.json(projected);
+
+    const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
+    const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: 100 });
+    const grouped = groupDealershipsFromLeads(scopedLeads);
+    return res.json(pageResponse({ data: grouped.slice(0, limit), limit, total: grouped.length }));
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getBankDealershipDisbursedCases(req, res, next) {
+  try {
+    const partner = await currentPartner(req);
+    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view dealership disbursed cases" });
+    const identity = bankIdentity(partner);
+    const dealershipId = String(req.params.dealershipId || "").trim();
+    if (!dealershipId) return res.status(400).json({ message: "Dealership is required" });
+    const projected = await queryLeadProjectionForUser({
+      user: { ...req.user, role: "bank-manager", bankId: identity.bankId },
+      query: { ...req.query, dealershipId, status: LEAD_STATUSES.DISBURSED },
+    }).catch(() => null);
+    if (projected?.data?.length) return res.json(projected);
+
+    const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
+    const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, status: LEAD_STATUSES.DISBURSED, limit: 100 });
+    const data = scopedLeads
+      .filter((lead) => dealershipIdentityFromLead(lead)?.dealershipId === dealershipId && normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED)
+      .slice(0, limit);
+    return res.json(pageResponse({ data, limit, total: data.length }));
   } catch (error) {
     next(error);
   }

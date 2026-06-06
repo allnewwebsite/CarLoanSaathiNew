@@ -28,6 +28,7 @@ const navByRole = {
     { label: "Analytics", to: "/bank-manager/analytics", icon: BarChart3 },
     { label: "Manage Executive", to: "/bank-manager/manage-executive", icon: Users },
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },
+    { label: "All Dealerships", to: "/bank-manager/dealerships", icon: Building2 },
   ],
   "loan-executive": [
     { label: "Total Leads", to: "/loan-executive/leads", icon: ClipboardList },
@@ -60,6 +61,7 @@ function prefetchSpecsForRoute(to) {
   const path = String(to || "").split("?")[0];
   if (path.startsWith("/finance")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
   if (path.startsWith("/gm")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
+  if (path.startsWith("/bank-manager/dealerships")) return withCommonPrefetch([{ url: "/dashboard/fast" }, { url: "/bank/dealerships", params: { page: 1, limit: 10 } }]);
   if (path.startsWith("/bank-manager")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
 
   if (path.startsWith("/loan-executive")) return withCommonPrefetch([

@@ -4,6 +4,8 @@ import {
   deleteBankLeadDocument,
   getBankRegistrationStatus,
   getBankAnalytics,
+  getBankDealershipDisbursedCases,
+  getBankDealerships,
   getBankLead,
   getBankExecutiveCases,
   getBankExecutives,
@@ -36,6 +38,8 @@ router.post("/register/email-start", registrationRateLimit, registrationSecurity
 router.post("/register/status", registrationRateLimit, registrationSecurity, getBankRegistrationStatus);
 router.use(authenticate, requireRole(ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE));
 router.get("/leads", getBankLeads);
+router.get("/dealerships", requireRole(ROLES.BANK_MANAGER), getBankDealerships);
+router.get("/dealerships/:dealershipId/disbursed", requireRole(ROLES.BANK_MANAGER), getBankDealershipDisbursedCases);
 router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);
 router.post("/executives", requireRole(ROLES.BANK_MANAGER), createBankExecutive);
 router.post("/executives/:executiveId/lifecycle", requireRole(ROLES.BANK_MANAGER), updateBankExecutiveLifecycle);
