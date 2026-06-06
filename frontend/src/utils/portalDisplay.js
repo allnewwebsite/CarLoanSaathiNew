@@ -84,10 +84,25 @@ function collectDocumentNames(target, value) {
   if (text) target.push(text);
 }
 
+function isActivePendingDocumentStatus(value) {
+  return [
+    "REQUEST_DOCUMENT",
+    "REQUEST_PENDING_DOCUMENTS",
+    "DOCS_PENDING",
+    "Request Document",
+    "Request Pending Documents",
+    "Pending Documents",
+    "Docs Pending",
+    "Pending Docs",
+  ].includes(String(value || "").trim());
+}
+
 export function pendingDocumentItems(lead) {
   const names = [];
   collectDocumentNames(names, lead?.pendingDocuments);
   collectDocumentNames(names, lead?.pendingDocument);
+  if (names.length) return [...new Map(names.map((item) => [item.toLowerCase(), item])).values()];
+  if (!isActivePendingDocumentStatus(lead?.status)) return [];
   (Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []).forEach((request) => {
     collectDocumentNames(names, request?.documents || request?.document || request?.pendingDocuments);
   });
@@ -95,6 +110,7 @@ export function pendingDocumentItems(lead) {
 }
 
 export function pendingDocumentRequests(lead) {
+  if (!pendingDocumentItems(lead).length) return [];
   return (Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : [])
     .map((request, index) => {
       const documents = [];

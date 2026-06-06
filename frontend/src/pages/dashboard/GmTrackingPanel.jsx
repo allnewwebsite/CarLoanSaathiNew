@@ -130,6 +130,8 @@ function totalRows(leads) {
       moneyValue(lead.carPrice || lead.carOnRoadPrice || lead.onRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       display(lead.assignedSalesperson || lead.salespersonName),
+      display(lead.assignedExecutiveName),
+      display(lead.assignedExecutiveMobile || lead.executiveMobile),
       statusLabel(lead),
       generatedAt(lead),
       <DocumentsButton key="docs" lead={lead} />,
@@ -150,6 +152,7 @@ function caseRows(leads) {
       display(lead.assignedSalesperson || lead.salespersonName),
       display(lead.bankPartner || lead.assignedBankName),
       display(lead.assignedExecutiveName),
+      display(lead.assignedExecutiveMobile || lead.executiveMobile),
       statusLabel(lead),
       generatedAt(lead),
       <DocumentsButton key="docs" lead={lead} />,
@@ -192,7 +195,7 @@ function TotalLeadsScreen() {
     <section className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All leads created by this dealership." />
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" defaultValue={search} onChange={(event) => updateSearch(event.target.value)} /></div>
-      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Current Status", "Case Generated", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Executive", "Executive Mobile", "Current Status", "Case Generated", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -272,7 +275,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Case Generated", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Executive Mobile", "Current Status", "Case Generated", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -290,7 +293,7 @@ function SalespersonCasesScreen() {
   return (
     <section className="space-y-4">
       <SectionTitle title={salesperson ? `${salesperson.name} Cases` : "Salesperson Cases"} subtitle="Only cases linked to this salesperson." />
-      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Current Status", "Case Generated", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Executive Mobile", "Current Status", "Case Generated", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -334,7 +337,7 @@ export function GmLeadDetailPage() {
     <section className="space-y-4">
       <SectionTitle title="Customer Documents" subtitle={`Case ID: ${caseId(lead)}`} />
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Salesperson", lead.assignedSalesperson || lead.salespersonName], ["Current Status", statusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Salesperson", lead.assignedSalesperson || lead.salespersonName], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", statusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>

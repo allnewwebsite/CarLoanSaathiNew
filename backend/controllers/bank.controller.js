@@ -1102,7 +1102,7 @@ export async function getBankAnalytics(req, res, next) {
       if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) branchRow.approvedLeads += 1;
       if (statusOf(lead) === LEAD_STATUSES.DISBURSED) branchRow.disbursedLeads += 1;
       if (statusOf(lead) === LEAD_STATUSES.REJECTED) branchRow.rejectedLeads += 1;
-      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) branchRow.pendingDocuments += 1;
+      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) branchRow.pendingDocuments += 1;
       if (slaLabelForLead(lead) === "Overdue") branchRow.slaOverdue += 1;
       branchMap.set(branch, branchRow);
 
@@ -1126,7 +1126,7 @@ export async function getBankAnalytics(req, res, next) {
       if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) executiveRow.approvedLeads += 1;
       if (statusOf(lead) === LEAD_STATUSES.DISBURSED) executiveRow.disbursedLeads += 1;
       if (statusOf(lead) === LEAD_STATUSES.REJECTED) executiveRow.rejectedLeads += 1;
-      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) executiveRow.pendingDocuments += 1;
+      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) executiveRow.pendingDocuments += 1;
       if (slaLabelForLead(lead) === "Overdue") executiveRow.slaOverdue += 1;
       executiveMap.set(executiveId, executiveRow);
     }
@@ -1308,6 +1308,12 @@ export async function updateBankLeadStatus(req, res, next) {
     const pendingDocumentDescription = requestedDocuments.length
       ? `${requestedDocuments.join(", ")}${pendingDocumentReason ? ` - ${pendingDocumentReason}` : ""}`
       : "";
+    const clearsPendingDocuments = [
+      LEAD_STATUSES.DOCUMENT_RECEIVED,
+      LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+      LEAD_STATUSES.UNDER_BANK_PROCESS,
+      LEAD_STATUSES.DISBURSED,
+    ].includes(normalizedStatus);
     const now = new Date().toISOString();
     const executiveName = partner.name || partner.fullName || partner.email || req.user?.email;
     const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
@@ -1338,6 +1344,14 @@ export async function updateBankLeadStatus(req, res, next) {
         disbursementDate: req.body.disbursementDate,
         utrNumber: req.body.utrNumber,
         disbursementRemarks: req.body.remarks,
+      } : {}),
+      ...(clearsPendingDocuments ? {
+        pendingDocuments: [],
+        pendingDocumentsRequested: [],
+        pendingDocument: "",
+        pendingDocumentReason: "",
+        pendingDocumentsClearedAt: now,
+        pendingDocumentsClearedBy: executiveName,
       } : {}),
       ...([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? {
         pendingDocuments: requestedDocuments.length

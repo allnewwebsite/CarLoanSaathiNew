@@ -172,10 +172,12 @@ function leadRows(leads, mode = "total") {
         display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         <StatusBadge key="status" lead={lead} />,
+        display(lead.assignedExecutiveName),
+        display(lead.assignedExecutiveMobile || lead.executiveMobile),
         dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
       ];
       if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED) {
-        cells.splice(6, 0, display(lead.rejectionReason), display(lead.updatedByExecutiveName || lead.rejectedBy || lead.assignedExecutiveName));
+        cells.splice(6, 0, display(lead.rejectionReason));
       }
       cells.push(<DocumentsButton key="docs" lead={lead} />);
       return { key: lead.id, cells };
@@ -190,6 +192,7 @@ function leadRows(leads, mode = "total") {
           moneyValue(lead.loanAmount || lead.requiredLoanAmount),
           display(lead.bankPartner || lead.assignedBankName),
           display(lead.assignedExecutiveName),
+          display(lead.assignedExecutiveMobile || lead.executiveMobile),
           <StatusBadge key="status" lead={lead} />,
           dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
           <DocumentsButton key="docs" lead={lead} />,
@@ -202,9 +205,10 @@ function leadRows(leads, mode = "total") {
         ...base,
         display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-        dateValue(lead.generatedAt || lead.createdAt),
+        dateTime(lead.generatedAt || lead.createdAt),
         <StatusBadge key="status" lead={lead} />,
         display(lead.assignedExecutiveName),
+        display(lead.assignedExecutiveMobile || lead.executiveMobile),
         <DocumentsButton key="docs" lead={lead} />,
       ],
     };
@@ -468,7 +472,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1103,7 +1107,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1129,7 +1133,7 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1186,7 +1190,7 @@ export function FinanceLeadDetailPage() {
           <button onClick={() => navigate(`/finance/leads/${lead.id}/documents`)} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white">View Documents</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Executive", lead.assignedExecutiveName], ["Status", financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Status", financeStatus(lead)]].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>

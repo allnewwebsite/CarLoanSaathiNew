@@ -1,12 +1,20 @@
 import { memo } from "react";
 import { List } from "react-window";
 
-const VirtualRow = memo(function VirtualRow({ index, style, rows, gridTemplateColumns }) {
+function isDateTimeHeader(header = "") {
+  return /date|time|updated|generated|created|uploaded/i.test(header);
+}
+
+function cellClassName(header = "") {
+  return `flex min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600 ${isDateTimeHeader(header) ? "whitespace-nowrap" : ""}`;
+}
+
+const VirtualRow = memo(function VirtualRow({ index, style, rows, headers, gridTemplateColumns }) {
   const row = rows[index];
   return (
     <div style={{ ...style, gridTemplateColumns }} role="row" className="grid w-full border-b border-slate-100 bg-white hover:bg-slate-50" data-row-index={index}>
       {row.cells.map((cell, cellIndex) => (
-        <div key={`${row.key || index}-${cellIndex}`} role="cell" className="flex min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
+        <div key={`${row.key || index}-${cellIndex}`} role="cell" className={cellClassName(headers[cellIndex])} title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>
           {cell}
         </div>
       ))}
@@ -25,7 +33,7 @@ function columnWidth(header = "") {
   if (/status/i.test(header)) return 145;
   if (/mobile/i.test(header)) return 145;
   if (/amount|price/i.test(header)) return 150;
-  if (/date|time/i.test(header)) return 145;
+  if (isDateTimeHeader(header)) return 190;
   if (/ifsc/i.test(header)) return 140;
   if (/case/i.test(header)) return 125;
   return 150;
@@ -149,7 +157,7 @@ export const OperationalTable = memo(function OperationalTable({
               rowHeight={rowHeight}
               overscanCount={8}
               rowComponent={VirtualRow}
-              rowProps={{ rows: visibleRows, gridTemplateColumns }}
+              rowProps={{ rows: visibleRows, headers, gridTemplateColumns }}
               style={{ height: Math.min(height, Math.max(rowHeight, visibleRows.length * rowHeight)), width: "100%" }}
             />
           )}
@@ -158,7 +166,7 @@ export const OperationalTable = memo(function OperationalTable({
             <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
               {visibleRows.map((row) => (
                 <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
-                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600" title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
+                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className={`min-h-8 ${cellClassName(headers[index])}`} title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
                 </div>
               ))}
             </div>

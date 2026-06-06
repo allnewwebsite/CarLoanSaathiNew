@@ -39,7 +39,7 @@ function statusField(status) {
   const normalized = normalizeStatus(status);
   if (normalized === LEAD_STATUSES.DISBURSED || normalized === LEAD_STATUSES.CLOSED) return "disbursedLeads";
   if (normalized === LEAD_STATUSES.REJECTED) return "rejectedLeads";
-  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalized)) return "pendingDocuments";
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalized)) return "pendingDocuments";
   if ([LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return "bankProcess";
   return "pendingLeads";
 }
