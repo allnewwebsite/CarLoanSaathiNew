@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -339,6 +340,7 @@ export function GmLeadDetailPage() {
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
       </section>
+      <PendingDocumentsPanel lead={lead} />
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={docs.map((type) => {
         const document = (lead.documents || []).find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
         const url = document?.url || document?.fileUrl || document?.downloadUrl;

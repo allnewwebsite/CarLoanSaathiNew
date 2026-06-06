@@ -66,6 +66,51 @@ export function loanExecutiveRemark(lead) {
   return candidates.map(cleanPortalText).find(Boolean) || "-";
 }
 
+function normalizeDocumentName(value) {
+  const text = cleanPortalText(value);
+  return text && text !== "-" ? text : "";
+}
+
+function collectDocumentNames(target, value) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectDocumentNames(target, item));
+    return;
+  }
+  if (value && typeof value === "object") {
+    collectDocumentNames(target, value.document || value.documentName || value.documentType || value.type || value.label || value.name);
+    return;
+  }
+  const text = normalizeDocumentName(value);
+  if (text) target.push(text);
+}
+
+export function pendingDocumentItems(lead) {
+  const names = [];
+  collectDocumentNames(names, lead?.pendingDocuments);
+  collectDocumentNames(names, lead?.pendingDocument);
+  (Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []).forEach((request) => {
+    collectDocumentNames(names, request?.documents || request?.document || request?.pendingDocuments);
+  });
+  return [...new Map(names.map((item) => [item.toLowerCase(), item])).values()];
+}
+
+export function pendingDocumentRequests(lead) {
+  return (Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : [])
+    .map((request, index) => {
+      const documents = [];
+      collectDocumentNames(documents, request?.documents || request?.document || request?.pendingDocuments);
+      return {
+        id: request?.id || `${request?.requestedAt || "request"}-${index}`,
+        documents: [...new Map(documents.map((item) => [item.toLowerCase(), item])).values()],
+        notes: displayPortalText(request?.notes || request?.remark || request?.reason, ""),
+        requestedBy: displayPortalText(request?.requestedByExecutiveName || request?.requestedBy || request?.requestedByExecutiveId, ""),
+        requestedAt: request?.requestedAt || request?.createdAt || request?.timestamp || null,
+      };
+    })
+    .filter((request) => request.documents.length || request.notes || request.requestedAt)
+    .sort((a, b) => String(b.requestedAt || "").localeCompare(String(a.requestedAt || "")));
+}
+
 export function bankDocumentRows(lead) {
   const rows = Array.isArray(lead?.bankDocuments) ? lead.bankDocuments : [];
   if (rows.length) return rows;

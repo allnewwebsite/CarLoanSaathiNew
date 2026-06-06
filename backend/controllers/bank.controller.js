@@ -1302,9 +1302,12 @@ export async function updateBankLeadStatus(req, res, next) {
     if (!bankStatuses.includes(normalizedStatus)) return res.status(400).json({ message: "Invalid bank lead status" });
     const pendingDocument = String(req.body.pendingDocument || "").trim();
     const requestedDocuments = Array.isArray(req.body.pendingDocumentsRequested)
-      ? req.body.pendingDocumentsRequested.map((item) => String(item || "").trim()).filter(Boolean)
+      ? [...new Map(req.body.pendingDocumentsRequested.map((item) => String(item || "").trim()).filter(Boolean).map((item) => [item.toLowerCase(), item])).values()]
       : pendingDocument ? [pendingDocument] : [];
     const pendingDocumentReason = String(req.body.pendingDocumentReason || req.body.remarks || "").trim();
+    const pendingDocumentDescription = requestedDocuments.length
+      ? `${requestedDocuments.join(", ")}${pendingDocumentReason ? ` - ${pendingDocumentReason}` : ""}`
+      : "";
     const now = new Date().toISOString();
     const executiveName = partner.name || partner.fullName || partner.email || req.user?.email;
     const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
@@ -1357,6 +1360,7 @@ export async function updateBankLeadStatus(req, res, next) {
     clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
+    const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
     res.json({ message: "Lead status updated", lead: updated });
     setImmediate(() => {
       Promise.allSettled([
@@ -1370,18 +1374,18 @@ export async function updateBankLeadStatus(req, res, next) {
               ? TIMELINE_EVENTS.REJECTION
               : normalizedStatus === LEAD_STATUSES.DISBURSED
                 ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-                : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
+                : isPendingDocumentStatus
                   ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
                   : TIMELINE_EVENTS.STATUS_CHANGED,
           title: `Status: ${statusLabel}`,
-          description: pendingDocument ? `${pendingDocument}: ${pendingDocumentReason || "Document requested"}` : `Bank updated status to ${statusLabel}`,
+          description: pendingDocumentDescription || `Bank updated status to ${statusLabel}`,
           actorName: partner.email || partner.name || partner.fullName,
           actorRole: req.user?.role || "bank",
           branchId: partner.branchId || null,
-          metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocumentReason },
+          metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocuments: requestedDocuments, pendingDocumentReason },
           leadSnapshot: updated,
         }),
-        createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName } }),
+        createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : isPendingDocumentStatus ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: isPendingDocumentStatus && requestedDocuments.length ? `Lead ${lead.caseId || lead.id} needs: ${requestedDocuments.join(", ")}` : `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName, pendingDocuments: requestedDocuments, pendingDocumentReason } }),
         writeAuditLog({
           req,
           actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
@@ -1394,7 +1398,7 @@ export async function updateBankLeadStatus(req, res, next) {
           oldValue: lead.status,
           newValue: normalizedStatus,
           leadId: lead.id,
-          meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId },
+          meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId, pendingDocuments: requestedDocuments, pendingDocumentReason },
         }),
       ]).then((results) => {
         results.filter((result) => result.status === "rejected").forEach((result) => logError("Bank status side effect failed", { error: result.reason?.message || String(result.reason), leadId: lead.id, status: normalizedStatus }));

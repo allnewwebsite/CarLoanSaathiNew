@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
@@ -13,6 +14,7 @@ import { formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDis
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
+const otherDocumentLabel = "Other";
 const statusOptions = [
   LEAD_STATUSES.CONTACTED,
   LEAD_STATUSES.DOCUMENT_RECEIVED,
@@ -119,13 +121,19 @@ function RejectModal({ lead, onClose, onSaved }) {
 function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, onClose, onSaved }) {
   const [selected, setSelected] = useState([]);
   const [notes, setNotes] = useState("");
+  const [otherDocument, setOtherDocument] = useState("");
   const [busy, setBusy] = useState(false);
   const toggle = (doc) => setSelected((current) => current.includes(doc) ? current.filter((item) => item !== doc) : [...current, doc]);
+  const otherSelected = selected.includes(otherDocumentLabel);
+  const requestedDocuments = [
+    ...selected.filter((item) => item !== otherDocumentLabel),
+    ...(otherSelected && otherDocument.trim() ? [`Other: ${otherDocument.trim()}`] : []),
+  ];
   const submit = async () => {
-    if (!selected.length) return;
+    if (!requestedDocuments.length) return;
     setBusy(true);
     try {
-      await api.patch(`/bank/leads/${lead.id}/status`, { status, pendingDocumentsRequested: selected, pendingDocumentReason: notes, remarks: notes });
+      await api.patch(`/bank/leads/${lead.id}/status`, { status, pendingDocumentsRequested: requestedDocuments, pendingDocumentReason: notes, remarks: notes });
       onSaved();
     } finally {
       setBusy(false);
@@ -133,9 +141,24 @@ function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMEN
   };
   return (
     <Modal title={status === LEAD_STATUSES.REQUEST_DOCUMENT ? "Request Documents" : "Request Pending Documents"} onClose={onClose}>
-      <div className="grid gap-2 sm:grid-cols-2">{docs.map((doc) => <label key={doc} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"><input type="checkbox" checked={selected.includes(doc)} onChange={() => toggle(doc)} />{doc}</label>)}</div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {[...docs, otherDocumentLabel].map((doc) => (
+          <label key={doc} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-slate-700 ${selected.includes(doc) ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
+            <input type="checkbox" checked={selected.includes(doc)} onChange={() => toggle(doc)} />
+            <span className="font-medium">{doc}</span>
+          </label>
+        ))}
+      </div>
+      {otherSelected ? (
+        <input
+          className="mt-3 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1]"
+          placeholder="Enter other document name"
+          value={otherDocument}
+          onChange={(event) => setOtherDocument(event.target.value)}
+        />
+      ) : null}
       <textarea className="mt-3 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Additional Notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
-      <button disabled={busy || !selected.length} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Submit Request</button>
+      <button disabled={busy || !requestedDocuments.length || (otherSelected && !otherDocument.trim())} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Submit Request</button>
     </Modal>
   );
 }
@@ -236,7 +259,7 @@ function TotalLeadsPage({ mode }) {
         generatedAt(lead),
         executiveStatusLabel(lead),
         <button key="status-action" onClick={() => updateStatus(lead, "STATUS_UPDATE")} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Update</button>,
-        <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">Request Pending Docs</button>,
+        <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="inline-flex h-8 items-center justify-center rounded-md border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-700 hover:bg-amber-50">Request Docs</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
   }));
@@ -256,7 +279,7 @@ function TotalLeadsPage({ mode }) {
       </div>
       {mode === "status" ? <div className="flex flex-wrap gap-2">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Current Lead Status", "Update Status", "Request Document", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Current Lead Status", "Update Status", "Document Request", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
@@ -333,6 +356,7 @@ export function LoanExecutiveLeadDetailPage() {
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
       </section>
+      <PendingDocumentsPanel lead={lead} />
       <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Zoom", "Download", "Uploaded Timestamp"]} rows={rows} loading={false} />
       {canShowSanction ? (
         <section className="rounded-lg border border-slate-200 bg-white p-4">
