@@ -21,22 +21,23 @@ export async function enqueueNotificationEvent({ type, recipient, priority = "me
   });
 }
 
-export async function processNotificationEvents({ limit = 25 } = {}) {
+export async function processNotificationEvents({ limit = 10 } = {}) {
+  const now = new Date().toISOString();
   const result = await queryRecords("notificationEvents", {
-    where: [{ field: "status", value: "queued" }],
-    orderBy: "status",
+    where: [
+      { field: "status", value: "queued" },
+      { field: "nextAttemptAt", op: "<=", value: now },
+    ],
+    orderBy: "nextAttemptAt",
     direction: "asc",
     limit,
-    maxLimit: Math.min(Math.max(Number(limit) || 25, 1), 25),
+    maxLimit: Math.min(Math.max(Number(limit) || 10, 1), 10),
     fields: ["id", "eventId", "type", "recipient", "priority", "payload", "status", "retryCount", "requestId", "nextAttemptAt", "createdAt"],
   });
   let processed = 0;
-  const events = (result.data || [])
-    .sort((left, right) => String(left.nextAttemptAt || left.createdAt || "").localeCompare(String(right.nextAttemptAt || right.createdAt || "")));
+  const events = result.data || [];
   for (const event of events) {
     const retryCount = Number(event.retryCount || 0);
-    const nextAttemptAt = event.nextAttemptAt ? new Date(event.nextAttemptAt).getTime() : 0;
-    if (nextAttemptAt > Date.now()) continue;
     try {
       await createNotification({
         type: event.type,

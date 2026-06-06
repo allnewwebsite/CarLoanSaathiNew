@@ -222,7 +222,7 @@ if (process.env.DISABLE_WHATSAPP_QUEUE !== "true") {
 }
 
 if (process.env.DISABLE_NOTIFICATION_WORKER !== "true") {
-  const intervalMs = Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS || 15_000);
+  const intervalMs = Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS || 60_000);
   setInterval(() => {
     runWorkerTick({
       workerName: "notifications",

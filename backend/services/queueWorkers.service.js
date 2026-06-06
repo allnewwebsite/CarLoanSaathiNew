@@ -11,7 +11,7 @@ export function registerQueueWorkers() {
   registerWorker(QUEUE_NAMES.NOTIFICATIONS, async (payload) => {
     if (payload?.jobKind === "notification-events-sweep") return processNotificationEvents(payload);
     return createNotification(payload);
-  }, { concurrency: 2 });
+  }, { concurrency: 1 });
   registerWorker(QUEUE_NAMES.WHATSAPP, async () => processWhatsAppQueue(), { concurrency: 2 });
   registerWorker(QUEUE_NAMES.SLA, async () => processSlaBreaches(), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.ARCHIVAL, async (payload) => archiveClosedLeads(payload), { concurrency: 1 });
