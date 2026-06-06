@@ -9,7 +9,10 @@ import { markWorkerHealth } from "./health.service.js";
 
 export function registerQueueWorkers() {
   registerWorker(QUEUE_NAMES.NOTIFICATIONS, async (payload) => {
-    if (payload?.jobKind === "notification-events-sweep") return processNotificationEvents(payload);
+    if (payload?.jobKind === "notification-events-sweep") {
+      if (process.env.ENABLE_NOTIFICATION_EVENT_SWEEP !== "true") return 0;
+      return processNotificationEvents(payload);
+    }
     return createNotification(payload);
   }, { concurrency: 1 });
   registerWorker(QUEUE_NAMES.WHATSAPP, async () => processWhatsAppQueue(), { concurrency: 2 });

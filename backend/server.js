@@ -221,7 +221,7 @@ if (process.env.DISABLE_WHATSAPP_QUEUE !== "true") {
   }, intervalMs).unref();
 }
 
-if (process.env.DISABLE_NOTIFICATION_WORKER !== "true") {
+if (process.env.ENABLE_NOTIFICATION_EVENT_SWEEP === "true" && process.env.DISABLE_NOTIFICATION_WORKER !== "true") {
   const intervalMs = Number(process.env.NOTIFICATION_WORKER_INTERVAL_MS || 60_000);
   setInterval(() => {
     runWorkerTick({
