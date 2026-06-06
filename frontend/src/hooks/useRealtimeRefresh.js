@@ -6,9 +6,7 @@ import { invalidateGetCache } from "../services/api.js";
 import { subscribeRealtime } from "../services/realtimeManager.js";
 
 const MAX_VISIBLE_ROWS = 50;
-const AUTO_REFRESH_MS = 30000;
 const REFRESH_COOLDOWN_MS = 12000;
-const FORCED_REFRESH_COOLDOWN_MS = 5000;
 let globalRefreshTimer = 0;
 let globalRefreshInFlight = false;
 let globalLastRefreshAt = 0;
@@ -19,6 +17,7 @@ function safeLimit(value) {
 
 function roleLeadQueries(user, rowLimit) {
   if (!user?.role) return [];
+  if (user.role === "super-admin") return [];
   if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
     return [{
       key: `leads:dealership:${user.dealershipId}:${rowLimit}`,
@@ -44,12 +43,6 @@ function roleLeadQueries(user, rowLimit) {
       factory: () => query(collection(db, "leads"), where("bankId", "==", user.bankId), ...branchConstraints, orderBy("createdAt", "desc"), limit(rowLimit)),
     }];
   }
-  if (user.role === "super-admin") {
-    return [{
-      key: `leads:admin:${rowLimit}`,
-      factory: () => query(collection(db, "leads"), orderBy("createdAt", "desc"), limit(rowLimit)),
-    }];
-  }
   return [];
 }
 
@@ -64,8 +57,7 @@ function debounceCallback(callback, delay) {
 function runFreshRefresh(callback, { force = false } = {}) {
   if (typeof callback !== "function") return;
   const elapsed = Date.now() - globalLastRefreshAt;
-  const cooldown = force ? FORCED_REFRESH_COOLDOWN_MS : REFRESH_COOLDOWN_MS;
-  if (globalRefreshInFlight || elapsed < cooldown) return;
+  if (globalRefreshInFlight || (!force && elapsed < REFRESH_COOLDOWN_MS)) return;
   globalRefreshInFlight = true;
   globalLastRefreshAt = Date.now();
   invalidateGetCache({ prefix: "/dealer/" });
@@ -97,33 +89,24 @@ function scheduleFreshRefresh(callback, delay = 250) {
   globalRefreshTimer = window.setTimeout(() => runFreshRefresh(callback), delay);
 }
 
-export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = AUTO_REFRESH_MS } = {}) {
+export function useBackgroundRefresh({ onRefresh, enabled = true } = {}) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
 
   useEffect(() => {
     if (!enabled || typeof onRefresh !== "function") return undefined;
-    const refresh = () => {
+    const reconnectRefresh = () => {
       if (document.hidden) return;
       scheduleFreshRefresh(refreshRef.current);
     };
-    const onVisible = () => {
-      if (!document.hidden) refresh();
-    };
-    const timer = window.setInterval(() => runFreshRefresh(refreshRef.current, { force: true }), Math.max(Number(intervalMs) || AUTO_REFRESH_MS, 30000));
     const onMutation = () => runInstantRefresh(refreshRef.current);
-    window.addEventListener("online", refresh);
-    window.addEventListener("focus", refresh);
+    window.addEventListener("online", reconnectRefresh);
     window.addEventListener("cls:data-mutated", onMutation);
-    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("online", refresh);
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", reconnectRefresh);
       window.removeEventListener("cls:data-mutated", onMutation);
-      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [enabled, intervalMs]);
+  }, [enabled]);
 }
 
 export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700 }) {
@@ -176,7 +159,7 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
   const documentLeadIds = useMemo(() => [...new Set([lead?.id, lead?.caseId, leadId].filter(Boolean))], [lead?.caseId, lead?.id, leadId]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), intervalMs: 45000 });
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId) });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
@@ -204,7 +187,7 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
 export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), intervalMs: 45000 });
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId) });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;

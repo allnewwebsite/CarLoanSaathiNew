@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
-import { useAuth } from "../context/AuthContext.jsx";
-import { notificationQueryForUser } from "../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../services/api.js";
-import { subscribeRealtime } from "../services/realtimeManager.js";
 
 function formatDate(value) {
   if (!value) return "";
@@ -16,7 +13,6 @@ function priorityClass(priority) {
 }
 
 export function NotificationCenter() {
-  const { user } = useAuth();
   const initialPayload = getCachedGetData("/notifications", { limit: 20 });
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(() => initialPayload?.data || []);
@@ -34,32 +30,41 @@ export function NotificationCenter() {
   }, [filter]);
 
   useEffect(() => {
-    load({ silent: true }).then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
-  }, [filter]);
+    const cached = getCachedGetData("/notifications", { limit: 20, unread: filter === "unread" ? "true" : undefined });
+    if (cached?.data) {
+      setItems(cached.data);
+      setUnread(cached.unread || 0);
+      cached.data.forEach((item) => seenIds.current.add(item.id));
+    } else {
+      load({ silent: true }).then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
+    }
+  }, [filter, load]);
 
   useEffect(() => {
-    if (!user?.role) return undefined;
-    return subscribeRealtime({
-      key: `notifications:${user.role}:${user.dealershipId || user.bankId || user.email || "admin"}:${filter || "all"}`,
-      queryFactory: () => notificationQueryForUser(user),
-      skipInitial: false,
-      onChange: async () => {
-        const previous = seenIds.current;
-        const nextItems = await load({ silent: true }).catch(() => []);
-        const fresh = nextItems.find((item) => !previous.has(item.id));
-        nextItems.forEach((item) => previous.add(item.id));
-        if (fresh && !fresh.read) {
-          setToast(fresh.title || "New notification");
-          window.setTimeout(() => setToast(""), 3500);
-        }
-      },
-      onError: () => load({ silent: true }).catch(() => {}),
-    });
-  }, [filter, load, user]);
+    const onMutation = async () => {
+      const previous = seenIds.current;
+      const nextItems = await load({ silent: true }).catch(() => []);
+      const fresh = nextItems.find((item) => !previous.has(item.id));
+      nextItems.forEach((item) => previous.add(item.id));
+      if (fresh && !fresh.read) {
+        setToast(fresh.title || "New notification");
+        window.setTimeout(() => setToast(""), 3500);
+      }
+    };
+    window.addEventListener("cls:data-mutated", onMutation);
+    return () => window.removeEventListener("cls:data-mutated", onMutation);
+  }, [load]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    load({ silent: true }).catch(() => {});
+    return undefined;
+  }, [open, load]);
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);
-    await load({ silent: true });
+    setItems((current) => current.map((item) => item.id === id ? { ...item, read: true, readAt: new Date().toISOString() } : item));
+    setUnread((current) => Math.max(0, current - 1));
   };
 
   return (

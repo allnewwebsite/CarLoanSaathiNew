@@ -176,15 +176,6 @@ export default function BankTieUpSettings() {
     }
   }, [user, navigate, fetchBankTieUps]);
 
-  // Set up auto-refresh interval (check for new banks every 30 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchBankTieUps();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [fetchBankTieUps]);
-
   if (loading && !currentTieUps.length && !availableBanks.length) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
