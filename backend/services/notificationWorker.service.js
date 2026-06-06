@@ -24,12 +24,16 @@ export async function enqueueNotificationEvent({ type, recipient, priority = "me
 export async function processNotificationEvents({ limit = 25 } = {}) {
   const result = await queryRecords("notificationEvents", {
     where: [{ field: "status", value: "queued" }],
-    orderBy: "createdAt",
+    orderBy: "status",
     direction: "asc",
     limit,
+    maxLimit: Math.min(Math.max(Number(limit) || 25, 1), 25),
+    fields: ["id", "eventId", "type", "recipient", "priority", "payload", "status", "retryCount", "requestId", "nextAttemptAt", "createdAt"],
   });
   let processed = 0;
-  for (const event of result.data) {
+  const events = (result.data || [])
+    .sort((left, right) => String(left.nextAttemptAt || left.createdAt || "").localeCompare(String(right.nextAttemptAt || right.createdAt || "")));
+  for (const event of events) {
     const retryCount = Number(event.retryCount || 0);
     const nextAttemptAt = event.nextAttemptAt ? new Date(event.nextAttemptAt).getTime() : 0;
     if (nextAttemptAt > Date.now()) continue;

@@ -30,9 +30,10 @@ export async function createNotification({
   entityId,
   source = "api",
   requestId = null,
+  leadSnapshot = null,
 }) {
-  const needsLeadSnapshot = leadId && (!meta.caseId || !dealershipId || !bankId || !assignedExecutiveId);
-  const lead = needsLeadSnapshot ? await getRecord("leads", leadId) : null;
+  const needsLeadSnapshot = leadId && !leadSnapshot && (!meta.caseId || !dealershipId || !bankId || !assignedExecutiveId);
+  const lead = leadSnapshot || (needsLeadSnapshot ? await getRecord("leads", leadId) : null);
   const caseId = lead?.caseId || meta.caseId || null;
   const targetUserId = userId || recipientId || partnerId || dealerEmail || null;
   const rendered = renderNotificationTemplate(type, { ...meta, title, message, caseId });

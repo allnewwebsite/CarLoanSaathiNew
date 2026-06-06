@@ -152,6 +152,7 @@ export async function expireAssignment({ lead, assignment, reason }) {
     actorName: "SLA Engine",
     actorRole: "system",
     metadata: { assignmentId: assignment.id, partnerId: assignment.partnerId, executiveId: assignment.executiveId, reason },
+    leadSnapshot: lead,
   });
   await addTimelineEvent({
     leadId: lead.id,
@@ -161,6 +162,7 @@ export async function expireAssignment({ lead, assignment, reason }) {
     actorName: "SLA Engine",
     actorRole: "system",
     metadata: { assignmentId: assignment.id, reason },
+    leadSnapshot: lead,
   });
   await createNotification({
     type: "sla-breach",
@@ -174,8 +176,17 @@ export async function expireAssignment({ lead, assignment, reason }) {
     priority: "high",
     meta: {
       leadId: lead.id,
+      caseId: lead.caseId,
+      customerName: lead.fullName || lead.customerName,
+      dealershipId: lead.dealershipId,
+      bankId: lead.bankId,
+      assignedExecutiveId: lead.assignedExecutiveId,
       executiveName: assignment.executiveName,
       reason,
     },
+    dealershipId: lead.dealershipId || null,
+    bankId: lead.bankId || null,
+    assignedExecutiveId: lead.assignedExecutiveId || null,
+    leadSnapshot: lead,
   });
 }

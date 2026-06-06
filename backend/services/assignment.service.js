@@ -350,6 +350,7 @@ export async function retrieveAndReassignLead(leadId, reason = "manual-reassignm
     actorName: requestedBy,
     actorRole: requestedBy === "sla-engine" ? "system" : "user",
     metadata: { fromPartnerId: active?.partnerId || lead.assignedPartnerId, reason },
+    leadSnapshot: lead,
   });
   await writeAuditLog({
     actionType: AUDIT_ACTIONS.EXECUTIVE_REASSIGNED,
@@ -378,7 +379,19 @@ export async function retrieveAndReassignLead(leadId, reason = "manual-reassignm
     leadId,
     admin: true,
     priority: "high",
-    meta: { reason, leadId },
+    meta: {
+      reason,
+      leadId,
+      caseId: freshLead.caseId,
+      customerName: freshLead.fullName || freshLead.customerName,
+      dealershipId: freshLead.dealershipId,
+      bankId: freshLead.bankId,
+      assignedExecutiveId: freshLead.assignedExecutiveId,
+    },
+    dealershipId: freshLead.dealershipId || null,
+    bankId: freshLead.bankId || null,
+    assignedExecutiveId: freshLead.assignedExecutiveId || null,
+    leadSnapshot: freshLead,
   });
 
   return assignment;
@@ -507,6 +520,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     actorName: requestedBy,
     actorRole: "bank-manager",
     metadata: { fromExecutiveId: currentExecutive || null, toExecutiveId: executive.id, branchCity, reason },
+    leadSnapshot: updated,
   });
   await createNotification({
     type: "executive-reassigned",
@@ -516,7 +530,19 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     recipientRole: "loan-executive",
     recipientId: executive.id,
     phoneNumber: executiveMobile,
-    meta: { reason, branchCity },
+    meta: {
+      reason,
+      branchCity,
+      caseId: updated.caseId,
+      customerName: updated.fullName || updated.customerName,
+      dealershipId: updated.dealershipId,
+      bankId: updated.bankId,
+      assignedExecutiveId: updated.assignedExecutiveId,
+    },
+    dealershipId: updated.dealershipId || null,
+    bankId: updated.bankId || null,
+    assignedExecutiveId: updated.assignedExecutiveId || null,
+    leadSnapshot: updated,
   });
 
   return updated;
@@ -525,14 +551,19 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
 export async function processSlaBreaches() {
   const settings = await getWorkflowSettings();
   if (settings.slaEngineEnabled === false) return [];
-  const assignmentsPage = await queryRecords("leadAssignments", {
-    where: [{ field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
-    orderBy: "assignmentTimestamp",
+  const batchLimit = Math.min(Math.max(Number(process.env.SLA_ENGINE_BATCH_SIZE || 30), 1), 60);
+  const assignmentPages = await Promise.all(["pending", "accepted", "in-progress"].map((status) => queryRecords("leadAssignments", {
+    where: [{ field: "status", value: status }],
+    orderBy: "status",
     direction: "asc",
-    limit: Number(process.env.SLA_ENGINE_BATCH_SIZE || 100),
-    maxLimit: 100,
-  });
-  const assignments = assignmentsPage.data;
+    limit: Math.ceil(batchLimit / 3),
+    maxLimit: 25,
+    fields: ["id", "leadId", "status", "assignmentTimestamp", "createdAt", "partnerId", "partnerName", "executiveId", "executiveEmail", "executiveName"],
+  }).catch(() => ({ data: [] }))));
+  const assignments = assignmentPages
+    .flatMap((page) => page.data || [])
+    .sort((left, right) => String(left.assignmentTimestamp || left.createdAt || "").localeCompare(String(right.assignmentTimestamp || right.createdAt || "")))
+    .slice(0, batchLimit);
   const now = Date.now();
   const expired = assignments.filter((assignment) => {
     if (!["pending", "accepted", "in-progress"].includes(assignment.status)) return false;
