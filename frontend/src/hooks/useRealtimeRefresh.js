@@ -8,6 +8,7 @@ import { subscribeRealtime } from "../services/realtimeManager.js";
 const MAX_VISIBLE_ROWS = 50;
 const AUTO_REFRESH_MS = 30000;
 const REFRESH_COOLDOWN_MS = 12000;
+const FORCED_REFRESH_COOLDOWN_MS = 5000;
 let globalRefreshTimer = 0;
 let globalRefreshInFlight = false;
 let globalLastRefreshAt = 0;
@@ -62,7 +63,8 @@ function debounceCallback(callback, delay) {
 function runFreshRefresh(callback, { force = false } = {}) {
   if (typeof callback !== "function") return;
   const elapsed = Date.now() - globalLastRefreshAt;
-  if (!force && (globalRefreshInFlight || elapsed < REFRESH_COOLDOWN_MS)) return;
+  const cooldown = force ? FORCED_REFRESH_COOLDOWN_MS : REFRESH_COOLDOWN_MS;
+  if (globalRefreshInFlight || elapsed < cooldown) return;
   globalRefreshInFlight = true;
   globalLastRefreshAt = Date.now();
   invalidateGetCache({ prefix: "/dealer/" });
@@ -104,7 +106,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, intervalMs = A
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [enabled, intervalMs, onRefresh]);
+  }, [enabled, intervalMs]);
 }
 
 export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700 }) {
@@ -127,7 +129,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
         setHealth({ connected: false, error: error?.message || "Realtime listener failed" });
       },
     });
-  }, [debounceMs, enabled, key, onRefresh, queryFactory]);
+  }, [debounceMs, enabled, key, queryFactory]);
 
   return health;
 }
@@ -150,7 +152,7 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }
       onError: debouncedRefresh,
     }));
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [enabled, onRefresh, specs]);
+  }, [enabled, specs]);
 }
 
 export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true }) {
@@ -179,7 +181,7 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
       onError: debouncedRefresh,
     }));
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [documentLeadIds, enabled, leadId, onRefresh]);
+  }, [documentLeadIds, enabled, leadId]);
 }
 
 export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
@@ -196,7 +198,7 @@ export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
       onChange: debouncedRefresh,
       onError: debouncedRefresh,
     });
-  }, [enabled, leadId, onRefresh]);
+  }, [enabled, leadId]);
 }
 
 export function notificationQueryForUser(user, unreadOnly = false) {

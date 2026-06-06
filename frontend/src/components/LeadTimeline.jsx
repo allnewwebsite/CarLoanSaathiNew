@@ -99,7 +99,7 @@ export function LeadTimeline({ leadId, compact = false }) {
       </div>
 
       <div className="mt-5 space-y-0">
-        {loading && Array.from({ length: compact ? 3 : 5 }).map((_, index) => (
+        {loading && !events.length && Array.from({ length: compact ? 3 : 5 }).map((_, index) => (
           <div key={index} className="relative grid grid-cols-[2rem_1fr] gap-3 pb-5" aria-hidden="true">
             {index !== (compact ? 2 : 4) && <span className="absolute left-4 top-8 h-full w-px bg-slate-200" />}
             <span className="relative z-10 h-8 w-8 animate-pulse rounded-full bg-slate-200" />
@@ -111,7 +111,7 @@ export function LeadTimeline({ leadId, compact = false }) {
           </div>
         ))}
         {!loading && !events.length && <p className="py-6 text-center text-sm text-slate-500">No timeline events yet.</p>}
-        {!loading && events.map((event, index) => {
+        {events.map((event, index) => {
           const Icon = iconByType[event.eventType] || Clock3;
           return (
             <div key={event.id} className="relative grid grid-cols-[2rem_1fr] gap-3 pb-5">

@@ -272,19 +272,6 @@ export default function CreateDealerLead() {
     fetchCars();
   }, [user, navigate, fetchBankTieUps, fetchSalespersons, fetchCars]);
 
-  if (loadingBanks || loadingSalespersons || loadingCars) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-            <div className="h-96 bg-gray-200 rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
@@ -312,6 +299,12 @@ export default function CreateDealerLead() {
         {success && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
             <span>{success}</span>
+          </div>
+        )}
+
+        {(loadingBanks || loadingSalespersons || loadingCars) && (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm font-medium text-blue-900">
+            Refreshing latest bank, salesperson, and vehicle data...
           </div>
         )}
 
@@ -412,8 +405,9 @@ export default function CreateDealerLead() {
                 onChange={handleInputChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+                disabled={loadingCars}
               >
-                <option value="">Select brand</option>
+                <option value="">{loadingCars ? "Loading brands..." : "Select brand"}</option>
                 {cars.map((brand) => (
                   <option key={brand} value={brand}>
                     {brand}
@@ -433,10 +427,10 @@ export default function CreateDealerLead() {
                 onChange={handleInputChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
-                disabled={!formData.selectedBrand}
+                disabled={loadingCars || !formData.selectedBrand}
               >
                 <option value="">
-                  {formData.selectedBrand ? "Select model" : "Select brand first"}
+                  {loadingCars ? "Loading models..." : formData.selectedBrand ? "Select model" : "Select brand first"}
                 </option>
                 {models.map((model) => (
                   <option key={model} value={model}>
@@ -483,7 +477,11 @@ export default function CreateDealerLead() {
               <label className="block text-sm font-semibold text-blue-900 mb-2">
                 Select Bank Branch <span className="text-red-600">*</span>
               </label>
-              {banks.length === 0 ? (
+              {loadingBanks && !banks.length ? (
+                <div className="text-sm text-blue-800 p-3 bg-blue-100 rounded">
+                  Loading approved bank branches...
+                </div>
+              ) : banks.length === 0 ? (
                 <div className="text-sm text-blue-800 p-3 bg-blue-100 rounded">
                   <p className="font-medium mb-1">No bank tie-ups configured</p>
                   <p className="text-xs">
@@ -534,7 +532,11 @@ export default function CreateDealerLead() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Assigned Salesperson <span className="text-red-600">*</span>
               </label>
-              {salespersons.length === 0 ? (
+              {loadingSalespersons && !salespersons.length ? (
+                <div className="text-sm text-gray-600 p-3 bg-gray-100 rounded">
+                  Loading salespersons...
+                </div>
+              ) : salespersons.length === 0 ? (
                 <div className="text-sm text-gray-600 p-3 bg-gray-100 rounded">
                   No salespersons available. Please create salespersons first.
                 </div>
@@ -583,7 +585,7 @@ export default function CreateDealerLead() {
             </button>
             <button
               type="submit"
-              disabled={loading || banks.length === 0 || salespersons.length === 0}
+              disabled={loading || loadingBanks || loadingSalespersons || loadingCars || banks.length === 0 || salespersons.length === 0}
               className="inline-flex min-w-32 items-center justify-center rounded-lg bg-blue-600 px-6 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : "Create Lead"}
