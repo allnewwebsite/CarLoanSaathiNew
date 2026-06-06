@@ -431,6 +431,15 @@ function clearLeadDetailCaches(leadId) {
   clearCachedValue(`timeline:lead:${leadId}:`);
 }
 
+function clearBankSummaryCaches() {
+  clearCachedValue("bank:analytics:");
+  clearCachedValue("bank:notifications:");
+  clearCachedValue("bank:executives:");
+  clearCachedValue("bank:executive-cases:");
+  clearCachedValue("gm:notifications:");
+  clearCachedValue("gm:salespersons:");
+}
+
 export async function registerBankPartner(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -709,7 +718,7 @@ export async function getBankExecutives(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view executives" });
     const identity = bankIdentity(partner);
-    const [executivesPage, leads] = await Promise.all([
+    const [executivesPage, leads] = await cached(`bank:executives:${identity.bankId}:${partner.email || partner.id}`, 15000, () => Promise.all([
       queryRecords("loanExecutives", {
         where: [{ field: "bankId", value: identity.bankId }],
         orderBy: "createdAt",
@@ -718,7 +727,7 @@ export async function getBankExecutives(req, res, next) {
         maxLimit: 100,
       }),
       assignedLeadsForPartner(partner),
-    ]);
+    ]));
     const executives = executivesPage.data;
     const rows = executives
       .filter((executive) => executiveBelongsToBank(executive, identity))
@@ -850,6 +859,7 @@ export async function createBankExecutive(req, res, next) {
       branchId: identity.bankLocation || null,
     });
     const executive = await getRecord("loanExecutives", email);
+    clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId } });
     res.status(201).json({
       ...executive,
@@ -887,6 +897,7 @@ export async function removeBankExecutive(req, res, next) {
     }
 
     const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, removedAt });
+    clearBankSummaryCaches();
 
     await revokeUserSessions(email, "bank-executive-permanent-delete").catch(() => {});
     let authDeleted = false;
@@ -941,6 +952,7 @@ export async function updateBankExecutiveLifecycle(req, res, next) {
     } else return res.status(400).json({ message: "Invalid executive action" });
     await updateExecutiveLinkedRecords(executive.email, patch);
     if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(executive.email, `bank-executive-${action}`);
+    clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: `BANK_EXECUTIVE_${action.toUpperCase()}`, targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId, action } });
     res.json({ message: "Executive updated", executive: { ...executive, ...patch } });
   } catch (error) {
@@ -961,6 +973,7 @@ export async function resetBankExecutivePassword(req, res, next) {
     await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: temporaryPassword });
     await updateExecutiveLinkedRecords(executive.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: partner.email || partner.id });
     await revokeUserSessions(executive.email, "bank-executive-password-reset");
+    clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_PASSWORD_RESET", targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId } });
     res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`, executive });
   } catch (error) {
@@ -975,15 +988,24 @@ export async function getBankExecutiveCases(req, res, next) {
     const identity = bankIdentity(partner);
     const executive = await getRecord("loanExecutives", req.params.executiveId);
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
-    const leads = await assignedLeadsForPartner(partner, req.query);
-    const rows = leads.filter((lead) =>
-      lead.assignedExecutiveId === executive.id
-      || lead.assignedExecutiveId === executive.jobId
-      || lead.assignedExecutiveEmail === executive.email
-      || lead.assignedExecutiveMobile === executive.mobile
-      || lead.assignedExecutiveName === executive.name
-      || lead.assignedExecutiveName === executive.fullName
-    );
+    const rows = await cached(`bank:executive-cases:${identity.bankId}:${executive.id || executive.email}:${JSON.stringify(req.query || {})}`, 10000, async () => {
+      const candidates = await Promise.all([
+        queryExecutiveLeads({ executiveId: executive.id || executive.jobId || executive.email, executiveEmail: executive.email, query: req.query }),
+        executive.jobId && executive.jobId !== executive.id ? queryExecutiveLeads({ executiveId: executive.jobId, executiveEmail: executive.email, query: req.query }) : Promise.resolve({ data: [] }),
+      ]);
+      const byId = new Map();
+      candidates.flatMap((page) => page.data || []).forEach((lead) => {
+        if (partnerCanAccessLead(partner, lead)) byId.set(lead.id, lead);
+      });
+      return [...byId.values()].filter((lead) =>
+        lead.assignedExecutiveId === executive.id
+        || lead.assignedExecutiveId === executive.jobId
+        || lead.assignedExecutiveEmail === executive.email
+        || lead.assignedExecutiveMobile === executive.mobile
+        || lead.assignedExecutiveName === executive.name
+        || lead.assignedExecutiveName === executive.fullName
+      );
+    });
     res.json({ data: rows, executive });
   } catch (error) {
     next(error);
@@ -1184,6 +1206,7 @@ export async function acceptBankLead(req, res, next) {
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
@@ -1222,6 +1245,7 @@ export async function rejectBankLead(req, res, next) {
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.REJECTED);
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks });
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
@@ -1261,6 +1285,8 @@ export async function reassignBankLead(req, res, next) {
     }
     const reason = String(req.body.reason || "manager-reassignment").trim();
     const updated = await reassignLeadToNextBranchExecutive(lead.id, reason, partner.email || partner.id || "bank-manager");
+    clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
     res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
@@ -1328,6 +1354,7 @@ export async function updateBankLeadStatus(req, res, next) {
     };
     const updated = await updateRecord("leads", lead.id, statusPayload);
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
     res.json({ message: "Lead status updated", lead: updated });
@@ -1384,6 +1411,7 @@ export async function updateBankLeadRemarks(req, res, next) {
     const { partner, lead } = await requireAssignedLead(req);
     const updated = await updateRecord("leads", lead.id, { bankRemarks: remarks });
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1426,6 +1454,7 @@ export async function uploadBankLeadDocument(req, res, next) {
       ...uploaded,
     });
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     const isSanction = String(document.documentType || "").includes("sanction");
     if (isSanction) {
       const updatedLead = await updateRecord("leads", lead.id, {
@@ -1487,6 +1516,7 @@ export async function deleteBankLeadDocument(req, res, next) {
     await deleteLeadDocument(document.storagePath);
     await deleteRecord("bankDocuments", document.id);
     clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
     await addTimelineEvent({ leadId: lead.id, eventType: TIMELINE_EVENTS.DOCUMENT_REPLACED, title: "Document Removed", description: document.documentType, actorName: partner.email || partner.name || partner.fullName, actorRole: req.user?.role || "bank", metadata: { documentType: document.documentType }, leadSnapshot: lead });
     await writeAuditLog({ req, actionType: "DOCUMENT_DELETE", oldValue: document.documentType, leadId: lead.id });
     res.json({ message: "Document deleted" });

@@ -89,10 +89,12 @@ export async function getGmSalespersons(req, res, next) {
   try {
     const dealershipEmail = await dealershipEmailForGm(req);
     if (!dealershipEmail) return res.json([]);
-    const leadsPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
-    const leads = leadsPage.data;
+    const leads = await cached(`gm:salespersons:leads:${dealershipEmail}`, 15000, async () => {
+      const leadsPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
+      return leadsPage.data;
+    });
     const inactiveStatuses = new Set(["inactive", "removed", "deleted"]);
-    const salespersons = (await findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100))
+    const salespersons = (await cached(`gm:salespersons:staff:${dealershipEmail}`, 30000, () => findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100)))
       .filter((person) => (
         person.active !== false
         && !inactiveStatuses.has(String(person.status || "").toLowerCase())
