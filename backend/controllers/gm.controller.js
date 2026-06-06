@@ -45,6 +45,36 @@ function financeStatus(status) {
   return map[normalized] || "New";
 }
 
+function salespersonIdentitySet(person = {}, fallback = "") {
+  return new Set([
+    fallback,
+    person.id,
+    person.jobId,
+    person.email,
+    person.name,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean));
+}
+
+function leadMatchesSalesperson(lead = {}, identitySet = new Set()) {
+  if (!identitySet.size) return true;
+  return [
+    lead.salespersonId,
+    lead.salespersonName,
+    lead.salespersonJobId,
+    lead.salespersonEmail,
+    lead.assignedSalesperson,
+  ].some((value) => identitySet.has(String(value || "").trim().toLowerCase()));
+}
+
+async function salespersonForDealership(dealershipEmail, salespersonId) {
+  const id = String(salespersonId || "").trim();
+  if (!id) return null;
+  const direct = await getRecord("salespersons", id).catch(() => null);
+  if (direct?.dealershipId === dealershipEmail) return direct;
+  const people = await cached(`gm:salespersons:staff:${dealershipEmail}`, 30000, () => findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100));
+  return people.find((person) => salespersonIdentitySet(person, id).has(id.toLowerCase())) || null;
+}
+
 async function gmLeads(req) {
   const dealershipEmail = await dealershipEmailForGm(req);
   if (!dealershipEmail) return [];
@@ -63,7 +93,27 @@ export async function getGmLeads(req, res, next) {
       return res.json({ data: [], limit: 20, nextCursor: null, hasMore: false });
     }
     queryStarted = Date.now();
-    const page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+    let page;
+    if (req.query.salespersonId) {
+      const limit = Math.min(Math.max(Number(req.query.limit || 10), 1), 100);
+      const requestedPage = Math.max(Number(req.query.page || 1), 1);
+      const salesperson = await salespersonForDealership(dealershipEmail, req.query.salespersonId);
+      const identitySet = salespersonIdentitySet(salesperson || {}, req.query.salespersonId);
+      const { salespersonId: _salespersonId, page: _page, cursor: _cursor, limit: _limit, ...queryWithoutSalesperson } = req.query;
+      const fullPage = await queryDealershipLeads({ dealershipId: dealershipEmail, query: { ...queryWithoutSalesperson, limit: 100 } });
+      const matched = fullPage.data.filter((lead) => leadMatchesSalesperson(lead, identitySet));
+      const start = (requestedPage - 1) * limit;
+      const rows = matched.slice(start, start + limit);
+      page = {
+        data: rows,
+        limit,
+        total: matched.length,
+        nextCursor: null,
+        hasMore: start + rows.length < matched.length,
+      };
+    } else {
+      page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+    }
     queryEnded = Date.now();
     serializeStarted = Date.now();
     const responseJson = JSON.stringify(page);
@@ -101,7 +151,8 @@ export async function getGmSalespersons(req, res, next) {
       ))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
       .map((person) => {
-        const cases = leads.filter((lead) => lead.salespersonId === person.id || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === String(person.name || "").toLowerCase());
+        const identities = salespersonIdentitySet(person);
+        const cases = leads.filter((lead) => leadMatchesSalesperson(lead, identities));
         return {
           id: person.id,
           name: person.name,

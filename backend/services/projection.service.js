@@ -23,6 +23,8 @@ const VIEW_LEAD_FIELDS = [
   "dealerEmail",
   "salespersonId",
   "salespersonName",
+  "salespersonJobId",
+  "salespersonEmail",
   "assignedSalesperson",
   "bankId",
   "bankName",
@@ -42,7 +44,7 @@ const VIEW_LEAD_FIELDS = [
   "sanctionLetterUploadedAt",
 ];
 
-const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName"];
+const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName", "salespersonJobId", "salespersonEmail", "assignedSalesperson"];
 
 function pick(record = {}, fields = VIEW_LEAD_FIELDS) {
   return fields.reduce((next, field) => {

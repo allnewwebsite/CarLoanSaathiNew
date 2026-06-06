@@ -35,6 +35,7 @@ const LEAD_FIELDS = [
   "salespersonId",
   "salespersonName",
   "salespersonJobId",
+  "salespersonEmail",
   "assignedSalesperson",
   "carPrice",
   "carOnRoadPrice",
@@ -86,6 +87,13 @@ function localFilters(leads, query = {}) {
   const status = String(query.status || "").trim();
   const salesperson = String(query.salesperson || "").trim().toLowerCase();
   const salespersonId = String(query.salespersonId || "").trim();
+  const salespersonNeedles = new Set([
+    salesperson,
+    salespersonId.toLowerCase(),
+    String(query.salespersonName || "").trim().toLowerCase(),
+    String(query.salespersonJobId || "").trim().toLowerCase(),
+    String(query.salespersonEmail || "").trim().toLowerCase(),
+  ].filter(Boolean));
   const bank = String(query.bank || "").trim().toLowerCase();
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
@@ -97,9 +105,14 @@ function localFilters(leads, query = {}) {
       || financeStatus === status
       || leadStatus === normalizedQueryStatus
       || (normalizedQueryStatus === LEAD_STATUSES.NEW && financeStatus === "New");
-    const salespersonOk = (!salesperson && !salespersonId)
-      || String(lead.salespersonId || "") === salespersonId
-      || String(lead.assignedSalesperson || lead.salespersonName || "").toLowerCase() === salesperson;
+    const salespersonOk = !salespersonNeedles.size
+      || [
+        lead.salespersonId,
+        lead.salespersonName,
+        lead.salespersonJobId,
+        lead.salespersonEmail,
+        lead.assignedSalesperson,
+      ].some((value) => salespersonNeedles.has(String(value || "").trim().toLowerCase()));
     const bankText = String(lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || lead.preferredBank || "").toLowerCase();
     const bankOk = !bank || bankText === bank || bankText.includes(bank);
     const cityOk = !city || String(lead.city || "").toLowerCase() === city;

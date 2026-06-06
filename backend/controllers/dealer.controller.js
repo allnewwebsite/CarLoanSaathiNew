@@ -21,7 +21,7 @@ import {
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
-import { cached } from "../services/ttlCache.service.js";
+import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -61,6 +61,18 @@ function owned(leads, email, dealershipEmail = email) {
 
 function salespersonIdFrom(value) {
   return String(value || "").trim();
+}
+
+function clearLeadSyncCaches(leadId = "") {
+  clearCachedValue("gm:salespersons:");
+  clearCachedValue("gm:notifications:");
+  clearCachedValue("bank:notifications:");
+  clearCachedValue("bank:executives:");
+  clearCachedValue("bank:executive-cases:");
+  if (leadId) {
+    clearCachedValue(`lead-detail:${leadId}:`);
+    clearCachedValue(`timeline:lead:${leadId}:`);
+  }
 }
 
 function branchIdsFromRequest(value) {
@@ -878,6 +890,8 @@ export async function createDealerLead(req, res, next) {
       // Salesperson
       salespersonId: salesperson.id,
       salespersonName: salesperson.name,
+      salespersonJobId: salesperson.jobId || "",
+      salespersonEmail: salesperson.email || "",
       assignedSalesperson: salesperson.name,
       
       // Metadata
@@ -904,6 +918,7 @@ export async function createDealerLead(req, res, next) {
         reason: assignmentError.message,
       });
     }
+    clearLeadSyncCaches(responseLead.id || lead.id);
 
     runDealerLeadSideEffects("dealer-lead-created", [
       () => syncLeadProjectionSoon(responseLead),
