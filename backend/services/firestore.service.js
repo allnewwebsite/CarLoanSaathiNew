@@ -59,6 +59,18 @@ const memoryStore = {
   bankBranchCatalog: [],
 };
 
+const PRODUCTION_FULL_SCAN_DENYLIST = new Set([
+  "authAuditLogs",
+  "auditLogs",
+  "bankDocuments",
+  "documents",
+  "leadTimeline",
+  "loginActivity",
+  "notifications",
+  "slaLogs",
+  "userSessions",
+]);
+
 let memoryBackfillCounter = 0;
 
 function formatLeadCaseId(counter) {
@@ -148,11 +160,14 @@ export async function createRecord(collection, payload) {
 }
 
 export async function listRecords(collection) {
-  if (process.env.NODE_ENV === "production" && collection === "leads") {
-    const error = new Error("Unbounded lead reads are disabled in production");
+  if (process.env.NODE_ENV === "production" && (collection === "leads" || PRODUCTION_FULL_SCAN_DENYLIST.has(collection)) && process.env.ALLOW_FIRESTORE_FULL_SCAN !== "true") {
+    const error = new Error(`Unbounded ${collection} reads are disabled in production`);
     error.status = 400;
-    error.code = "UNBOUNDED_LEAD_READ_DISABLED";
+    error.code = "UNBOUNDED_FIRESTORE_READ_DISABLED";
     throw error;
+  }
+  if (process.env.NODE_ENV === "production") {
+    logWarn("Unbounded Firestore listRecords used", { collection });
   }
   if (!firestore) return memoryStore[collection] || [];
   const snapshot = await firestore.collection(collection).get();

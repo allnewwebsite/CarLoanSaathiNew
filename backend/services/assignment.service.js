@@ -6,7 +6,7 @@ import { getWorkflowSettings } from "./settings.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { countOpenExecutiveLeads } from "./leadQuery.service.js";
-import { syncLeadProjectionSoon } from "./projection.service.js";
+import { queryExecutiveSummaryProjection, syncLeadProjectionSoon } from "./projection.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 
 function queueIdForLead(lead) {
@@ -21,6 +21,18 @@ function sameText(left, right) {
   const a = String(left || "").trim().toLowerCase();
   const b = String(right || "").trim().toLowerCase();
   return Boolean(a && b && a === b);
+}
+
+function executiveIdentityKeys(executive = {}) {
+  return [
+    executive.id,
+    executive.sourceId,
+    executive.executiveId,
+    executive.email,
+    executive.officialEmail,
+    executive.jobId,
+    executive.mobile,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
 }
 
 function bankMatchesExecutive(lead, executive) {
@@ -83,6 +95,23 @@ async function selectBranchExecutive({ lead, partner, city }) {
   });
 
   return executive;
+}
+
+async function projectedExecutiveWorkload(bankId, eligible = []) {
+  if (!bankId || !eligible.length) return null;
+  const summaries = await queryExecutiveSummaryProjection({ bankId, query: { limit: 100 } }).catch(() => null);
+  if (!summaries?.length) return null;
+  const byKey = new Map();
+  for (const summary of summaries) {
+    const count = Number(summary.currentActiveCases || 0);
+    executiveIdentityKeys(summary).forEach((key) => byKey.set(key, count));
+  }
+  const workload = new Map();
+  for (const executive of eligible) {
+    const key = executiveIdentityKeys(executive).find((value) => byKey.has(value));
+    if (key) workload.set(executive.id, byKey.get(key));
+  }
+  return workload;
 }
 
 export async function assignLeadRoundRobin(lead, { excludePartnerIds = [], reason = "new-lead" } = {}) {
@@ -429,9 +458,12 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     throw error;
   }
 
-  const workload = new Map(await Promise.all(
-    eligible.map(async (item) => [item.id, await countOpenExecutiveLeads(item.id)])
-  ));
+  const workload = await projectedExecutiveWorkload(lead.bankId || lead.assignedPartnerId, eligible) || new Map();
+  const missing = eligible.filter((item) => !workload.has(item.id));
+  if (missing.length) {
+    const liveCounts = await Promise.all(missing.map(async (item) => [item.id, await countOpenExecutiveLeads(item.id)]));
+    liveCounts.forEach(([id, count]) => workload.set(id, count));
+  }
   const executive = eligible.sort((a, b) => (workload.get(a.id) || 0) - (workload.get(b.id) || 0))[0];
   const now = new Date().toISOString();
   const responseDeadlineAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();

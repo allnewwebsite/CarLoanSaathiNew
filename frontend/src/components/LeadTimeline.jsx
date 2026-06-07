@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock3, FileText, Search, Send, ShieldAlert } from "lucide-react";
-import { useTimelineRealtime } from "../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useTimelineRealtime } from "../hooks/useRealtimeRefresh.js";
 import { api } from "../services/api.js";
 
 const iconByType = {
@@ -57,7 +57,11 @@ export function LeadTimeline({ leadId, compact = false }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
-  useTimelineRealtime({ leadId, onRefresh: () => load({ ...filters, silent: true }) });
+  useTimelineRealtime({
+    leadId,
+    onRefresh: () => load({ ...filters, silent: true }),
+    mutationFilter: (detail) => mutationUrlMatches(detail, ["/timeline", "/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]),
+  });
 
   const updateFilter = (field, value) => {
     const next = { ...filters, [field]: value, page: field === "page" ? value : 1 };

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { api, getCachedGetData } from "../services/api.js";
 
+const NOTIFICATION_REFRESH_COOLDOWN_MS = 10000;
+const NOTIFICATION_REFRESH_DEBOUNCE_MS = 700;
+
 function formatDate(value) {
   if (!value) return "";
   return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -12,6 +15,19 @@ function priorityClass(priority) {
   return "bg-blue-50 text-[#0d47a1] border-blue-100";
 }
 
+function mutationCanAffectNotifications(detail = {}) {
+  const url = String(detail.url || "");
+  if (!url) return true;
+  return [
+    "/notifications",
+    "/admin/leads",
+    "/bank/leads",
+    "/dealer/leads",
+    "/documents",
+    "/gm/leads",
+  ].some((prefix) => url.startsWith(prefix));
+}
+
 export function NotificationCenter() {
   const initialPayload = getCachedGetData("/notifications", { limit: 20 });
   const [open, setOpen] = useState(false);
@@ -20,6 +36,10 @@ export function NotificationCenter() {
   const [filter, setFilter] = useState("");
   const [toast, setToast] = useState("");
   const seenIds = useRef(new Set());
+  const loadRef = useRef(null);
+  const inFlightRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
+  const mutationTimerRef = useRef(0);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
@@ -29,6 +49,29 @@ export function NotificationCenter() {
     return nextItems;
   }, [filter]);
 
+  loadRef.current = load;
+
+  const refreshNotifications = useCallback(async ({ force = false } = {}) => {
+    if (inFlightRef.current) return [];
+    const elapsed = Date.now() - lastRefreshAtRef.current;
+    if (!force && elapsed < NOTIFICATION_REFRESH_COOLDOWN_MS) return [];
+    inFlightRef.current = true;
+    lastRefreshAtRef.current = Date.now();
+    try {
+      const previous = seenIds.current;
+      const nextItems = await loadRef.current?.({ silent: true }).catch(() => []) || [];
+      const fresh = nextItems.find((item) => !previous.has(item.id));
+      nextItems.forEach((item) => previous.add(item.id));
+      if (fresh && !fresh.read) {
+        setToast(fresh.title || "New notification");
+        window.setTimeout(() => setToast(""), 3500);
+      }
+      return nextItems;
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     const cached = getCachedGetData("/notifications", { limit: 20, unread: filter === "unread" ? "true" : undefined });
     if (cached?.data) {
@@ -36,30 +79,30 @@ export function NotificationCenter() {
       setUnread(cached.unread || 0);
       cached.data.forEach((item) => seenIds.current.add(item.id));
     } else {
-      load({ silent: true }).then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
+      refreshNotifications({ force: true }).then((nextItems) => nextItems.forEach((item) => seenIds.current.add(item.id))).catch(() => {});
     }
-  }, [filter, load]);
+  }, [filter, refreshNotifications]);
 
   useEffect(() => {
-    const onMutation = async () => {
-      const previous = seenIds.current;
-      const nextItems = await load({ silent: true }).catch(() => []);
-      const fresh = nextItems.find((item) => !previous.has(item.id));
-      nextItems.forEach((item) => previous.add(item.id));
-      if (fresh && !fresh.read) {
-        setToast(fresh.title || "New notification");
-        window.setTimeout(() => setToast(""), 3500);
-      }
+    const onMutation = (event) => {
+      if (!mutationCanAffectNotifications(event?.detail || {})) return;
+      window.clearTimeout(mutationTimerRef.current);
+      mutationTimerRef.current = window.setTimeout(() => {
+        refreshNotifications({ force: false }).catch(() => {});
+      }, NOTIFICATION_REFRESH_DEBOUNCE_MS);
     };
     window.addEventListener("cls:data-mutated", onMutation);
-    return () => window.removeEventListener("cls:data-mutated", onMutation);
-  }, [load]);
+    return () => {
+      window.clearTimeout(mutationTimerRef.current);
+      window.removeEventListener("cls:data-mutated", onMutation);
+    };
+  }, [refreshNotifications]);
 
   useEffect(() => {
     if (!open) return undefined;
-    load({ silent: true }).catch(() => {});
+    refreshNotifications({ force: true }).catch(() => {});
     return undefined;
-  }, [open, load]);
+  }, [open, refreshNotifications]);
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);

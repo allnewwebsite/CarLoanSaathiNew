@@ -4,13 +4,15 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
+const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
 
 const customerDocumentTypes = [
   "Aadhaar",
@@ -168,7 +170,7 @@ function useBankLeads(search, status = "") {
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
-  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
 }
@@ -200,7 +202,7 @@ function useBankDealerships(search) {
   }, [page, search, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
-  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize });
+  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage };
 }
@@ -233,7 +235,7 @@ function useBankDealershipDisbursedCases(dealershipId, search) {
   }, [page, search, url, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
-  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize });
+  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage };
 }
@@ -252,7 +254,7 @@ function useExecutives() {
     }
   }, []);
   useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
-  useBackgroundRefresh({ onRefresh: load });
+  useBackgroundRefresh({ onRefresh: load, refreshKey: "bank-executives", mutationFilter: bankExecutiveMutationFilter });
   return { rows, loading, load };
 }
 
@@ -358,7 +360,7 @@ function AnalyticsPage() {
   }, []);
 
   useEffect(() => { load({ silent: Boolean(cachedAnalytics) }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize });
+  useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize, mutationFilter: leadMutationFilter });
   const emptyLoading = loading && !data;
 
   const branchRows = (data?.branchMetrics || []).map((item) => ({
@@ -611,7 +613,7 @@ function ExecutiveCasesPage() {
     }
   }, [executiveId]);
   useEffect(() => { load(); }, [load]);
-  useBackgroundRefresh({ onRefresh: load });
+  useBackgroundRefresh({ onRefresh: load, refreshKey: "bank-executive-cases", mutationFilter: leadMutationFilter });
   const rows = payload.data.map((lead) => ({
     key: lead.id,
     cells: [
@@ -744,7 +746,7 @@ export function BankManagerLeadDetailPage() {
   }, [leadId]);
 
   useEffect(() => { loadLead(); }, [loadLead]);
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailSkeleton />;
   if (!lead) {

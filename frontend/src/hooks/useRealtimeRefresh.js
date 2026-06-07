@@ -7,10 +7,12 @@ import { subscribeRealtime } from "../services/realtimeManager.js";
 
 const MAX_VISIBLE_ROWS = 50;
 const REFRESH_COOLDOWN_MS = 12000;
+const MUTATION_DEDUPE_MS = 800;
 let globalRefreshTimer = 0;
 let globalRefreshInFlight = false;
 let globalLastRefreshAt = 0;
 let globalPendingInstantRefresh = null;
+const mutationRefreshMemo = new Map();
 
 function safeLimit(value) {
   return Math.min(Math.max(Number(value || 10), 1), MAX_VISIBLE_ROWS);
@@ -104,13 +106,20 @@ function runInstantRefresh(callback) {
     });
 }
 
+export function mutationUrlMatches(detail = {}, prefixes = []) {
+  if (!prefixes.length) return true;
+  const url = String(detail?.url || "");
+  if (!url) return true;
+  return prefixes.some((prefix) => url.startsWith(prefix));
+}
+
 function scheduleFreshRefresh(callback, delay = 250) {
   if (typeof callback !== "function") return;
   window.clearTimeout(globalRefreshTimer);
   globalRefreshTimer = window.setTimeout(() => runFreshRefresh(callback), delay);
 }
 
-export function useBackgroundRefresh({ onRefresh, enabled = true } = {}) {
+export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "default", mutationFilter = null } = {}) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
 
@@ -120,21 +129,29 @@ export function useBackgroundRefresh({ onRefresh, enabled = true } = {}) {
       if (document.hidden) return;
       scheduleFreshRefresh(refreshRef.current);
     };
-    const onMutation = () => runInstantRefresh(refreshRef.current);
+    const onMutation = (event) => {
+      const detail = event?.detail || {};
+      if (typeof mutationFilter === "function" && !mutationFilter(detail)) return;
+      const key = `${refreshKey}:${detail.source || ""}:${detail.at || ""}:${detail.url || ""}`;
+      const lastAt = mutationRefreshMemo.get(key) || 0;
+      if (Date.now() - lastAt < MUTATION_DEDUPE_MS) return;
+      mutationRefreshMemo.set(key, Date.now());
+      runInstantRefresh(refreshRef.current);
+    };
     window.addEventListener("online", reconnectRefresh);
     window.addEventListener("cls:data-mutated", onMutation);
     return () => {
       window.removeEventListener("online", reconnectRefresh);
       window.removeEventListener("cls:data-mutated", onMutation);
     };
-  }, [enabled]);
+  }, [enabled, mutationFilter, refreshKey]);
 }
 
-export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700 }) {
+export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = true, debounceMs = 700, mutationFilter = null }) {
   const [health, setHealth] = useState({ connected: false, error: "" });
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled });
+  useBackgroundRefresh({ onRefresh, enabled, refreshKey: key || "realtime", mutationFilter });
 
   useEffect(() => {
     if (!enabled || !queryFactory || typeof onRefresh !== "function") return undefined;
@@ -155,13 +172,13 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
   return health;
 }
 
-export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }) {
+export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true, mutationFilter = null }) {
   const { user } = useAuth();
   const rowLimit = safeLimit(pageSize);
   const specs = useMemo(() => roleLeadQueries(user, rowLimit), [rowLimit, user?.bankId, user?.dealershipId, user?.email, user?.role, user?.uid]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled });
+  useBackgroundRefresh({ onRefresh, enabled, refreshKey: `role-leads:${user?.role || "anon"}`, mutationFilter });
 
   useEffect(() => {
     if (!enabled || !specs.length || typeof onRefresh !== "function") return undefined;
@@ -176,11 +193,11 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true }
   }, [enabled, specs]);
 }
 
-export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true }) {
+export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true, mutationFilter = null }) {
   const documentLeadIds = useMemo(() => [...new Set([lead?.id, lead?.caseId, leadId].filter(Boolean))], [lead?.caseId, lead?.id, leadId]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId) });
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), refreshKey: `lead-detail:${leadId || ""}`, mutationFilter });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
@@ -205,10 +222,10 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true 
   }, [documentLeadIds, enabled, leadId]);
 }
 
-export function useTimelineRealtime({ leadId, onRefresh, enabled = true }) {
+export function useTimelineRealtime({ leadId, onRefresh, enabled = true, mutationFilter = null }) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
-  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId) });
+  useBackgroundRefresh({ onRefresh, enabled: enabled && Boolean(leadId), refreshKey: `timeline:${leadId || ""}`, mutationFilter });
 
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;

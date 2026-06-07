@@ -5,12 +5,17 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/bank/leads", "/gm/leads", "/documents"]);
+const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/salespersons"]);
+const financeManagerMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/finance-managers"]);
+const staffMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/staff"]);
+const tieUpMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/bank-tieups"]);
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 const statusTabs = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
@@ -115,7 +120,7 @@ function useSalespersons({ includeInactive = false } = {}) {
     }
   }, [includeInactive]);
   useEffect(() => { loadSalespersons({ silent: Boolean(cachedSalespersons) }); }, [loadSalespersons]);
-  useBackgroundRefresh({ onRefresh: loadSalespersons });
+  useBackgroundRefresh({ onRefresh: loadSalespersons, refreshKey: "finance-salespersons", mutationFilter: salespersonMutationFilter });
   return { salespersons, loading, loadSalespersons };
 }
 
@@ -133,7 +138,7 @@ function useFinanceManagers({ includeInactive = false } = {}) {
     }
   }, [includeInactive]);
   useEffect(() => { loadFinanceManagers({ silent: Boolean(cachedManagers) }); }, [loadFinanceManagers]);
-  useBackgroundRefresh({ onRefresh: loadFinanceManagers });
+  useBackgroundRefresh({ onRefresh: loadFinanceManagers, refreshKey: "finance-managers", mutationFilter: financeManagerMutationFilter });
   return { financeManagers, loading, loadFinanceManagers };
 }
 
@@ -167,7 +172,7 @@ function useDealerLeads(filters = {}) {
   useEffect(() => {
     loadLeads({ silent: Boolean(cachedPayload) });
   }, [loadLeads]);
-  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize });
+  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, loadLeads };
 }
 
@@ -275,7 +280,7 @@ function StaffManagementScreen() {
   }, []);
 
   useEffect(() => { loadStaff({ silent: Boolean(cachedStaff) }); }, [loadStaff]);
-  useBackgroundRefresh({ onRefresh: loadStaff });
+  useBackgroundRefresh({ onRefresh: loadStaff, refreshKey: "finance-staff", mutationFilter: staffMutationFilter });
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -698,7 +703,7 @@ function BankTieUpsScreen() {
   }, []);
 
   useEffect(() => { loadTieUps({ silent: Boolean(cachedTieUps) }); }, [loadTieUps]);
-  useBackgroundRefresh({ onRefresh: loadTieUps });
+  useBackgroundRefresh({ onRefresh: loadTieUps, refreshKey: "finance-bank-tieups", mutationFilter: tieUpMutationFilter });
 
   const cities = useMemo(() => [...new Set(availableBranches.map((branch) => branch.city).filter(Boolean))].sort(), [availableBranches]);
   const states = useMemo(() => [...new Set(availableBranches.map((branch) => branch.state).filter(Boolean))].sort(), [availableBranches]);
@@ -1298,7 +1303,7 @@ export function FinanceLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="card p-5 text-sm text-slate-500">Lead not found.</section>;
@@ -1344,7 +1349,7 @@ export function FinanceLeadDocumentsPage() {
     api.get(`/dealer/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => {});
     return () => { active = false; };
   }, [leadId]);
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadDocs });
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadDocs, mutationFilter: leadMutationFilter });
 
   const upload = async (type) => {
     const file = files[type];

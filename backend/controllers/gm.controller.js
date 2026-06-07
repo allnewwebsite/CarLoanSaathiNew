@@ -119,20 +119,28 @@ export async function getGmLeads(req, res, next) {
       const salesperson = await salespersonForDealership(dealershipEmail, req.query.salespersonId);
       const identitySet = salespersonIdentitySet(salesperson || {}, req.query.salespersonId);
       const { salespersonId: _salespersonId, page: _page, cursor: _cursor, limit: _limit, ...queryWithoutSalesperson } = req.query;
-      const fullPage = await queryLeadProjectionForUser({
+      const projectionPage = salesperson ? await queryLeadProjectionForUser({
+        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        query: { ...queryWithoutSalesperson, salespersonId: salesperson.id || salesperson.sourceId || salesperson.jobId || salesperson.email, limit, page: requestedPage },
+      }).catch(() => null) : null;
+      if (projectionPage?.data?.length) {
+        page = projectionPage;
+      } else {
+        const fullPage = await queryLeadProjectionForUser({
         user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
         query: { ...queryWithoutSalesperson, limit: 100 },
-      }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: { ...queryWithoutSalesperson, limit: 100 } });
-      const matched = fullPage.data.filter((lead) => leadMatchesSalesperson(lead, identitySet));
-      const start = (requestedPage - 1) * limit;
-      const rows = matched.slice(start, start + limit);
-      page = {
-        data: rows,
-        limit,
-        total: matched.length,
-        nextCursor: null,
-        hasMore: start + rows.length < matched.length,
-      };
+        }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: { ...queryWithoutSalesperson, limit: 100 } });
+        const matched = fullPage.data.filter((lead) => leadMatchesSalesperson(lead, identitySet));
+        const start = (requestedPage - 1) * limit;
+        const rows = matched.slice(start, start + limit);
+        page = {
+          data: rows,
+          limit,
+          total: matched.length,
+          nextCursor: null,
+          hasMore: start + rows.length < matched.length,
+        };
+      }
     } else {
       page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
     }
@@ -236,8 +244,14 @@ export async function getGmNotifications(req, res, next) {
       user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
       query: { ...req.query, limit: req.query.limit || 30 },
     }).catch(() => null);
-    if (projected?.data?.length) return res.json(projected.data);
-    const leads = await cached(`gm:notifications:${dealershipEmail}`, 15000, () => gmLeads(req));
+    if (projected) return res.json(projected.data || []);
+    const leads = await cached(`gm:notifications:${dealershipEmail}`, 15000, async () => {
+      const page = await queryLeadProjectionForUser({
+        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        query: { limit: 30 },
+      }).catch(() => null);
+      return page?.data || [];
+    });
     const rows = leads
       .filter((lead) => ["Approved", "Rejected", "Disbursed", "Pending Documents"].includes(financeStatus(lead.status)))
       .slice(0, 30)

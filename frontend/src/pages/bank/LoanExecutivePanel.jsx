@@ -6,13 +6,14 @@ import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.js
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
-import { useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/documents"]);
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 const otherDocumentLabel = "Other";
 const statusOptions = [
@@ -100,7 +101,7 @@ function useExecutiveLeads({ search, status }) {
   }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
-  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize });
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
 }
@@ -320,7 +321,7 @@ export function LoanExecutiveLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;

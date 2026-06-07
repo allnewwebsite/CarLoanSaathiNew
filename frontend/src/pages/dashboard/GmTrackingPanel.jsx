@@ -5,13 +5,15 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/leads", "/dealer/leads", "/bank/leads", "/documents"]);
+const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/salespersons", "/dealer/salespersons"]);
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 const statusCards = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
@@ -115,7 +117,7 @@ function useGmLeads(filters = {}) {
   useEffect(() => {
     load({ silent: Boolean(cached) });
   }, [load]);
-  useRoleLeadRealtime({ onRefresh: load, pageSize });
+  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, load };
 }
 
@@ -133,7 +135,7 @@ function useSalespersons() {
     }
   }, []);
   useEffect(() => { load({ silent: Boolean(cachedSalespersons) }); }, [load]);
-  useBackgroundRefresh({ onRefresh: load });
+  useBackgroundRefresh({ onRefresh: load, refreshKey: "gm-salespersons", mutationFilter: salespersonMutationFilter });
   return { salespersons, loading };
 }
 
@@ -346,7 +348,7 @@ export function GmLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead });
+  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;

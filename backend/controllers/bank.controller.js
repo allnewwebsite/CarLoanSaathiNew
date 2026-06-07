@@ -1300,8 +1300,8 @@ export async function getBankNotifications(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const projected = await queryNotificationProjectionForUser({ user: req.user, query: { ...req.query, limit: req.query.limit || 40 } }).catch(() => null);
-    if (projected?.data?.length) return res.json(projected.data);
-    const leads = await cached(`bank:notifications:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`, 15000, () => assignedLeadsForPartner(partner));
+    if (projected) return res.json(projected.data || []);
+    const leads = await cached(`bank:notifications:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`, 15000, () => assignedLeadsForPartner(partner, { limit: 40 }));
     const rows = leads
       .filter((lead) => {
         const status = normalizeStatus(lead.status);

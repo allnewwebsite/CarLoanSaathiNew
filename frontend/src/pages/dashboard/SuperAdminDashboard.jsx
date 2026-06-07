@@ -7,12 +7,13 @@ import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
 
 function display(value) {
   return value || "-";
@@ -184,7 +185,7 @@ function useAdminEcosystem() {
   }, []);
 
   useEffect(() => { load({ silent: Boolean(cachedEcosystem && Object.keys(cachedEcosystem).length) }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
   return { ...state, analytics, loading, load };
 }
 
@@ -326,7 +327,7 @@ function useAdminPanelData(mode, search, leadFilter) {
   }, [leadFilter, mode, search]);
 
   useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10 });
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
   return { rows, loading, load };
 }
 
