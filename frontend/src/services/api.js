@@ -266,6 +266,27 @@ export function invalidateGetCache({ url, prefix } = {}) {
   scheduleGetCachePersist();
 }
 
+function isLeadMutationUrl(url = "") {
+  const path = String(url || "");
+  return path.startsWith("/bank/leads/")
+    || path.startsWith("/dealer/leads")
+    || path.startsWith("/gm/leads")
+    || path.startsWith("/admin/leads")
+    || path.startsWith("/documents/");
+}
+
+function invalidateLeadCaches() {
+  [
+    "/admin/leads",
+    "/bank/leads",
+    "/dealer/leads",
+    "/gm/leads",
+    "/timeline",
+    "/notifications",
+  ].forEach((prefix) => invalidateGetCache({ prefix }));
+  invalidateGetCache({ prefix: "/bank/dealerships" });
+}
+
 function dispatchDataMutation(payload) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("cls:data-mutated", {
@@ -275,10 +296,11 @@ function dispatchDataMutation(payload) {
 
 function handleRemoteDataMutation(payload) {
   if (typeof window === "undefined" || !payload || payload.source === dataMutationSource) return;
-  const mutationKey = `${payload.source || ""}:${payload.at || ""}:${payload.url || ""}`;
+  const mutationKey = `${payload.source || ""}:${payload.at || ""}:${payload.canonicalUrl || payload.url || ""}`;
   if (mutationKey === lastRemoteMutationKey) return;
   lastRemoteMutationKey = mutationKey;
-  invalidateGetCache();
+  if (payload.kind === "lead") invalidateLeadCaches();
+  else invalidateGetCache();
   dispatchDataMutation({ ...payload, remote: true });
 }
 
@@ -306,8 +328,11 @@ function setupDataMutationListeners() {
 function emitDataMutation(url = "") {
   if (typeof window === "undefined") return;
   setupDataMutationListeners();
+  const leadMutation = isLeadMutationUrl(url);
   const payload = {
     url,
+    canonicalUrl: leadMutation ? "/lead-mutation" : url,
+    kind: leadMutation ? "lead" : "generic",
     at: Date.now(),
     source: dataMutationSource,
     portal: requestPortalHeader(),
@@ -537,8 +562,8 @@ api.interceptors.response.use(
     if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) {
       const url = String(response.config?.url || "");
       let shouldEmitMutation = false;
-      if (url.startsWith("/bank/leads/") || url.startsWith("/documents/")) {
-        invalidateGetCache();
+      if (isLeadMutationUrl(url)) {
+        invalidateLeadCaches();
         shouldEmitMutation = true;
       } else if (url.startsWith("/bank/")) {
         invalidateGetCache({ prefix: "/bank/" });

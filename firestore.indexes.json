@@ -724,6 +724,14 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "adminViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
@@ -735,6 +743,15 @@
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financeViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
     {
@@ -794,6 +811,15 @@
       "fields": [
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gmViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
@@ -805,6 +831,15 @@
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
     {
@@ -844,6 +879,15 @@
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "executiveViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
     },
     {

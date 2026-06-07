@@ -123,6 +123,27 @@ service cloud.firestore {
           ));
     }
 
+    function canReadPortalProjection(data) {
+      return isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm())
+          && data.scopeType == "dealership"
+          && dealershipId() != null
+          && data.scopeId == dealershipId())
+        || (isBankManager()
+          && data.scopeType == "bank"
+          && bankId() != null
+          && data.scopeId == bankId())
+        || (isLoanExecutive()
+          && data.scopeType == "executive"
+          && (
+            data.scopeId == request.auth.uid
+            || data.scopeId == email()
+            || data.assignedExecutiveId == request.auth.uid
+            || data.assignedExecutiveId == email()
+            || data.assignedExecutiveEmail == email()
+          ));
+    }
+
     function safeNotificationReadUpdate() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt", "updatedAt"]);
     }
@@ -209,6 +230,43 @@ service cloud.firestore {
       allow update: if canReadNotification(resource.data) && safeNotificationReadUpdate();
       allow create, delete: if false;
       allow read, write: if isSuperAdmin();
+    }
+
+    match /adminViews/{viewId} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /financeViews/{viewId} {
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && canReadPortalProjection(resource.data));
+      allow write: if false;
+    }
+
+    match /gmViews/{viewId} {
+      allow read: if isSuperAdmin()
+        || (isGmSm() && canReadPortalProjection(resource.data));
+      allow write: if false;
+    }
+
+    match /bankViews/{viewId} {
+      allow read: if isSuperAdmin()
+        || (isBankManager() && canReadPortalProjection(resource.data));
+      allow write: if false;
+    }
+
+    match /executiveViews/{viewId} {
+      allow read: if isSuperAdmin()
+        || (isLoanExecutive() && canReadPortalProjection(resource.data));
+      allow write: if false;
+    }
+
+    match /bankDealershipViews/{viewId} {
+      allow read: if isSuperAdmin()
+        || (isBankManager()
+          && approved()
+          && resource.data.bankId == bankId());
+      allow write: if false;
     }
 
     match /notificationLogs/{logId} {

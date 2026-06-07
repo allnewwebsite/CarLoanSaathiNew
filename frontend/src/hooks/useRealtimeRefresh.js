@@ -20,30 +20,59 @@ function safeLimit(value) {
 
 function roleLeadQueries(user, rowLimit) {
   if (!user?.role) return [];
-  if (user.role === "super-admin") return [];
-  if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
+  if (user.role === "super-admin") {
     return [{
-      key: `leads:dealership:${user.dealershipId}:${rowLimit}`,
-      factory: () => query(collection(db, "leads"), where("dealershipId", "==", user.dealershipId), orderBy("createdAt", "desc"), limit(rowLimit)),
+      key: `admin-lead-views:${rowLimit}`,
+      factory: () => query(collection(db, "adminViews"), where("viewType", "==", "lead"), orderBy("updatedAt", "desc"), limit(rowLimit)),
+    }];
+  }
+  if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
+    const collectionName = user.role === "gm-sm" ? "gmViews" : "financeViews";
+    return [{
+      key: `${collectionName}:lead:${user.dealershipId}:${rowLimit}`,
+      factory: () => query(
+        collection(db, collectionName),
+        where("viewType", "==", "lead"),
+        where("scopeId", "==", user.dealershipId),
+        orderBy("updatedAt", "desc"),
+        limit(rowLimit),
+      ),
     }];
   }
   if (user.role === "loan-executive") {
     return [
       user.uid ? {
-        key: `leads:executive-id:${user.uid}:${rowLimit}`,
-        factory: () => query(collection(db, "leads"), where("assignedExecutiveId", "==", user.uid), orderBy("createdAt", "desc"), limit(rowLimit)),
+        key: `executiveViews:lead-id:${user.uid}:${rowLimit}`,
+        factory: () => query(
+          collection(db, "executiveViews"),
+          where("viewType", "==", "lead"),
+          where("scopeId", "==", user.uid),
+          orderBy("updatedAt", "desc"),
+          limit(rowLimit),
+        ),
       } : null,
       user.email ? {
-        key: `leads:executive-email:${user.email}:${rowLimit}`,
-        factory: () => query(collection(db, "leads"), where("assignedExecutiveEmail", "==", user.email), orderBy("createdAt", "desc"), limit(rowLimit)),
+        key: `executiveViews:lead-email:${user.email}:${rowLimit}`,
+        factory: () => query(
+          collection(db, "executiveViews"),
+          where("viewType", "==", "lead"),
+          where("scopeId", "==", user.email),
+          orderBy("updatedAt", "desc"),
+          limit(rowLimit),
+        ),
       } : null,
     ].filter(Boolean);
   }
   if (user.role === "bank-manager" && user.bankId) {
-    const branchConstraints = user.branchId ? [where("bankBranchCity", "==", user.branchId)] : [];
     return [{
-      key: `leads:bank:${user.bankId}:${user.branchId || "all"}:${rowLimit}`,
-      factory: () => query(collection(db, "leads"), where("bankId", "==", user.bankId), ...branchConstraints, orderBy("createdAt", "desc"), limit(rowLimit)),
+      key: `bankViews:lead:${user.bankId}:${user.branchId || "all"}:${rowLimit}`,
+      factory: () => query(
+        collection(db, "bankViews"),
+        where("viewType", "==", "lead"),
+        where("scopeId", "==", user.bankId),
+        orderBy("updatedAt", "desc"),
+        limit(rowLimit),
+      ),
     }];
   }
   return [];
@@ -108,9 +137,11 @@ function runInstantRefresh(callback) {
 
 export function mutationUrlMatches(detail = {}, prefixes = []) {
   if (!prefixes.length) return true;
-  const url = String(detail?.url || "");
-  if (!url) return true;
-  return prefixes.some((prefix) => url.startsWith(prefix));
+  const urls = [detail?.url, detail?.canonicalUrl, detail?.kind === "lead" ? "/lead-mutation" : ""]
+    .map((url) => String(url || ""))
+    .filter(Boolean);
+  if (!urls.length) return true;
+  return urls.some((url) => prefixes.some((prefix) => url.startsWith(prefix)));
 }
 
 function scheduleFreshRefresh(callback, delay = 250) {
