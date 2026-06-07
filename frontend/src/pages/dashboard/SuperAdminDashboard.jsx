@@ -9,7 +9,7 @@ import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStat
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../services/api.js";
-import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -75,15 +75,7 @@ function approvalRatio(leads) {
 }
 
 function enterpriseLeadStatus(lead) {
-  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
-  if (status === LEAD_STATUSES.NEW) return "New";
-  if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
-  if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Loan Rejected With Reason" : "Rejected";
-  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
-  if (status === LEAD_STATUSES.CONTACTED) return "Contacted";
-  if (status === LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED) return "All Documents Received";
-  if (status === LEAD_STATUSES.UNDER_BANK_PROCESS) return "Under Bank Process";
-  return statusLabel(status);
+  return portalLeadStatusLabel(lead);
 }
 
 function csvCell(value) {
@@ -465,7 +457,7 @@ function AdminListPage({ mode }) {
     if (mode === "status") {
       const rejectedReason = leadFilter === "REJECTED_REASON";
       return {
-        title: rejectedReason ? "Loan Rejected With Reason" : "Status",
+        title: rejectedReason ? "Loan Rejected" : "Status",
         headers: rejectedReason ? ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", "Assigned Executive", "Executive Mobile", "Current Status", "Rejection Reason", "Updated By", "Last Updated"] : ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", "Assigned Executive", "Executive Mobile", "Current Status", "Last Updated"],
         rows: records.map((lead) => ({ key: lead.id, cells: rejectedReason ? [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city), `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), display(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), display(lead.rejectionReason || lead.loanRejectionReason), display(lead.updatedBy || lead.assignedExecutiveEmail), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt)] : [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city), `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), display(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt)] })),
       };
@@ -604,7 +596,7 @@ export function SuperAdminDealershipDetailPage() {
       <div className="grid gap-3 md:grid-cols-4">
         {[["Dealership", dealer.dealershipName], ["Brand", dealer.dealershipBrand], ["City", dealer.city], ["Finance Desk", dealer.financeDesk?.officialEmail || email], ["Salesperson Count", dealer.salespersonCount || "-"], ["Total Leads", leads.length], ["Approval Ratio", approvalRatio(leads)], ["Status", dealer.status]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
-      <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", "Status", "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" status={leadStatus(lead)} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
+      <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", "Status", "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" lead={lead} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
     </section>
   );
 }

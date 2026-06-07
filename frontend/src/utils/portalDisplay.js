@@ -1,3 +1,5 @@
+import { LEAD_STATUSES, normalizeStatus, statusLabel } from "../constants/status.js";
+
 export function toDate(value) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -49,6 +51,25 @@ export function cleanPortalText(value) {
 export function displayPortalText(value, fallback = "-") {
   const text = cleanPortalText(value);
   return text || fallback;
+}
+
+export function portalWorkflowStatus(value) {
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
+  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
+  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
+  return normalized;
+}
+
+export function portalLeadStatusLabel(leadOrStatus) {
+  const lead = leadOrStatus && typeof leadOrStatus === "object" ? leadOrStatus : null;
+  const rawStatus = lead ? lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW : leadOrStatus;
+  const status = portalWorkflowStatus(rawStatus);
+  if (status === LEAD_STATUSES.REJECTED) {
+    const reason = cleanPortalText(lead?.rejectionReason || lead?.loanRejectionReason || lead?.rejectionRemarks);
+    return reason ? `Loan Rejected: ${reason}` : "Rejected";
+  }
+  return statusLabel(status);
 }
 
 export function loanExecutiveRemark(lead) {

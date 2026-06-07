@@ -9,7 +9,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as lea
 import { mutationUrlMatches, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -46,9 +46,7 @@ function generatedAt(lead) {
 }
 
 function executiveStatusLabel(lead) {
-  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
-  if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? `Loan Rejected: ${lead.rejectionReason || lead.loanRejectionReason}` : "Rejected";
-  return leadStatusLabel(status);
+  return portalLeadStatusLabel(lead);
 }
 
 function apiStatus(value) {
@@ -116,7 +114,7 @@ function RejectModal({ lead, onClose, onSaved }) {
     setBusy(false);
     onSaved();
   };
-  return <Modal title="Loan Rejected With Reason" onClose={onClose}><textarea className="min-h-28 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason" value={reason} onChange={(event) => setReason(event.target.value)} /><button disabled={busy || !reason.trim()} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save Rejection</button></Modal>;
+  return <Modal title="Loan Rejected" onClose={onClose}><textarea className="min-h-28 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason" value={reason} onChange={(event) => setReason(event.target.value)} /><button disabled={busy || !reason.trim()} onClick={submit} className="mt-3 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save Rejection</button></Modal>;
 }
 
 function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, onClose, onSaved }) {
@@ -245,7 +243,7 @@ function TotalLeadsPage({ mode }) {
         display(lead.mobile),
         display(lead.city || lead.dealershipCity),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-        <StatusBadge key="status" status={workflowStatus(lead.status)} />,
+        <StatusBadge key="status" lead={lead} />,
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.financeManagerMobile),
         dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),

@@ -8,7 +8,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/bank/leads", "/gm/leads", "/documents"]);
@@ -89,12 +89,7 @@ function workflowStatus(value) {
 }
 
 function financeStatus(lead) {
-  const status = workflowStatus(lead?.status || lead?.assignmentStatus || LEAD_STATUSES.NEW);
-  if (status === LEAD_STATUSES.NEW) return "New";
-  if (status === LEAD_STATUSES.DISBURSED) return "Disbursed";
-  if (status === LEAD_STATUSES.REJECTED) return lead?.rejectionReason ? "Rejected With Reason" : "Rejected";
-  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(status)) return "Pending Documents";
-  return standardStatusLabel(status);
+  return portalLeadStatusLabel(lead);
 }
 
 function StatusBadge({ lead }) {

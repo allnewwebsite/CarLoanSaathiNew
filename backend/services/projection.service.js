@@ -71,9 +71,23 @@ function safeDocId(value) {
   return String(value || "").trim().replace(/[^\w.@-]/g, "_").slice(0, 420);
 }
 
+function timestampValue(value) {
+  if (!value) return 0;
+  if (typeof value?.toDate === "function") return value.toDate().getTime() || 0;
+  if (Number.isFinite(value?.seconds)) return value.seconds * 1000;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function latestTimestamp(...values) {
+  return values
+    .filter(Boolean)
+    .sort((left, right) => timestampValue(right) - timestampValue(left))[0] || "";
+}
+
 function projectionPayload(lead = {}, { scopeType, scopeId: scope }) {
   const projected = pick(lead);
-  const updatedAt = lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || new Date().toISOString();
+  const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
   return {
     ...projected,
     viewType: "lead",
@@ -231,7 +245,7 @@ function isActiveStatus(status) {
 }
 
 function dealershipSummarySeed(lead = {}, scope = bankDealershipScope(lead)) {
-  const updatedAt = lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || new Date().toISOString();
+  const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
   return {
     id: safeDocId(`bank_dealership_${scope.bankId}_${scope.dealershipId}`),
     viewType: "bank-dealership",
@@ -433,7 +447,7 @@ export async function queryNotificationProjectionForUser({ user = {}, query = {}
 
 export async function syncLeadDetailProjection(lead = {}, extras = {}) {
   if (!lead?.id) return null;
-  const updatedAt = lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || new Date().toISOString();
+  const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
   const documentCounts = extras.documentCounts || {
     documents: Array.isArray(extras.documents) ? extras.documents.length : Number(lead.documentCount || 0),
     bankDocuments: Array.isArray(extras.bankDocuments) ? extras.bankDocuments.length : Number(lead.bankDocumentCount || 0),

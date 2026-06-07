@@ -8,7 +8,7 @@ import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as sta
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
@@ -54,9 +54,7 @@ function workflowStatus(value) {
 }
 
 function statusLabel(lead) {
-  const status = workflowStatus(lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW);
-  if (status === LEAD_STATUSES.REJECTED) return lead.rejectionReason || lead.loanRejectionReason ? "Rejected With Reason" : "Rejected";
-  return standardStatusLabel(status);
+  return portalLeadStatusLabel(lead);
 }
 
 function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
