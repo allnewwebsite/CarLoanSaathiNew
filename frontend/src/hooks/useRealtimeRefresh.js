@@ -10,6 +10,7 @@ const REFRESH_COOLDOWN_MS = 12000;
 let globalRefreshTimer = 0;
 let globalRefreshInFlight = false;
 let globalLastRefreshAt = 0;
+let globalPendingInstantRefresh = null;
 
 function safeLimit(value) {
   return Math.min(Math.max(Number(value || 10), 1), MAX_VISIBLE_ROWS);
@@ -54,6 +55,20 @@ function debounceCallback(callback, delay) {
   };
 }
 
+function queuePendingInstantRefresh(callback) {
+  if (typeof callback === "function") {
+    globalPendingInstantRefresh = callback;
+  }
+}
+
+function drainPendingInstantRefresh() {
+  const pending = globalPendingInstantRefresh;
+  globalPendingInstantRefresh = null;
+  if (typeof pending === "function") {
+    window.setTimeout(() => runInstantRefresh(pending), 0);
+  }
+}
+
 function runFreshRefresh(callback, { force = false } = {}) {
   if (typeof callback !== "function") return;
   const elapsed = Date.now() - globalLastRefreshAt;
@@ -67,11 +82,16 @@ function runFreshRefresh(callback, { force = false } = {}) {
   Promise.resolve(callback({ silent: true }))
     .finally(() => {
       globalRefreshInFlight = false;
+      drainPendingInstantRefresh();
     });
 }
 
 function runInstantRefresh(callback) {
-  if (typeof callback !== "function" || globalRefreshInFlight) return;
+  if (typeof callback !== "function") return;
+  if (globalRefreshInFlight) {
+    queuePendingInstantRefresh(callback);
+    return;
+  }
   globalRefreshInFlight = true;
   globalLastRefreshAt = 0;
   invalidateGetCache();
@@ -80,6 +100,7 @@ function runInstantRefresh(callback) {
     .finally(() => {
       globalRefreshInFlight = false;
       globalLastRefreshAt = Date.now();
+      drainPendingInstantRefresh();
     });
 }
 

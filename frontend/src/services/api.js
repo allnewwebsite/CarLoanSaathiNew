@@ -12,6 +12,8 @@ const GET_STALE_TTL_MS = 30 * 60 * 1000;
 const APP_CHECK_CACHE_TTL_MS = 4 * 60 * 1000;
 const GET_CACHE_STORAGE_KEY = "cls_get_cache_v3";
 const GET_CACHE_MAX_ENTRIES = 180;
+const DATA_MUTATION_CHANNEL = "cls_data_mutation_v1";
+const DATA_MUTATION_STORAGE_KEY = "cls_data_mutation_event_v1";
 const NOTIFICATION_CACHE_TTL_MS = 60 * 1000;
 const STATIC_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -73,6 +75,15 @@ const getCache = new Map();
 let appCheckCache = { token: "", expiresAt: 0, promise: null };
 let getCacheHydrated = false;
 let getCachePersistTimer = null;
+let dataMutationChannel = null;
+let dataMutationListenersReady = false;
+let lastRemoteMutationKey = "";
+const dataMutationSource = (() => {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+})();
 
 function browserStorage() {
   if (typeof window === "undefined") return null;
@@ -255,15 +266,66 @@ export function invalidateGetCache({ url, prefix } = {}) {
   scheduleGetCachePersist();
 }
 
-function emitDataMutation(url = "") {
+function dispatchDataMutation(payload) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("cls:data-mutated", {
-    detail: {
-      url,
-      at: Date.now(),
-    },
+    detail: payload,
   }));
 }
+
+function handleRemoteDataMutation(payload) {
+  if (typeof window === "undefined" || !payload || payload.source === dataMutationSource) return;
+  const mutationKey = `${payload.source || ""}:${payload.at || ""}:${payload.url || ""}`;
+  if (mutationKey === lastRemoteMutationKey) return;
+  lastRemoteMutationKey = mutationKey;
+  invalidateGetCache();
+  dispatchDataMutation({ ...payload, remote: true });
+}
+
+function setupDataMutationListeners() {
+  if (typeof window === "undefined" || dataMutationListenersReady) return;
+  dataMutationListenersReady = true;
+  try {
+    if ("BroadcastChannel" in window) {
+      dataMutationChannel = new BroadcastChannel(DATA_MUTATION_CHANNEL);
+      dataMutationChannel.onmessage = (event) => handleRemoteDataMutation(event.data);
+    }
+  } catch {
+    dataMutationChannel = null;
+  }
+  window.addEventListener("storage", (event) => {
+    if (event.key !== DATA_MUTATION_STORAGE_KEY || !event.newValue) return;
+    try {
+      handleRemoteDataMutation(JSON.parse(event.newValue));
+    } catch {
+      // Cross-tab refresh is best-effort.
+    }
+  });
+}
+
+function emitDataMutation(url = "") {
+  if (typeof window === "undefined") return;
+  setupDataMutationListeners();
+  const payload = {
+    url,
+    at: Date.now(),
+    source: dataMutationSource,
+    portal: requestPortalHeader(),
+  };
+  dispatchDataMutation(payload);
+  try {
+    dataMutationChannel?.postMessage(payload);
+  } catch {
+    // BroadcastChannel is optional.
+  }
+  try {
+    window.localStorage?.setItem(DATA_MUTATION_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // Storage events are optional.
+  }
+}
+
+setupDataMutationListeners();
 
 async function appCheckHeaderToken() {
   if (!appCheck) return "";
