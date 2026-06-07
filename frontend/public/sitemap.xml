@@ -9,7 +9,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://carloansaathi.com/apply-loan</loc>
+    <loc>https://carloansaathi.com/bank-registration</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://carloansaathi.com/dealer/login</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://carloansaathi.com/bank/login</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://carloansaathi.com/admin/login</loc>
     <priority>0.8</priority>
   </url>
 </urlset>

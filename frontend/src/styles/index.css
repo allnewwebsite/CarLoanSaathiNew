@@ -290,3 +290,84 @@ main [class*="text-[#3f51ff]"]:not(button):not(a) {
     scroll-behavior: smooth;
   }
 }
+
+.public-nav-blur {
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+.public-soft-shadow {
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+}
+
+.public-premium-shadow {
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+}
+
+.public-glass {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+.public-counter {
+  font-variant-numeric: tabular-nums;
+}
+
+.public-gradient-orb {
+  animation: public-gradient-shift 12s ease-in-out infinite alternate;
+}
+
+.public-fade-in {
+  animation: public-fade-up 0.7s ease both;
+}
+
+.public-float {
+  animation: public-float 6s ease-in-out infinite;
+}
+
+.public-float-delayed {
+  animation: public-float 7s ease-in-out infinite;
+  animation-delay: 1.2s;
+}
+
+@keyframes public-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes public-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes public-gradient-shift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(24px, -16px, 0) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-gradient-orb,
+  .public-fade-in,
+  .public-float,
+  .public-float-delayed {
+    animation: none;
+  }
+}

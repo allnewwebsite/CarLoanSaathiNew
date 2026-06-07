@@ -20,11 +20,6 @@ function lazyPage(factory, exportName) {
 
 const pageModules = {
   home: () => import("../pages/HomePage.jsx"),
-  services: () => import("../pages/ServicesPage.jsx"),
-  marketplace: () => import("../pages/MarketplacePage.jsx"),
-  partnerProgram: () => import("../pages/PartnerProgramPage.jsx"),
-  cars: () => import("../pages/CarsPage.jsx"),
-  applyLoan: () => import("../pages/ApplyLoanPage.jsx"),
   dealerRegistration: () => import("../pages/DealerRegistrationPage.jsx"),
   bankRegistration: () => import("../pages/public/BankRegistration.jsx"),
   bankBranchManager: () => import("../pages/bank/BankBranchManagerPanel.jsx"),
@@ -56,11 +51,6 @@ export function preloadDashboardRoutes() {
 }
 
 const HomePage = lazyPage(pageModules.home, "HomePage");
-const ServicesPage = lazyPage(pageModules.services, "ServicesPage");
-const MarketplacePage = lazyPage(pageModules.marketplace, "MarketplacePage");
-const PartnerProgramPage = lazyPage(pageModules.partnerProgram, "PartnerProgramPage");
-const CarsPage = lazyPage(pageModules.cars, "CarsPage");
-const ApplyLoanPage = lazyPage(pageModules.applyLoan, "ApplyLoanPage");
 const DealerRegistrationPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPage");
 const DealerRegistrationFormPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationFormPage");
 const DealerRegistrationPendingPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPendingPage");
@@ -89,8 +79,8 @@ export const router = createBrowserRouter([
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
-      { path: "/cars/:brandSlug", element: <CarsPage /> },
-      { path: "/apply-loan", element: <ApplyLoanPage /> },
+      { path: "/cars/:brandSlug", element: <Navigate to="/" replace /> },
+      { path: "/apply-loan", element: <Navigate to="/" replace /> },
       { path: "/dealer/register", element: <DealerRegistrationPage /> },
       { path: "/dealer/login", element: <LoginPage portal="dealer" /> },
       { path: "/finance/register", element: <DealerRegistrationPage audience="finance" /> },
@@ -112,9 +102,9 @@ export const router = createBrowserRouter([
       { path: "/bank-registration/pending", element: <BankRegistration mode="pending" /> },
       { path: "/bank-registration/pending-approval", element: <BankRegistration mode="pending" /> },
       { path: "/bank-registration/approved", element: <BankRegistration mode="approved" /> },
-      { path: "/services", element: <ServicesPage /> },
-      { path: "/marketplace", element: <MarketplacePage /> },
-      { path: "/partners", element: <PartnerProgramPage /> },
+      { path: "/services", element: <Navigate to="/" replace /> },
+      { path: "/marketplace", element: <Navigate to="/" replace /> },
+      { path: "/partners", element: <Navigate to="/" replace /> },
       { path: "/dealer-login", element: <Navigate to="/dealer/login" replace /> },
       { path: "/bank-login", element: <Navigate to="/bank/login" replace /> },
       { path: "/super-admin", element: <Navigate to="/admin/login" replace /> },

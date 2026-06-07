@@ -4,9 +4,15 @@ import { Link, Outlet } from "react-router-dom";
 
 const customerNav = [
   { label: "Home", to: "/#home" },
+  { label: "Product", to: "/#showcase" },
+  { label: "Dealerships", to: "/#dealerships" },
   { label: "Banks", to: "/#banks" },
-  { label: "EMI Calculator", to: "/#emi-calculator" },
-  { label: "Apply Loan", to: "/apply-loan" },
+  { label: "Workflow", to: "/#workflow" },
+  { label: "Contact", to: "/#contact" },
+];
+
+const adminNav = [
+  { label: "Admin Access", to: "/admin/login" },
 ];
 
 const roleGroups = [
@@ -136,7 +142,7 @@ function MobileSection({ title, items, open, onToggle, onNavigate }) {
 export function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState("");
-  const [mobileSections, setMobileSections] = useState({ customers: true, dealerships: false, banks: false, executives: false });
+  const [mobileSections, setMobileSections] = useState({ platform: true, dealerships: false, banks: false, executives: false, admin: false });
   const headerRef = useRef(null);
 
   useEffect(() => {
@@ -159,7 +165,7 @@ export function PublicLayout() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-white">
-      <header ref={headerRef} className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+      <header ref={headerRef} className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 public-nav-blur">
         <div className="mx-auto grid h-14 w-full max-w-7xl grid-cols-[auto_auto] items-center gap-3 px-4 sm:h-16 sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:px-8">
           <Link to="/#home" className="flex min-w-0 items-center gap-3">
             <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0d47a1]">
@@ -173,7 +179,7 @@ export function PublicLayout() {
             </span>
           </Link>
 
-          <nav className="hidden items-center justify-center gap-1 lg:flex" aria-label="Customer navigation">
+          <nav className="hidden items-center justify-center gap-1 lg:flex" aria-label="Platform navigation">
             {customerNav.map((item) => (
               <NavTarget key={item.to} item={item} className="rounded-md px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#0d47a1]" />
             ))}
@@ -189,6 +195,12 @@ export function PublicLayout() {
                 onClose={() => setOpenGroup("")}
               />
             ))}
+            <Link
+              to="/admin/login"
+              className="ml-2 inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-4 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-800"
+            >
+              Admin Access
+            </Link>
           </div>
 
           <button
@@ -212,10 +224,10 @@ export function PublicLayout() {
             </div>
             <div className="mt-6">
               <MobileSection
-                title="Customers"
+                title="Platform"
                 items={customerNav}
-                open={mobileSections.customers}
-                onToggle={() => setMobileSections((current) => ({ ...current, customers: !current.customers }))}
+                open={mobileSections.platform}
+                onToggle={() => setMobileSections((current) => ({ ...current, platform: !current.platform }))}
                 onNavigate={() => setMobileOpen(false)}
               />
               {roleGroups.map((group) => (
@@ -228,6 +240,13 @@ export function PublicLayout() {
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
+              <MobileSection
+                title="Admin"
+                items={adminNav}
+                open={mobileSections.admin}
+                onToggle={() => setMobileSections((current) => ({ ...current, admin: !current.admin }))}
+                onNavigate={() => setMobileOpen(false)}
+              />
             </div>
           </aside>
         </div>
