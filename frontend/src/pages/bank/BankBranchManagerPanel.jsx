@@ -271,6 +271,8 @@ function TotalLeadsPage() {
       moneyValue(lead.onRoadPrice || lead.carOnRoadPrice),
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       generatedAt(lead),
+      display(lead.financeManagerName || lead.assignedFinanceManager),
+      display(lead.financeManagerMobile),
       display(lead.assignedExecutiveName),
       display(lead.assignedExecutiveMobile || lead.executiveMobile),
       leadStatusLabel(lead),
@@ -290,7 +292,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Finance Manager", "Finance Manager Mobile", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -772,7 +774,7 @@ export function BankManagerLeadDetailPage() {
       <PageTitle title="Customer Documents" />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>

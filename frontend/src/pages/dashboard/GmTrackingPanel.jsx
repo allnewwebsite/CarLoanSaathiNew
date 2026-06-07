@@ -70,6 +70,24 @@ function DocumentsButton({ lead }) {
   return <button onClick={() => navigate(`/gm/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>;
 }
 
+function salespersonFilterValue(person = {}) {
+  return person.sourceId || person.salespersonId || person.id || person.email || person.mobile || "";
+}
+
+function sameSalesperson(person = {}, value = "") {
+  const requested = String(value || "").trim();
+  if (!requested) return false;
+  return [
+    person.id,
+    person.sourceId,
+    person.salespersonId,
+    person.jobId,
+    person.email,
+    person.mobile,
+    salespersonFilterValue(person),
+  ].some((item) => String(item || "").trim() === requested);
+}
+
 function useGmLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/gm/leads", initialParams);
@@ -214,7 +232,7 @@ function SalespersonsScreen() {
       person.disbursedCases || 0,
       person.rejectedCases || 0,
       person.pendingCases || 0,
-      <button key="view" onClick={() => navigate(`/gm/salespersons/${person.id}/cases`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Cases</button>,
+      <button key="view" onClick={() => navigate(`/gm/salespersons/${encodeURIComponent(salespersonFilterValue(person))}/cases`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Cases</button>,
     ],
   }));
   return (
@@ -272,7 +290,7 @@ function AllCasesScreen() {
       <div className="rounded-lg border border-slate-200 bg-white p-3">
         <select className="field max-w-sm" value={salespersonId} onChange={(event) => filter(event.target.value)}>
           <option value="">Select Salesperson</option>
-          {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
+          {salespersons.map((person) => <option key={person.id} value={salespersonFilterValue(person)}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
       <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", "Assigned Executive", "Executive Mobile", "Current Status", "Case Generated", "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
@@ -283,7 +301,7 @@ function AllCasesScreen() {
 function SalespersonCasesScreen() {
   const { salespersonId } = useParams();
   const { salespersons } = useSalespersons();
-  const salesperson = salespersons.find((person) => person.id === salespersonId);
+  const salesperson = salespersons.find((person) => sameSalesperson(person, salespersonId));
   const { leads, total, hasMore, loading, load } = useGmLeads({ salespersonId });
   const [page, setPage] = useState(1);
   const pageTo = (nextPage) => {

@@ -46,14 +46,22 @@ function financeStatus(status) {
   return map[normalized] || "New";
 }
 
+function safeIdentity(value) {
+  return String(value || "").trim().replace(/[^\w.@-]/g, "_").slice(0, 420).toLowerCase();
+}
+
 function salespersonIdentitySet(person = {}, fallback = "") {
-  return new Set([
-    fallback,
+  const values = [
     person.id,
+    person.sourceId,
+    person.salespersonId,
     person.jobId,
     person.email,
+    person.mobile,
     person.name,
-  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean));
+  ];
+  if (fallback) values.push(fallback);
+  return new Set(values.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean));
 }
 
 function leadMatchesSalesperson(lead = {}, identitySet = new Set()) {
@@ -63,8 +71,18 @@ function leadMatchesSalesperson(lead = {}, identitySet = new Set()) {
     lead.salespersonName,
     lead.salespersonJobId,
     lead.salespersonEmail,
+    lead.salespersonMobile,
     lead.assignedSalesperson,
   ].some((value) => identitySet.has(String(value || "").trim().toLowerCase()));
+}
+
+function salespersonMatchesRequested(person = {}, dealershipEmail = "", requestedId = "") {
+  const requested = String(requestedId || "").trim().toLowerCase();
+  if (!requested) return false;
+  if (salespersonIdentitySet(person).has(requested)) return true;
+  return [person.id, person.sourceId, person.salespersonId, person.jobId, person.email, person.mobile]
+    .map((value) => safeIdentity(`salesperson_${dealershipEmail}_${value}`))
+    .some((value) => value === safeIdentity(requestedId));
 }
 
 async function salespersonForDealership(dealershipEmail, salespersonId) {
@@ -73,7 +91,7 @@ async function salespersonForDealership(dealershipEmail, salespersonId) {
   const direct = await getRecord("salespersons", id).catch(() => null);
   if (direct?.dealershipId === dealershipEmail) return direct;
   const people = await cached(`gm:salespersons:staff:${dealershipEmail}`, 30000, () => findRecordsByField("salespersons", "dealershipId", dealershipEmail, 100));
-  return people.find((person) => salespersonIdentitySet(person, id).has(id.toLowerCase())) || null;
+  return people.find((person) => salespersonMatchesRequested(person, dealershipEmail, id)) || null;
 }
 
 async function gmLeads(req) {
