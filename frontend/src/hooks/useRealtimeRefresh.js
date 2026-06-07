@@ -18,6 +18,10 @@ function safeLimit(value) {
   return Math.min(Math.max(Number(value || 10), 1), MAX_VISIBLE_ROWS);
 }
 
+function uniqueScopes(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
 function roleLeadQueries(user, rowLimit) {
   if (!user?.role) return [];
   if (user.role === "super-admin") {
@@ -26,18 +30,18 @@ function roleLeadQueries(user, rowLimit) {
       factory: () => query(collection(db, "adminViews"), where("viewType", "==", "lead"), orderBy("updatedAt", "desc"), limit(rowLimit)),
     }];
   }
-  if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
+  if (["finance-desk", "gm-sm"].includes(user.role)) {
     const collectionName = user.role === "gm-sm" ? "gmViews" : "financeViews";
-    return [{
-      key: `${collectionName}:lead:${user.dealershipId}:${rowLimit}`,
+    return uniqueScopes([user.dealershipId, user.email, user.uid]).map((scope) => ({
+      key: `${collectionName}:lead:${scope}:${rowLimit}`,
       factory: () => query(
         collection(db, collectionName),
         where("viewType", "==", "lead"),
-        where("scopeId", "==", user.dealershipId),
+        where("scopeId", "==", scope),
         orderBy("updatedAt", "desc"),
         limit(rowLimit),
       ),
-    }];
+    }));
   }
   if (user.role === "loan-executive") {
     return [
@@ -63,17 +67,17 @@ function roleLeadQueries(user, rowLimit) {
       } : null,
     ].filter(Boolean);
   }
-  if (user.role === "bank-manager" && user.bankId) {
-    return [{
-      key: `bankViews:lead:${user.bankId}:${user.branchId || "all"}:${rowLimit}`,
+  if (user.role === "bank-manager") {
+    return uniqueScopes([user.bankId, user.bankName, user.email, user.uid]).map((scope) => ({
+      key: `bankViews:lead:${scope}:${user.branchId || "all"}:${rowLimit}`,
       factory: () => query(
         collection(db, "bankViews"),
         where("viewType", "==", "lead"),
-        where("scopeId", "==", user.bankId),
+        where("scopeId", "==", scope),
         orderBy("updatedAt", "desc"),
         limit(rowLimit),
       ),
-    }];
+    }));
   }
   return [];
 }
@@ -206,7 +210,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
 export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true, mutationFilter = null }) {
   const { user } = useAuth();
   const rowLimit = safeLimit(pageSize);
-  const specs = useMemo(() => roleLeadQueries(user, rowLimit), [rowLimit, user?.bankId, user?.dealershipId, user?.email, user?.role, user?.uid]);
+  const specs = useMemo(() => roleLeadQueries(user, rowLimit), [rowLimit, user?.bankId, user?.bankName, user?.dealershipId, user?.email, user?.role, user?.uid]);
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
   useBackgroundRefresh({ onRefresh, enabled, refreshKey: `role-leads:${user?.role || "anon"}`, mutationFilter });
