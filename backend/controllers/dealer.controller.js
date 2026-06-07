@@ -67,6 +67,24 @@ function financeManagerIdFrom(value) {
   return String(value || "").trim();
 }
 
+async function validateDealerLeadAssignees({ salespersonId, financeManagerId, dealershipId }) {
+  const [salesperson, financeManager] = await Promise.all([
+    getRecord("salespersons", salespersonId),
+    financeManagerId ? getRecord("financeManagers", financeManagerId) : Promise.resolve(null),
+  ]);
+  if (!salesperson || salesperson.dealershipId !== dealershipId || salesperson.active === false) {
+    const error = new Error("Select an active salesperson from your dealership");
+    error.status = 400;
+    throw error;
+  }
+  if (financeManagerId && (!financeManager || financeManager.dealershipId !== dealershipId || financeManager.active === false)) {
+    const error = new Error("Select an active Finance Manager from your dealership");
+    error.status = 400;
+    throw error;
+  }
+  return { salesperson, financeManager };
+}
+
 function clearLeadSyncCaches(leadId = "") {
   clearCachedValue("gm:salespersons:");
   clearCachedValue("gm:notifications:");
@@ -854,18 +872,13 @@ export async function createDealerLead(req, res, next) {
       return res.status(400).json({ message: "Salesperson selection is required" });
     }
 
-    const salesperson = await getRecord("salespersons", salespersonId);
-    if (!salesperson || salesperson.dealershipId !== dealershipId || salesperson.active === false) {
-      return res.status(400).json({ message: "Select an active salesperson from your dealership" });
-    }
-
     const financeManagerId = financeManagerIdFrom(req.body.financeManagerId);
-    let financeManager = null;
-    if (financeManagerId) {
-      financeManager = await getRecord("financeManagers", financeManagerId);
-      if (!financeManager || financeManager.dealershipId !== dealershipId || financeManager.active === false) {
-        return res.status(400).json({ message: "Select an active Finance Manager from your dealership" });
-      }
+    let salesperson;
+    let financeManager;
+    try {
+      ({ salesperson, financeManager } = await validateDealerLeadAssignees({ salespersonId, financeManagerId, dealershipId }));
+    } catch (error) {
+      return res.status(error.status || 400).json({ message: error.message });
     }
 
     // Normalize and validate lead data

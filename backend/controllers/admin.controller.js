@@ -9,12 +9,12 @@ import { getAuditLogs, writeAuditLog } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
 import { firebaseAdmin } from "../firebase/admin.js";
-import { logInfo } from "../services/logger.service.js";
+import { logError, logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { queryLeadProjectionForUser, syncLeadProjectionSoon } from "../services/projection.service.js";
-import { cached } from "../services/ttlCache.service.js";
+import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import {
   registerBankBranchAdmin,
@@ -133,9 +133,54 @@ function ecosystemLimit(value, fallback = 5) {
   return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 10) : fallback;
 }
 
-async function boundedList(collection, limit, mapper = (item) => item) {
-  const rows = await listRecentRecords(collection, { limit });
+async function boundedList(collection, limit, mapper = (item) => item, fields = []) {
+  const rows = await listRecentRecords(collection, { limit, fields });
   return rows.map(mapper);
+}
+
+const APPROVAL_LIST_FIELDS = [
+  "id",
+  "status",
+  "approvalStatus",
+  "accountType",
+  "type",
+  "dealershipName",
+  "dealershipBrand",
+  "city",
+  "loginEmail",
+  "primaryGoogleEmail",
+  "bankName",
+  "companyName",
+  "bankBranchLocation",
+  "branchLocation",
+  "ifsc",
+  "ifscCode",
+  "managerName",
+  "mobile",
+  "email",
+  "createdAt",
+  "updatedAt",
+  "submittedAt",
+  "dealership",
+];
+
+const APPROVAL_LIST_PROJECTION_FIELDS = APPROVAL_LIST_FIELDS;
+
+function clearAdminApprovalCaches() {
+  clearCachedValue("admin:approvals:");
+  clearCachedValue("admin:ecosystem:");
+  clearCachedValue("admin:partners:");
+}
+
+function clearLeadMutationCaches(leadId) {
+  clearCachedValue(`lead-detail:${leadId}:`);
+  clearCachedValue(`timeline:lead:${leadId}:`);
+  clearCachedValue("admin:");
+  clearCachedValue("bank:");
+  clearCachedValue("dealer:");
+  clearCachedValue("finance:");
+  clearCachedValue("gm:");
+  clearCachedValue("lead-query:");
 }
 
 function safeAdminUser(user = {}) {
@@ -234,6 +279,176 @@ async function updateRecordIfExists(collection, id, payload) {
     if (firestoreNotFound(error)) return null;
     throw error;
   }
+}
+
+async function materializeApprovedDealership({ request, loginEmail, dealership }) {
+  await upsertRecord("dealerships", loginEmail, dealership);
+  await upsertRecord("approvedDealerships", loginEmail, dealership);
+  const financeUid = await firebaseUidForEmail(loginEmail);
+  const financeCanonicalId = financeUid || loginEmail;
+  await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
+  await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+  if (request.generalManager?.email) {
+    const gmEmail = normalizeEmail(request.generalManager.email);
+    const gmUid = await firebaseUidForEmail(gmEmail);
+    const gmCanonicalId = gmUid || gmEmail;
+    await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
+    await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+  }
+  await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk", accountActive: true });
+  await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
+  await upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true });
+  await upsertRecord("financeDesk", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
+  await upsertRecord("financeDesks", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
+  await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true });
+}
+
+async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy }) {
+  const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
+    status: "approved",
+    approvalStatus: "approved",
+    gstinVerified: true,
+    dealershipVerified: true,
+    approvedAt: now,
+    approvedBy,
+  });
+  if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy });
+  const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
+  if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy });
+  if (!pendingAccountId && loginEmail) {
+    const pendingAccount = await firstAdminLookup([
+      () => getRecord("pendingDealerAccounts", loginEmail),
+      () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
+    ]);
+    if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy });
+  }
+  const queueItem = await firstAdminLookup([
+    () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
+    () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
+  ]);
+  if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy });
+  return updated;
+}
+
+async function materializeApprovedBank({ request, bankEmail, bankName, branchLocation, ifsc, branchId, partnerId, now, approvedBy }) {
+  await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc, ifscCode: ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy });
+  await upsertRecord("banks", partnerId, {
+    id: partnerId,
+    bankId: partnerId,
+    email: bankEmail,
+    officialEmail: bankEmail,
+    name: bankName,
+    bankName,
+    branchName: branchLocation,
+    branchLocation,
+    bankBranchLocation: branchLocation,
+    city: branchLocation,
+    branchCity: branchLocation,
+    state: request.state || "Haryana",
+    ifsc,
+    ifscCode: ifsc,
+    bankIfsc: ifsc,
+    status: "active",
+    approvalStatus: "approved",
+    active: true,
+    approved: true,
+    approvedAt: now,
+    approvedBy,
+  });
+  await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "approved", active: true, approved: true, publicStatus: "approved" });
+  await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+}
+
+async function activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, partnerId }) {
+  const bankUid = await firebaseUidForEmail(bankEmail);
+  const bankCanonicalId = bankUid || bankEmail;
+  await assertNoActiveIdentityCollision({ uid: bankCanonicalId, email: bankEmail, role: "bank-manager", excludeIds: [bankCanonicalId, bankEmail] });
+  await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+  if (firebaseAdmin) {
+    try {
+      const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
+      await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
+        role: "bank-manager",
+        approved: true,
+        active: true,
+        dealershipId: null,
+        bankId: partnerId,
+        branchId: partnerId || null,
+      });
+    } catch {
+      // Firebase account may be created later; login will repair claims.
+    }
+  }
+  for (const executive of Array.isArray(request.executives) ? request.executives : []) {
+    const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
+    if (executiveEmail) {
+      await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+      await assertNoActiveIdentityCollision({ uid: executiveEmail, email: executiveEmail, role: "loan-executive", excludeIds: [executiveEmail] });
+      await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+    }
+  }
+}
+
+async function approveBankBackrefs({ request, bankEmail, bankName, branchLocation, partnerId, now, approvedBy }) {
+  for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
+    await upsertRecord("bankCityMappings", `${partnerId}:${city}`, { bankPartnerId: partnerId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
+  }
+  const approvalPatch = {
+    status: "approved",
+    approvalStatus: "approved",
+    active: true,
+    approved: true,
+    accountApproved: true,
+    accountActive: true,
+    bankId: partnerId,
+    bankPartnerId: partnerId,
+    branchId: partnerId,
+    approvedAt: now,
+    approvedBy,
+  };
+  const updated = await updateRecordIfExists("pendingBankApprovals", request.id, approvalPatch);
+  const pendingBankAccount = await firstAdminLookup([
+    () => getRecord("pendingBankAccounts", bankEmail),
+    () => findRecordsByField("pendingBankAccounts", "email", bankEmail, 5),
+    () => findRecordsByField("pendingBankAccounts", "officialEmail", bankEmail, 5),
+    () => findRecordsByField("pendingBankAccounts", "primaryGoogleEmail", bankEmail, 5),
+    () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
+    () => findRecordsByField("pendingBankAccounts", "pendingBankApprovalId", request.id, 5),
+  ]);
+  if (pendingBankAccount) {
+    await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, {
+      registrationSubmitted: true,
+      approvalStatus: "approved",
+      status: "approved",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+      bankId: partnerId,
+      bankPartnerId: partnerId,
+      branchId: partnerId,
+      approvedAt: now,
+      approvedBy,
+    });
+  } else {
+    await upsertRecord("pendingBankAccounts", bankEmail, {
+      email: bankEmail,
+      registrationSubmitted: true,
+      approvalStatus: "approved",
+      status: "approved",
+      active: true,
+      approved: true,
+      accountApproved: true,
+      accountActive: true,
+      bankId: partnerId,
+      bankPartnerId: partnerId,
+      branchId: partnerId,
+      approvalRequestId: request.id,
+      approvedAt: now,
+      approvedBy,
+    });
+  }
+  return updated;
 }
 
 async function resolveDealershipApprovalRequest(id) {
@@ -533,39 +748,58 @@ export async function getAdminOnboardingRequests(req, res, next) {
   }
 }
 
+async function dealershipApprovalListPayload({ status, search, query }) {
+  const page = await queryRecords("pendingDealershipApprovals", {
+    ...(status ? { where: [{ field: "status", value: status }] } : {}),
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: query.limit || 100,
+    maxLimit: 100,
+    cursor: query.cursor || null,
+    fields: APPROVAL_LIST_PROJECTION_FIELDS,
+  });
+  const requests = page.data.filter((item) => {
+    const statusOk = !status || String(item.status || "").toLowerCase() === status;
+    const typeOk = (item.accountType || item.type || "dealership") === "dealership";
+    const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.gstin, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
+    return typeOk && statusOk && (!search || text.includes(search));
+  });
+  const meta = await cached("admin:approvals:dealerships:meta", 30000, async () => {
+    const [logsPage, dealershipCount] = await Promise.all([
+      queryRecords("approvalLogs", {
+        where: [{ field: "entityType", value: "dealership" }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 100,
+        maxLimit: 100,
+        fields: ["id", "entityType", "newStatus", "createdAt", "approvedAt"],
+      }),
+      countRecords("dealerships"),
+    ]);
+    const logs = logsPage.data;
+    return {
+      approvedToday: logs.filter((item) => item.newStatus === "approved" && today(item.createdAt || item.approvedAt)).length,
+      rejectedToday: logs.filter((item) => item.newStatus === "rejected" && today(item.createdAt)).length,
+      activeDealerships: dealershipCount,
+    };
+  });
+  return {
+    data: requests,
+    nextCursor: page.nextCursor,
+    hasMore: Boolean(page.nextCursor),
+    meta: {
+      pending: requests.filter((item) => item.status === "pending").length,
+      ...meta,
+    },
+  };
+}
+
 export async function getPendingDealershipApprovals(req, res, next) {
   try {
     const status = String(req.query.status || "pending").trim().toLowerCase();
     const search = String(req.query.search || "").trim().toLowerCase();
-    const page = await queryRecords("pendingDealershipApprovals", {
-      ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: req.query.limit || 100,
-      maxLimit: 100,
-    });
-    const requests = page.data.filter((item) => {
-      const statusOk = !status || String(item.status || "").toLowerCase() === status;
-      const typeOk = (item.accountType || item.type || "dealership") === "dealership";
-      const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.gstin, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
-      return typeOk && statusOk && (!search || text.includes(search));
-    });
-    const [logsPage, dealershipCount] = await Promise.all([
-      queryRecords("approvalLogs", { orderBy: "createdAt", direction: "desc", limit: 100, maxLimit: 100 }),
-      countRecords("dealerships"),
-    ]);
-    const logs = logsPage.data;
-    res.json({
-      data: requests,
-      nextCursor: page.nextCursor,
-      hasMore: page.hasMore,
-      meta: {
-        pending: requests.filter((item) => item.status === "pending").length,
-        approvedToday: logs.filter((item) => item.entityType === "dealership" && item.newStatus === "approved" && today(item.createdAt || item.approvedAt)).length,
-        rejectedToday: logs.filter((item) => item.entityType === "dealership" && item.newStatus === "rejected" && today(item.createdAt)).length,
-        activeDealerships: dealershipCount,
-      },
-    });
+    const payload = await cached(`admin:approvals:dealerships:${JSON.stringify({ status, search, cursor: req.query.cursor || "", limit: req.query.limit || 100 })}`, 10000, () => dealershipApprovalListPayload({ status, search, query: req.query }));
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -575,21 +809,26 @@ export async function getPendingBankApprovals(req, res, next) {
   try {
     const status = String(req.query.status || "pending").trim().toLowerCase();
     const search = String(req.query.search || "").trim().toLowerCase();
-    const page = await queryRecords("pendingBankApprovals", {
-      ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: req.query.limit || 100,
-      maxLimit: 100,
+    const payload = await cached(`admin:approvals:banks:${JSON.stringify({ status, search, cursor: req.query.cursor || "", limit: req.query.limit || 100 })}`, 10000, async () => {
+      const page = await queryRecords("pendingBankApprovals", {
+        ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: req.query.limit || 100,
+        maxLimit: 100,
+        cursor: req.query.cursor || null,
+        fields: APPROVAL_LIST_FIELDS,
+      });
+      const requests = page.data.filter((item) => {
+        const itemStatus = approvalStatusOf(item);
+        const statusOk = status === "pending" ? pendingApprovalStatus(item) : itemStatus === status;
+        const typeOk = (item.accountType || item.type || "bank") === "bank";
+        const text = [item.id, item.bankName, item.companyName, item.bankBranchLocation, item.branchLocation, item.ifsc, item.managerName, item.mobile, item.email, item.status].filter(Boolean).join(" ").toLowerCase();
+        return typeOk && statusOk && (!search || text.includes(search));
+      });
+      return { data: requests, nextCursor: page.nextCursor, hasMore: Boolean(page.nextCursor) };
     });
-    const requests = page.data.filter((item) => {
-      const itemStatus = approvalStatusOf(item);
-      const statusOk = status === "pending" ? pendingApprovalStatus(item) : itemStatus === status;
-      const typeOk = (item.accountType || item.type || "bank") === "bank";
-      const text = [item.id, item.bankName, item.companyName, item.bankBranchLocation, item.branchLocation, item.ifsc, item.managerName, item.mobile, item.email, item.status].filter(Boolean).join(" ").toLowerCase();
-      return typeOk && statusOk && (!search || text.includes(search));
-    });
-    res.json({ data: requests, nextCursor: page.nextCursor, hasMore: page.hasMore });
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -642,52 +881,14 @@ export async function approveDealershipApproval(req, res, next) {
       approvedBy: req.user?.email || "super-admin",
       onboardingRequestId: request.onboardingRequestId || request.id,
     };
-    await upsertRecord("dealerships", loginEmail, dealership);
-    await upsertRecord("approvedDealerships", loginEmail, dealership);
-    const financeUid = await firebaseUidForEmail(loginEmail);
-    const financeCanonicalId = financeUid || loginEmail;
-    await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
-    await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
-    if (request.generalManager?.email) {
-      const gmEmail = normalizeEmail(request.generalManager.email);
-      const gmUid = await firebaseUidForEmail(gmEmail);
-      const gmCanonicalId = gmUid || gmEmail;
-      await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
-      await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
-    }
-    await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk", accountActive: true });
-    await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
-    await upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true });
-    await upsertRecord("financeDesk", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
-    await upsertRecord("financeDesks", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
-    await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true });
-    const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
-      status: "approved",
-      approvalStatus: "approved",
-      gstinVerified: true,
-      dealershipVerified: true,
-      approvedAt: now,
-      approvedBy: req.user?.email || "super-admin",
-    });
-    if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
-    if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    if (!pendingAccountId && loginEmail) {
-      const pendingAccount = await firstAdminLookup([
-        () => getRecord("pendingDealerAccounts", loginEmail),
-        () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
-      ]);
-      if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    }
-    const queueItem = await firstAdminLookup([
-      () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
-      () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
-    ]);
-    if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy: req.user?.email || "super-admin" });
+    const approvedBy = req.user?.email || "super-admin";
+    await materializeApprovedDealership({ request, loginEmail, dealership });
+    const updated = await approveDealershipBackrefs({ request, loginEmail, now, approvedBy });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await incrementPlatformCounters({ activeDealerships: 1 });
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
+    clearAdminApprovalCaches();
     res.json({ message: "Dealership approved", request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now } });
   } catch (error) {
     next(error);
@@ -712,6 +913,7 @@ export async function rejectDealershipApproval(req, res, next) {
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "dealership-rejected", title: "Dealership rejected", message: reason, recipientRole: "finance-desk", recipientId: request.loginEmail, dealerEmail: request.loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, priority: "high", meta: { dealershipName: request.dealershipName, reason } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
+    clearAdminApprovalCaches();
     res.json({ message: "Dealership rejected", request: updated || { ...request, status: "rejected", rejectionReason: reason, rejectedAt: now } });
   } catch (error) {
     next(error);
@@ -753,6 +955,7 @@ export async function suspendDealershipApproval(req, res, next) {
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await incrementPlatformCounters({ activeDealerships: -1 });
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
+    clearAdminApprovalCaches();
     res.json({ message: "Dealership suspended", request: updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now } });
   } catch (error) {
     next(error);
@@ -865,6 +1068,7 @@ export async function deleteDealershipPermanently(req, res, next) {
     await approvalLog({ req, entityType: "dealership", entityId: id, previousStatus: request.status || "unknown", newStatus: "deleted", rejectionReason: "Permanently deleted by Super Admin" });
     await incrementPlatformCounters({ activeDealerships: -1 });
     await writeAuditLog({ req, actionType: "DEALERSHIP_DELETED_PERMANENTLY", oldValue: request.status || "", newValue: "deleted", meta: { id, loginEmail, deleted, authDeleted, deletedAt: now } });
+    clearAdminApprovalCaches();
     res.json({ message: "Dealership permanently deleted", id, loginEmail, deleted, authDeleted });
   } catch (error) {
     next(error);
@@ -886,121 +1090,15 @@ export async function approveBankApproval(req, res, next) {
     const ifsc = String(request.ifsc || request.ifscCode || request.bankIfsc || "").trim().toUpperCase();
     const branchId = ifsc || `${bankEmail}:${branchLocation}`;
     const partnerId = branchId;
-    await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc, ifscCode: ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy: req.user?.email || "super-admin" });
-    await upsertRecord("banks", partnerId, {
-      id: partnerId,
-      bankId: partnerId,
-      email: bankEmail,
-      officialEmail: bankEmail,
-      name: bankName,
-      bankName,
-      branchName: branchLocation,
-      branchLocation,
-      bankBranchLocation: branchLocation,
-      city: branchLocation,
-      branchCity: branchLocation,
-      state: request.state || "Haryana",
-      ifsc,
-      ifscCode: ifsc,
-      bankIfsc: ifsc,
-      status: "active",
-      approvalStatus: "approved",
-      active: true,
-      approved: true,
-      approvedAt: now,
-      approvedBy: req.user?.email || "super-admin",
-    });
-    await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "approved", active: true, approved: true, publicStatus: "approved" });
-    await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-    const bankUid = await firebaseUidForEmail(bankEmail);
-    const bankCanonicalId = bankUid || bankEmail;
-    await assertNoActiveIdentityCollision({ uid: bankCanonicalId, email: bankEmail, role: "bank-manager", excludeIds: [bankCanonicalId, bankEmail] });
-    await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
-    if (firebaseAdmin) {
-      try {
-        const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
-        await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
-          role: "bank-manager",
-          approved: true,
-          active: true,
-          dealershipId: null,
-          bankId: partnerId,
-          branchId: partnerId || null,
-        });
-      } catch {
-        // Firebase account may be created later; login will repair claims.
-      }
-    }
-    for (const executive of Array.isArray(request.executives) ? request.executives : []) {
-      const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
-      if (executiveEmail) {
-        await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
-        await assertNoActiveIdentityCollision({ uid: executiveEmail, email: executiveEmail, role: "loan-executive", excludeIds: [executiveEmail] });
-        await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
-      }
-    }
-    for (const city of request.supportedCities?.length ? request.supportedCities : [branchLocation].filter(Boolean)) {
-      await upsertRecord("bankCityMappings", `${partnerId}:${city}`, { bankPartnerId: partnerId, bankName, city, bankBranchLocation: city, approvalLimit: request.approvalLimit || 100, status: "active", active: true });
-    }
-    const approvalPatch = {
-      status: "approved",
-      approvalStatus: "approved",
-      active: true,
-      approved: true,
-      accountApproved: true,
-      accountActive: true,
-      bankId: partnerId,
-      bankPartnerId: partnerId,
-      branchId: partnerId,
-      approvedAt: now,
-      approvedBy: req.user?.email || "super-admin",
-    };
-    const updated = await updateRecordIfExists("pendingBankApprovals", request.id, approvalPatch);
-    const pendingBankAccount = await firstAdminLookup([
-      () => getRecord("pendingBankAccounts", bankEmail),
-      () => findRecordsByField("pendingBankAccounts", "email", bankEmail, 5),
-      () => findRecordsByField("pendingBankAccounts", "officialEmail", bankEmail, 5),
-      () => findRecordsByField("pendingBankAccounts", "primaryGoogleEmail", bankEmail, 5),
-      () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
-      () => findRecordsByField("pendingBankAccounts", "pendingBankApprovalId", request.id, 5),
-    ]);
-    if (pendingBankAccount) {
-      await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, {
-        registrationSubmitted: true,
-        approvalStatus: "approved",
-        status: "approved",
-        active: true,
-        approved: true,
-        accountApproved: true,
-        accountActive: true,
-        bankId: partnerId,
-        bankPartnerId: partnerId,
-        branchId: partnerId,
-        approvedAt: now,
-        approvedBy: req.user?.email || "super-admin",
-      });
-    } else {
-      await upsertRecord("pendingBankAccounts", bankEmail, {
-        email: bankEmail,
-        registrationSubmitted: true,
-        approvalStatus: "approved",
-        status: "approved",
-        active: true,
-        approved: true,
-        accountApproved: true,
-        accountActive: true,
-        bankId: partnerId,
-        bankPartnerId: partnerId,
-        branchId: partnerId,
-        approvalRequestId: request.id,
-        approvedAt: now,
-        approvedBy: req.user?.email || "super-admin",
-      });
-    }
+    const approvedBy = req.user?.email || "super-admin";
+    await materializeApprovedBank({ request, bankEmail, bankName, branchLocation, ifsc, branchId, partnerId, now, approvedBy });
+    await activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, partnerId });
+    const updated = await approveBankBackrefs({ request, bankEmail, bankName, branchLocation, partnerId, now, approvedBy });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await incrementPlatformCounters({ bankPartners: 1, activeBanks: 1 });
     await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: partnerId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId: partnerId } });
+    clearAdminApprovalCaches();
     res.json({ message: "Bank approved", request: updated || { ...request, status: "approved", approvedAt: now } });
   } catch (error) {
     next(error);
@@ -1025,6 +1123,7 @@ export async function rejectBankApproval(req, res, next) {
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
     await createNotification({ type: "bank-rejected", title: "Bank branch rejected", message: reason, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: bankEmail, phoneNumber: request.mobile, priority: "high", meta: { bankName: request.bankName || request.companyName, reason } });
     await writeAuditLog({ req, actionType: "BANK_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
+    clearAdminApprovalCaches();
     res.json({ message: "Bank rejected", request: updated || { ...request, status: "rejected", rejectedAt: now, rejectionReason: reason } });
   } catch (error) {
     next(error);
@@ -1059,6 +1158,7 @@ export async function suspendBankApproval(req, res, next) {
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
     await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1 });
     await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
+    clearAdminApprovalCaches();
     res.json({ message: "Bank suspended", request: updated || { ...request, status: "suspended", suspendedAt: now, suspensionReason: reason } });
   } catch (error) {
     next(error);
@@ -1129,6 +1229,7 @@ export async function deleteBankPermanently(req, res, next) {
 
     await writeAuditLog({ req, actionType: "BANK_DELETED", oldValue: request.status, newValue: "deleted", meta: { bankEmail, bankName, ifsc, deleted, authDeleted } });
     await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1 });
+    clearAdminApprovalCaches();
     res.json({ message: "Bank permanently deleted", deleted, authDeleted });
   } catch (error) {
     next(error);
@@ -1220,10 +1321,42 @@ export async function updateAdminOnboardingRequest(req, res, next) {
     });
     await writeAuditLog({ req, actionType: "DEALER_ONBOARDING_STATUS", oldValue: request.status, newValue: status, meta: { onboardingRequestId: request.id, loginEmail } });
 
+    clearAdminApprovalCaches();
     res.json({ message: `Onboarding request ${status}`, request: updated });
   } catch (error) {
     next(error);
   }
+}
+
+async function applyAdminLeadStatusSideEffects({ req, existing, lead, status }) {
+  await updateSlaForLead(lead, status);
+  await ensureCommissionForLead(lead, status);
+  const statusLabel = STATUS_LABELS[status] || status;
+  await addTimelineEvent({
+    leadId: req.params.id,
+    eventType: status === LEAD_STATUSES.APPROVED
+      ? TIMELINE_EVENTS.APPROVAL
+      : status === LEAD_STATUSES.REJECTED
+        ? TIMELINE_EVENTS.REJECTION
+        : status === LEAD_STATUSES.DISBURSED
+          ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
+          : TIMELINE_EVENTS.STATUS_CHANGED,
+    title: `Admin Status Update: ${statusLabel}`,
+    description: `Super Admin moved lead to ${statusLabel}`,
+    actorName: req.user?.email || "super-admin",
+    actorRole: "super-admin",
+    metadata: { oldStatus: existing.status, nextStatus: status, status },
+  });
+  await createNotification({
+    type: status === LEAD_STATUSES.REJECTED ? "rejection" : status === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
+    title: `Lead ${statusLabel}`,
+    message: `Lead ${lead.caseId || req.params.id} moved to ${statusLabel}`,
+    leadId: req.params.id,
+    dealerEmail: lead.dealerEmail || lead.createdBy,
+    admin: true,
+    meta: { caseId: lead.caseId },
+  });
+  await writeAuditLog({ req, actionType: "STATUS_CHANGE", newValue: status, leadId: req.params.id });
 }
 
 export async function updateAdminLeadStatus(req, res, next) {
@@ -1232,35 +1365,9 @@ export async function updateAdminLeadStatus(req, res, next) {
     if (!existing) return res.status(404).json({ message: "Lead not found" });
     const status = assertValidStatusTransition(existing?.status, req.body.status);
     const lead = await updateRecord("leads", req.params.id, { status });
+    clearLeadMutationCaches(req.params.id);
     syncLeadProjectionSoon(lead);
-    await updateSlaForLead(lead, status);
-    await ensureCommissionForLead(lead, status);
-    const statusLabel = STATUS_LABELS[status] || status;
-    await addTimelineEvent({
-      leadId: req.params.id,
-      eventType: status === LEAD_STATUSES.APPROVED
-        ? TIMELINE_EVENTS.APPROVAL
-        : status === LEAD_STATUSES.REJECTED
-          ? TIMELINE_EVENTS.REJECTION
-          : status === LEAD_STATUSES.DISBURSED
-            ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-            : TIMELINE_EVENTS.STATUS_CHANGED,
-      title: `Admin Status Update: ${statusLabel}`,
-      description: `Super Admin moved lead to ${statusLabel}`,
-      actorName: req.user?.email || "super-admin",
-      actorRole: "super-admin",
-      metadata: { oldStatus: existing.status, nextStatus: status, status },
-    });
-    await createNotification({
-      type: status === LEAD_STATUSES.REJECTED ? "rejection" : status === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
-      title: `Lead ${statusLabel}`,
-      message: `Lead ${lead.caseId || req.params.id} moved to ${statusLabel}`,
-      leadId: req.params.id,
-      dealerEmail: lead.dealerEmail || lead.createdBy,
-      admin: true,
-      meta: { caseId: lead.caseId },
-    });
-    await writeAuditLog({ req, actionType: "STATUS_CHANGE", newValue: status, leadId: req.params.id });
+    await applyAdminLeadStatusSideEffects({ req, existing, lead, status });
     res.json({ message: "Lead status updated", lead });
   } catch (error) {
     next(error);
@@ -1387,7 +1494,10 @@ export async function getAdminAuditLogs(req, res, next) {
 
 export async function getAdminPartners(_req, res, next) {
   try {
-    res.json(await listRecentRecords("bankPartners", { limit: 100 }));
+    res.json(await cached("admin:partners:v2", 30000, () => listRecentRecords("bankPartners", {
+      limit: 100,
+      fields: ["id", "bankId", "bankPartnerId", "bankName", "companyName", "email", "ifsc", "ifscCode", "status", "active", "frozen", "createdAt", "updatedAt"],
+    })));
   } catch (error) {
     next(error);
   }
@@ -1408,8 +1518,7 @@ export async function getAdminAnalytics(_req, res, next) {
   }
 }
 
-export async function getAdminEcosystem(req, res, next) {
-  try {
+async function adminEcosystemPayload(req) {
     const limit = ecosystemLimit(req.query.ecosystemLimit);
     const leadLimit = Math.min(Math.max(Number(req.query.limit || 10), 1), 20);
 
@@ -1440,29 +1549,29 @@ export async function getAdminEcosystem(req, res, next) {
 
     const approvalsSummaryPromise = cached("admin:ecosystem:approvals:v2", 30000, async () => {
       const [onboardingRequests, pendingDealershipApprovals, pendingBankApprovals, pendingGoogleAccounts] = await Promise.all([
-        boundedList("onboardingRequests", 5),
-        boundedList("pendingDealershipApprovals", 5),
-        boundedList("pendingBankApprovals", 5),
-        boundedList("pendingGoogleAccounts", 5),
+        boundedList("onboardingRequests", 5, (item) => item, ["id", "status", "dealershipName", "loginEmail", "city", "createdAt", "updatedAt"]),
+        boundedList("pendingDealershipApprovals", 5, (item) => item, APPROVAL_LIST_FIELDS),
+        boundedList("pendingBankApprovals", 5, (item) => item, APPROVAL_LIST_FIELDS),
+        boundedList("pendingGoogleAccounts", 5, (item) => item, ["id", "email", "portal", "status", "reason", "createdAt", "updatedAt"]),
       ]);
       return { onboardingRequests, pendingDealershipApprovals, pendingBankApprovals, pendingGoogleAccounts };
     });
 
     const bankSummaryPromise = cached("admin:ecosystem:banks:v2", 30000, async () => {
       const [bankPartners, branches, branchManagers, loanExecutives] = await Promise.all([
-        boundedList("bankPartners", 5),
-        boundedList("bankBranchCatalog", 10),
-        boundedList("branchManagers", 5),
-        boundedList("loanExecutives", 5),
+        boundedList("bankPartners", 5, (item) => item, ["id", "bankId", "bankName", "companyName", "email", "ifsc", "ifscCode", "status", "active", "createdAt", "updatedAt"]),
+        boundedList("bankBranchCatalog", 10, (item) => item, ["id", "bankId", "bankName", "branchName", "ifscCode", "city", "approvalStatus", "active", "updatedAt"]),
+        boundedList("branchManagers", 5, (item) => item, ["id", "email", "bankId", "bankName", "branchId", "branchCity", "status", "active", "createdAt", "updatedAt"]),
+        boundedList("loanExecutives", 5, (item) => item, ["id", "email", "bankId", "bankName", "branchId", "branchCity", "status", "active", "createdAt", "updatedAt"]),
       ]);
       return { bankPartners, banks: bankPartners, branches, branchManagers, loanExecutives };
     });
 
     const dealershipSummaryPromise = cached("admin:ecosystem:dealerships:v2", 30000, async () => {
       const [dealerships, financeDesks, dealershipManagers] = await Promise.all([
-        boundedList("dealerships", 5),
-        boundedList("financeDesks", 5),
-        boundedList("dealershipManagers", 5),
+        boundedList("dealerships", 5, (item) => item, ["id", "dealershipName", "name", "city", "status", "active", "createdAt", "updatedAt"]),
+        boundedList("financeDesks", 5, (item) => item, ["id", "email", "officialEmail", "dealershipEmail", "city", "status", "active", "createdAt", "updatedAt"]),
+        boundedList("dealershipManagers", 5, (item) => item, ["id", "email", "fullName", "role", "dealershipEmail", "status", "active", "createdAt", "updatedAt"]),
       ]);
       return { dealerships, financeDesks, dealershipManagers };
     });
@@ -1512,7 +1621,12 @@ export async function getAdminEcosystem(req, res, next) {
         },
       },
     };
-    res.json(payload);
+    return payload;
+}
+
+export async function getAdminEcosystem(req, res, next) {
+  try {
+    res.json(await adminEcosystemPayload(req));
   } catch (error) {
     next(error);
   }

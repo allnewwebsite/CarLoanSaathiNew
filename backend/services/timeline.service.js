@@ -1,4 +1,4 @@
-import { createRecord, queryRecords } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
 import { queryTimelineProjection, syncTimelineProjectionSoon } from "./projection.service.js";
 import { cached } from "./ttlCache.service.js";
 
@@ -296,6 +296,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
   const eventType = String(query.eventType || "").trim();
   const dateFilter = String(query.date || "").trim();
   const role = actor.role || "";
+  const lead = leadId ? await getRecord("leads", leadId).catch(() => null) : null;
 
   const where = [];
   if (leadId) where.push({ field: "leadId", value: leadId });
@@ -321,7 +322,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       const { start, end } = dateWindow(dateFilter);
       if (created < start || created > end) return false;
     }
-    if (canReadScopedTimeline({ event, lead: null, actor })) return event;
+    if (canReadScopedTimeline({ event, lead, actor })) return event;
     return null;
   }).filter(Boolean);
 

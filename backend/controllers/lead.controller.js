@@ -12,6 +12,7 @@ import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLead
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { clearCachedValue } from "../services/ttlCache.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -38,6 +39,17 @@ function runLeadSideEffects(label, tasks = []) {
   }).catch((error) => {
     logError("Lead side effect runner failed", { label, error: error.message });
   });
+}
+
+function clearLeadMutationCaches(leadId) {
+  clearCachedValue(`lead-detail:${leadId}:`);
+  clearCachedValue(`timeline:lead:${leadId}:`);
+  clearCachedValue("admin:");
+  clearCachedValue("bank:");
+  clearCachedValue("dealer:");
+  clearCachedValue("finance:");
+  clearCachedValue("gm:");
+  clearCachedValue("lead-query:");
 }
 
 async function canAccessLead(req, lead) {
@@ -68,6 +80,55 @@ async function canAccessLead(req, lead) {
     return sameCity && sameBank;
   }
   return false;
+}
+
+async function applyLeadStatusSideEffects({ req, existing, lead, nextStatus }) {
+  const processingTimeMinutes = existing.createdAt ? Math.max(Math.round((Date.now() - new Date(existing.createdAt).getTime()) / 60000), 0) : 0;
+  queueSafeAnalyticsEvent(ANALYTICS_EVENTS.STATUS_CHANGED, {
+    lead,
+    previousStatus: existing.status,
+    nextStatus,
+    processingTimeMinutes,
+  });
+  await updateSlaForLead(lead, nextStatus);
+  await ensureCommissionForLead(lead, nextStatus);
+  const statusLabel = STATUS_LABELS[normalizeStatus(nextStatus)] || nextStatus;
+  await addTimelineEvent({
+    leadId: req.params.id,
+    eventType: nextStatus === LEAD_STATUSES.APPROVED
+      ? TIMELINE_EVENTS.APPROVAL
+      : nextStatus === LEAD_STATUSES.REJECTED
+        ? TIMELINE_EVENTS.REJECTION
+        : nextStatus === LEAD_STATUSES.DISBURSED
+          ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
+          : TIMELINE_EVENTS.STATUS_CHANGED,
+    title: `Status: ${statusLabel}`,
+    description: `Lead status updated to ${statusLabel}`,
+    actorName: req.user?.email || "system",
+    actorRole: req.user?.role || "system",
+    metadata: { oldStatus: existing.status, nextStatus, status: nextStatus, customerName: lead.fullName },
+  });
+  await createNotification({
+    type: nextStatus === LEAD_STATUSES.REJECTED ? "rejection" : nextStatus === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
+    title: `Lead ${statusLabel}`,
+    message: `Lead ${lead.caseId || req.params.id} status updated to ${statusLabel}`,
+    leadId: req.params.id,
+    dealerEmail: lead.dealerEmail || lead.createdBy,
+    admin: true,
+    meta: { caseId: lead.caseId },
+  });
+  await writeAuditLog({
+    req,
+    actionType: nextStatus === LEAD_STATUSES.DISBURSED
+      ? AUDIT_ACTIONS.DISBURSED
+      : nextStatus === LEAD_STATUSES.REJECTED
+        ? AUDIT_ACTIONS.REJECTED
+        : AUDIT_ACTIONS.STATUS_UPDATED,
+    oldValue: existing.status,
+    newValue: nextStatus,
+    leadId: req.params.id,
+    meta: { caseId: lead.caseId, oldStatus: existing.status, newStatus: nextStatus, dealershipId: lead.dealershipId, bankId: lead.bankId },
+  });
 }
 
 export async function createLead(req, res, next) {
@@ -287,54 +348,10 @@ export async function updateLeadStatus(req, res, next) {
       statusUpdatedBy: req.user?.email || req.user?.uid || null,
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
+    clearLeadMutationCaches(req.params.id);
     syncLeadProjectionSoon(lead);
-    const processingTimeMinutes = existing.createdAt ? Math.max(Math.round((Date.now() - new Date(existing.createdAt).getTime()) / 60000), 0) : 0;
-    queueSafeAnalyticsEvent(ANALYTICS_EVENTS.STATUS_CHANGED, {
-      lead,
-      previousStatus: existing.status,
-      nextStatus,
-      processingTimeMinutes,
-    });
-    await updateSlaForLead(lead, nextStatus);
-    await ensureCommissionForLead(lead, nextStatus);
     // Branch tie-up workflow does not perform automatic reassignment on rejection.
-    const statusLabel = STATUS_LABELS[normalizeStatus(nextStatus)] || nextStatus;
-    await addTimelineEvent({
-      leadId: req.params.id,
-      eventType: nextStatus === LEAD_STATUSES.APPROVED
-        ? TIMELINE_EVENTS.APPROVAL
-        : nextStatus === LEAD_STATUSES.REJECTED
-          ? TIMELINE_EVENTS.REJECTION
-          : nextStatus === LEAD_STATUSES.DISBURSED
-            ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-            : TIMELINE_EVENTS.STATUS_CHANGED,
-      title: `Status: ${statusLabel}`,
-      description: `Lead status updated to ${statusLabel}`,
-      actorName: req.user?.email || "system",
-      actorRole: req.user?.role || "system",
-      metadata: { oldStatus: existing.status, nextStatus, status: nextStatus, customerName: lead.fullName },
-    });
-    await createNotification({
-      type: nextStatus === LEAD_STATUSES.REJECTED ? "rejection" : nextStatus === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
-      title: `Lead ${statusLabel}`,
-      message: `Lead ${lead.caseId || req.params.id} status updated to ${statusLabel}`,
-      leadId: req.params.id,
-      dealerEmail: lead.dealerEmail || lead.createdBy,
-      admin: true,
-      meta: { caseId: lead.caseId },
-    });
-    await writeAuditLog({
-      req,
-      actionType: nextStatus === LEAD_STATUSES.DISBURSED
-        ? AUDIT_ACTIONS.DISBURSED
-        : nextStatus === LEAD_STATUSES.REJECTED
-          ? AUDIT_ACTIONS.REJECTED
-          : AUDIT_ACTIONS.STATUS_UPDATED,
-      oldValue: existing.status,
-      newValue: nextStatus,
-      leadId: req.params.id,
-      meta: { caseId: lead.caseId, oldStatus: existing.status, newStatus: nextStatus, dealershipId: lead.dealershipId, bankId: lead.bankId },
-    });
+    await applyLeadStatusSideEffects({ req, existing, lead, nextStatus });
     res.json(lead);
   } catch (error) {
     next(error);

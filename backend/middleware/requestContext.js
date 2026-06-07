@@ -10,10 +10,21 @@ export function requestContext(req, res, next) {
   res.locals.startedAt = Date.now();
   req.requestId = requestId;
   res.setHeader("X-Request-Id", requestId);
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (!res.locals.responseBytes) {
+      try {
+        res.locals.responseBytes = Buffer.byteLength(JSON.stringify(body));
+      } catch {
+        res.locals.responseBytes = null;
+      }
+    }
+    return originalJson(body);
+  };
   runRequestScope(req, () => {
     res.on("finish", () => {
       const durationMs = Date.now() - res.locals.startedAt;
-      const responseBytes = Number(res.getHeader("content-length") || 0) || null;
+      const responseBytes = Number(res.getHeader("content-length") || 0) || res.locals.responseBytes || null;
       flushFirestoreReadReport({ statusCode: res.statusCode, durationMs, responseBytes });
       observeApiRequest(req, res, durationMs).catch(() => {});
       if (durationMs >= 500) {

@@ -46,6 +46,62 @@ const bankStatuses = [
   LEAD_STATUSES.DISBURSED,
 ];
 
+const BANK_ANALYTICS_LEAD_FIELDS = [
+  "id",
+  "caseId",
+  "fullName",
+  "customerName",
+  "status",
+  "assignmentStatus",
+  "createdAt",
+  "updatedAt",
+  "statusUpdatedAt",
+  "assignmentTimestamp",
+  "slaAcceptDeadlineAt",
+  "disbursedAmount",
+  "loanAmount",
+  "requiredLoanAmount",
+  "bankId",
+  "assignedBankId",
+  "assignedPartnerId",
+  "bankPartner",
+  "preferredBank",
+  "bankBranchCity",
+  "branchCity",
+  "routingCity",
+  "dealershipCity",
+  "city",
+  "assignedExecutiveId",
+  "assignedExecutiveEmail",
+  "assignedExecutiveName",
+  "assignedExecutiveMobile",
+  "executiveMobile",
+];
+
+const LEAD_DOCUMENT_FIELDS = [
+  "id",
+  "leadId",
+  "caseId",
+  "type",
+  "documentType",
+  "label",
+  "fileName",
+  "originalName",
+  "fileType",
+  "mimeType",
+  "size",
+  "fileSize",
+  "status",
+  "uploadedBy",
+  "createdAt",
+  "uploadedAt",
+  "url",
+  "fileUrl",
+  "downloadUrl",
+  "storagePath",
+  "filePath",
+];
+
 function userEmail(req) {
   return req.user?.email || req.user?.uid;
 }
@@ -356,13 +412,13 @@ async function liveBankRegistrationForAccount(account) {
   return { approval, bankPartner, branchManager, live: Boolean(approval || bankPartner || branchManager) };
 }
 
-async function assignedLeadsForPartner(partner, query = {}) {
+async function assignedLeadsForPartner(partner, query = {}, fields) {
   if (partner.roleType === "loan-executive") {
-    const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 } });
+    const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 }, fields });
     return attachExecutiveMobile(partner, applyFilters(result.data, query));
   }
   const identity = bankIdentity(partner);
-  const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 } });
+  const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 }, fields });
   return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
@@ -1149,6 +1205,7 @@ export async function getBankLead(req, res, next) {
           direction: "asc",
           limit: 50,
           maxLimit: 50,
+          fields: LEAD_DOCUMENT_FIELDS,
         })));
         const byId = new Map();
         pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
@@ -1186,7 +1243,7 @@ export async function getBankAnalytics(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const analyticsCacheKey = `bank:analytics:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`;
-    const leads = await cached(analyticsCacheKey, 15000, () => assignedLeadsForPartner(partner, { limit: 100 }));
+    const leads = await cached(analyticsCacheKey, 15000, () => assignedLeadsForPartner(partner, { limit: 100 }, BANK_ANALYTICS_LEAD_FIELDS));
     const today = new Date().toISOString().slice(0, 10);
     const identity = bankIdentity(partner);
     const activeStatuses = [
@@ -1407,6 +1464,10 @@ export async function rejectBankLead(req, res, next) {
   }
 }
 
+async function performBankLeadReassignment({ lead, reason, actor }) {
+  return reassignLeadToNextBranchExecutive(lead.id, reason, actor);
+}
+
 export async function reassignBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
@@ -1414,7 +1475,7 @@ export async function reassignBankLead(req, res, next) {
       return res.status(403).json({ message: "Only bank managers can reassign leads" });
     }
     const reason = String(req.body.reason || "manager-reassignment").trim();
-    const updated = await reassignLeadToNextBranchExecutive(lead.id, reason, partner.email || partner.id || "bank-manager");
+    const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager" });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     syncLeadProjectionSoon(updated);
@@ -1425,129 +1486,155 @@ export async function reassignBankLead(req, res, next) {
   }
 }
 
+function buildBankLeadStatusMutation({ req, lead, partner }) {
+  const normalizedStatus = normalizeStatus(req.body.status);
+  if (!bankStatuses.includes(normalizedStatus)) {
+    const error = new Error("Invalid bank lead status");
+    error.status = 400;
+    throw error;
+  }
+  const pendingDocument = String(req.body.pendingDocument || "").trim();
+  const requestedDocuments = Array.isArray(req.body.pendingDocumentsRequested)
+    ? [...new Map(req.body.pendingDocumentsRequested.map((item) => String(item || "").trim()).filter(Boolean).map((item) => [item.toLowerCase(), item])).values()]
+    : pendingDocument ? [pendingDocument] : [];
+  const pendingDocumentReason = String(req.body.pendingDocumentReason || req.body.remarks || "").trim();
+  const pendingDocumentDescription = requestedDocuments.length
+    ? `${requestedDocuments.join(", ")}${pendingDocumentReason ? ` - ${pendingDocumentReason}` : ""}`
+    : "";
+  const clearsPendingDocuments = [
+    LEAD_STATUSES.DOCUMENT_RECEIVED,
+    LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+    LEAD_STATUSES.UNDER_BANK_PROCESS,
+    LEAD_STATUSES.DISBURSED,
+  ].includes(normalizedStatus);
+  const now = new Date().toISOString();
+  const executiveName = partner.name || partner.fullName || partner.email || req.user?.email;
+  const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
+  const statusPayload = {
+    status: normalizedStatus,
+    updatedAt: now,
+    statusUpdatedAt: now,
+    updatedByExecutiveId: partner.id || partner.email || req.user?.email,
+    updatedByExecutiveName: executiveName,
+    ...(normalizedStatus === LEAD_STATUSES.APPROVED ? {
+      approvedAmount: req.body.approvedAmount,
+      roi: req.body.roi,
+      tenure: req.body.tenure,
+      emi: req.body.emi,
+      processingFee: req.body.processingFee,
+      sanctionNumber: req.body.sanctionNumber,
+      sanctionDate: req.body.sanctionDate,
+      approvalRemarks: req.body.remarks,
+    } : {}),
+    ...(normalizedStatus === LEAD_STATUSES.REJECTED ? {
+      rejectionReason,
+      rejectedAt: now,
+      rejectedBy: executiveName,
+      rejectionRemarks: req.body.remarks,
+    } : {}),
+    ...(normalizedStatus === LEAD_STATUSES.DISBURSED ? {
+      disbursedAmount: req.body.disbursedAmount,
+      disbursementDate: req.body.disbursementDate,
+      utrNumber: req.body.utrNumber,
+      disbursementRemarks: req.body.remarks,
+    } : {}),
+    ...(clearsPendingDocuments ? {
+      pendingDocuments: [],
+      pendingDocumentsRequested: [],
+      pendingDocument: "",
+      pendingDocumentReason: "",
+      pendingDocumentsClearedAt: now,
+      pendingDocumentsClearedBy: executiveName,
+    } : {}),
+    ...([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? {
+      pendingDocuments: requestedDocuments.length
+        ? [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), ...requestedDocuments])]
+        : lead.pendingDocuments,
+      pendingDocumentsRequested: requestedDocuments.length
+        ? [...(Array.isArray(lead.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []), {
+          documents: requestedDocuments,
+          notes: pendingDocumentReason,
+          requestedByExecutiveId: partner.id || partner.email || req.user?.email,
+          requestedByExecutiveName: executiveName,
+          requestedAt: now,
+        }]
+        : lead.pendingDocumentsRequested,
+      pendingDocumentReason,
+    } : {}),
+  };
+  return {
+    normalizedStatus,
+    pendingDocument,
+    requestedDocuments,
+    pendingDocumentReason,
+    pendingDocumentDescription,
+    statusPayload,
+  };
+}
+
+function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalizedStatus, pendingDocument, requestedDocuments, pendingDocumentReason, pendingDocumentDescription }) {
+  const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
+  const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
+  setImmediate(() => {
+    Promise.allSettled([
+      updateSlaForLead(updated, normalizedStatus),
+      ensureCommissionForLead(updated, normalizedStatus),
+      addTimelineEvent({
+        leadId: lead.id,
+        eventType: normalizedStatus === LEAD_STATUSES.APPROVED
+          ? TIMELINE_EVENTS.APPROVAL
+          : normalizedStatus === LEAD_STATUSES.REJECTED
+            ? TIMELINE_EVENTS.REJECTION
+            : normalizedStatus === LEAD_STATUSES.DISBURSED
+              ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
+              : isPendingDocumentStatus
+                ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
+                : TIMELINE_EVENTS.STATUS_CHANGED,
+        title: `Status: ${statusLabel}`,
+        description: pendingDocumentDescription || `Bank updated status to ${statusLabel}`,
+        actorName: partner.email || partner.name || partner.fullName,
+        actorRole: req.user?.role || "bank",
+        branchId: partner.branchId || null,
+        metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocuments: requestedDocuments, pendingDocumentReason },
+        leadSnapshot: updated,
+      }),
+      createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : isPendingDocumentStatus ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: isPendingDocumentStatus && requestedDocuments.length ? `Lead ${lead.caseId || lead.id} needs: ${requestedDocuments.join(", ")}` : `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName, pendingDocuments: requestedDocuments, pendingDocumentReason } }),
+      writeAuditLog({
+        req,
+        actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
+          ? AUDIT_ACTIONS.DISBURSED
+          : normalizedStatus === LEAD_STATUSES.REJECTED
+            ? AUDIT_ACTIONS.REJECTED
+            : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
+              ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
+              : AUDIT_ACTIONS.STATUS_UPDATED,
+        oldValue: lead.status,
+        newValue: normalizedStatus,
+        leadId: lead.id,
+        meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId, pendingDocuments: requestedDocuments, pendingDocumentReason },
+      }),
+    ]).then((results) => {
+      results.filter((result) => result.status === "rejected").forEach((result) => logError("Bank status side effect failed", { error: result.reason?.message || String(result.reason), leadId: lead.id, status: normalizedStatus }));
+    });
+  });
+}
+
 export async function updateBankLeadStatus(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
-    const normalizedStatus = normalizeStatus(req.body.status);
-    if (!bankStatuses.includes(normalizedStatus)) return res.status(400).json({ message: "Invalid bank lead status" });
-    const pendingDocument = String(req.body.pendingDocument || "").trim();
-    const requestedDocuments = Array.isArray(req.body.pendingDocumentsRequested)
-      ? [...new Map(req.body.pendingDocumentsRequested.map((item) => String(item || "").trim()).filter(Boolean).map((item) => [item.toLowerCase(), item])).values()]
-      : pendingDocument ? [pendingDocument] : [];
-    const pendingDocumentReason = String(req.body.pendingDocumentReason || req.body.remarks || "").trim();
-    const pendingDocumentDescription = requestedDocuments.length
-      ? `${requestedDocuments.join(", ")}${pendingDocumentReason ? ` - ${pendingDocumentReason}` : ""}`
-      : "";
-    const clearsPendingDocuments = [
-      LEAD_STATUSES.DOCUMENT_RECEIVED,
-      LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
-      LEAD_STATUSES.UNDER_BANK_PROCESS,
-      LEAD_STATUSES.DISBURSED,
-    ].includes(normalizedStatus);
-    const now = new Date().toISOString();
-    const executiveName = partner.name || partner.fullName || partner.email || req.user?.email;
-    const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
-    const statusPayload = {
-      status: normalizedStatus,
-      updatedAt: now,
-      statusUpdatedAt: now,
-      updatedByExecutiveId: partner.id || partner.email || req.user?.email,
-      updatedByExecutiveName: executiveName,
-      ...(normalizedStatus === LEAD_STATUSES.APPROVED ? {
-        approvedAmount: req.body.approvedAmount,
-        roi: req.body.roi,
-        tenure: req.body.tenure,
-        emi: req.body.emi,
-        processingFee: req.body.processingFee,
-        sanctionNumber: req.body.sanctionNumber,
-        sanctionDate: req.body.sanctionDate,
-        approvalRemarks: req.body.remarks,
-      } : {}),
-      ...(normalizedStatus === LEAD_STATUSES.REJECTED ? {
-        rejectionReason,
-        rejectedAt: now,
-        rejectedBy: executiveName,
-        rejectionRemarks: req.body.remarks,
-      } : {}),
-      ...(normalizedStatus === LEAD_STATUSES.DISBURSED ? {
-        disbursedAmount: req.body.disbursedAmount,
-        disbursementDate: req.body.disbursementDate,
-        utrNumber: req.body.utrNumber,
-        disbursementRemarks: req.body.remarks,
-      } : {}),
-      ...(clearsPendingDocuments ? {
-        pendingDocuments: [],
-        pendingDocumentsRequested: [],
-        pendingDocument: "",
-        pendingDocumentReason: "",
-        pendingDocumentsClearedAt: now,
-        pendingDocumentsClearedBy: executiveName,
-      } : {}),
-      ...([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) ? {
-        pendingDocuments: requestedDocuments.length
-          ? [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), ...requestedDocuments])]
-          : lead.pendingDocuments,
-        pendingDocumentsRequested: requestedDocuments.length
-          ? [...(Array.isArray(lead.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []), {
-            documents: requestedDocuments,
-            notes: pendingDocumentReason,
-            requestedByExecutiveId: partner.id || partner.email || req.user?.email,
-            requestedByExecutiveName: executiveName,
-            requestedAt: now,
-          }]
-          : lead.pendingDocumentsRequested,
-        pendingDocumentReason,
-      } : {}),
-    };
+    let mutation;
+    try {
+      mutation = buildBankLeadStatusMutation({ req, lead, partner });
+    } catch (error) {
+      return res.status(error.status || 400).json({ message: error.message });
+    }
+    const { normalizedStatus, statusPayload } = mutation;
     const updated = await updateRecord("leads", lead.id, statusPayload);
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
-    const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
-    const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
     res.json({ message: "Lead status updated", lead: updated });
-    setImmediate(() => {
-      Promise.allSettled([
-        updateSlaForLead(updated, normalizedStatus),
-        ensureCommissionForLead(updated, normalizedStatus),
-        addTimelineEvent({
-          leadId: lead.id,
-          eventType: normalizedStatus === LEAD_STATUSES.APPROVED
-            ? TIMELINE_EVENTS.APPROVAL
-            : normalizedStatus === LEAD_STATUSES.REJECTED
-              ? TIMELINE_EVENTS.REJECTION
-              : normalizedStatus === LEAD_STATUSES.DISBURSED
-                ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-                : isPendingDocumentStatus
-                  ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
-                  : TIMELINE_EVENTS.STATUS_CHANGED,
-          title: `Status: ${statusLabel}`,
-          description: pendingDocumentDescription || `Bank updated status to ${statusLabel}`,
-          actorName: partner.email || partner.name || partner.fullName,
-          actorRole: req.user?.role || "bank",
-          branchId: partner.branchId || null,
-          metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocuments: requestedDocuments, pendingDocumentReason },
-          leadSnapshot: updated,
-        }),
-        createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : isPendingDocumentStatus ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: isPendingDocumentStatus && requestedDocuments.length ? `Lead ${lead.caseId || lead.id} needs: ${requestedDocuments.join(", ")}` : `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName, pendingDocuments: requestedDocuments, pendingDocumentReason } }),
-        writeAuditLog({
-          req,
-          actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
-            ? AUDIT_ACTIONS.DISBURSED
-            : normalizedStatus === LEAD_STATUSES.REJECTED
-              ? AUDIT_ACTIONS.REJECTED
-              : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
-                ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
-                : AUDIT_ACTIONS.STATUS_UPDATED,
-          oldValue: lead.status,
-          newValue: normalizedStatus,
-          leadId: lead.id,
-          meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId, pendingDocuments: requestedDocuments, pendingDocumentReason },
-        }),
-      ]).then((results) => {
-        results.filter((result) => result.status === "rejected").forEach((result) => logError("Bank status side effect failed", { error: result.reason?.message || String(result.reason), leadId: lead.id, status: normalizedStatus }));
-      });
-    });
+    queueBankLeadStatusSideEffects({ req, lead, updated, partner, ...mutation });
   } catch (error) {
     next(error);
   }

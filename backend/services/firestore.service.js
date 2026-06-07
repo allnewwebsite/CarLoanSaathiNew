@@ -3,6 +3,7 @@ import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logWarn } from "./logger.service.js";
 import { recordFirestoreRead } from "./requestScope.service.js";
+import crypto from "node:crypto";
 
 const memoryStore = {
   leads: [],
@@ -72,6 +73,27 @@ const PRODUCTION_FULL_SCAN_DENYLIST = new Set([
 ]);
 
 let memoryBackfillCounter = 0;
+
+function hashValue(value) {
+  return crypto.createHash("sha256").update(JSON.stringify(value ?? "")).digest("hex").slice(0, 12);
+}
+
+function readSignature(collection, operation, parts = []) {
+  const normalized = parts
+    .filter(Boolean)
+    .map((part) => Array.isArray(part) ? part.join(":") : String(part))
+    .sort()
+    .join("|");
+  return `${collection}:${operation}:${normalized}`;
+}
+
+function whereSignature(where = []) {
+  return where.map((clause) => [
+    clause.field || "unknown",
+    clause.op || "==",
+    hashValue(clause.value),
+  ]);
+}
 
 function formatLeadCaseId(counter) {
   return `CLS-${String(counter).padStart(4, "0")}`;
@@ -171,7 +193,7 @@ export async function listRecords(collection) {
   }
   if (!firestore) return memoryStore[collection] || [];
   const snapshot = await firestore.collection(collection).get();
-  recordFirestoreRead({ collection, operation: "list", documentsReturned: snapshot.size, estimatedReads: snapshot.size });
+  recordFirestoreRead({ collection, operation: "list", signature: readSignature(collection, "list"), documentsReturned: snapshot.size, estimatedReads: snapshot.size });
   const pairs = snapshot.docs
     .map((doc) => ({ doc, record: { id: doc.id, ...doc.data() } }))
     .sort((left, right) => String(right.record.createdAt || "").localeCompare(String(left.record.createdAt || "")));
@@ -185,7 +207,14 @@ export async function findRecordsByField(collection, field, value, limit = 10) {
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 25);
   if (!firestore) return (memoryStore[collection] || []).filter((item) => item[field] === value).slice(0, safeLimit);
   const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
-  recordFirestoreRead({ collection, operation: "find", documentsReturned: snapshot.size, estimatedReads: snapshot.size, limit: safeLimit });
+  recordFirestoreRead({
+    collection,
+    operation: "find",
+    signature: readSignature(collection, "find", [[field, "==", hashValue(value)], ["limit", safeLimit]]),
+    documentsReturned: snapshot.size,
+    estimatedReads: snapshot.size,
+    limit: safeLimit,
+  });
   return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
 
@@ -463,7 +492,20 @@ export async function queryRecords(collection, {
     throw error;
   }
   let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  recordFirestoreRead({ collection, operation: "query", documentsReturned: rows.length, estimatedReads: snapshot.size, limit: safeLimit });
+  recordFirestoreRead({
+    collection,
+    operation: "query",
+    signature: readSignature(collection, "query", [
+      ...whereSignature(where),
+      ["orderBy", orderBy],
+      ["direction", direction],
+      ["limit", safeLimit],
+      search ? ["search", hashValue(search)] : null,
+    ]),
+    documentsReturned: rows.length,
+    estimatedReads: snapshot.size,
+    limit: safeLimit,
+  });
   rows = applySearch(rows, search, searchFields);
   const hasMore = rows.length > safeLimit;
   rows = rows.slice(0, safeLimit);
@@ -486,11 +528,11 @@ export async function countRecords(collection, { where = [] } = {}) {
     }
     if (typeof ref.count === "function") {
       const snapshot = await ref.count().get();
-      recordFirestoreRead({ collection, operation: "count", documentsReturned: 1, estimatedReads: 1 });
+      recordFirestoreRead({ collection, operation: "count", signature: readSignature(collection, "count", whereSignature(where)), documentsReturned: 1, estimatedReads: 1 });
       return snapshot.data().count || 0;
     }
     const snapshot = await ref.select().get();
-    recordFirestoreRead({ collection, operation: "count-fallback", documentsReturned: snapshot.size, estimatedReads: snapshot.size });
+    recordFirestoreRead({ collection, operation: "count-fallback", signature: readSignature(collection, "count-fallback", whereSignature(where)), documentsReturned: snapshot.size, estimatedReads: snapshot.size });
     return snapshot.size;
   });
 }
@@ -499,7 +541,7 @@ export async function getRecord(collection, id) {
   if (!firestore) return (memoryStore[collection] || []).find((item) => item.id === id || (collection === "leads" && item.caseId === id)) || null;
   const ref = await resolveDocumentRef(collection, id);
   const doc = await ref.get();
-  recordFirestoreRead({ collection, operation: "get", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
+  recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   if (!doc.exists) return null;
   return { ...doc.data(), id: doc.id };
 }
@@ -520,7 +562,7 @@ export async function updateRecord(collection, id, payload) {
   const ref = await resolveDocumentRef(collection, id);
   await ref.update(update);
   const doc = await ref.get();
-  recordFirestoreRead({ collection, operation: "update-readback", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
+  recordFirestoreRead({ collection, operation: "update-readback", signature: readSignature(collection, "update-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { ...doc.data(), id: doc.id };
   await syncWriteProjections(collection, record).catch((error) => {
     logWarn("Projection write skipped after update", { collection, id, error: error.message });
@@ -546,7 +588,7 @@ export async function upsertRecord(collection, id, payload) {
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
   const doc = await firestore.collection(collection).doc(id).get();
-  recordFirestoreRead({ collection, operation: "upsert-readback", documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
+  recordFirestoreRead({ collection, operation: "upsert-readback", signature: readSignature(collection, "upsert-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { id: doc.id, ...doc.data() };
   await syncWriteProjections(collection, record).catch((error) => {
     logWarn("Projection write skipped after upsert", { collection, id, error: error.message });
