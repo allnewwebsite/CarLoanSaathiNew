@@ -37,6 +37,12 @@ const LEAD_FIELDS = [
   "salespersonJobId",
   "salespersonEmail",
   "assignedSalesperson",
+  "financeManagerId",
+  "financeManagerName",
+  "financeManagerMobile",
+  "financeManagerEmail",
+  "financeManagerEmployeeId",
+  "assignedFinanceManager",
   "carPrice",
   "carOnRoadPrice",
   "loanAmount",
@@ -59,7 +65,7 @@ const LEAD_FIELDS = [
   "bankId",
 ];
 
-const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedSalesperson", "salespersonName"];
+const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager"];
 
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
@@ -95,6 +101,15 @@ function localFilters(leads, query = {}) {
     String(query.salespersonEmail || "").trim().toLowerCase(),
   ].filter(Boolean));
   const bank = String(query.bank || "").trim().toLowerCase();
+  const financeManager = String(query.financeManager || "").trim().toLowerCase();
+  const financeManagerId = String(query.financeManagerId || "").trim();
+  const financeManagerNeedles = new Set([
+    financeManager,
+    financeManagerId.toLowerCase(),
+    String(query.financeManagerName || "").trim().toLowerCase(),
+    String(query.financeManagerEmployeeId || "").trim().toLowerCase(),
+    String(query.financeManagerEmail || "").trim().toLowerCase(),
+  ].filter(Boolean));
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
   return leads.filter((lead) => {
@@ -113,11 +128,19 @@ function localFilters(leads, query = {}) {
         lead.salespersonEmail,
         lead.assignedSalesperson,
       ].some((value) => salespersonNeedles.has(String(value || "").trim().toLowerCase()));
+    const financeManagerOk = !financeManagerNeedles.size
+      || [
+        lead.financeManagerId,
+        lead.financeManagerName,
+        lead.financeManagerEmployeeId,
+        lead.financeManagerEmail,
+        lead.assignedFinanceManager,
+      ].some((value) => financeManagerNeedles.has(String(value || "").trim().toLowerCase()));
     const bankText = String(lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner || lead.preferredBank || "").toLowerCase();
     const bankOk = !bank || bankText === bank || bankText.includes(bank);
     const cityOk = !city || String(lead.city || "").toLowerCase() === city;
     const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
-    return statusOk && salespersonOk && bankOk && cityOk && dateOk;
+    return statusOk && salespersonOk && financeManagerOk && bankOk && cityOk && dateOk;
   });
 }
 
@@ -139,6 +162,7 @@ function queryWhere(baseWhere = [], query = {}) {
   if (statuses.length === 1) where.push({ field: "status", value: statuses[0] });
   if (statuses.length > 1 && statuses.length <= 10) where.push({ field: "status", op: "in", value: statuses });
   if (query.salespersonId) where.push({ field: "salespersonId", value: String(query.salespersonId).trim() });
+  if (query.financeManagerId) where.push({ field: "financeManagerId", value: String(query.financeManagerId).trim() });
   if (query.bankId) where.push({ field: "bankId", value: String(query.bankId).trim() });
   if (query.assignedExecutiveId) where.push({ field: "assignedExecutiveId", value: String(query.assignedExecutiveId).trim() });
   if (query.city) where.push({ field: "city", value: String(query.city).trim() });

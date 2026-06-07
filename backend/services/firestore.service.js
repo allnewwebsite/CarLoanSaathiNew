@@ -15,6 +15,7 @@ const memoryStore = {
   dealerships: [],
   dealershipManagers: [],
   salespersons: [],
+  financeManagers: [],
   financeDesk: [],
   financeDesks: [],
   onboardingRequests: [],

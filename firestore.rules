@@ -246,6 +246,16 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    match /financeManagers/{managerId} {
+      allow read: if isSuperAdmin()
+        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+      allow create, update: if isFinanceDesk()
+        && approved()
+        && request.resource.data.dealershipId == dealershipId();
+      allow delete: if false;
+      allow read, write: if isSuperAdmin();
+    }
+
     match /loanExecutives/{executiveId} {
       allow read: if isSuperAdmin()
         || (isBankManager() && sameBank(resource.data) && sameBranch(resource.data))

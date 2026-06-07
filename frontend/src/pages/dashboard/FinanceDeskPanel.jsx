@@ -21,10 +21,12 @@ const emptyLead = {
   carPrice: "",
   loanAmount: "",
   salespersonId: "",
+  financeManagerId: "",
   branchId: "",
 };
 
 const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
+const emptyFinanceManager = { name: "", mobile: "", employeeId: "", email: "" };
 const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "finance-head", branch: "", city: "" };
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
@@ -117,6 +119,24 @@ function useSalespersons({ includeInactive = false } = {}) {
   return { salespersons, loading, loadSalespersons };
 }
 
+function useFinanceManagers({ includeInactive = false } = {}) {
+  const cachedManagers = getCachedGetData("/dealer/finance-managers", { includeInactive }) || getCachedGetData("/dealer/finance-managers");
+  const [financeManagers, setFinanceManagers] = useState(() => cachedManagers || []);
+  const [loading, setLoading] = useState(() => !cachedManagers);
+  const loadFinanceManagers = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get("/dealer/finance-managers", { params: { includeInactive } });
+      setFinanceManagers(response.data || []);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [includeInactive]);
+  useEffect(() => { loadFinanceManagers({ silent: Boolean(cachedManagers) }); }, [loadFinanceManagers]);
+  useBackgroundRefresh({ onRefresh: loadFinanceManagers });
+  return { financeManagers, loading, loadFinanceManagers };
+}
+
 function useDealerLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/dealer/leads", initialParams);
@@ -125,7 +145,7 @@ function useDealerLeads(filters = {}) {
   const [total, setTotal] = useState(() => cachedPayload?.total || 0);
   const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload?.hasMore || cachedPayload?.nextCursor));
   const [loading, setLoading] = useState(() => !cachedPayload);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.search || ""]);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.financeManagerId || "", filters.search || ""]);
   const loadLeads = useCallback(async (next = {}) => {
     const silent = next.silent === true;
     if (!silent) setLoading(true);
@@ -142,7 +162,7 @@ function useDealerLeads(filters = {}) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.status, filters.salespersonId, filters.search, cursorParamsForPage, rememberNextCursor]);
+  }, [filters.status, filters.salespersonId, filters.financeManagerId, filters.search, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => {
     loadLeads({ silent: Boolean(cachedPayload) });
@@ -172,13 +192,16 @@ function leadRows(leads, mode = "total") {
         display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         <StatusBadge key="status" lead={lead} />,
-        display(lead.assignedExecutiveName),
-        display(lead.assignedExecutiveMobile || lead.executiveMobile),
-        dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
       ];
       if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED) {
         cells.splice(6, 0, display(lead.rejectionReason));
       }
+      cells.push(
+        display(lead.financeManagerName || lead.assignedFinanceManager),
+        display(lead.assignedExecutiveName),
+        display(lead.assignedExecutiveMobile || lead.executiveMobile),
+        dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
+      );
       cells.push(<DocumentsButton key="docs" lead={lead} />);
       return { key: lead.id, cells };
     }
@@ -191,6 +214,7 @@ function leadRows(leads, mode = "total") {
           moneyValue(lead.carPrice || lead.carOnRoadPrice),
           moneyValue(lead.loanAmount || lead.requiredLoanAmount),
           display(lead.bankPartner || lead.assignedBankName),
+          display(lead.financeManagerName || lead.assignedFinanceManager),
           display(lead.assignedExecutiveName),
           display(lead.assignedExecutiveMobile || lead.executiveMobile),
           <StatusBadge key="status" lead={lead} />,
@@ -206,6 +230,7 @@ function leadRows(leads, mode = "total") {
         display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         dateTime(lead.generatedAt || lead.createdAt),
+        display(lead.financeManagerName || lead.assignedFinanceManager),
         <StatusBadge key="status" lead={lead} />,
         display(lead.assignedExecutiveName),
         display(lead.assignedExecutiveMobile || lead.executiveMobile),
@@ -219,6 +244,7 @@ export function FinanceDeskPanel({ mode = "total" }) {
   if (mode === "add") return <AddLeadOnlyScreen />;
   if (mode === "bank-tieups") return <BankTieUpsScreen />;
   if (mode === "staff") return <StaffManagementScreen />;
+  if (mode === "finance-managers") return <FinanceManagerManagementScreen />;
   if (mode === "salespersons") return <SalespersonManagementScreen />;
   if (mode === "active-salespersons") return <ActiveSalespersonsScreen />;
   if (mode === "cases") return <AllCasesScreen />;
@@ -472,7 +498,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Finance Manager", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -506,6 +532,7 @@ function BranchListSkeleton({ rows = 6 }) {
 function AddLeadOnlyScreen() {
   const navigate = useNavigate();
   const { salespersons } = useSalespersons();
+  const { financeManagers } = useFinanceManagers();
   const [branches, setBranches] = useState([]);
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [branchesError, setBranchesError] = useState("");
@@ -611,6 +638,7 @@ function AddLeadOnlyScreen() {
           <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
           <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
           <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <Field label="Finance Manager"><select className="field mt-1.5" value={form.financeManagerId} onChange={(e) => update("financeManagerId", e.target.value)}><option value="">Unassigned</option>{financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}</select></Field>
           <div className="flex items-end">
             <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>
@@ -1067,6 +1095,79 @@ function SalespersonManagementScreen() {
   );
 }
 
+function FinanceManagerManagementScreen() {
+  const { financeManagers, loading, loadFinanceManagers } = useFinanceManagers({ includeInactive: true });
+  const [form, setForm] = useState(emptyFinanceManager);
+  const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const update = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: "" }));
+  };
+  const validate = (nextForm = form) => {
+    const nextErrors = {};
+    if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
+    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
+    if (!cleanText(nextForm.employeeId)) nextErrors.employeeId = "Field required";
+    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
+    return nextErrors;
+  };
+  const add = async (event) => {
+    event.preventDefault();
+    setMessage("");
+    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), employeeId: cleanText(form.employeeId), email: cleanEmail(form.email) };
+    const nextErrors = validate(nextForm);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+    setSaving(true);
+    try {
+      await api.post("/dealer/finance-managers", nextForm);
+      setForm(emptyFinanceManager);
+      await loadFinanceManagers();
+      setMessage("Finance Manager added");
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to add Finance Manager");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const toggleStatus = async (manager) => {
+    await api.patch(`/dealer/finance-managers/${manager.id}`, { active: !manager.active });
+    await loadFinanceManagers();
+  };
+  const rows = financeManagers.map((manager) => ({
+    key: manager.id,
+    cells: [
+      manager.name,
+      manager.mobile,
+      manager.employeeId,
+      manager.email,
+      manager.active ? "Active" : "Inactive",
+      <button key="toggle" onClick={() => toggleStatus(manager)} className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${manager.active ? "border-amber-200 text-amber-700" : "border-emerald-200 text-emerald-700"}`}>{manager.active ? "Mark Inactive" : "Mark Active"}</button>,
+    ],
+  }));
+  return (
+    <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+      <form onSubmit={add} className="card p-5">
+        <h2 className="text-lg font-semibold text-slate-900">Add Finance Manager</h2>
+        {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
+        <div className="mt-4 grid gap-3">
+          <Field label="Finance Manager Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => setErrors(validate(form))} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("employeeId", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Email ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
+          <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Finance Manager"}</button>
+        </div>
+      </form>
+      <div className="space-y-4">
+        <SectionTitle title="Finance Managers" subtitle="Dealership-scoped ownership master for loan processing responsibility." />
+        <Table headers={["Finance Manager Name", "Mobile Number", "Employee ID", "Email ID", "Status", "Action"]} rows={rows} loading={loading} />
+      </div>
+    </div>
+  );
+}
+
 function ActiveSalespersonsScreen() {
   const { salespersons, loading } = useSalespersons();
   const rows = salespersons.map((person) => ({ key: person.id, cells: [person.name, person.mobile, person.jobId, person.email] }));
@@ -1082,12 +1183,14 @@ function AllCasesScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const salespersonId = params.get("salespersonId") || "";
+  const financeManagerId = params.get("financeManagerId") || "";
   const search = params.get("search") || "";
   const { salespersons } = useSalespersons();
-  const filters = useMemo(() => ({ salespersonId, search }), [salespersonId, search]);
+  const { financeManagers } = useFinanceManagers();
+  const filters = useMemo(() => ({ salespersonId, financeManagerId, search }), [salespersonId, financeManagerId, search]);
   const { leads, total, hasMore, loading, loadLeads } = useDealerLeads(filters);
   const updateFilter = (next) => {
-    const merged = { salespersonId, search, page: "1", ...next };
+    const merged = { salespersonId, financeManagerId, search, page: "1", ...next };
     Object.keys(merged).forEach((key) => !merged[key] && delete merged[key]);
     setPage(1);
     setParams(merged);
@@ -1099,15 +1202,19 @@ function AllCasesScreen() {
   };
   return (
     <div className="space-y-4">
-      <SectionTitle title="All Cases" subtitle="Main dealership monitoring page with server-side salesperson filtering." />
-      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 md:grid-cols-[1fr_240px]">
+      <SectionTitle title="All Cases" subtitle="Main dealership monitoring page with salesperson and Finance Manager filtering." />
+      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 md:grid-cols-[1fr_220px_220px]">
         <div className="flex items-center gap-2"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search customer or mobile" defaultValue={search} onChange={(e) => updateFilter({ search: e.target.value })} /></div>
         <select className="field" value={salespersonId} onChange={(e) => updateFilter({ salespersonId: e.target.value })}>
           <option value="">Filter By Salesperson</option>
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
+        <select className="field" value={financeManagerId} onChange={(e) => updateFilter({ financeManagerId: e.target.value })}>
+          <option value="">Filter By Finance Manager</option>
+          {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
+        </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Finance Manager", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1116,15 +1223,26 @@ function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const status = params.get("status") || LEAD_STATUSES.NEW;
-  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status });
+  const financeManagerId = params.get("financeManagerId") || "";
+  const { financeManagers } = useFinanceManagers();
+  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status, financeManagerId });
   const choose = (value) => {
     setPage(1);
-    setParams({ status: value, page: "1" });
-    loadLeads({ status: value, page: 1 });
+    const next = { status: value, financeManagerId, page: "1" };
+    Object.keys(next).forEach((key) => !next[key] && delete next[key]);
+    setParams(next);
+    loadLeads({ ...next, page: 1 });
+  };
+  const chooseManager = (value) => {
+    setPage(1);
+    const next = { status, financeManagerId: value, page: "1" };
+    Object.keys(next).forEach((key) => !next[key] && delete next[key]);
+    setParams(next);
+    loadLeads({ ...next, page: 1 });
   };
   const pageTo = (nextPage) => {
     setPage(nextPage);
-    loadLeads({ page: nextPage, status });
+    loadLeads({ page: nextPage, status, financeManagerId });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
@@ -1133,7 +1251,13 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <div className="max-w-xs">
+        <select className="field h-10" value={financeManagerId} onChange={(e) => chooseManager(e.target.value)}>
+          <option value="">All Finance Managers</option>
+          {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
+        </select>
+      </div>
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1190,7 +1314,7 @@ export function FinanceLeadDetailPage() {
           <button onClick={() => navigate(`/finance/leads/${lead.id}/documents`)} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white">View Documents</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Status", financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Status", financeStatus(lead)]].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>

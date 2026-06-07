@@ -47,6 +47,9 @@ export const financeDeskLeadSchema = publicLeadBaseSchema.extend({
   // Salesperson assignment - MANDATORY
   salespersonId: cleanText(1), // Required
   assignedSalesperson: cleanText(1), // Required
+  financeManagerId: z.string().trim().max(160).optional().or(z.literal("")),
+  financeManagerName: z.string().trim().max(120).optional().or(z.literal("")),
+  assignedFinanceManager: z.string().trim().max(120).optional().or(z.literal("")),
   
   // Optional fields
   remarks: z.string().trim().max(500).optional(),

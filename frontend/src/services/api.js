@@ -132,6 +132,7 @@ function cacheTtlForUrl(url = "") {
   if (path.startsWith("/notifications") || path.endsWith("/notifications")) return NOTIFICATION_CACHE_TTL_MS;
   if (
     path.includes("/salespersons")
+    || path.includes("/finance-managers")
     || path.includes("/staff")
     || path.includes("/executives")
     || path.includes("/dealerships")

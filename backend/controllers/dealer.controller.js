@@ -63,12 +63,17 @@ function salespersonIdFrom(value) {
   return String(value || "").trim();
 }
 
+function financeManagerIdFrom(value) {
+  return String(value || "").trim();
+}
+
 function clearLeadSyncCaches(leadId = "") {
   clearCachedValue("gm:salespersons:");
   clearCachedValue("gm:notifications:");
   clearCachedValue("bank:notifications:");
   clearCachedValue("bank:executives:");
   clearCachedValue("bank:executive-cases:");
+  clearCachedValue("dealer:finance-managers:");
   if (leadId) {
     clearCachedValue(`lead-detail:${leadId}:`);
     clearCachedValue(`timeline:lead:${leadId}:`);
@@ -529,11 +534,30 @@ function normalizeFinanceDeskLead(body) {
     ifscCode: body.ifscCode || "",
     salespersonId: body.salespersonId || "",
     assignedSalesperson: body.assignedSalesperson || body.salespersonName || "Finance desk direct",
+    financeManagerId: body.financeManagerId || "",
+    financeManagerName: body.financeManagerName || body.assignedFinanceManager || "",
+    assignedFinanceManager: body.assignedFinanceManager || body.financeManagerName || "",
     remarks: body.remarks,
     documents: body.documents,
     metadata: body.metadata,
   };
   return financeDeskLeadSchema.parse(normalized);
+}
+
+function financeManagerRow(manager = {}) {
+  return {
+    id: manager.id,
+    name: manager.name || manager.financeManagerName || "",
+    mobile: manager.mobile || "",
+    email: manager.email || "",
+    employeeId: manager.employeeId || "",
+    dealershipId: manager.dealershipId || "",
+    dealershipName: manager.dealershipName || "",
+    status: manager.active === false ? "Inactive" : "Active",
+    active: manager.active !== false,
+    createdAt: manager.createdAt || "",
+    updatedAt: manager.updatedAt || "",
+  };
 }
 
 function readableLeadError(error) {
@@ -835,6 +859,15 @@ export async function createDealerLead(req, res, next) {
       return res.status(400).json({ message: "Select an active salesperson from your dealership" });
     }
 
+    const financeManagerId = financeManagerIdFrom(req.body.financeManagerId);
+    let financeManager = null;
+    if (financeManagerId) {
+      financeManager = await getRecord("financeManagers", financeManagerId);
+      if (!financeManager || financeManager.dealershipId !== dealershipId || financeManager.active === false) {
+        return res.status(400).json({ message: "Select an active Finance Manager from your dealership" });
+      }
+    }
+
     // Normalize and validate lead data
     const payload = normalizeFinanceDeskLead({ 
       ...req.body, 
@@ -848,6 +881,9 @@ export async function createDealerLead(req, res, next) {
       branchName: branchTieUp.branchName,
       salespersonId,
       assignedSalesperson: salesperson.name,
+      financeManagerId: financeManager?.id || "",
+      financeManagerName: financeManager?.name || "",
+      assignedFinanceManager: financeManager?.name || "Unassigned",
     });
 
     const dealershipCity = dealership.city || dealership.registeredCity || payload.city;
@@ -897,6 +933,14 @@ export async function createDealerLead(req, res, next) {
       salespersonJobId: salesperson.jobId || "",
       salespersonEmail: salesperson.email || "",
       assignedSalesperson: salesperson.name,
+
+      // Finance Manager ownership
+      financeManagerId: financeManager?.id || "",
+      financeManagerName: financeManager?.name || "",
+      financeManagerMobile: financeManager?.mobile || "",
+      financeManagerEmail: financeManager?.email || "",
+      financeManagerEmployeeId: financeManager?.employeeId || "",
+      assignedFinanceManager: financeManager?.name || "Unassigned",
       
       // Metadata
       createdBy: dealershipId,
@@ -1024,6 +1068,87 @@ export async function getDealerSalespersons(req, res, next) {
         active: person.active !== false,
       }));
     res.json(salespersons);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getDealerFinanceManagers(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const includeInactive = String(req.query.includeInactive || "") === "true";
+    const page = await queryRecords("financeManagers", {
+      where: [{ field: "dealershipId", value: dealershipEmail }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+      search: req.query.search,
+      searchFields: ["name", "email", "mobile", "employeeId"],
+    });
+    const managers = page.data
+      .filter((manager) => includeInactive || manager.active !== false)
+      .map(financeManagerRow);
+    res.json(managers);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createDealerFinanceManager(req, res, next) {
+  try {
+    const { dealershipEmail, dealership } = await financeDeskContext(req);
+    const name = required(req.body.name || req.body.financeManagerName, "Finance Manager name");
+    const mobile = required(req.body.mobile, "Mobile number").replace(/\D/g, "");
+    const email = required(req.body.email, "Email ID").toLowerCase();
+    const employeeId = required(req.body.employeeId, "Employee ID");
+    if (!/^\d{10}$/.test(mobile)) return res.status(400).json({ message: "Enter valid 10-digit mobile number" });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter valid email address" });
+    const existing = await queryRecords("financeManagers", {
+      where: [{ field: "dealershipId", value: dealershipEmail }],
+      limit: 100,
+      maxLimit: 100,
+    });
+    const duplicate = existing.data.find((manager) =>
+      manager.active !== false
+      && (String(manager.email || "").toLowerCase() === email || String(manager.employeeId || "").toLowerCase() === employeeId.toLowerCase())
+    );
+    if (duplicate) return res.status(409).json({ message: "Active Finance Manager with this email or employee ID already exists" });
+    const now = new Date().toISOString();
+    const manager = await createRecord("financeManagers", {
+      name,
+      mobile,
+      email,
+      employeeId,
+      dealershipId: dealershipEmail,
+      dealershipEmail,
+      dealershipName: dealership.dealershipName || dealership.name || "",
+      active: req.body.active === false ? false : true,
+      status: req.body.active === false ? "Inactive" : "Active",
+      createdBy: dealerEmail(req),
+      createdAt: now,
+      updatedAt: now,
+    });
+    clearCachedValue("dealer:finance-managers:");
+    res.status(201).json(financeManagerRow(manager));
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateDealerFinanceManager(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const manager = await getRecord("financeManagers", req.params.id);
+    if (!manager || manager.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Finance Manager not found" });
+    const nextActive = req.body.active !== undefined ? req.body.active === true : String(req.body.status || "").toLowerCase() !== "inactive";
+    const updated = await updateRecord("financeManagers", manager.id, {
+      active: nextActive,
+      status: nextActive ? "Active" : "Inactive",
+      updatedAt: new Date().toISOString(),
+    });
+    clearCachedValue("dealer:finance-managers:");
+    res.json(financeManagerRow(updated));
   } catch (error) {
     next(error);
   }

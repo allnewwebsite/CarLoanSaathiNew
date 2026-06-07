@@ -16,6 +16,7 @@ const navByRole = {
     { label: "Total Leads", to: "/finance/total-leads", icon: ClipboardList },
     { label: "Add Lead", to: "/finance/add-lead", icon: ClipboardCheck },
     { label: "Manage Staff", to: "/finance/manage-staff", icon: Users },
+    { label: "Add Finance Manager", to: "/finance/finance-managers", icon: Users },
     { label: "Add / Remove Salesperson", to: "/finance/salespersons", icon: Users },
     { label: "Active Salespersons", to: "/finance/active-salespersons", icon: Users },
     { label: "All Cases", to: "/finance/cases", icon: FileText },
@@ -154,6 +155,13 @@ export function DashboardLayout() {
   const nav = useMemo(() => navByRole[user?.role] || [], [user?.role]);
   const currentTarget = `${location.pathname}${location.search}`;
   const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search), [currentTarget, location.pathname, location.search]);
+
+  useEffect(() => {
+    nav.forEach((item, index) => {
+      window.setTimeout(() => prefetchDashboardRoute(item.to), index * 120);
+    });
+  }, [nav]);
+
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const headerEyebrow = user?.role === "bank-manager"
     ? `${user.bankName || "Bank Branch"} — ${user.bankIfsc || "IFSC Pending"}`

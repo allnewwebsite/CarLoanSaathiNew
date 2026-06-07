@@ -30,6 +30,12 @@ const VIEW_LEAD_FIELDS = [
   "salespersonJobId",
   "salespersonEmail",
   "assignedSalesperson",
+  "financeManagerId",
+  "financeManagerName",
+  "financeManagerMobile",
+  "financeManagerEmail",
+  "financeManagerEmployeeId",
+  "assignedFinanceManager",
   "bankId",
   "bankName",
   "assignedBankName",
@@ -48,7 +54,7 @@ const VIEW_LEAD_FIELDS = [
   "sanctionLetterUploadedAt",
 ];
 
-const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName", "salespersonJobId", "salespersonEmail", "assignedSalesperson"];
+const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName", "salespersonJobId", "salespersonEmail", "assignedSalesperson", "financeManagerName", "financeManagerEmployeeId", "financeManagerEmail", "assignedFinanceManager"];
 
 function pick(record = {}, fields = VIEW_LEAD_FIELDS) {
   return fields.reduce((next, field) => {
@@ -190,6 +196,8 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
 
   if (query.status) where.push({ field: "status", value: String(query.status).trim() });
   if (query.dealershipId) where.push({ field: "dealershipId", value: scopeId(query.dealershipId) });
+  if (query.salespersonId) where.push({ field: "salespersonId", value: scopeId(query.salespersonId) });
+  if (query.financeManagerId) where.push({ field: "financeManagerId", value: scopeId(query.financeManagerId) });
   const result = await queryRecords(collection, {
     where,
     orderBy: "createdAt",
