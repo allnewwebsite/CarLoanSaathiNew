@@ -11,7 +11,7 @@ import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analytics
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
-import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { clearCachedValue } from "../services/ttlCache.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
@@ -349,7 +349,7 @@ export async function updateLeadStatus(req, res, next) {
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
     clearLeadMutationCaches(req.params.id);
-    syncLeadProjectionSoon(lead);
+    await syncLeadProjection(lead);
     // Branch tie-up workflow does not perform automatic reassignment on rejection.
     await applyLeadStatusSideEffects({ req, existing, lead, nextStatus });
     res.json(lead);

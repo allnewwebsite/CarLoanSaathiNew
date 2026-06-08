@@ -504,6 +504,7 @@ function clearLeadDetailCaches(leadId) {
 
 function clearBankSummaryCaches() {
   clearCachedValue("admin:");
+  clearCachedValue("bank:");
   clearCachedValue("dealer:");
   clearCachedValue("finance:");
   clearCachedValue("gm:");
@@ -1394,7 +1395,7 @@ export async function acceptBankLead(req, res, next) {
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
-    syncLeadProjectionSoon(updated);
+    await syncLeadProjection(updated);
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "leadId",
@@ -1433,7 +1434,7 @@ export async function rejectBankLead(req, res, next) {
     const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
-    syncLeadProjectionSoon(updated);
+    await syncLeadProjection(updated);
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1458,7 +1459,7 @@ export async function rejectBankLead(req, res, next) {
     });
     await createNotification({ type: "rejection", title: "Lead rejected", message: remarks ? `${reason} - ${remarks}` : reason, leadId: lead.id, partnerId: partner.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, priority: "high", meta: { customerName: lead.fullName, reason, remarks } });
     await writeAuditLog({ req, actionType: "BANK_REJECT", newValue: reason, leadId: lead.id });
-    res.json({ message: "Lead rejected. Manual reassignment can be performed by bank manager if needed" });
+    res.json({ message: "Lead rejected. Manual reassignment can be performed by bank manager if needed", lead: updated });
   } catch (error) {
     next(error);
   }

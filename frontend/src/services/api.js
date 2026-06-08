@@ -251,13 +251,17 @@ export function prefetchGet(url, params = null, options = {}) {
   }).catch(() => null);
 }
 
-export function invalidateGetCache({ url, prefix } = {}) {
+export function invalidateGetCache({ url, prefix, purge = false } = {}) {
   hydrateGetCache();
   const now = Date.now();
   for (const [key, entry] of getCache.entries()) {
     if (!entry) continue;
     const matches = url ? entry.url === url : prefix ? String(entry.url || "").startsWith(prefix) : true;
     if (!matches) continue;
+    if (purge) {
+      getCache.delete(key);
+      continue;
+    }
     entry.stale = true;
     entry.expiresAt = now - 1;
     entry.staleUntil = Math.max(entry.staleUntil || 0, now + GET_STALE_TTL_MS);
@@ -283,8 +287,9 @@ function invalidateLeadCaches() {
     "/gm/leads",
     "/timeline",
     "/notifications",
-  ].forEach((prefix) => invalidateGetCache({ prefix }));
-  invalidateGetCache({ prefix: "/bank/dealerships" });
+  ].forEach((prefix) => invalidateGetCache({ prefix, purge: true }));
+  invalidateGetCache({ prefix: "/bank/dealerships", purge: true });
+  invalidateGetCache({ prefix: "/dashboard", purge: true });
 }
 
 function dispatchDataMutation(payload) {
@@ -325,7 +330,20 @@ function setupDataMutationListeners() {
   });
 }
 
-function emitDataMutation(url = "") {
+function leadMutationMetadata(data = {}) {
+  const payload = data?.lead && typeof data.lead === "object" ? data.lead : data;
+  return {
+    leadId: payload?.leadId || payload?.id || payload?.sourceId || "",
+    caseId: payload?.caseId || "",
+    status: payload?.status || payload?.leadStatus || "",
+    dealershipId: payload?.dealershipId || payload?.dealershipEmail || payload?.dealerEmail || "",
+    bankId: payload?.bankId || payload?.assignedBankId || payload?.assignedPartnerId || "",
+    executiveId: payload?.assignedExecutiveId || payload?.updatedByExecutiveId || "",
+    executiveEmail: payload?.assignedExecutiveEmail || "",
+  };
+}
+
+function emitDataMutation(url = "", data = {}) {
   if (typeof window === "undefined") return;
   setupDataMutationListeners();
   const leadMutation = isLeadMutationUrl(url);
@@ -333,6 +351,7 @@ function emitDataMutation(url = "") {
     url,
     canonicalUrl: leadMutation ? "/lead-mutation" : url,
     kind: leadMutation ? "lead" : "generic",
+    ...(leadMutation ? leadMutationMetadata(data) : {}),
     at: Date.now(),
     source: dataMutationSource,
     portal: requestPortalHeader(),
@@ -580,7 +599,7 @@ api.interceptors.response.use(
       }
       else if (url.startsWith("/notifications")) invalidateGetCache({ prefix: "/notifications" });
       else invalidateGetCache();
-      if (shouldEmitMutation) emitDataMutation(url);
+      if (shouldEmitMutation) emitDataMutation(url, response.data);
     }
     return response;
   },
