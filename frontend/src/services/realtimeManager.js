@@ -6,7 +6,10 @@ const diagnostics = {
   opened: 0,
   closed: 0,
   errors: 0,
+  disabled: 0,
 };
+
+const firestoreFallbackEnabled = String(import.meta.env.VITE_ENABLE_FIRESTORE_REALTIME_FALLBACK || "").toLowerCase() === "true";
 
 function notify(entry, payload) {
   entry.callbacks.forEach((callback) => {
@@ -33,6 +36,11 @@ function closeEntry(key, entry) {
 
 export function subscribeRealtime({ key, queryFactory, onChange, onError, skipInitial = true }) {
   if (!key || typeof queryFactory !== "function" || typeof onChange !== "function") return () => {};
+  if (!firestoreFallbackEnabled) {
+    diagnostics.disabled += 1;
+    emitDiagnostics();
+    return () => {};
+  }
 
   let entry = subscriptions.get(key);
   if (entry) {

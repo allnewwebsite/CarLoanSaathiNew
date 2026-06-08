@@ -22,6 +22,7 @@
     "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "verify:status-sync": "node scripts/verifyStatusSyncWorkflow.js",
     "verify:realtime": "node scripts/verifyRealtimeArchitecture.js",
+    "report:read-meter": "node scripts/reportReadMeter.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {

@@ -9,7 +9,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
-import { queryStaffViewProjection, syncLeadProjectionSoon, syncStaffViewProjectionSoon } from "../services/projection.service.js";
+import { queryLeadProjectionForUser, queryStaffViewProjection, syncLeadProjectionSoon, syncStaffViewProjectionSoon } from "../services/projection.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -1042,17 +1042,56 @@ export async function createDealerLead(req, res, next) {
 
 export async function getDealerLeads(req, res, next) {
   const startedAt = Date.now();
+  const requestStartedAt = Number(res.locals.startedAt || startedAt);
   let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
+  let projectionStarted, projectionEnded, fallbackStarted, fallbackEnded;
+  let projectionError = null;
+  let fallbackTriggered = false;
   try {
     authStarted = Date.now();
     const { dealershipEmail } = await financeDeskContext(req);
     authEnded = Date.now();
     queryStarted = Date.now();
-    const page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+    projectionStarted = Date.now();
+    const projectionPage = await queryLeadProjectionForUser({
+      user: { ...req.user, role: "finance-desk", dealershipId: dealershipEmail },
+      query: req.query,
+      requestId: req.requestId,
+    }).catch((error) => {
+      projectionError = error;
+      return null;
+    });
+    projectionEnded = Date.now();
+    let page = projectionPage;
+    if (!page) {
+      fallbackTriggered = true;
+      fallbackStarted = Date.now();
+      page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+      fallbackEnded = Date.now();
+    }
     queryEnded = Date.now();
     serializeStarted = Date.now();
     const responseJson = JSON.stringify(page);
     serializeEnded = Date.now();
+    logInfo("Dealer leads latency breakdown", {
+      tag: "PROJECTION-LATENCY",
+      requestId: req.requestId,
+      path: req.originalUrl,
+      role: req.user?.role,
+      authDurationMs: startedAt - requestStartedAt,
+      financeContextDurationMs: authEnded - authStarted,
+      projectionDurationMs: projectionEnded - projectionStarted,
+      projectionResultCount: Array.isArray(projectionPage?.data) ? projectionPage.data.length : 0,
+      projectionError: projectionError ? projectionError.code || projectionError.message : null,
+      fallbackTriggered,
+      fallbackDurationMs: fallbackTriggered ? fallbackEnded - fallbackStarted : 0,
+      fallbackResultCount: fallbackTriggered && Array.isArray(page?.data) ? page.data.length : 0,
+      queryDurationMs: queryEnded - queryStarted,
+      serializationDurationMs: serializeEnded - serializeStarted,
+      controllerDurationMs: Date.now() - startedAt,
+      totalDurationMs: Date.now() - requestStartedAt,
+      responseBytes: Buffer.byteLength(responseJson),
+    });
     logInfo("Dealer lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,

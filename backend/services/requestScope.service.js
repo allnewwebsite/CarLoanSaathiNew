@@ -11,6 +11,7 @@ export function runRequestScope(req, next) {
     role: null,
     reads: [],
     cache: { hits: 0, misses: 0 },
+    requestCache: new Map(),
   }, next);
 }
 
@@ -39,6 +40,29 @@ export function recordCacheEvent(hit = false) {
   if (!scope) return;
   if (hit) scope.cache.hits += 1;
   else scope.cache.misses += 1;
+}
+
+export function getRequestCachedValue(key) {
+  const scope = storage.getStore();
+  if (!scope?.requestCache || !key) return undefined;
+  if (!scope.requestCache.has(key)) return undefined;
+  recordCacheEvent(true);
+  return scope.requestCache.get(key);
+}
+
+export function setRequestCachedValue(key, value) {
+  const scope = storage.getStore();
+  if (!scope?.requestCache || !key) return value;
+  scope.requestCache.set(key, value);
+  return value;
+}
+
+export function clearRequestCachedValue(prefix = "") {
+  const scope = storage.getStore();
+  if (!scope?.requestCache) return;
+  for (const key of scope.requestCache.keys()) {
+    if (!prefix || key.startsWith(prefix)) scope.requestCache.delete(key);
+  }
 }
 
 export function flushFirestoreReadReport(meta = {}) {

@@ -700,7 +700,8 @@ export async function getAdminLeads(req, res, next) {
   let queryStarted, queryEnded, enrichStarted, enrichEnded, serializeStarted, serializeEnded;
   try {
     queryStarted = Date.now();
-    const page = await queryAllLeads({ query: req.query });
+    const page = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null)
+      || await queryAllLeads({ query: req.query });
     queryEnded = Date.now();
     enrichStarted = Date.now();
     const response = { ...page, data: await enrichAdminLeadRows(page.data) };

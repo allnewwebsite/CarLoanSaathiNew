@@ -1,6 +1,7 @@
 import { getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
+import { logInfo, logWarn } from "./logger.service.js";
 
 const VIEW_LEAD_FIELDS = [
   "id",
@@ -186,7 +187,8 @@ export function syncNotificationProjectionSoon(notification = {}) {
   Promise.resolve().then(() => syncNotificationProjection(notification)).catch(() => {});
 }
 
-export async function queryLeadProjectionForUser({ user = {}, query = {}, fields = VIEW_LEAD_FIELDS } = {}) {
+export async function queryLeadProjectionForUser({ user = {}, query = {}, fields = VIEW_LEAD_FIELDS, requestId = null } = {}) {
+  const projectionStartedAt = Date.now();
   const { limit, cursor, page } = paginationParams(query);
   const role = user.role;
   let collection = "adminViews";
@@ -208,24 +210,76 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
     return null;
   }
 
-  if (query.status) where.push({ field: "status", value: String(query.status).trim() });
+  const statuses = statusValuesForProjectionQuery(query.status);
+  if (statuses.length === 1) where.push({ field: "status", value: statuses[0] });
+  if (statuses.length > 1 && statuses.length <= 10) where.push({ field: "status", op: "in", value: statuses });
   if (query.dealershipId) where.push({ field: "dealershipId", value: scopeId(query.dealershipId) });
   if (query.salespersonId) where.push({ field: "salespersonId", value: scopeId(query.salespersonId) });
   if (query.financeManagerId) where.push({ field: "financeManagerId", value: scopeId(query.financeManagerId) });
-  const result = await queryRecords(collection, {
-    where,
-    orderBy: "createdAt",
-    direction: "desc",
-    limit,
-    cursor,
-    page,
-    search: query.search,
-    searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
-    fields: [...new Set(["sourceId", "viewType", "scopeId", ...fields])],
-    maxLimit: 100,
-  });
-  if (!result.data.length) return null;
-  return pageResponse({ data: result.data.map((item) => ({ ...item, id: item.sourceId || item.id })), limit, nextCursor: result.nextCursor });
+  try {
+    const result = await queryRecords(collection, {
+      where,
+      orderBy: "createdAt",
+      direction: "desc",
+      limit,
+      cursor,
+      page,
+      search: query.search,
+      searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
+      fields: [...new Set(["sourceId", "viewType", "scopeId", ...fields])],
+      maxLimit: 100,
+    });
+    const durationMs = Date.now() - projectionStartedAt;
+    const resultCount = Array.isArray(result.data) ? result.data.length : 0;
+    logInfo("Lead projection lookup completed", {
+      tag: "PROJECTION-LATENCY",
+      requestId,
+      collection,
+      queryType: "lead-projection",
+      role,
+      durationMs,
+      resultCount,
+      returnedNull: resultCount === 0,
+      fallbackTriggered: resultCount === 0,
+      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+      limit,
+      page: page || null,
+      cursor: Boolean(cursor),
+      search: Boolean(query.search),
+    });
+    if (!resultCount) return null;
+    return pageResponse({ data: result.data.map((item) => ({ ...item, id: item.sourceId || item.id })), limit, nextCursor: result.nextCursor });
+  } catch (error) {
+    logWarn("Lead projection lookup failed", {
+      tag: "PROJECTION-LATENCY",
+      requestId,
+      collection,
+      queryType: "lead-projection",
+      role,
+      durationMs: Date.now() - projectionStartedAt,
+      error: error.code || error.message,
+      timeout: error.code === "FIRESTORE_QUERY_TIMEOUT",
+      fallbackTriggered: true,
+      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+      limit,
+      page: page || null,
+      cursor: Boolean(cursor),
+      search: Boolean(query.search),
+    });
+    throw error;
+  }
+}
+
+function statusValuesForProjectionQuery(status) {
+  const value = String(status || "").trim();
+  if (!value) return [];
+  const normalized = normalizeStatus(value);
+  if (normalized === LEAD_STATUSES.NEW || value === "New Lead" || value === "New") return [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED];
+  if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
+  if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
+  if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];
+  if (value === "Rejected With Reason") return [LEAD_STATUSES.REJECTED];
+  return [normalized];
 }
 
 function bankDealershipScope(lead = {}) {

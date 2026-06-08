@@ -11,7 +11,7 @@ import { ANALYTICS_EVENTS, queueSafeAnalyticsEvent } from "../services/analytics
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
-import { syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
+import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 
@@ -51,6 +51,10 @@ function clearLeadMutationCaches(leadId) {
   clearCachedValue("finance:");
   clearCachedValue("gm:");
   clearCachedValue("lead-query:");
+}
+
+function authenticatedDealershipId(req, fallbackEmail) {
+  return String(req.user?.dealershipId || fallbackEmail || "").trim().toLowerCase();
 }
 
 async function canAccessLead(req, lead) {
@@ -136,17 +140,19 @@ export async function createLead(req, res, next) {
   try {
     const payload = leadSchema.parse(req.body);
     const actorEmail = req.user?.email || "system";
+    const dealershipId = authenticatedDealershipId(req, actorEmail);
+    if (!dealershipId) return res.status(403).json({ message: "Dealership scope is required", code: "DEALERSHIP_SCOPE_REQUIRED" });
     const dealership = actorEmail !== "system"
-      ? await getRecord("dealerships", actorEmail) || await getRecord("dealers", actorEmail)
+      ? await getRecord("dealerships", dealershipId) || await getRecord("dealerships", actorEmail) || await getRecord("dealers", dealershipId) || await getRecord("dealers", actorEmail)
       : null;
     const dealershipCity = dealership?.city || payload.dealershipCity || payload.routingCity || payload.city;
     const caseId = await generateLeadCaseId();
     const lead = await createRecord("leads", {
       ...payload,
       caseId,
-      dealerEmail: payload.dealerEmail || actorEmail,
-      dealershipEmail: payload.dealershipEmail || actorEmail,
-      dealershipId: payload.dealershipId || req.user?.dealershipId || actorEmail,
+      dealerEmail: actorEmail,
+      dealershipEmail: dealershipId,
+      dealershipId,
       dealershipName: payload.dealershipName || dealership?.dealershipName || "",
       dealershipCity,
       routingCity: dealershipCity,
@@ -181,13 +187,16 @@ export async function createLead(req, res, next) {
 export async function createPublicLead(req, res, next) {
   try {
     const payload = publicLeadSchema.parse(req.body);
+    const actorEmail = req.user?.email || null;
+    const dealershipId = authenticatedDealershipId(req, actorEmail);
+    if (!dealershipId) return res.status(403).json({ message: "Dealership scope is required", code: "DEALERSHIP_SCOPE_REQUIRED" });
     const caseId = await generateLeadCaseId();
     const lead = await createRecord("leads", {
       ...payload,
       caseId,
-      dealerEmail: payload.dealerEmail || req.user?.email || null,
-      dealershipEmail: payload.dealershipEmail || req.user?.email || null,
-      dealershipId: payload.dealershipId || req.user?.dealershipId || req.user?.email || null,
+      dealerEmail: actorEmail,
+      dealershipEmail: dealershipId,
+      dealershipId,
       status: LEAD_STATUSES.NEW,
     });
     runLeadSideEffects("finance-lead-created", [
@@ -305,7 +314,9 @@ export async function getLeads(req, res, next) {
   try {
     queryStarted = Date.now();
     let payload;
-    if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
+    const projected = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null);
+    if (projected) payload = projected;
+    else if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
     else if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
       const dealershipId = req.user?.dealershipId || req.user?.email || req.user?.uid;
       payload = await queryDealershipLeads({ dealershipId, query: req.query });

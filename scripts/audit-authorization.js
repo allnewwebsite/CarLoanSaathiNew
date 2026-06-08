@@ -12,6 +12,13 @@ function assertCheck(name, condition, detail = "") {
   checks.push({ name, ok: Boolean(condition), detail });
 }
 
+function between(text, start, end) {
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) return "";
+  const endIndex = text.indexOf(end, startIndex + start.length);
+  return endIndex < 0 ? text.slice(startIndex) : text.slice(startIndex, endIndex);
+}
+
 const frontendGuard = read("frontend/src/routes/RoleProtectedRoute.jsx");
 const authContext = read("frontend/src/context/AuthContext.jsx");
 const authSessionManager = read("frontend/src/services/authSessionManager.js");
@@ -24,6 +31,9 @@ const securityMiddleware = read("backend/middleware/securityMiddleware.js");
 const identityService = read("backend/services/identity.service.js");
 const timelineController = read("backend/controllers/timeline.controller.js");
 const timelineService = read("backend/services/timeline.service.js");
+const leadController = read("backend/controllers/lead.controller.js");
+const bankController = read("backend/controllers/bank.controller.js");
+const partnerBranchValuesBody = between(bankController, "function partnerBranchValues", "function bankManagerCanAccessLead");
 const firestoreRules = read("firestore.rules");
 const storageRules = read("storage.rules");
 
@@ -127,6 +137,30 @@ assertCheck(
   "timeline events without visibility are not visible to non-admins",
   timelineService.includes("return visibility.length > 0 && visibility.includes(normalize(role))"),
   "Missing visibility must not become an all-role data leak.",
+);
+assertCheck(
+  "authenticated lead creation ignores client dealershipId",
+  leadController.includes("function authenticatedDealershipId")
+    && leadController.includes("authenticatedDealershipId(req, actorEmail)")
+    && leadController.includes("dealershipId,")
+    && !leadController.includes("dealershipId: payload.dealershipId || req.user?.dealershipId"),
+  "Finance-desk lead creation must derive dealership scope from the authenticated session.",
+);
+assertCheck(
+  "bank manager lead access requires same bank and same branch",
+  bankController.includes("function bankManagerCanAccessLead")
+    && bankController.includes("const sameBank = anyMatch(leadBankValues(lead), partnerBankValues(partner))")
+    && bankController.includes("const sameBranch = anyMatch(leadBranchValues(lead), partnerBranchValues(partner))")
+    && bankController.includes("return sameBank && sameBranch"),
+  "Bank managers must not access same-bank leads from another branch.",
+);
+assertCheck(
+  "bank branch matching excludes bank-level ids",
+  partnerBranchValuesBody
+    && !partnerBranchValuesBody.includes("partner.bankPartnerId")
+    && !partnerBranchValuesBody.includes("partner.partnerId")
+    && !partnerBranchValuesBody.includes("partner.id,"),
+  "Branch matching must not treat bankPartnerId, partnerId, or generic id as branch proof.",
 );
 assertCheck("Firestore denies default wildcard", firestoreRules.includes("match /{document=**}") && firestoreRules.includes("allow read, write: if false"));
 assertCheck("Firestore protects system counters", firestoreRules.includes("match /systemCounters/{id}") && firestoreRules.includes("allow read, write: if false"));

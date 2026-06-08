@@ -1,8 +1,8 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
-import { logWarn } from "./logger.service.js";
-import { recordFirestoreRead } from "./requestScope.service.js";
+import { logInfo, logWarn } from "./logger.service.js";
+import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, setRequestCachedValue } from "./requestScope.service.js";
 import crypto from "node:crypto";
 
 const memoryStore = {
@@ -70,6 +70,15 @@ const PRODUCTION_FULL_SCAN_DENYLIST = new Set([
   "notifications",
   "slaLogs",
   "userSessions",
+]);
+
+const DIAGNOSTIC_QUERY_COLLECTIONS = new Set([
+  "adminViews",
+  "financeViews",
+  "gmViews",
+  "bankViews",
+  "executiveViews",
+  "leads",
 ]);
 
 let memoryBackfillCounter = 0;
@@ -165,7 +174,40 @@ async function resolveDocumentRef(collection, id) {
   return directRef;
 }
 
+function stableCachePart(value) {
+  return hashValue(value);
+}
+
+function readCacheKey(collection, operation, parts = {}) {
+  return `fs:${collection}:${operation}:${stableCachePart(parts)}`;
+}
+
+function collectionCachePrefix(collection) {
+  return `fs:${collection}:`;
+}
+
+function cloneCachedValue(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getRequestReadCache(key) {
+  const value = getRequestCachedValue(key);
+  return value === undefined ? undefined : cloneCachedValue(value);
+}
+
+function setRequestReadCache(key, value) {
+  setRequestCachedValue(key, cloneCachedValue(value));
+  return value;
+}
+
+function clearCollectionReadCache(collection) {
+  clearRequestCachedValue(collectionCachePrefix(collection));
+}
+
 export async function createRecord(collection, payload) {
+  clearCollectionReadCache(collection);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const record = { id: `${collection}-${Date.now()}`, ...cleanPayload, createdAt: new Date().toISOString() };
   if (!firestore) {
@@ -205,6 +247,9 @@ export async function listRecords(collection) {
 export async function findRecordsByField(collection, field, value, limit = 10) {
   if (!field || value === undefined || value === null) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 25);
+  const cacheKey = readCacheKey(collection, "find", { field, value, safeLimit });
+  const cachedRows = getRequestReadCache(cacheKey);
+  if (cachedRows !== undefined) return cachedRows;
   if (!firestore) return (memoryStore[collection] || []).filter((item) => item[field] === value).slice(0, safeLimit);
   const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
   recordFirestoreRead({
@@ -215,7 +260,7 @@ export async function findRecordsByField(collection, field, value, limit = 10) {
     estimatedReads: snapshot.size,
     limit: safeLimit,
   });
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return setRequestReadCache(cacheKey, snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
 }
 
 export async function findFirstRecordByFields(collection, fields = {}, limit = 5) {
@@ -393,6 +438,7 @@ function isMissingCompositeIndexError(error) {
 }
 
 async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset = 0, search, searchFields, fields, maxLimit }) {
+  const startedAt = Date.now();
   logWarn("Firestore composite index missing; using scoped fallback query", {
     collection,
     orderBy,
@@ -421,6 +467,25 @@ async function fallbackIndexedQuery({ collection, where, orderBy, direction, saf
   if (offset) rows = rows.slice(offset);
   rows = rows.slice(0, safeLimit);
   if (collection === "leads") rows = await withLeadCaseIds(rows, rows.map((row) => ({ ref: firestore.collection(collection).doc(row.id) })));
+  if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
+    logInfo("Firestore fallback query completed", {
+      tag: "PROJECTION-LATENCY",
+      collection,
+      queryType: "query-fallback",
+      durationMs: Date.now() - startedAt,
+      resultCount: rows.length,
+      estimatedReads: snapshot.size,
+      cacheHit: false,
+      cacheMiss: true,
+      fallbackTriggered: true,
+      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+      orderBy,
+      direction,
+      limit: safeLimit,
+      fallbackLimit,
+      search: Boolean(search),
+    });
+  }
   return {
     data: rows.map((record) => selectFields(record, fields)),
     limit: safeLimit,
@@ -448,8 +513,43 @@ export async function queryRecords(collection, {
   assertPaginationSafe({ page: pageNumber, limit: safeLimit, cursor, collection });
   const offset = !parsedCursor && pageNumber && pageNumber > 1 ? (pageNumber - 1) * safeLimit : 0;
   if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: Boolean(allowGlobal) });
+  const cacheKey = readCacheKey(collection, "query", {
+    where,
+    orderBy,
+    direction,
+    safeLimit,
+    cursor,
+    page: pageNumber,
+    search,
+    searchFields,
+    fields,
+    maxLimit,
+    allowGlobal: Boolean(allowGlobal),
+  });
+  const cachedPage = getRequestReadCache(cacheKey);
+  if (cachedPage !== undefined) {
+    if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
+      logInfo("Firestore query cache hit", {
+        tag: "PROJECTION-LATENCY",
+        collection,
+        queryType: "query",
+        durationMs: 0,
+        resultCount: Array.isArray(cachedPage.data) ? cachedPage.data.length : 0,
+        cacheHit: true,
+        cacheMiss: false,
+        fallbackTriggered: false,
+        where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+        orderBy,
+        direction,
+        limit: safeLimit,
+        search: Boolean(search),
+      });
+    }
+    return cachedPage;
+  }
 
   if (!firestore) {
+    const memoryStartedAt = Date.now();
     let rows = applyMemoryWhere(memoryStore[collection] || [], where);
     rows = applySearch(rows, search, searchFields);
     rows = rows.sort((left, right) => {
@@ -463,15 +563,34 @@ export async function queryRecords(collection, {
     }
     if (offset) rows = rows.slice(offset);
     const page = rows.slice(0, safeLimit);
-    return {
+    const memoryPage = {
       data: page.map((record) => selectFields(record, fields)),
       total: rows.length,
       limit: safeLimit,
       nextCursor: page.length === safeLimit ? encodeCursor(page[page.length - 1], orderBy) : null,
     };
+    if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
+      logInfo("Firestore memory query completed", {
+        tag: "PROJECTION-LATENCY",
+        collection,
+        queryType: "memory-query",
+        durationMs: Date.now() - memoryStartedAt,
+        resultCount: memoryPage.data.length,
+        cacheHit: false,
+        cacheMiss: true,
+        fallbackTriggered: false,
+        where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+        orderBy,
+        direction,
+        limit: safeLimit,
+        search: Boolean(search),
+      });
+    }
+    return setRequestReadCache(cacheKey, memoryPage);
   }
 
   let snapshot;
+  const queryStartedAt = Date.now();
   try {
     snapshot = await withQueryMonitoring({ collection, operation: "query", where, limit: safeLimit }, async () => {
       let ref = firestore.collection(collection);
@@ -488,6 +607,24 @@ export async function queryRecords(collection, {
   } catch (error) {
     if (isMissingCompositeIndexError(error) && where.length) {
       return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit });
+    }
+    if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
+      logWarn("Firestore query failed", {
+        tag: "PROJECTION-LATENCY",
+        collection,
+        queryType: "query",
+        durationMs: Date.now() - queryStartedAt,
+        cacheHit: false,
+        cacheMiss: true,
+        fallbackTriggered: false,
+        timeout: error.code === "FIRESTORE_QUERY_TIMEOUT",
+        error: error.code || error.message,
+        where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+        orderBy,
+        direction,
+        limit: safeLimit,
+        search: Boolean(search),
+      });
     }
     throw error;
   }
@@ -510,15 +647,37 @@ export async function queryRecords(collection, {
   const hasMore = rows.length > safeLimit;
   rows = rows.slice(0, safeLimit);
   if (collection === "leads") rows = await withLeadCaseIds(rows, snapshot.docs.slice(0, rows.length));
-  return {
+  const resultPage = {
     data: rows.map((record) => selectFields(record, fields)),
     limit: safeLimit,
     nextCursor: hasMore ? encodeCursor(rows[rows.length - 1], orderBy) : null,
   };
+  if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
+    logInfo("Firestore query completed", {
+      tag: "PROJECTION-LATENCY",
+      collection,
+      queryType: "query",
+      durationMs: Date.now() - queryStartedAt,
+      resultCount: resultPage.data.length,
+      estimatedReads: snapshot.size,
+      cacheHit: false,
+      cacheMiss: true,
+      fallbackTriggered: false,
+      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+      orderBy,
+      direction,
+      limit: safeLimit,
+      search: Boolean(search),
+    });
+  }
+  return setRequestReadCache(cacheKey, resultPage);
 }
 
 export async function countRecords(collection, { where = [] } = {}) {
   if (collection === "leads") assertLeadQueryScoped(where, { allowGlobal: false });
+  const cacheKey = readCacheKey(collection, "count", { where });
+  const cachedCount = getRequestReadCache(cacheKey);
+  if (cachedCount !== undefined) return cachedCount;
   if (!firestore) return applyMemoryWhere(memoryStore[collection] || [], where).length;
 
   return withQueryMonitoring({ collection, operation: "count", where, limit: 0 }, async () => {
@@ -529,24 +688,44 @@ export async function countRecords(collection, { where = [] } = {}) {
     if (typeof ref.count === "function") {
       const snapshot = await ref.count().get();
       recordFirestoreRead({ collection, operation: "count", signature: readSignature(collection, "count", whereSignature(where)), documentsReturned: 1, estimatedReads: 1 });
-      return snapshot.data().count || 0;
+      return setRequestReadCache(cacheKey, snapshot.data().count || 0);
     }
     const snapshot = await ref.select().get();
     recordFirestoreRead({ collection, operation: "count-fallback", signature: readSignature(collection, "count-fallback", whereSignature(where)), documentsReturned: snapshot.size, estimatedReads: snapshot.size });
-    return snapshot.size;
+    return setRequestReadCache(cacheKey, snapshot.size);
   });
 }
 
 export async function getRecord(collection, id) {
+  const cacheKey = readCacheKey(collection, "get", { id });
+  const cachedRecord = getRequestReadCache(cacheKey);
+  if (cachedRecord !== undefined) return cachedRecord;
   if (!firestore) return (memoryStore[collection] || []).find((item) => item.id === id || (collection === "leads" && item.caseId === id)) || null;
-  const ref = await resolveDocumentRef(collection, id);
-  const doc = await ref.get();
-  recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
-  if (!doc.exists) return null;
-  return { ...doc.data(), id: doc.id };
+  const directDoc = await firestore.collection(collection).doc(id).get();
+  recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: directDoc.exists ? 1 : 0, estimatedReads: 1 });
+  if (directDoc.exists) return setRequestReadCache(cacheKey, { ...directDoc.data(), id: directDoc.id });
+
+  const idSnapshot = await firestore.collection(collection).where("id", "==", id).limit(1).get();
+  recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["id", "==", hashValue(id)], ["limit", 1]]), documentsReturned: idSnapshot.size, estimatedReads: idSnapshot.size, limit: 1 });
+  if (!idSnapshot.empty) {
+    const doc = idSnapshot.docs[0];
+    return setRequestReadCache(cacheKey, { id: doc.id, ...doc.data() });
+  }
+
+  if (collection === "leads") {
+    const caseSnapshot = await firestore.collection(collection).where("caseId", "==", id).limit(1).get();
+    recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["caseId", "==", hashValue(id)], ["limit", 1]]), documentsReturned: caseSnapshot.size, estimatedReads: caseSnapshot.size, limit: 1 });
+    if (!caseSnapshot.empty) {
+      const doc = caseSnapshot.docs[0];
+      return setRequestReadCache(cacheKey, { id: doc.id, ...doc.data() });
+    }
+  }
+
+  return setRequestReadCache(cacheKey, null);
 }
 
 export async function updateRecord(collection, id, payload) {
+  clearCollectionReadCache(collection);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const update = { ...cleanPayload, updatedAt: new Date().toISOString() };
   if (!firestore) {
@@ -571,6 +750,7 @@ export async function updateRecord(collection, id, payload) {
 }
 
 export async function upsertRecord(collection, id, payload) {
+  clearCollectionReadCache(collection);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const update = { ...cleanPayload, updatedAt: new Date().toISOString() };
   if (!firestore) {

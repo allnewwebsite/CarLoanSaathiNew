@@ -142,7 +142,10 @@ export async function getGmLeads(req, res, next) {
         };
       }
     } else {
-      page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+      page = await queryLeadProjectionForUser({
+        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        query: req.query,
+      }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
     }
     queryEnded = Date.now();
     serializeStarted = Date.now();

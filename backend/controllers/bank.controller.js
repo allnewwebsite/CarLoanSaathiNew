@@ -121,6 +121,76 @@ function anyMatch(values, targets) {
   return values.some((value) => targets.some((target) => sameText(value, target)));
 }
 
+function leadBankValues(lead = {}) {
+  return [
+    lead.bankId,
+    lead.assignedBankId,
+    lead.assignedPartnerId,
+    lead.bankPartner,
+    lead.preferredBank,
+    lead.bankName,
+    lead.assignedBankName,
+    lead.selectedBankName,
+  ];
+}
+
+function partnerBankValues(partner = {}) {
+  return [
+    partner.bankId,
+    partner.bankPartnerId,
+    partner.partnerId,
+    partner.id,
+    partner.ifsc,
+    partner.ifscCode,
+    partner.bankIfsc,
+    partner.bankName,
+    partner.companyName,
+  ];
+}
+
+function leadBranchValues(lead = {}) {
+  return [
+    lead.branchId,
+    lead.bankBranchId,
+    lead.selectedBankBranchId,
+    lead.bankBranchCity,
+    lead.branchCity,
+    lead.routingCity,
+    lead.ifscCode,
+    lead.bankIfsc,
+    lead.assignedBankIfsc,
+  ];
+}
+
+function partnerBranchValues(partner = {}) {
+  return [
+    partner.branchId,
+    partner.bankBranchId,
+    partner.selectedBankBranchId,
+    partner.ifsc,
+    partner.ifscCode,
+    partner.bankIfsc,
+    partner.bankBranchLocation,
+    partner.branchLocation,
+    partner.branchCity,
+    partner.city,
+    partner.operatingCity,
+  ];
+}
+
+function bankManagerCanAccessLead(partner, lead) {
+  const sameBank = anyMatch(leadBankValues(lead), partnerBankValues(partner));
+  const sameBranch = anyMatch(leadBranchValues(lead), partnerBranchValues(partner));
+  return sameBank && sameBranch;
+}
+
+function loanExecutiveCanAccessLead(partner, lead) {
+  return anyMatch(
+    [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
+    [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
+  );
+}
+
 async function deleteMatchingRecords(collection, predicate, indexedQueries = []) {
   if (indexedQueries.length) {
     const counts = await Promise.all(indexedQueries.map((where) => deleteRecordsByQuery(collection, { where }).catch(() => 0)));
@@ -138,7 +208,13 @@ async function currentPartner(req) {
   return cached(cacheKey, 15000, async () => {
   if (req.user?.role === "loan-executive") {
     const executive = await getRecord("loanExecutives", email);
-    if (executive) return { ...executive, roleType: "loan-executive" };
+    if (executive) return {
+      ...executive,
+      bankId: executive.bankId || req.user.bankId,
+      bankPartnerId: executive.bankPartnerId || executive.bankId || req.user.bankId,
+      branchId: executive.branchId || req.user.branchId,
+      roleType: "loan-executive",
+    };
     return {
       id: req.user.uid || email,
       email,
@@ -152,7 +228,13 @@ async function currentPartner(req) {
 
   if (req.user?.role === "bank-manager") {
     const manager = await getRecord("branchManagers", email);
-    if (manager) return { ...manager, roleType: "bank-manager" };
+    if (manager) return {
+      ...manager,
+      bankId: manager.bankId || req.user.bankId,
+      bankPartnerId: manager.bankPartnerId || manager.bankId || req.user.bankId,
+      branchId: manager.branchId || req.user.branchId,
+      roleType: "bank-manager",
+    };
     return {
       id: req.user.uid || email,
       email,
@@ -174,42 +256,11 @@ async function currentPartner(req) {
 function partnerCanAccessLead(partner, lead) {
   if (!partner || !lead) return false;
   if (partner.roleType === "loan-executive") {
-    return anyMatch(
-      [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
-      [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
-    );
+    return loanExecutiveCanAccessLead(partner, lead);
   }
 
   if (partner.roleType === "bank-manager") {
-    const sameBank = anyMatch(
-      [
-        lead.bankId,
-        lead.assignedBankId,
-        lead.assignedPartnerId,
-        lead.branchId,
-        lead.bankBranchId,
-        lead.selectedBankBranchId,
-        lead.ifscCode,
-        lead.bankIfsc,
-        lead.assignedBankIfsc,
-        lead.bankName,
-        lead.assignedBankName,
-      ],
-      [
-        partner.bankId,
-        partner.bankPartnerId,
-        partner.partnerId,
-        partner.id,
-        partner.branchId,
-        partner.bankBranchId,
-        partner.ifsc,
-        partner.ifscCode,
-        partner.bankIfsc,
-        partner.bankName,
-        partner.companyName,
-      ],
-    );
-    return sameBank;
+    return bankManagerCanAccessLead(partner, lead);
   }
 
   const supportedBanks = Array.isArray(partner.supportedBanks) ? partner.supportedBanks : [];
@@ -217,37 +268,6 @@ function partnerCanAccessLead(partner, lead) {
     [lead.assignedPartnerId, lead.assignedBankId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],
     [partner.id, partner.email, partner.bankName, partner.companyName, ...supportedBanks],
   );
-}
-
-function leadBranchValues(lead = {}) {
-  return [
-    lead.branchId,
-    lead.bankBranchId,
-    lead.selectedBankBranchId,
-    lead.bankBranchCity,
-    lead.branchCity,
-    lead.routingCity,
-    lead.ifscCode,
-    lead.bankIfsc,
-    lead.assignedBankIfsc,
-  ];
-}
-
-function partnerBranchValues(partner = {}) {
-  return [
-    partner.branchId,
-    partner.bankBranchId,
-    partner.bankPartnerId,
-    partner.partnerId,
-    partner.id,
-    partner.ifsc,
-    partner.ifscCode,
-    partner.bankIfsc,
-    partner.bankBranchLocation,
-    partner.branchLocation,
-    partner.branchCity,
-    partner.city,
-  ];
 }
 
 function documentBelongsToLead(document, lead) {
@@ -415,11 +435,21 @@ async function liveBankRegistrationForAccount(account) {
 
 async function assignedLeadsForPartner(partner, query = {}, fields) {
   if (partner.roleType === "loan-executive") {
-    const result = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 }, fields });
+    const projected = await queryLeadProjectionForUser({
+      user: { role: "loan-executive", uid: partner.id, email: partner.email },
+      query: { ...query, limit: query.limit || 100 },
+      fields,
+    }).catch(() => null);
+    const result = projected || await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 }, fields });
     return attachExecutiveMobile(partner, applyFilters(result.data, query));
   }
   const identity = bankIdentity(partner);
-  const result = await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 }, fields });
+  const projected = await queryLeadProjectionForUser({
+    user: { role: "bank-manager", bankId: identity.bankId },
+    query: { ...query, limit: query.limit || 100 },
+    fields,
+  }).catch(() => null);
+  const result = projected || await queryBankLeads({ bankId: identity.bankId, query: { ...query, limit: query.limit || 100 }, fields });
   return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
@@ -781,7 +811,9 @@ export async function getBankLeads(req, res, next) {
     let response;
     queryStarted = Date.now();
     if (partner.roleType === "loan-executive") {
-      response = await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: req.query });
+      const { limit } = paginationParams(req.query);
+      const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit });
+      response = pageResponse({ data: scopedLeads.slice(0, limit), limit, nextCursor: null, total: scopedLeads.length });
       queryEnded = Date.now();
       serializeStarted = Date.now();
       const responseJson = JSON.stringify(response);
