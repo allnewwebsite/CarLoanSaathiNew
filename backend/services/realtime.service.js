@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import IORedis from "ioredis";
 import { logWarn } from "./logger.service.js";
+import { logRealtimeTicketStep, measureRealtimeTicketSync } from "./realtimeTicketLatency.service.js";
 
 const TICKET_TTL_MS = 60 * 1000;
 const EVENT_BUFFER_LIMIT = 500;
@@ -132,13 +133,15 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
 }
 
 export function createRealtimeTicket(user = {}) {
+  const startedAt = Date.now();
   cleanTickets();
-  const ticket = crypto.randomUUID();
+  const ticket = measureRealtimeTicketSync("token_generation", () => crypto.randomUUID(), { summaryField: "tokenGenerationDurationMs" });
   tickets.set(ticket, {
     user,
     createdAt: Date.now(),
     expiresAt: Date.now() + TICKET_TTL_MS,
   });
+  logRealtimeTicketStep("ticket_generation", Date.now() - startedAt, { summaryField: "ticketGenerationDurationMs" });
   return { ticket, expiresInMs: TICKET_TTL_MS };
 }
 

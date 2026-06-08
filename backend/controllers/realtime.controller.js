@@ -1,8 +1,19 @@
 import { connectRealtimeClient, consumeRealtimeTicket, createRealtimeTicket, realtimeStats } from "../services/realtime.service.js";
+import { logRealtimeTicketStep, logRealtimeTicketSummary } from "../services/realtimeTicketLatency.service.js";
 
 export async function createRealtimeConnectionTicket(req, res, next) {
   try {
-    res.set("Cache-Control", "no-store").json(createRealtimeTicket(req.user));
+    const ticket = createRealtimeTicket(req.user);
+    const responseStartedAt = Date.now();
+    res.set("Cache-Control", "no-store").json(ticket);
+    logRealtimeTicketStep("response_creation", Date.now() - responseStartedAt, {
+      responseBytes: res.locals.responseBytes || null,
+      summaryField: "responseCreationDurationMs",
+    });
+    logRealtimeTicketSummary({
+      responseBytes: res.locals.responseBytes || null,
+      statusCode: res.statusCode,
+    });
   } catch (error) {
     next(error);
   }

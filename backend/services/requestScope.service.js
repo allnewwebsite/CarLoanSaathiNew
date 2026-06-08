@@ -15,6 +15,10 @@ export function runRequestScope(req, next) {
   }, next);
 }
 
+export function getRequestScope() {
+  return storage.getStore() || null;
+}
+
 export function setRequestScopeUser(user = {}) {
   const scope = storage.getStore();
   if (!scope) return;

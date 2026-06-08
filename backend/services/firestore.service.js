@@ -3,6 +3,7 @@ import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, setRequestCachedValue } from "./requestScope.service.js";
+import { logRealtimeTicketStep } from "./realtimeTicketLatency.service.js";
 import crypto from "node:crypto";
 
 const memoryStore = {
@@ -246,21 +247,29 @@ export async function listRecords(collection) {
 
 export async function findRecordsByField(collection, field, value, limit = 10) {
   if (!field || value === undefined || value === null) return [];
+  const startedAt = Date.now();
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 25);
   const cacheKey = readCacheKey(collection, "find", { field, value, safeLimit });
   const cachedRows = getRequestReadCache(cacheKey);
-  if (cachedRows !== undefined) return cachedRows;
+  if (cachedRows !== undefined) {
+    logRealtimeTicketStep(`firestore_find_cache:${collection}`, Date.now() - startedAt, { collection, operation: "find", cacheStatus: "request-cache-hit" });
+    return cachedRows;
+  }
   if (!firestore) return (memoryStore[collection] || []).filter((item) => item[field] === value).slice(0, safeLimit);
-  const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
-  recordFirestoreRead({
-    collection,
-    operation: "find",
-    signature: readSignature(collection, "find", [[field, "==", hashValue(value)], ["limit", safeLimit]]),
-    documentsReturned: snapshot.size,
-    estimatedReads: snapshot.size,
-    limit: safeLimit,
-  });
-  return setRequestReadCache(cacheKey, snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  try {
+    const snapshot = await firestore.collection(collection).where(field, "==", value).limit(safeLimit).get();
+    recordFirestoreRead({
+      collection,
+      operation: "find",
+      signature: readSignature(collection, "find", [[field, "==", hashValue(value)], ["limit", safeLimit]]),
+      documentsReturned: snapshot.size,
+      estimatedReads: snapshot.size,
+      limit: safeLimit,
+    });
+    return setRequestReadCache(cacheKey, snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+  } finally {
+    logRealtimeTicketStep(`firestore_find:${collection}`, Date.now() - startedAt, { collection, operation: "find", firestore: true });
+  }
 }
 
 export async function findFirstRecordByFields(collection, fields = {}, limit = 5) {
@@ -697,31 +706,39 @@ export async function countRecords(collection, { where = [] } = {}) {
 }
 
 export async function getRecord(collection, id) {
+  const startedAt = Date.now();
   const cacheKey = readCacheKey(collection, "get", { id });
   const cachedRecord = getRequestReadCache(cacheKey);
-  if (cachedRecord !== undefined) return cachedRecord;
-  if (!firestore) return (memoryStore[collection] || []).find((item) => item.id === id || (collection === "leads" && item.caseId === id)) || null;
-  const directDoc = await firestore.collection(collection).doc(id).get();
-  recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: directDoc.exists ? 1 : 0, estimatedReads: 1 });
-  if (directDoc.exists) return setRequestReadCache(cacheKey, { ...directDoc.data(), id: directDoc.id });
-
-  const idSnapshot = await firestore.collection(collection).where("id", "==", id).limit(1).get();
-  recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["id", "==", hashValue(id)], ["limit", 1]]), documentsReturned: idSnapshot.size, estimatedReads: idSnapshot.size, limit: 1 });
-  if (!idSnapshot.empty) {
-    const doc = idSnapshot.docs[0];
-    return setRequestReadCache(cacheKey, { id: doc.id, ...doc.data() });
+  if (cachedRecord !== undefined) {
+    logRealtimeTicketStep(`firestore_get_cache:${collection}`, Date.now() - startedAt, { collection, operation: "get", cacheStatus: "request-cache-hit" });
+    return cachedRecord;
   }
+  if (!firestore) return (memoryStore[collection] || []).find((item) => item.id === id || (collection === "leads" && item.caseId === id)) || null;
+  try {
+    const directDoc = await firestore.collection(collection).doc(id).get();
+    recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: directDoc.exists ? 1 : 0, estimatedReads: 1 });
+    if (directDoc.exists) return setRequestReadCache(cacheKey, { ...directDoc.data(), id: directDoc.id });
 
-  if (collection === "leads") {
-    const caseSnapshot = await firestore.collection(collection).where("caseId", "==", id).limit(1).get();
-    recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["caseId", "==", hashValue(id)], ["limit", 1]]), documentsReturned: caseSnapshot.size, estimatedReads: caseSnapshot.size, limit: 1 });
-    if (!caseSnapshot.empty) {
-      const doc = caseSnapshot.docs[0];
+    const idSnapshot = await firestore.collection(collection).where("id", "==", id).limit(1).get();
+    recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["id", "==", hashValue(id)], ["limit", 1]]), documentsReturned: idSnapshot.size, estimatedReads: idSnapshot.size, limit: 1 });
+    if (!idSnapshot.empty) {
+      const doc = idSnapshot.docs[0];
       return setRequestReadCache(cacheKey, { id: doc.id, ...doc.data() });
     }
-  }
 
-  return setRequestReadCache(cacheKey, null);
+    if (collection === "leads") {
+      const caseSnapshot = await firestore.collection(collection).where("caseId", "==", id).limit(1).get();
+      recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["caseId", "==", hashValue(id)], ["limit", 1]]), documentsReturned: caseSnapshot.size, estimatedReads: caseSnapshot.size, limit: 1 });
+      if (!caseSnapshot.empty) {
+        const doc = caseSnapshot.docs[0];
+        return setRequestReadCache(cacheKey, { id: doc.id, ...doc.data() });
+      }
+    }
+
+    return setRequestReadCache(cacheKey, null);
+  } finally {
+    logRealtimeTicketStep(`firestore_get:${collection}`, Date.now() - startedAt, { collection, operation: "get", firestore: true });
+  }
 }
 
 export async function updateRecord(collection, id, payload) {

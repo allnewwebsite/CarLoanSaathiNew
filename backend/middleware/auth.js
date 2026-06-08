@@ -5,7 +5,8 @@ import { getRecord, updateRecord } from "../services/firestore.service.js";
 import { findIdentityCandidates, resolveCanonicalIdentity } from "../services/identity.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 import { cached } from "../services/ttlCache.service.js";
-import { setRequestScopeUser } from "../services/requestScope.service.js";
+import { getRequestScope, setRequestScopeUser } from "../services/requestScope.service.js";
+import { logRealtimeTicketStep, markRealtimeTicketStart, measureRealtimeTicketStep } from "../services/realtimeTicketLatency.service.js";
 
 const ROLE_PORTALS = {
   "finance-desk": "finance",
@@ -32,15 +33,46 @@ function requestedPortal(req) {
   return "";
 }
 
+async function tracedCached(step, key, ttlMs, loader, meta = {}) {
+  const scope = getRequestScope();
+  const beforeHits = Number(scope?.cache?.hits || 0);
+  const beforeMisses = Number(scope?.cache?.misses || 0);
+  const startedAt = Date.now();
+  try {
+    return await cached(key, ttlMs, loader);
+  } finally {
+    const afterHits = Number(scope?.cache?.hits || 0);
+    const afterMisses = Number(scope?.cache?.misses || 0);
+    const cacheStatus = afterHits > beforeHits ? "hit" : afterMisses > beforeMisses ? "miss" : "pending-or-unknown";
+    logRealtimeTicketStep(step, Date.now() - startedAt, {
+      cacheStatus,
+      cacheKey: key,
+      ...meta,
+    });
+  }
+}
+
 async function dealerAccountIsActive(user) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
   const dealershipId = String(user.dealershipId || email).trim().toLowerCase();
-  const account = await cached(`auth:dealer-account:${user.uid || email}:${email}`, 15000, () => resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null));
+  const account = await tracedCached(
+    "dealer_account_identity_lookup",
+    `auth:dealer-account:${user.uid || email}:${email}`,
+    15000,
+    () => resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null),
+    { summaryField: "userLookupDurationMs" },
+  );
   if (user?.role === "super-admin") {
     return Boolean(account && account.role === "super-admin" && account.approved === true && account.active !== false);
   }
-  const dealership = await cached(`auth:dealership:${dealershipId}`, 15000, async () => await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId));
+  const dealership = await tracedCached(
+    "dealership_lookup",
+    `auth:dealership:${dealershipId}`,
+    15000,
+    async () => await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId),
+    { summaryField: "dealershipLookupDurationMs" },
+  );
   return Boolean(
     account
     && account.approved === true
@@ -57,9 +89,21 @@ async function dealerAccountIsActive(user) {
 async function verifiedAccountFromTokenUser(tokenUser = {}) {
   const email = String(tokenUser.email || "").trim().toLowerCase();
   const uid = String(tokenUser.uid || "").trim();
-  let account = await cached(`auth:identity:${uid}:${email}`, 15000, () => resolveCanonicalIdentity({ uid, email }));
+  let account = await tracedCached(
+    "user_identity_lookup",
+    `auth:identity:${uid}:${email}`,
+    15000,
+    () => resolveCanonicalIdentity({ uid, email }),
+    { summaryField: "userLookupDurationMs" },
+  );
   if (!account) {
-    const candidates = await cached(`auth:candidates:${uid}:${email}`, 15000, () => findIdentityCandidates({ uid, email }));
+    const candidates = await tracedCached(
+      "user_candidate_lookup",
+      `auth:candidates:${uid}:${email}`,
+      15000,
+      () => findIdentityCandidates({ uid, email }),
+      { summaryField: "userLookupDurationMs" },
+    );
     account = candidates.find((item) => item.role);
   }
   if (!account) {
@@ -108,7 +152,7 @@ function passwordChangePathForRole(role) {
 
 async function firebaseEmailVerified(email) {
   if (!firebaseAdmin || !email) return true;
-  return cached(`auth:firebase-email-verified:${email}`, 60000, async () => {
+  return tracedCached(`firebase_email_verified_lookup`, `auth:firebase-email-verified:${email}`, 60000, async () => {
     try {
     const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     return firebaseUser.emailVerified === true;
@@ -119,6 +163,8 @@ async function firebaseEmailVerified(email) {
 }
 
 export async function authenticate(req, res, next) {
+  markRealtimeTicketStart();
+  const authStartedAt = Date.now();
   try {
     const header = req.headers.authorization || "";
     const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -139,6 +185,7 @@ export async function authenticate(req, res, next) {
     }
 
     const tokenUser = jwt.verify(token, jwtSecret());
+    logRealtimeTicketStep("jwt_verify", Date.now() - authStartedAt);
     const email = String(tokenUser.email || tokenUser.uid || "").trim().toLowerCase();
     if (!email) {
       observeAuthFailure(req, "invalid_session_email");
@@ -151,6 +198,7 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, error.code || "account_not_active");
       return res.status(error.status || 403).json({ message: error.message, code: error.code || "ACCOUNT_INACTIVE" });
     }
+    const permissionStartedAt = Date.now();
     if (account.sessionRevokedAt && tokenUser.iat && new Date(account.sessionRevokedAt).getTime() > tokenUser.iat * 1000) {
       observeAuthFailure(req, "session_revoked");
       return res.status(401).json({ message: "Session revoked. Please login again.", code: "SESSION_REVOKED" });
@@ -173,8 +221,15 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "session_portal_forbidden");
       return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN", redirectToPortal: accountPortal });
     }
+    logRealtimeTicketStep("permission_lookup", Date.now() - permissionStartedAt, { summaryField: "permissionDurationMs" });
     if (tokenUser.sessionId) {
-      const session = await cached(`auth:session:${tokenUser.sessionId}`, 8000, () => getRecord("userSessions", tokenUser.sessionId).catch(() => null));
+      const session = await tracedCached(
+        "session_lookup",
+        `auth:session:${tokenUser.sessionId}`,
+        8000,
+        () => getRecord("userSessions", tokenUser.sessionId).catch(() => null),
+        { summaryField: "sessionDurationMs" },
+      );
       const expired = session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now();
       const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
       const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
@@ -192,7 +247,7 @@ export async function authenticate(req, res, next) {
         }).catch(() => {});
       }
     }
-    if (!(await firebaseEmailVerified(email))) {
+    if (!(await measureRealtimeTicketStep("firebase_email_permission_lookup", () => firebaseEmailVerified(email), { summaryField: "permissionDurationMs" }))) {
       observeAuthFailure(req, "email_not_verified");
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
@@ -225,6 +280,7 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "dealer_account_inactive");
       return res.status(403).json({ message: "Dealer account is inactive or deleted", code: "DEALER_ACCOUNT_INACTIVE" });
     }
+    logRealtimeTicketStep("authentication_total", Date.now() - authStartedAt, { summaryField: "authDurationMs" });
     return next();
   } catch (error) {
     observeAuthFailure(req, "invalid_or_expired_token");
