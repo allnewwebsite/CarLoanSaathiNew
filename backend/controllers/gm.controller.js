@@ -3,7 +3,7 @@ import { logInfo } from "../services/logger.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { cached } from "../services/ttlCache.service.js";
-import { queryLeadProjectionForUser, queryNotificationProjectionForUser, querySalespersonSummaryProjection, syncSalespersonSummaryProjectionSoon } from "../services/projection.service.js";
+import { getLeadDetailProjection, queryLeadProjectionForUser, queryNotificationProjectionForUser, querySalespersonSummaryProjection, syncSalespersonSummaryProjectionSoon } from "../services/projection.service.js";
 
 function userEmail(req) {
   return req.user?.email || req.user?.uid;
@@ -23,6 +23,35 @@ async function dealershipEmailForGm(req) {
 
 function belongsToDealership(lead, dealershipEmail) {
   return lead.dealerEmail === dealershipEmail || lead.dealershipEmail === dealershipEmail || lead.createdBy === dealershipEmail;
+}
+
+function logProjectionRead(event, req, meta = {}) {
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
+    endpoint: req.route?.path,
+    ...meta,
+  });
+}
+
+function leadDetailResponseFromProjection(projection = {}, extras = {}) {
+  const {
+    sourceCollection,
+    sourceId,
+    viewType,
+    leadId,
+    searchText,
+    customerSummary,
+    executiveSummary,
+    statusSummary,
+    documentCounts,
+    timelineSummary,
+    documents,
+    bankDocuments,
+    ...lead
+  } = projection;
+  return { ...lead, id: sourceId || leadId || projection.id, ...extras };
 }
 
 function financeStatus(status) {
@@ -212,8 +241,20 @@ export async function getGmSalespersons(req, res, next) {
 
 export async function getGmLead(req, res, next) {
   try {
-    const lead = await getRecord("leads", req.params.id);
     const dealershipEmail = await dealershipEmailForGm(req);
+    const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
+    const projectionAllowed = projection && (projection.dealershipId === dealershipEmail || belongsToDealership(projection, dealershipEmail));
+    if (projectionAllowed && Array.isArray(projection.documents) && Array.isArray(projection.bankDocuments)) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id });
+      return res.json(leadDetailResponseFromProjection(projection, { documents: projection.documents || [], bankDocuments: projection.bankDocuments || [] }));
+    }
+    logProjectionRead("PROJECTION-MISS", req, {
+      collection: "leadDetailsProjection",
+      leadId: req.params.id,
+      reason: projection ? "invalid_or_unauthorized_projection" : "missing_projection",
+    });
+    logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
+    const lead = await getRecord("leads", req.params.id);
     const allowed = lead && (lead.dealershipId === dealershipEmail || belongsToDealership(lead, dealershipEmail));
     if (!allowed) return res.status(404).json({ message: "Lead not found" });
     const [documentsPage, bankDocumentsPage] = await Promise.all([

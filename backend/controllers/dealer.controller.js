@@ -9,7 +9,7 @@ import { generateLeadCaseId } from "../utils/generateCaseId.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { logError, logInfo } from "../services/logger.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
-import { queryLeadProjectionForUser, queryStaffViewProjection, syncLeadProjectionSoon, syncStaffViewProjectionSoon } from "../services/projection.service.js";
+import { getLeadDetailProjection, queryLeadProjectionForUser, queryStaffViewProjection, syncLeadProjectionSoon, syncStaffViewProjectionSoon } from "../services/projection.service.js";
 import {
   getAvailableBankBranches,
   getDealershipBankTieUps,
@@ -58,6 +58,45 @@ async function financeDeskContext(req) {
 
 function owned(leads, email, dealershipEmail = email) {
   return leads.filter((lead) => lead.dealerEmail === dealershipEmail || lead.dealershipEmail === dealershipEmail || lead.createdBy === dealershipEmail || lead.dealerEmail === email || lead.createdBy === email);
+}
+
+function logProjectionRead(event, req, meta = {}) {
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
+    endpoint: req.route?.path,
+    ...meta,
+  });
+}
+
+function dealerCanReadProjectedLead(lead, email, dealershipEmail) {
+  return Boolean(
+    lead
+    && (
+      lead.dealershipId === dealershipEmail
+      || owned([lead], email, dealershipEmail).length
+    )
+  );
+}
+
+function leadDetailResponseFromProjection(projection = {}, extras = {}) {
+  const {
+    sourceCollection,
+    sourceId,
+    viewType,
+    leadId,
+    searchText,
+    customerSummary,
+    executiveSummary,
+    statusSummary,
+    documentCounts,
+    timelineSummary,
+    documents,
+    bankDocuments,
+    ...lead
+  } = projection;
+  return { ...lead, id: sourceId || leadId || projection.id, ...extras };
 }
 
 function salespersonIdFrom(value) {
@@ -1630,6 +1669,17 @@ export async function removeDealerSalesperson(req, res, next) {
 export async function getDealerLead(req, res, next) {
   try {
     const { email, dealershipEmail } = await financeDeskContext(req);
+    const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
+    if (projection && dealerCanReadProjectedLead(projection, email, dealershipEmail) && Array.isArray(projection.bankDocuments)) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id });
+      return res.json(leadDetailResponseFromProjection(projection, { bankDocuments: projection.bankDocuments || [] }));
+    }
+    logProjectionRead("PROJECTION-MISS", req, {
+      collection: "leadDetailsProjection",
+      leadId: req.params.id,
+      reason: projection ? "invalid_or_unauthorized_projection" : "missing_projection",
+    });
+    logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
     const lead = await getRecord("leads", req.params.id);
     if (!lead || !owned([lead], email, dealershipEmail).length) return res.status(404).json({ message: "Lead not found" });
     const bankDocumentsPage = await queryRecords("bankDocuments", {
@@ -1648,7 +1698,20 @@ export async function getDealerLead(req, res, next) {
 export async function getDealerEarnings(req, res, next) {
   try {
     const { dealershipEmail } = await financeDeskContext(req);
-    const leads = (await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } })).data;
+    const projected = await queryLeadProjectionForUser({
+      user: { ...req.user, role: "finance-desk", dealershipId: dealershipEmail },
+      query: { limit: 100 },
+      requestId: req.requestId,
+    }).catch(() => null);
+    let leads;
+    if (projected?.data) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "financeViews", resultCount: projected.data.length });
+      leads = projected.data;
+    } else {
+      logProjectionRead("PROJECTION-MISS", req, { collection: "financeViews", reason: "missing_projection_page" });
+      logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", estimatedLimit: 100 });
+      leads = (await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } })).data;
+    }
     const disbursed = leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED);
     const approved = leads.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.APPROVED);
     res.json({

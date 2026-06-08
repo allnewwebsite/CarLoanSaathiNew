@@ -13,7 +13,7 @@ import { logError, logInfo } from "../services/logger.service.js";
 import { queryAllLeads } from "../services/leadQuery.service.js";
 import { computeLeadMetrics } from "../services/metrics.service.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
-import { queryLeadProjectionForUser, syncLeadProjectionSoon } from "../services/projection.service.js";
+import { getLeadDetailProjection, queryLeadProjectionForUser, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import {
@@ -25,6 +25,25 @@ import {
   getBankBranchDetailsAdmin,
   updateBankBranchAdmin,
 } from "./bank.admin.controller.js";
+
+function leadDetailResponseFromProjection(projection = {}, extras = {}) {
+  const {
+    sourceCollection,
+    sourceId,
+    viewType,
+    leadId,
+    searchText,
+    customerSummary,
+    executiveSummary,
+    statusSummary,
+    documentCounts,
+    timelineSummary,
+    documents,
+    bankDocuments,
+    ...lead
+  } = projection;
+  return { ...lead, id: sourceId || leadId || projection.id, ...extras };
+}
 
 function sameDate(value, target) {
   if (!target) return true;
@@ -728,6 +747,38 @@ export async function getAdminLeads(req, res, next) {
 
 export async function getAdminLead(req, res, next) {
   try {
+    const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
+    if (projection && Array.isArray(projection.documents) && Array.isArray(projection.bankDocuments)) {
+      logInfo("PROJECTION-HIT", {
+        tag: "PROJECTION-HIT",
+        requestId: req.requestId,
+        path: req.originalUrl,
+        endpoint: req.route?.path,
+        collection: "leadDetailsProjection",
+        leadId: req.params.id,
+      });
+      return res.json(leadDetailResponseFromProjection(projection, {
+        documents: projection.documents || [],
+        bankDocuments: projection.bankDocuments || [],
+      }));
+    }
+    logInfo("PROJECTION-MISS", {
+      tag: "PROJECTION-MISS",
+      requestId: req.requestId,
+      path: req.originalUrl,
+      endpoint: req.route?.path,
+      collection: "leadDetailsProjection",
+      leadId: req.params.id,
+      reason: projection ? "invalid_projection" : "missing_projection",
+    });
+    logInfo("CANONICAL-FALLBACK", {
+      tag: "CANONICAL-FALLBACK",
+      requestId: req.requestId,
+      path: req.originalUrl,
+      endpoint: req.route?.path,
+      collection: "leads",
+      leadId: req.params.id,
+    });
     let lead = await getRecord("leads", req.params.id);
     if (!lead) {
       const page = await queryRecords("leads", {

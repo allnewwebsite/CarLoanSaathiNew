@@ -270,6 +270,79 @@ function partnerCanAccessLead(partner, lead) {
   );
 }
 
+function logProjectionRead(event, req, meta = {}) {
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
+    endpoint: req.route?.path,
+    ...meta,
+  });
+}
+
+function hasMatchingScopeValues(values, targets) {
+  return values.some((value) => targets.some((target) => sameText(value, target)));
+}
+
+function projectedLeadHasRequiredBankScope(partner, lead) {
+  if (!partner || !lead) return false;
+  if (partner.roleType === "loan-executive") {
+    return hasMatchingScopeValues(
+      [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
+      [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
+    );
+  }
+  if (partner.roleType === "bank-manager") {
+    return hasMatchingScopeValues(leadBankValues(lead), partnerBankValues(partner))
+      && hasMatchingScopeValues(leadBranchValues(lead), partnerBranchValues(partner));
+  }
+  return hasMatchingScopeValues(
+    [lead.assignedPartnerId, lead.assignedBankId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],
+    [partner.id, partner.email, partner.bankName, partner.companyName, ...(Array.isArray(partner.supportedBanks) ? partner.supportedBanks : [])],
+  );
+}
+
+function leadDetailResponseFromProjection(projection = {}, extras = {}) {
+  const {
+    sourceCollection,
+    sourceId,
+    viewType,
+    leadId,
+    searchText,
+    customerSummary,
+    executiveSummary,
+    statusSummary,
+    documentCounts,
+    timelineSummary,
+    documents,
+    bankDocuments,
+    ...lead
+  } = projection;
+  return { ...lead, id: sourceId || leadId || projection.id, ...extras };
+}
+
+function emitBankLeadAccessDenied(req, partner) {
+  recordOperationalEvent({
+    type: "bank_cross_tenant_access_blocked",
+    severity: ALERT_SEVERITY.HIGH,
+    component: "bank-rbac",
+    message: "Blocked bank lead access outside tenant scope",
+    entityId: req.params.id,
+    requestId: req.requestId,
+    meta: { actor: partner.email || partner.id, roleType: partner.roleType, bankId: partner.bankId || partner.bankPartnerId },
+  }).catch(() => {});
+  emitOperationalAlert({
+    type: "bank_cross_tenant_access_blocked",
+    severity: ALERT_SEVERITY.HIGH,
+    component: "bank-rbac",
+    title: "Blocked cross-tenant bank lead access",
+    message: "Bank user attempted to access a lead outside assigned scope",
+    entityId: req.params.id,
+    requestId: req.requestId,
+    meta: { actor: partner.email || partner.id, roleType: partner.roleType },
+  }).catch(() => {});
+}
+
 function documentBelongsToLead(document, lead) {
   return anyMatch(
     [document.leadId, document.caseId],
@@ -502,25 +575,7 @@ async function requireAssignedLead(req) {
   }
   const lead = await getRecord("leads", req.params.id);
   if (!lead || !partnerCanAccessLead(partner, lead)) {
-    recordOperationalEvent({
-      type: "bank_cross_tenant_access_blocked",
-      severity: ALERT_SEVERITY.HIGH,
-      component: "bank-rbac",
-      message: "Blocked bank lead access outside tenant scope",
-      entityId: req.params.id,
-      requestId: req.requestId,
-      meta: { actor: partner.email || partner.id, roleType: partner.roleType, bankId: partner.bankId || partner.bankPartnerId },
-    }).catch(() => {});
-    emitOperationalAlert({
-      type: "bank_cross_tenant_access_blocked",
-      severity: ALERT_SEVERITY.HIGH,
-      component: "bank-rbac",
-      title: "Blocked cross-tenant bank lead access",
-      message: "Bank user attempted to access a lead outside assigned scope",
-      entityId: req.params.id,
-      requestId: req.requestId,
-      meta: { actor: partner.email || partner.id, roleType: partner.roleType },
-    }).catch(() => {});
+    emitBankLeadAccessDenied(req, partner);
     const error = new Error("Lead not assigned to this bank partner");
     error.status = 403;
     throw error;
@@ -1190,11 +1245,34 @@ export async function getBankExecutiveCases(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view executive cases" });
     const identity = bankIdentity(partner);
-    const executive = await getRecord("loanExecutives", req.params.executiveId);
+    const projectedExecutives = await queryExecutiveSummaryProjection({ bankId: identity.bankId, query: { limit: 100 } }).catch(() => null);
+    let executive = (projectedExecutives || []).find((item) =>
+      anyMatch(
+        [item.sourceId, item.executiveId, item.id, item.email, item.mobile, item.jobId],
+        [req.params.executiveId],
+      )
+    );
+    if (executive) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "executiveSummaryProjection", executiveId: req.params.executiveId });
+    } else {
+      logProjectionRead("PROJECTION-MISS", req, { collection: "executiveSummaryProjection", executiveId: req.params.executiveId, reason: "missing_executive_summary" });
+      logProjectionRead("CANONICAL-FALLBACK", req, { collection: "loanExecutives", executiveId: req.params.executiveId });
+      executive = await getRecord("loanExecutives", req.params.executiveId);
+    }
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
     const rows = await cached(`bank:executive-cases:${identity.bankId}:${executive.id || executive.email}:${JSON.stringify(req.query || {})}`, 10000, async () => {
+      const projected = await queryLeadProjectionForUser({
+        user: { role: "loan-executive", uid: executive.sourceId || executive.executiveId || executive.id || executive.jobId || executive.email, email: executive.email },
+        query: { ...req.query, limit: req.query.limit || 100 },
+      }).catch(() => null);
+      if (projected?.data) {
+        logProjectionRead("PROJECTION-HIT", req, { collection: "executiveViews", resultCount: projected.data.length });
+        return projected.data.filter((lead) => partnerCanAccessLead(partner, lead));
+      }
+      logProjectionRead("PROJECTION-MISS", req, { collection: "executiveViews", reason: "missing_executive_lead_view" });
+      logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", executiveId: executive.sourceId || executive.executiveId || executive.id || executive.email });
       const candidates = await Promise.all([
-        queryExecutiveLeads({ executiveId: executive.id || executive.jobId || executive.email, executiveEmail: executive.email, query: req.query }),
+        queryExecutiveLeads({ executiveId: executive.sourceId || executive.executiveId || executive.id || executive.jobId || executive.email, executiveEmail: executive.email, query: req.query }),
         executive.jobId && executive.jobId !== executive.id ? queryExecutiveLeads({ executiveId: executive.jobId, executiveEmail: executive.email, query: req.query }) : Promise.resolve({ data: [] }),
       ]);
       const byId = new Map();
@@ -1218,18 +1296,35 @@ export async function getBankExecutiveCases(req, res, next) {
 
 export async function getBankLead(req, res, next) {
   try {
-    const { partner, lead } = await requireAssignedLead(req);
-    const [hydratedLead] = await attachExecutiveMobile(partner, [lead]);
-    const projection = await getLeadDetailProjection(hydratedLead.id).catch(() => null);
-    if (projection?.documents || projection?.bankDocuments) {
-      return res.json({
-        ...hydratedLead,
-        ...projection,
-        id: hydratedLead.id,
+    const partner = await currentPartner(req);
+    if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
+    const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
+    if (
+      projection
+      && projectedLeadHasRequiredBankScope(partner, projection)
+      && partnerCanAccessLead(partner, projection)
+      && Array.isArray(projection.documents)
+      && Array.isArray(projection.bankDocuments)
+    ) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id });
+      return res.json(leadDetailResponseFromProjection(projection, {
         documents: projection.documents || [],
         bankDocuments: projection.bankDocuments || [],
-      });
+      }));
     }
+    if (projection && projectedLeadHasRequiredBankScope(partner, projection) && !partnerCanAccessLead(partner, projection)) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id, result: "denied" });
+      emitBankLeadAccessDenied(req, partner);
+      return res.status(403).json({ message: "Lead not assigned to this bank partner" });
+    }
+    logProjectionRead("PROJECTION-MISS", req, {
+      collection: "leadDetailsProjection",
+      leadId: req.params.id,
+      reason: projection ? "invalid_projection_for_bank_scope_or_response" : "missing_projection",
+    });
+    logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
+    const { partner: canonicalPartner, lead } = await requireAssignedLead(req);
+    const [hydratedLead] = await attachExecutiveMobile(canonicalPartner, [lead]);
     const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
       const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
       const leadDocuments = async (collection) => {
