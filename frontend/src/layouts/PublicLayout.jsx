@@ -151,12 +151,7 @@ export function PublicLayout() {
       <header ref={headerRef} className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 public-nav-blur">
         <div className="mx-auto grid h-14 w-full max-w-7xl grid-cols-[auto_auto] items-center gap-3 px-4 sm:h-16 sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:px-8">
           <Link to="/#home" className="flex min-w-0 items-center gap-3">
-            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0d47a1]">
-              <span className="absolute -top-1 h-4 w-7 rounded-t-lg border-2 border-[#ff6b4a] bg-white" />
-              <span className="mt-3 h-4 w-8 rounded-md bg-white" />
-              <span className="absolute bottom-2 left-2 h-1.5 w-1.5 rounded-full bg-[#ff6b4a]" />
-              <span className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-[#ff6b4a]" />
-            </span>
+            <img src="/assets/favicon.png" alt="CarLoanSaathi logo" className="h-9 w-9 shrink-0 object-contain" />
             <span className="truncate text-base font-semibold leading-none sm:text-lg">
               <span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span>
             </span>

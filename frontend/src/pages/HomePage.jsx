@@ -75,6 +75,24 @@ const platformRows = [
   ["CLS-2061", "Baleno", "Disbursal queued", "Axis - Delhi", "8 min"],
 ];
 
+const dealershipBenefits = [
+  ["Track every case easily", "See all active, pending, approved, rejected, and disbursed cases from one secure dashboard."],
+  ["No more manual status chasing", "Finance teams no longer need repeated calls or WhatsApp follow-ups to know where a case stands."],
+  ["Manage salespersons and finance staff", "Add, remove, and monitor salespersons and finance staff with clear role-based visibility."],
+  ["Move beyond Excel sheets", "Keep dealership finance data organized in one platform instead of scattered files and manual registers."],
+  ["Meeting-ready case status", "Open the dashboard during reviews and immediately see every case status, team workload, and bank movement."],
+  ["Secure dealership data", "Customer case data, documents, status, and workflow history stay protected inside controlled portals."],
+];
+
+const bankBenefits = [
+  ["All car loan cases in one place", "Receive dealership cases through one platform instead of depending on scattered branch or field follow-ups."],
+  ["Know every executive's workload", "Track loan executive details, assigned cases, pending actions, and status movement from the bank portal."],
+  ["Continuous case inflow", "Keep receiving cases even when a specific executive is not physically present at a dealership."],
+  ["No more manual status calls", "Branch managers can see case progress directly instead of asking teams for repeated updates."],
+  ["Reduce dealership dependency", "Executives do not need to sit across different dealerships just to collect or follow up on cases."],
+  ["Clear branch performance view", "See case volume, movement, and outcomes in one place for faster operational decisions."],
+];
+
 function SectionHeader({ eyebrow, title, text }) {
   return (
     <div className="mx-auto max-w-3xl text-center public-fade-in">
@@ -274,28 +292,40 @@ export function HomePage() {
               <Building2 className="h-6 w-6" />
             </div>
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-blue-600">Benefits for Dealerships</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-slate-950">A calmer finance desk with clear case movement.</h2>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-slate-950">Run dealership finance without Excel, repeated calls, or status confusion.</h2>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              CarLoanSaathi gives dealership owners and finance heads one convenient, advanced, easy-to-operate workspace for cases, salespersons, finance staff, and bank movement.
+            </p>
             <div className="mt-6 grid gap-3">
-              {["Centralized case tracking", "Finance team visibility", "Document coordination", "Bank tie-up workflow"].map((item) => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3">
+              {dealershipBenefits.map(([title, text]) => (
+                <div key={title} className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3">
                   <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <span className="text-sm font-semibold text-slate-700">{item}</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
+                  </div>
                 </div>
               ))}
             </div>
           </article>
 
-          <article id="banks" className="rounded-[2rem] border border-slate-200 bg-gradient-to-br from-slate-950 to-blue-900 p-7 text-white public-premium-shadow public-fade-in">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white">
+          <article id="banks" className="rounded-[2rem] border border-emerald-100 bg-gradient-to-br from-white to-emerald-50 p-7 public-soft-shadow public-fade-in">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-600 text-white">
               <Landmark className="h-6 w-6" />
             </div>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Benefits for Banks</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-white">Branch-side execution with ownership and visibility.</h2>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-600">Benefits for Banks</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-slate-950">Receive more cases with less field dependency and clearer executive control.</h2>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Banks get one branch workspace to receive dealership cases, track loan executives, monitor status, and keep case flow moving continuously.
+            </p>
             <div className="mt-6 grid gap-3">
-              {["Assigned dealership cases", "Executive coordination", "Status and SLA oversight", "Role-scoped branch visibility"].map((item) => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3">
-                  <CheckCircle2 className="h-5 w-5 text-cyan-200" />
-                  <span className="text-sm font-semibold text-blue-50">{item}</span>
+              {bankBenefits.map(([title, text]) => (
+                <div key={title} className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
+                  </div>
                 </div>
               ))}
             </div>
