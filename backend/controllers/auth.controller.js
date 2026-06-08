@@ -6,6 +6,7 @@ import { createRecord, findRecordsByField, getRecord, queryRecords, updateRecord
 import { writeAuditLog } from "../services/audit.service.js";
 import { logError, logInfo, logWarn } from "../services/logger.service.js";
 import {
+  activeIdentity,
   assertNoActiveIdentityCollision,
   findIdentityCandidates,
   resolveCanonicalIdentity,
@@ -315,9 +316,38 @@ function lifecycleOverlay(base = {}, userRecord = {}) {
   };
 }
 
-async function accountWithUserLifecycle(email, account) {
+async function identityContextFor(email, uid = "") {
+  const candidates = await findIdentityCandidates({ uid, email });
+  const activeCandidates = candidates.filter(activeIdentity);
+  if (activeCandidates.length > 1) {
+    const error = new Error("Multiple active identities exist for this email. Contact support.");
+    error.status = 409;
+    error.code = "IDENTITY_COLLISION";
+    error.details = activeCandidates.map((record) => ({
+      id: record.id,
+      uid: record.uid || null,
+      email: record.email || null,
+      role: record.role || null,
+      portalType: record.portalType || null,
+    }));
+    throw error;
+  }
+  return { candidates, activeCandidates };
+}
+
+function canonicalFromContext(context = {}, { uid = "", portal = "" } = {}) {
+  const normalizedUid = String(uid || "").trim();
+  const activeCandidates = context.activeCandidates || [];
+  if (!activeCandidates.length) return null;
+  return activeCandidates.find((record) => normalizedUid && String(record.uid || "").trim() === normalizedUid)
+    || activeCandidates.find((record) => portal && record.portalType === portal)
+    || activeCandidates[0];
+}
+
+async function accountWithUserLifecycle(email, account, identityContext = null) {
   if (!account) return null;
-  const userRecord = (await findIdentityCandidates({ uid: account.uid, email }).catch(() => []))
+  const candidates = identityContext?.candidates || await findIdentityCandidates({ uid: account.uid, email }).catch(() => []);
+  const userRecord = candidates
     .find((item) => item.role === account.role);
   return userRecord ? lifecycleOverlay(account, userRecord) : account;
 }
@@ -385,24 +415,24 @@ async function updatePasswordLifecycleRecords(email, role, patch) {
   }));
 }
 
-async function accountForEmail(email, portal, uid = "") {
+async function accountForEmail(email, portal, uid = "", identityContext = null) {
   const adminEmail = superAdminEmail();
   const allowed = PORTAL_ROLES[portal] || [];
+  const context = identityContext || await identityContextFor(email, uid);
   if (portal === "admin" || email === adminEmail) {
     if (email !== adminEmail) return null;
-    const adminUser = (await findIdentityCandidates({ uid, email })).find((item) => item.role === "super-admin");
+    const adminUser = context.candidates.find((item) => item.role === "super-admin");
     return adminUser?.role === "super-admin" && uidMatchesRecord(adminUser, email, uid) ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
   }
-  const canonical = await resolveCanonicalIdentity({ uid, email, portal });
+  const canonical = canonicalFromContext(context, { uid, portal });
   if (canonical?.role) {
     return allowed.includes(canonical.role)
-      ? accountWithUserLifecycle(email, { ...canonical, accountSource: "users", accountSourceId: canonical.id || canonical.uid || email })
+      ? accountWithUserLifecycle(email, { ...canonical, accountSource: "users", accountSourceId: canonical.id || canonical.uid || email }, context)
       : null;
   }
-  const identityCandidates = await findIdentityCandidates({ uid, email });
-  const inactiveCanonical = identityCandidates.find((item) => allowed.includes(item.role));
+  const inactiveCanonical = context.candidates.find((item) => allowed.includes(item.role));
   if (inactiveCanonical) {
-    return accountWithUserLifecycle(email, { ...inactiveCanonical, accountSource: "users", accountSourceId: inactiveCanonical.id || inactiveCanonical.uid || email });
+    return accountWithUserLifecycle(email, { ...inactiveCanonical, accountSource: "users", accountSourceId: inactiveCanonical.id || inactiveCanonical.uid || email }, context);
   }
 
   return null;
@@ -441,14 +471,15 @@ function inactiveAccountMessage(account = {}) {
   return { code: "APPROVAL_PENDING", message: "Your account exists but is awaiting approval from Super Admin." };
 }
 
-async function accountForAnyPortal(email, uid = "") {
-  const [dealerAccount, bankAccount, adminAccount] = await Promise.all([
-    accountForEmail(email, "dealer", uid).catch(() => null),
-    accountForEmail(email, "bank", uid).catch(() => null),
-    accountForEmail(email, "admin", uid).catch(() => null),
-  ]);
-  if (dealerAccount || bankAccount || adminAccount) return dealerAccount || bankAccount || adminAccount;
-  return (await findIdentityCandidates({ uid, email })).find((item) => item.role && uidMatchesRecord(item, email, uid)) || null;
+async function accountForAnyPortal(email, uid = "", { identityContext = null, skipPortals = [] } = {}) {
+  const context = identityContext || await identityContextFor(email, uid);
+  const skipped = new Set(skipPortals.filter(Boolean));
+  const lookups = await Promise.all(["dealer", "bank", "admin"]
+    .filter((portal) => !skipped.has(portal))
+    .map((portal) => accountForEmail(email, portal, uid, context).catch(() => null)));
+  const account = lookups.find(Boolean);
+  if (account) return account;
+  return context.candidates.find((item) => item.role && uidMatchesRecord(item, email, uid)) || null;
 }
 
 function wrongPortalPayload(account = {}) {
@@ -798,11 +829,12 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
     authPhase = "resolve-account";
-    let account = await accountForEmail(normalizedEmail, portal, firebaseUid);
+    const identityContext = await identityContextFor(normalizedEmail, firebaseUid);
+    let account = await accountForEmail(normalizedEmail, portal, firebaseUid, identityContext);
     account = await clearTransientLoginLock(normalizedEmail, account);
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
-      const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid);
+      const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid, { identityContext, skipPortals: [portal] });
       if (knownAccount?.role && !portalAllowsRole(portal, knownAccount.role)) {
         await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: "wrong-portal", req });
         return res.status(403).json(wrongPortalPayload(knownAccount));
@@ -975,7 +1007,8 @@ export async function restoreSession(req, res, next) {
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
 
-    const account = await accountForAnyPortal(normalizedEmail, firebaseUid);
+    const identityContext = await identityContextFor(normalizedEmail, firebaseUid);
+    const account = await accountForAnyPortal(normalizedEmail, firebaseUid, { identityContext });
     if (!account?.role || !ROLE_ROUTES[account.role]) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-account-not-approved", req });
       return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
@@ -1139,8 +1172,9 @@ export async function lookupAccountForLogin(req, res, next) {
       if (error.code !== "auth/user-not-found") throw error;
     }
     const firebaseUid = String(firebaseUser?.uid || "").trim();
-    const portalAccount = await accountForEmail(email, portal, firebaseUid);
-    const account = portalAccount || await accountForAnyPortal(email, firebaseUid);
+    const identityContext = await identityContextFor(email, firebaseUid);
+    const portalAccount = await accountForEmail(email, portal, firebaseUid, identityContext);
+    const account = portalAccount || await accountForAnyPortal(email, firebaseUid, { identityContext, skipPortals: [portal] });
 
     if (account?.role) {
       const accountPortal = portalForRole(account.role);

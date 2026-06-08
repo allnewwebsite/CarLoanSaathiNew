@@ -18,6 +18,10 @@ async function boundedBankSourceRecords(collection) {
   return [];
 }
 
+function legacyBankCatalogFallbackAllowed() {
+  return String(process.env.ALLOW_BANK_CATALOG_FALLBACK || "").toLowerCase() === "true";
+}
+
 /**
  * Validate IFSC code format and uniqueness
  * @param {string} ifscCode - IFSC code to validate
@@ -238,6 +242,7 @@ export async function getActiveBankBranches() {
       active: true,
     }));
   if (catalogRows.length) return catalogRows;
+  if (!legacyBankCatalogFallbackAllowed()) return [];
 
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
     boundedBankSourceRecords("banks"),

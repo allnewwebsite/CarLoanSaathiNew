@@ -1407,12 +1407,15 @@ export async function getAdminWorkflowLogs(req, res, next) {
     const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
     const logType = String(req.query.logType || "").trim();
     const search = String(req.query.search || "").trim();
+    const legacyFallback = String(req.query.legacyFallback || req.query.includeLegacyFallback || "").toLowerCase() === "true"
+      || String(process.env.ALLOW_WORKFLOW_LOG_FALLBACK || "").toLowerCase() === "true";
     const where = logType ? [{ field: "logType", value: logType }] : [];
     const cacheKey = `admin:workflow-logs:${JSON.stringify({
       limit,
       cursor: req.query.cursor || "",
       logType,
       search,
+      legacyFallback,
     })}`;
     const payload = await cached(cacheKey, 15000, async () => {
       const page = await queryRecords("workflowLogViews", {
@@ -1427,7 +1430,7 @@ export async function getAdminWorkflowLogs(req, res, next) {
         fields: ["id", "sourceId", "sourceCollection", "logType", "timestamp", "createdAt", "updatedAt", "leadId", "caseId", "entityId", "actorEmail", "actorName", "status", "action", "title", "summary"],
       });
       let rows = page.data || [];
-      if (!rows.length && !logType && !search && !req.query.cursor) {
+      if (legacyFallback && !rows.length && !logType && !search && !req.query.cursor) {
         const fallbackLimit = Math.min(limit, 25);
         const [assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
           listRecentRecords("leadAssignments", { limit: fallbackLimit }),

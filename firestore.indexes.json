@@ -400,6 +400,145 @@
       ]
     },
     {
+      "collectionGroup": "workflowLogViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "logType", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "eventType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "eventType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "eventType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "eventType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "timelineProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "eventType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankBranchCatalog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "approved", "order": "ASCENDING" },
+        { "fieldPath": "bankName", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "operationalEvents",
       "queryScope": "COLLECTION",
       "fields": [

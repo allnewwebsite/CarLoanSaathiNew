@@ -1,4 +1,5 @@
 import { findRecordsByField, getRecord, upsertRecord } from "./firestore.service.js";
+import { cached, clearCachedValue } from "./ttlCache.service.js";
 
 const ACTIVE_DENY_STATUSES = new Set(["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed"]);
 
@@ -39,7 +40,13 @@ function uniqueRecords(records = []) {
   });
 }
 
-export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
+const IDENTITY_CACHE_TTL_MS = Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 30000);
+
+function identityCacheKey({ uid = "", email = "" } = {}) {
+  return `identity:candidates:${String(uid || "").trim()}:${normalizeIdentityEmail(email)}`;
+}
+
+async function loadIdentityCandidates({ uid = "", email = "" } = {}) {
   const normalizedEmail = normalizeIdentityEmail(email);
   const normalizedUid = String(uid || "").trim();
   const candidates = [];
@@ -59,6 +66,13 @@ export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
     candidates.push(...uidMatches);
   }
   return uniqueRecords(candidates.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
+}
+
+export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
+  const normalizedEmail = normalizeIdentityEmail(email);
+  const normalizedUid = String(uid || "").trim();
+  if (!normalizedEmail && !normalizedUid) return [];
+  return cached(identityCacheKey({ uid: normalizedUid, email: normalizedEmail }), IDENTITY_CACHE_TTL_MS, () => loadIdentityCandidates({ uid: normalizedUid, email: normalizedEmail }));
 }
 
 export async function resolveCanonicalIdentity({ uid = "", email = "", portal = "" } = {}) {
@@ -113,6 +127,7 @@ export async function upsertCanonicalUser(uid, payload = {}) {
     throw error;
   }
   const email = normalizeIdentityEmail(payload.email);
+  clearCachedValue("identity:candidates:");
   return upsertRecord("users", canonicalUid, {
     ...payload,
     uid: canonicalUid,

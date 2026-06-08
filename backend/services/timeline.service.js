@@ -214,6 +214,11 @@ function dateWindow(filter) {
   return { start, end };
 }
 
+function legacyTimelineFallbackAllowed(query = {}) {
+  return String(query.legacyFallback || query.includeLegacyFallback || "").toLowerCase() === "true"
+    || String(process.env.ALLOW_TIMELINE_FALLBACK || "").toLowerCase() === "true";
+}
+
 export async function addTimelineEvent({
   leadId,
   eventType,
@@ -286,6 +291,16 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       total: projected.data.length,
       page: Math.max(Number(query.page || 1), 1),
       limit: projected.limit || Math.min(Math.max(Number(query.limit || 20), 1), 100),
+    };
+  }
+  if (!legacyTimelineFallbackAllowed(query)) {
+    const limit = Math.min(Math.max(Number(query.limit || 20), 1), 100);
+    return {
+      data: [],
+      total: 0,
+      page: Math.max(Number(query.page || 1), 1),
+      limit,
+      projectionOnly: true,
     };
   }
   const page = Math.max(Number(query.page || 1), 1);
