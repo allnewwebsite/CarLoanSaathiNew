@@ -8,6 +8,7 @@ import { subscribeRealtime } from "../services/realtimeManager.js";
 const MAX_VISIBLE_ROWS = 50;
 const REFRESH_COOLDOWN_MS = 12000;
 const MUTATION_DEDUPE_MS = 800;
+const MUTATION_MEMO_MAX_ENTRIES = 300;
 let globalRefreshTimer = 0;
 let globalRefreshInFlight = false;
 let globalLastRefreshAt = 0;
@@ -84,10 +85,26 @@ function roleLeadQueries(user, rowLimit) {
 
 function debounceCallback(callback, delay) {
   let timeout = 0;
-  return () => {
+  const debounced = () => {
     window.clearTimeout(timeout);
     timeout = window.setTimeout(callback, delay);
   };
+  debounced.cancel = () => window.clearTimeout(timeout);
+  return debounced;
+}
+
+function rememberMutationRefresh(key) {
+  const now = Date.now();
+  if (mutationRefreshMemo.size > MUTATION_MEMO_MAX_ENTRIES) {
+    const cutoff = now - MUTATION_DEDUPE_MS * 4;
+    for (const [memoKey, lastAt] of mutationRefreshMemo.entries()) {
+      if (lastAt < cutoff || mutationRefreshMemo.size > MUTATION_MEMO_MAX_ENTRIES) mutationRefreshMemo.delete(memoKey);
+    }
+  }
+  const lastAt = mutationRefreshMemo.get(key) || 0;
+  if (now - lastAt < MUTATION_DEDUPE_MS) return false;
+  mutationRefreshMemo.set(key, now);
+  return true;
 }
 
 function queuePendingInstantRefresh(callback) {
@@ -168,9 +185,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       const detail = event?.detail || {};
       if (typeof mutationFilter === "function" && !mutationFilter(detail)) return;
       const key = `${refreshKey}:${detail.source || ""}:${detail.at || ""}:${detail.url || ""}`;
-      const lastAt = mutationRefreshMemo.get(key) || 0;
-      if (Date.now() - lastAt < MUTATION_DEDUPE_MS) return;
-      mutationRefreshMemo.set(key, Date.now());
+      if (!rememberMutationRefresh(key)) return;
       runInstantRefresh(refreshRef.current);
     };
     window.addEventListener("online", reconnectRefresh);
@@ -191,7 +206,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
   useEffect(() => {
     if (!enabled || !queryFactory || typeof onRefresh !== "function") return undefined;
     const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), debounceMs);
-    return subscribeRealtime({
+    const unsubscribe = subscribeRealtime({
       key,
       queryFactory,
       onChange: () => {
@@ -202,6 +217,10 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
         setHealth({ connected: false, error: error?.message || "Realtime listener failed" });
       },
     });
+    return () => {
+      debouncedRefresh.cancel();
+      unsubscribe();
+    };
   }, [debounceMs, enabled, key, queryFactory]);
 
   return health;
@@ -224,7 +243,10 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true, 
       onChange: debouncedRefresh,
       onError: debouncedRefresh,
     }));
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    return () => {
+      debouncedRefresh.cancel();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
   }, [enabled, specs]);
 }
 
@@ -253,7 +275,10 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true,
       onChange: debouncedRefresh,
       onError: debouncedRefresh,
     }));
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    return () => {
+      debouncedRefresh.cancel();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
   }, [documentLeadIds, enabled, leadId]);
 }
 
@@ -265,12 +290,16 @@ export function useTimelineRealtime({ leadId, onRefresh, enabled = true, mutatio
   useEffect(() => {
     if (!enabled || !leadId || typeof onRefresh !== "function") return undefined;
     const debouncedRefresh = debounceCallback(() => runInstantRefresh(refreshRef.current), 250);
-    return subscribeRealtime({
+    const unsubscribe = subscribeRealtime({
       key: `timeline:${leadId}`,
       queryFactory: () => query(collection(db, "leadTimeline"), where("leadId", "==", leadId), orderBy("createdAt", "asc"), limit(50)),
       onChange: debouncedRefresh,
       onError: debouncedRefresh,
     });
+    return () => {
+      debouncedRefresh.cancel();
+      unsubscribe();
+    };
   }, [enabled, leadId]);
 }
 

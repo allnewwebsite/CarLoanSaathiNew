@@ -47,6 +47,8 @@ const navByRole = {
 
 const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
 const notificationPrefetch = { url: "/notifications", params: { limit: 20 } };
+const scheduleIdle = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 180));
+const cancelIdle = window.cancelIdleCallback || window.clearTimeout;
 
 function withCommonPrefetch(specs = []) {
   const seen = new Set();
@@ -157,8 +159,17 @@ export function DashboardLayout() {
   const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search), [currentTarget, location.pathname, location.search]);
 
   useEffect(() => {
+    const handles = [];
     nav.forEach((item, index) => {
-      window.setTimeout(() => prefetchDashboardRoute(item.to), index * 120);
+      const timeoutHandle = window.setTimeout(() => {
+      const idleHandle = scheduleIdle(() => prefetchDashboardRoute(item.to));
+      handles.push(idleHandle);
+      }, index * 120);
+      handles.push(timeoutHandle);
+    });
+    return () => handles.forEach((handle) => {
+      window.clearTimeout(handle);
+      cancelIdle(handle);
     });
   }, [nav]);
 

@@ -5,6 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
@@ -198,21 +199,24 @@ function statusRows(leads, rejected) {
 function TotalLeadsScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
-  const search = params.get("search") || "";
-  const { leads, total, hasMore, loading, load } = useGmLeads({ search });
+  const [search, setSearch] = useState(params.get("search") || "");
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const { leads, total, hasMore, loading, load } = useGmLeads({ search: debouncedSearch });
   const updateSearch = (value) => {
+    setSearch(value);
     setPage(1);
-    setParams(value ? { search: value, page: "1" } : { page: "1" });
-    load({ search: value, page: 1 });
   };
+  useEffect(() => {
+    setParams(debouncedSearch ? { search: debouncedSearch, page: "1" } : { page: "1" });
+  }, [debouncedSearch, setParams]);
   const pageTo = (nextPage) => {
     setPage(nextPage);
-    load({ page: nextPage });
+    load({ search: debouncedSearch, page: nextPage });
   };
   return (
     <section className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All leads created by this dealership." />
-      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" defaultValue={search} onChange={(event) => updateSearch(event.target.value)} /></div>
+      <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" value={search} onChange={(event) => updateSearch(event.target.value)} /></div>
       <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Executive", "Executive Mobile", "Current Status", "Case Generated", "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );

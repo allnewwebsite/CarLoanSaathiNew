@@ -6,6 +6,7 @@ import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.js
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
@@ -216,10 +217,11 @@ function TotalLeadsPage({ mode }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("search") || "");
+  const debouncedSearch = useDebouncedValue(search, 180);
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
   const status = mode === "status" ? params.get("status") || LEAD_STATUSES.NEW : "";
-  const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search, status });
+  const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search: debouncedSearch, status });
 
   const updateStatus = async (lead, nextStatus) => {
     setStatusError("");

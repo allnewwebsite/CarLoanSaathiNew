@@ -40,6 +40,7 @@ export function NotificationCenter() {
   const inFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
   const mutationTimerRef = useRef(0);
+  const toastTimerRef = useRef(0);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
@@ -64,7 +65,8 @@ export function NotificationCenter() {
       nextItems.forEach((item) => previous.add(item.id));
       if (fresh && !fresh.read) {
         setToast(fresh.title || "New notification");
-        window.setTimeout(() => setToast(""), 3500);
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
       }
       return nextItems;
     } finally {
@@ -93,6 +95,7 @@ export function NotificationCenter() {
     };
     window.addEventListener("cls:data-mutated", onMutation);
     return () => {
+      window.clearTimeout(toastTimerRef.current);
       window.clearTimeout(mutationTimerRef.current);
       window.removeEventListener("cls:data-mutated", onMutation);
     };

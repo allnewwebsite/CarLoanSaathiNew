@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
@@ -259,9 +260,10 @@ function useExecutives() {
 function TotalLeadsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads(search);
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads(debouncedSearch);
   const [actionError, setActionError] = useState("");
-  const tableRows = rows.map((lead) => ({
+  const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
       caseId(lead),
@@ -286,7 +288,7 @@ function TotalLeadsPage() {
         </button>
       </div>,
     ],
-  }));
+  })), [load, navigate, page, rows]);
   return (
     <section className="space-y-4">
       <PageTitle title="Total Leads" />
@@ -302,9 +304,10 @@ function StatusPage() {
   const [params, setParams] = useSearchParams();
   const status = params.get("status") || LEAD_STATUSES.NEW;
   const [search, setSearch] = useState(params.get("search") || "");
-  const { rows, total, hasMore, loading, page, onPage } = useBankLeads(search, status);
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const { rows, total, hasMore, loading, page, onPage } = useBankLeads(debouncedSearch, status);
   const choose = (nextStatus) => setParams({ status: nextStatus, page: "1", ...(search ? { search } : {}) });
-  const tableRows = rows.map((lead) => ({
+  const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
       caseId(lead),
@@ -318,7 +321,7 @@ function StatusPage() {
       display(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
       <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
     ],
-  }));
+  })), [navigate, rows, status]);
   const headers = normalizeStatus(status) === LEAD_STATUSES.REJECTED
     ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Rejection Reason", "Assigned Executive", "Documents"]
     : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Assigned Executive", "Documents"];
@@ -361,7 +364,7 @@ function AnalyticsPage() {
   useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize, mutationFilter: leadMutationFilter });
   const emptyLoading = loading && !data;
 
-  const branchRows = (data?.branchMetrics || []).map((item) => ({
+  const branchRows = useMemo(() => (data?.branchMetrics || []).map((item) => ({
     key: item.branch,
     cells: [
       display(item.branch),
@@ -372,8 +375,8 @@ function AnalyticsPage() {
       numberValue(item.rejectedLeads),
       numberValue(item.slaOverdue),
     ],
-  }));
-  const executiveRows = (data?.executivePerformance || []).map((item) => ({
+  })), [data?.branchMetrics]);
+  const executiveRows = useMemo(() => (data?.executivePerformance || []).map((item) => ({
     key: item.executiveId,
     cells: [
       display(item.executiveName),
@@ -386,8 +389,8 @@ function AnalyticsPage() {
       numberValue(item.rejectedLeads),
       numberValue(item.slaOverdue),
     ],
-  }));
-  const recentRows = (data?.recentCases || []).map((lead) => ({
+  })), [data?.executivePerformance]);
+  const recentRows = useMemo(() => (data?.recentCases || []).map((lead) => ({
     key: lead.id,
     cells: [
       lead.caseId,
@@ -399,7 +402,7 @@ function AnalyticsPage() {
       dateTime(lead.updatedAt),
       <button key="view" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>,
     ],
-  }));
+  })), [data?.recentCases, navigate]);
 
   return (
     <section className="space-y-5">
@@ -511,7 +514,7 @@ function ManageExecutivePage() {
     }
   };
 
-  const tableRows = rows.map((executive) => ({
+  const tableRows = useMemo(() => rows.map((executive) => ({
     key: executive.id,
     cells: [
       display(executive.name || executive.fullName),
@@ -528,7 +531,7 @@ function ManageExecutivePage() {
         <button type="button" disabled={executive.active === false} onClick={() => remove(executive)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Remove</button>
       </div>,
     ],
-  }));
+  })), [rows]);
 
   return (
     <section className="space-y-4">
@@ -575,7 +578,7 @@ function ManageExecutivePage() {
 function AllExecutivesPage() {
   const navigate = useNavigate();
   const { rows, loading } = useExecutives();
-  const tableRows = rows.map((executive) => ({
+  const tableRows = useMemo(() => rows.map((executive) => ({
     key: executive.id,
     cells: [
       display(executive.name || executive.fullName),
@@ -587,7 +590,7 @@ function AllExecutivesPage() {
       display(executive.status),
       <button key="cases" onClick={() => navigate(`/bank-manager/executives/${executive.id}/cases`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">All Cases</button>,
     ],
-  }));
+  })), [navigate, rows]);
   return (
     <section className="space-y-4">
       <PageTitle title="All Executives" />
@@ -612,7 +615,7 @@ function ExecutiveCasesPage() {
   }, [executiveId]);
   useEffect(() => { load(); }, [load]);
   useBackgroundRefresh({ onRefresh: load, refreshKey: "bank-executive-cases", mutationFilter: leadMutationFilter });
-  const rows = payload.data.map((lead) => ({
+  const rows = useMemo(() => payload.data.map((lead) => ({
     key: lead.id,
     cells: [
       caseId(lead),
@@ -625,7 +628,7 @@ function ExecutiveCasesPage() {
       dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
       <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
     ],
-  }));
+  })), [navigate, payload.data]);
   return (
     <section className="space-y-4">
       <PageTitle title={payload.executive ? `${payload.executive.name || payload.executive.fullName} Cases` : "Executive Cases"} />
@@ -637,8 +640,9 @@ function ExecutiveCasesPage() {
 function BankDealershipsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const { rows, total, hasMore, loading, page, onPage } = useBankDealerships(search);
-  const tableRows = rows.map((dealership) => ({
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const { rows, total, hasMore, loading, page, onPage } = useBankDealerships(debouncedSearch);
+  const tableRows = useMemo(() => rows.map((dealership) => ({
     key: dealership.id || dealership.dealershipId,
     cells: [
       display(dealership.dealershipName || dealership.dealerName),
@@ -657,7 +661,7 @@ function BankDealershipsPage() {
       </button>,
       dateTime(dealership.lastLeadAt || dealership.updatedAt),
     ],
-  }));
+  })), [navigate, rows]);
   return (
     <section className="space-y-4">
       <PageTitle title="All Dealerships" />
@@ -672,9 +676,10 @@ function BankDealershipDisbursedPage() {
   const navigate = useNavigate();
   const { dealershipId = "" } = useParams();
   const [search, setSearch] = useState("");
-  const { rows, total, hasMore, loading, page, onPage } = useBankDealershipDisbursedCases(dealershipId, search);
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const { rows, total, hasMore, loading, page, onPage } = useBankDealershipDisbursedCases(dealershipId, debouncedSearch);
   const dealershipName = rows[0]?.dealershipName || rows[0]?.dealerName || rows[0]?.dealershipEmail || "Dealership";
-  const tableRows = rows.map((lead) => ({
+  const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
       caseId(lead),
@@ -689,7 +694,7 @@ function BankDealershipDisbursedPage() {
       dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
       <button key="view" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>,
     ],
-  }));
+  })), [navigate, rows]);
   return (
     <section className="space-y-4">
       <PageTitle title={`${dealershipName} Disbursed Cases`} />

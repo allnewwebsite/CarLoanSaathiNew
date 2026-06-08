@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { List } from "react-window";
 
 function isDateTimeHeader(header = "") {
@@ -118,7 +118,7 @@ export const OperationalTable = memo(function OperationalTable({
   hasMore,
   onPage,
   pageSize = 10,
-  virtualizeAt = 25,
+  virtualizeAt = 15,
   height = 520,
   rowHeight = 32,
   action = null,
@@ -128,8 +128,9 @@ export const OperationalTable = memo(function OperationalTable({
   const visibleRows = rows;
   const hasRows = visibleRows.length > 0;
   const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
-  const gridTemplateColumns = headers.map(columnTemplate).join(" ");
-  const tableMinWidth = `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`;
+  const gridTemplateColumns = useMemo(() => headers.map(columnTemplate).join(" "), [headers]);
+  const tableMinWidth = useMemo(() => `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`, [headers]);
+  const mobileRows = useMemo(() => visibleRows.slice(0, Math.max(pageSize, 20)), [pageSize, visibleRows]);
 
   return (
     <section className="card overflow-hidden">
@@ -155,7 +156,7 @@ export const OperationalTable = memo(function OperationalTable({
               defaultHeight={Math.min(height, Math.max(rowHeight, visibleRows.length * rowHeight))}
               rowCount={visibleRows.length}
               rowHeight={rowHeight}
-              overscanCount={8}
+              overscanCount={5}
               rowComponent={VirtualRow}
               rowProps={{ rows: visibleRows, headers, gridTemplateColumns }}
               style={{ height: Math.min(height, Math.max(rowHeight, visibleRows.length * rowHeight)), width: "100%" }}
@@ -172,7 +173,7 @@ export const OperationalTable = memo(function OperationalTable({
             </div>
           )}
         </div>
-        {hasRows ? <MobileRows headers={headers} rows={visibleRows} /> : null}
+        {hasRows ? <MobileRows headers={headers} rows={mobileRows} /> : null}
         {loading && !hasRows ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
       </div>
