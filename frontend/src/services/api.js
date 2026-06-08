@@ -2,6 +2,7 @@ import axios from "axios";
 import { getToken } from "firebase/app-check";
 import { appCheck } from "./firebase.js";
 import { clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
+import { markApiRequestStart, markApiResponseEnd } from "./frontendLatency.js";
 
 const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
@@ -559,6 +560,7 @@ api.interceptors.request.use(async (config) => {
   config.headers = config.headers || {};
   config.headers["X-CLS-Portal"] = requestPortalHeader();
   const cached = cachedResponse(config);
+  markApiRequestStart(config, { cacheHit: Boolean(cached) });
   if (cached) {
     config.adapter = () => Promise.resolve(cached);
     return config;
@@ -577,6 +579,7 @@ api.interceptors.request.use(async (config) => {
 
 api.interceptors.response.use(
   (response) => {
+    markApiResponseEnd(response.config, response);
     if (!response.request?.cached) rememberGetResponse(response);
     if (!["get", "head", "options"].includes(String(response.config?.method || "get").toLowerCase())) {
       const url = String(response.config?.url || "");
@@ -604,6 +607,7 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
+    markApiResponseEnd(error.config || {}, null, error);
     if (shouldRetryAuthNetworkError(error)) {
       error.config._authNetworkRetry = true;
       await sleep(1200);

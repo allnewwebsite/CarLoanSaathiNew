@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { prefetchGet } from "../services/api.js";
+import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const navByRole = {
   "gm-sm": [
@@ -122,6 +123,7 @@ function readSidebarState() {
 }
 
 export function DashboardLayout() {
+  useRenderDiagnostics("DashboardLayout");
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -137,6 +139,7 @@ export function DashboardLayout() {
   }, [collapsed]);
 
   useEffect(() => {
+    markRouteChangeStart(`${location.pathname}${location.search}`);
     setMobileOpen(false);
   }, [location.pathname, location.search]);
 

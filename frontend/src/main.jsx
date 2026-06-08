@@ -4,10 +4,12 @@ import { RouterProvider } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { initFrontendMonitoring } from "./services/monitoring.js";
+import { installFrontendLatencyListeners } from "./services/frontendLatency.js";
 import { preloadDashboardRoutes, router } from "./routes/router.jsx";
 import "./styles/index.css";
 
 initFrontendMonitoring();
+installFrontendLatencyListeners();
 
 const schedulePreload = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 250));
 schedulePreload(() => preloadDashboardRoutes());

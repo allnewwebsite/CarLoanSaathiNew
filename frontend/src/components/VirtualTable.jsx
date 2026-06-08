@@ -1,5 +1,6 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { List } from "react-window";
+import { markTableRenderComplete, markTableRenderStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const Row = memo(function Row({ index, style, rows, columns, gridTemplateColumns }) {
   const row = rows[index];
@@ -27,8 +28,17 @@ function columnWidth(label = "") {
 }
 
 export function VirtualTable({ columns, rows, rowHeight = 32, height = 520, overscan = 8 }) {
+  const renderInfo = markTableRenderStart({ component: "VirtualTable" });
+  useRenderDiagnostics("VirtualTable", { rowCount: rows?.length || 0 });
   const gridTemplateColumns = columns.map((column) => `minmax(${columnWidth(column.label)}px, 1fr)`).join(" ");
   const tableMinWidth = `${Math.max(columns.reduce((sum, column) => sum + columnWidth(column.label), 0), 720)}px`;
+  useEffect(() => {
+    markTableRenderComplete(renderInfo, {
+      component: "VirtualTable",
+      title: "",
+      rowCount: rows.length,
+    });
+  });
   return (
     <section className="card overflow-hidden">
       <div className="overflow-x-auto">

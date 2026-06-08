@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { db } from "../services/firebaseDb.js";
 import { invalidateGetCache } from "../services/api.js";
 import { subscribeRealtime } from "../services/realtimeManager.js";
+import { logSseRefresh } from "../services/frontendLatency.js";
 
 const MAX_VISIBLE_ROWS = 50;
 const REFRESH_COOLDOWN_MS = 12000;
@@ -190,6 +191,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
     if (!enabled || typeof onRefresh !== "function") return undefined;
     const reconnectRefresh = () => {
       if (document.hidden) return;
+      logSseRefresh({ eventType: "online", refreshTriggered: true, component: refreshKey || "background-refresh" });
       scheduleFreshRefresh(refreshRef.current);
     };
     const onMutation = (event) => {
@@ -198,6 +200,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       if (typeof mutationFilter === "function" && !mutationFilter(detail)) return;
       const key = `${refreshKey}:${detail.source || ""}:${detail.at || ""}:${detail.url || ""}`;
       if (!rememberMutationRefresh(key)) return;
+      logSseRefresh({ eventType: detail.kind || "data-mutated", refreshTriggered: true, component: refreshKey || "background-refresh", url: detail.url || "", realtime: Boolean(detail.realtime) });
       runInstantRefresh(refreshRef.current);
     };
     window.addEventListener("online", reconnectRefresh);
@@ -223,6 +226,7 @@ export function useRealtimeRefresh({ key, queryFactory, onRefresh, enabled = tru
       queryFactory,
       onChange: () => {
         setHealth({ connected: true, error: "" });
+        logSseRefresh({ eventType: "realtime-change", refreshTriggered: true, component: key || "useRealtimeRefresh" });
         debouncedRefresh();
       },
       onError: (error) => {
@@ -253,10 +257,16 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true, 
       key: spec.key,
       queryFactory: spec.factory,
       onChange: () => {
-        if (!realtimeConnected()) debouncedRefresh();
+        if (!realtimeConnected()) {
+          logSseRefresh({ eventType: "role-lead-change", refreshTriggered: true, component: spec.key });
+          debouncedRefresh();
+        }
       },
       onError: () => {
-        if (!realtimeConnected()) debouncedRefresh();
+        if (!realtimeConnected()) {
+          logSseRefresh({ eventType: "role-lead-error", refreshTriggered: true, component: spec.key });
+          debouncedRefresh();
+        }
       },
     }));
     return () => {
@@ -289,10 +299,16 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true,
       key: spec.key,
       queryFactory: spec.factory,
       onChange: () => {
-        if (!realtimeConnected()) debouncedRefresh();
+        if (!realtimeConnected()) {
+          logSseRefresh({ eventType: "lead-detail-change", refreshTriggered: true, component: spec.key });
+          debouncedRefresh();
+        }
       },
       onError: () => {
-        if (!realtimeConnected()) debouncedRefresh();
+        if (!realtimeConnected()) {
+          logSseRefresh({ eventType: "lead-detail-error", refreshTriggered: true, component: spec.key });
+          debouncedRefresh();
+        }
       },
     }));
     return () => {
@@ -313,8 +329,14 @@ export function useTimelineRealtime({ leadId, onRefresh, enabled = true, mutatio
     const unsubscribe = subscribeRealtime({
       key: `timeline:${leadId}`,
       queryFactory: () => query(collection(db, "leadTimeline"), where("leadId", "==", leadId), orderBy("createdAt", "asc"), limit(50)),
-      onChange: debouncedRefresh,
-      onError: debouncedRefresh,
+      onChange: () => {
+        logSseRefresh({ eventType: "timeline-change", refreshTriggered: true, component: `timeline:${leadId}` });
+        debouncedRefresh();
+      },
+      onError: () => {
+        logSseRefresh({ eventType: "timeline-error", refreshTriggered: true, component: `timeline:${leadId}` });
+        debouncedRefresh();
+      },
     });
     return () => {
       debouncedRefresh.cancel();

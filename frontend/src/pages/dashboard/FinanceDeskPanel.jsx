@@ -9,6 +9,7 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -254,6 +255,7 @@ function leadRows(leads, mode = "total") {
 }
 
 export function FinanceDeskPanel({ mode = "total" }) {
+  usePageLatency("FinanceDesk", { mode });
   if (mode === "add") return <AddLeadOnlyScreen />;
   if (mode === "bank-tieups") return <BankTieUpsScreen />;
   if (mode === "staff") return <StaffManagementScreen />;

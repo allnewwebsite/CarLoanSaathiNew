@@ -11,6 +11,7 @@ import { mutationUrlMatches, useLeadDetailRealtime, useRoleLeadRealtime } from "
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { usePageLatency } from "../../services/frontendLatency.js";
 import { formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -295,6 +296,7 @@ function TotalLeadsPage({ mode }) {
 }
 
 export function LoanExecutivePanel({ mode = "leads" }) {
+  usePageLatency("LoanExecutive", { mode });
   return <TotalLeadsPage mode={mode} />;
 }
 

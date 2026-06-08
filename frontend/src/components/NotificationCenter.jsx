@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
 import { api, getCachedGetData } from "../services/api.js";
+import { logNotificationRefresh, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const NOTIFICATION_REFRESH_COOLDOWN_MS = 10000;
 const NOTIFICATION_REFRESH_DEBOUNCE_MS = 700;
@@ -29,6 +30,7 @@ function mutationCanAffectNotifications(detail = {}) {
 }
 
 export function NotificationCenter() {
+  useRenderDiagnostics("NotificationCenter", { open: false });
   const initialPayload = getCachedGetData("/notifications", { limit: 20 });
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(() => initialPayload?.data || []);
@@ -43,6 +45,7 @@ export function NotificationCenter() {
   const toastTimerRef = useRef(0);
 
   const load = useCallback(async ({ silent = false } = {}) => {
+    logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: "load", silent, filter });
     const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
     const nextItems = response.data.data || [];
     setItems(nextItems);
@@ -116,6 +119,7 @@ export function NotificationCenter() {
       const detail = event?.detail || {};
       if (detail.realtime && detail.notification?.id) return;
       if (!mutationCanAffectNotifications(detail)) return;
+      logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: detail.kind || "data-mutated", url: detail.url || "" });
       window.clearTimeout(mutationTimerRef.current);
       mutationTimerRef.current = window.setTimeout(() => {
         refreshNotifications({ force: false }).catch(() => {});
@@ -131,6 +135,7 @@ export function NotificationCenter() {
 
   useEffect(() => {
     if (!open) return undefined;
+    logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: "panel-open" });
     refreshNotifications({ force: true }).catch(() => {});
     return undefined;
   }, [open, refreshNotifications]);

@@ -10,6 +10,7 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -323,6 +324,7 @@ function SalespersonCasesScreen() {
 }
 
 export function GmTrackingPanel({ mode = "total" }) {
+  usePageLatency("GmDashboard", { mode });
   if (mode === "salespersons") return <SalespersonsScreen />;
   if (mode === "status") return <StatusScreen />;
   if (mode === "cases") return <AllCasesScreen />;

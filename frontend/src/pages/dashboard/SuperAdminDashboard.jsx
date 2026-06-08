@@ -10,6 +10,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { api, getCachedGetData } from "../../services/api.js";
+import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -552,6 +553,7 @@ function SettingCard({ title, text, children }) {
 }
 
 export function SuperAdminDashboard({ mode = "dashboard" }) {
+  usePageLatency("SuperAdmin", { mode });
   if (mode === "dashboard") return <AdminListPage mode="leads" />;
   return <AdminListPage mode={mode} />;
 }

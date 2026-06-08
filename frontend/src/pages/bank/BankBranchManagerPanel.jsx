@@ -9,6 +9,7 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -712,6 +713,7 @@ function PageTitle({ title }) {
 }
 
 export function BankBranchManagerPanel({ mode = "leads" }) {
+  usePageLatency("BankManager", { mode });
   if (mode === "analytics") return <AnalyticsPage />;
   if (mode === "status") return <StatusPage />;
   if (mode === "manage-executive") return <ManageExecutivePage />;
