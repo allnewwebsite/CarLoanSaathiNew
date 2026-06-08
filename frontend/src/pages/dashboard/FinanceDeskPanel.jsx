@@ -39,6 +39,17 @@ function display(value) {
   return value || "-";
 }
 
+function mergeBranchesByKey(...groups) {
+  const merged = new Map();
+  groups.flat().filter(Boolean).forEach((branch) => {
+    const key = bankKey(branch);
+    if (!key) return;
+    const existing = merged.get(key);
+    merged.set(key, { ...branch, ...existing });
+  });
+  return [...merged.values()];
+}
+
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
@@ -661,7 +672,7 @@ function BankTieUpsScreen() {
     : Array.isArray(cachedTieUps?.currentTieUps)
       ? cachedTieUps.currentTieUps
       : [];
-  const [availableBranches, setAvailableBranches] = useState(() => cachedBranches.filter((branch) => branch.active !== false && branch.approved !== false));
+  const [availableBranches, setAvailableBranches] = useState(() => mergeBranchesByKey(cachedBranches, cachedCurrentTieUps).filter((branch) => branch.active !== false && branch.approved !== false));
   const [selectedBranchIds, setSelectedBranchIds] = useState(() => cachedCurrentTieUps.map((branch) => bankKey(branch)).filter(Boolean));
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
@@ -686,7 +697,7 @@ function BankTieUpsScreen() {
         : Array.isArray(response.data?.currentTieUps)
           ? response.data.currentTieUps
           : [];
-      setAvailableBranches(allBranches.filter((branch) => branch.active !== false && branch.approved !== false));
+      setAvailableBranches(mergeBranchesByKey(allBranches, currentTieUps).filter((branch) => branch.active !== false && branch.approved !== false));
       setSelectedBranchIds(currentTieUps.map((branch) => bankKey(branch)).filter(Boolean));
     } catch (requestError) {
       setAvailableBranches((current) => current.length ? current : []);
@@ -785,7 +796,7 @@ function BankTieUpsScreen() {
                     <span>{display(branch.branchName)}</span>
                     <span>{display(branch.city)}</span>
                     <span>{display(branch.state)}</span>
-                    <span className="text-emerald-700">{branch.approvalStatus || "approved"}</span>
+                    <span className={branch.catalogMissing ? "text-amber-700" : "text-emerald-700"}>{branch.catalogMissing ? "tie-up saved" : branch.approvalStatus || "approved"}</span>
                   </label>
                 );
               })

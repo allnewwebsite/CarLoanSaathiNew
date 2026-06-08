@@ -69,8 +69,31 @@ function branchCatalogRow(branch) {
   };
 }
 
+function tieUpFallbackRow(tieUp = {}, ifscCode = "") {
+  const ifsc = String(ifscCode || tieUp.ifscCode || tieUp.id || "").trim().toUpperCase();
+  return {
+    id: ifsc,
+    bankId: tieUp.bankId || tieUp.bankBranchId || tieUp.branchId || ifsc,
+    branchId: tieUp.branchId || tieUp.bankBranchId || tieUp.bankId || ifsc,
+    bankBranchId: tieUp.bankBranchId || tieUp.branchId || tieUp.bankId || ifsc,
+    ifscCode: ifsc,
+    bankName: tieUp.bankName || tieUp.bank || "Registered Bank",
+    branchName: tieUp.branchName || tieUp.branch || tieUp.city || "Branch",
+    address: tieUp.address || "",
+    city: tieUp.city || "",
+    state: tieUp.state || "",
+    contactPerson: tieUp.contactPerson || "",
+    phone: tieUp.phone || "",
+    email: tieUp.email || "",
+    approved: true,
+    active: true,
+    approvalStatus: tieUp.approvalStatus || "approved",
+    catalogMissing: true,
+  };
+}
+
 async function getBankBranchCatalog() {
-  return cached("bank-branch-catalog:available:v1", 300000, async () => {
+  return cached("bank-branch-catalog:available:v2", 300000, async () => {
     const fields = ["id", "bankId", "branchId", "bankBranchId", "ifscCode", "bankName", "branchName", "address", "city", "state", "contactPerson", "phone", "email", "approved", "active", "approvalStatus", "updatedAt"];
     const page = await queryRecords("bankBranchCatalog", {
       where: [{ field: "approved", value: true }],
@@ -117,8 +140,7 @@ export async function getDealershipBankTieUps(dealershipId) {
     const activeTieUps = [];
     for (const tieUp of relationTieUps) {
       try {
-        const bank = branchesByIfsc.get(String(tieUp.ifscCode || "").toUpperCase());
-        if (!bank) throw new Error("Bank branch not available");
+        const bank = branchesByIfsc.get(String(tieUp.ifscCode || "").toUpperCase()) || tieUpFallbackRow(tieUp);
         if (bank.approved !== true || bank.active === false) continue;
         activeTieUps.push({
           id: bank.ifscCode,
@@ -135,9 +157,10 @@ export async function getDealershipBankTieUps(dealershipId) {
           phone: bank.phone || tieUp.phone,
           email: bank.email || tieUp.email,
           addedAt: tieUp.createdAt || tieUp.updatedAt,
+          catalogMissing: bank.catalogMissing === true,
         });
       } catch (error) {
-        logInfo("Inactive or missing bank tie-up skipped", { ifscCode: tieUp.ifscCode, dealershipId });
+        logInfo("Inactive bank tie-up skipped", { ifscCode: tieUp.ifscCode, dealershipId });
       }
     }
     return activeTieUps;
@@ -154,8 +177,8 @@ export async function getDealershipBankTieUps(dealershipId) {
   const tieUps = [];
   for (const ifscCode of tieUpIFSCs) {
     try {
-      const bank = branchesByIfsc.get(String(ifscCode || "").toUpperCase());
-      if (!bank) throw new Error("Bank branch not available");
+      const normalizedIfsc = String(ifscCode || "").toUpperCase();
+      const bank = branchesByIfsc.get(normalizedIfsc) || tieUpFallbackRow({ ifscCode: normalizedIfsc }, normalizedIfsc);
       tieUps.push({
         id: bank.ifscCode,
         bankId: bank.id,
@@ -171,6 +194,7 @@ export async function getDealershipBankTieUps(dealershipId) {
         phone: bank.phone,
         email: bank.email,
         addedAt: dealership.bankTieUpDates?.[ifscCode] || dealership.updatedAt,
+        catalogMissing: bank.catalogMissing === true,
       });
     } catch (error) {
       // Bank may have been deleted - skip it

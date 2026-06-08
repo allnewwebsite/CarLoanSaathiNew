@@ -18,10 +18,6 @@ async function boundedBankSourceRecords(collection) {
   return [];
 }
 
-function legacyBankCatalogFallbackAllowed() {
-  return String(process.env.ALLOW_BANK_CATALOG_FALLBACK || "").toLowerCase() === "true";
-}
-
 /**
  * Validate IFSC code format and uniqueness
  * @param {string} ifscCode - IFSC code to validate
@@ -117,7 +113,7 @@ export async function registerBankBranch(payload, req = null) {
     approved: bank.approved,
   });
   clearCachedValue("bank:active-branches");
-  clearCachedValue("bank-branch-catalog:available:v1");
+  clearCachedValue("bank-branch-catalog:available:");
 
   return bank;
 }
@@ -161,7 +157,7 @@ export async function approveBankBranch(bankId, req = null) {
     bankName: bank.bankName,
   });
   clearCachedValue("bank:active-branches");
-  clearCachedValue("bank-branch-catalog:available:v1");
+  clearCachedValue("bank-branch-catalog:available:");
 
   return updated;
 }
@@ -204,7 +200,7 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
     reason,
   });
   clearCachedValue("bank:active-branches");
-  clearCachedValue("bank-branch-catalog:available:v1");
+  clearCachedValue("bank-branch-catalog:available:");
 
   return updated;
 }
@@ -213,7 +209,7 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
  * Get all approved and active banks
  */
 export async function getActiveBankBranches() {
-  return cached("bank:active-branches", 60000, async () => {
+  return cached("bank:active-branches:v2", 60000, async () => {
   const catalog = await queryRecords("bankBranchCatalog", {
     where: [{ field: "approved", value: true }],
     orderBy: "bankName",
@@ -241,9 +237,6 @@ export async function getActiveBankBranches() {
       approved: true,
       active: true,
     }));
-  if (catalogRows.length) return catalogRows;
-  if (!legacyBankCatalogFallbackAllowed()) return [];
-
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
     boundedBankSourceRecords("banks"),
     boundedBankSourceRecords("bankPartners"),
@@ -292,6 +285,18 @@ export async function getActiveBankBranches() {
   ];
 
   const byIfsc = new Map();
+  for (const row of catalogRows) {
+    const bank = normalizeBank(row);
+    if (!bank.approved || !bank.active || !bank.ifscCode || !bank.bankName || !bank.branchName) continue;
+    byIfsc.set(bank.ifscCode, {
+      ...bank,
+      bankId: bank.bankId || bank.id || bank.ifscCode,
+      id: bank.id || bank.ifscCode,
+      approved: true,
+      active: true,
+      approvalStatus: "approved",
+    });
+  }
   for (const record of records) {
     const bank = normalizeBank(record);
     if (!bank.approved || !bank.active || !bank.ifscCode || !bank.bankName || !bank.branchName) continue;
@@ -315,8 +320,32 @@ export async function getActiveBankBranches() {
     });
   }
 
-  return [...byIfsc.values()]
+  const rows = [...byIfsc.values()]
     .sort((left, right) => `${left.bankName} ${left.ifscCode}`.localeCompare(`${right.bankName} ${right.ifscCode}`));
+  await Promise.all(rows.map((bank) => upsertRecord("bankBranchCatalog", bank.ifscCode, {
+    id: bank.ifscCode,
+    sourceCollection: "bank-catalog-recovery",
+    sourceId: bank.id || bank.bankId || bank.ifscCode,
+    bankId: bank.bankId || bank.id || bank.ifscCode,
+    branchId: bank.branchId || bank.bankBranchId || bank.id || bank.ifscCode,
+    bankBranchId: bank.bankBranchId || bank.branchId || bank.id || bank.ifscCode,
+    ifscCode: bank.ifscCode,
+    bankName: bank.bankName,
+    branchName: bank.branchName,
+    address: bank.address || "",
+    city: bank.city || "",
+    state: bank.state || "Haryana",
+    contactPerson: bank.contactPerson || "",
+    phone: bank.phone || "",
+    email: bank.email || "",
+    approvalStatus: "approved",
+    approved: true,
+    active: true,
+    approvedAt: bank.approvedAt || null,
+    createdAt: bank.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }).catch(() => null)));
+  return rows;
   });
 }
 
@@ -410,7 +439,7 @@ export async function updateBankBranch(bankId, payload, req = null) {
     });
   }
   clearCachedValue("bank:active-branches");
-  clearCachedValue("bank-branch-catalog:available:v1");
+  clearCachedValue("bank-branch-catalog:available:");
 
   return updated;
 }
