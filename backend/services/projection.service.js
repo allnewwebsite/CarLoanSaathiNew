@@ -248,7 +248,27 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       search: Boolean(query.search),
     });
     if (!resultCount) return null;
-    return pageResponse({ data: result.data.map((item) => ({ ...item, id: item.sourceId || item.id })), limit, nextCursor: result.nextCursor });
+    const mapStartedAt = Date.now();
+    const data = result.data.map((item) => ({ ...item, id: item.sourceId || item.id }));
+    const mapEndedAt = Date.now();
+    const shapeStartedAt = Date.now();
+    const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
+    const shapeEndedAt = Date.now();
+    logInfo("Lead projection response shaping completed", {
+      tag: "SERIALIZATION-LATENCY",
+      requestId,
+      function: "queryLeadProjectionForUser",
+      collection,
+      projectionMapDurationMs: mapEndedAt - mapStartedAt,
+      responseShapeDurationMs: shapeEndedAt - shapeStartedAt,
+      inputCount: resultCount,
+      outputCount: data.length,
+      financeManagerLookupCount: 0,
+      executiveLookupCount: 0,
+      dealershipLookupCount: 0,
+      documentFormattingCount: 0,
+    });
+    return response;
   } catch (error) {
     logWarn("Lead projection lookup failed", {
       tag: "PROJECTION-LATENCY",

@@ -1,6 +1,7 @@
 import { countRecords, queryRecords } from "./firestore.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
+import { logInfo } from "./logger.service.js";
 
 const LEAD_FIELDS = [
   "id",
@@ -175,8 +176,10 @@ function queryWhere(baseWhere = [], query = {}) {
   return where;
 }
 
-export async function queryDealershipLeads({ dealershipId, query = {}, fields = LEAD_FIELDS }) {
+export async function queryDealershipLeads({ dealershipId, query = {}, fields = LEAD_FIELDS, requestId = null } = {}) {
+  const startedAt = Date.now();
   const { limit, cursor, page } = paginationParams(query);
+  const queryStartedAt = Date.now();
   const result = await queryRecords("leads", {
     where: queryWhere([{ field: "dealershipId", value: dealershipId }], query),
     orderBy: "createdAt",
@@ -188,8 +191,31 @@ export async function queryDealershipLeads({ dealershipId, query = {}, fields = 
     searchFields: SEARCH_FIELDS,
     fields,
   });
+  const queryEndedAt = Date.now();
+  const filterStartedAt = Date.now();
   const data = localFilters(result.data, query);
-  return pageResponse({ data, limit, nextCursor: result.nextCursor });
+  const filterEndedAt = Date.now();
+  const shapeStartedAt = Date.now();
+  const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
+  const shapeEndedAt = Date.now();
+  logInfo("Dealer fallback leads shaping completed", {
+    tag: "SERIALIZATION-LATENCY",
+    requestId,
+    function: "queryDealershipLeads",
+    collection: "leads",
+    queryDurationMs: queryEndedAt - queryStartedAt,
+    filterDurationMs: filterEndedAt - filterStartedAt,
+    responseShapeDurationMs: shapeEndedAt - shapeStartedAt,
+    totalDurationMs: Date.now() - startedAt,
+    inputCount: Array.isArray(result.data) ? result.data.length : 0,
+    outputCount: data.length,
+    statusFormattingCallCount: Array.isArray(result.data) ? result.data.length : 0,
+    financeManagerLookupCount: 0,
+    executiveLookupCount: 0,
+    dealershipLookupCount: 0,
+    documentFormattingCount: 0,
+  });
+  return response;
 }
 
 export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS }) {

@@ -1045,6 +1045,7 @@ export async function getDealerLeads(req, res, next) {
   const requestStartedAt = Number(res.locals.startedAt || startedAt);
   let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
   let projectionStarted, projectionEnded, fallbackStarted, fallbackEnded;
+  let parseStarted, parseEnded;
   let projectionError = null;
   let fallbackTriggered = false;
   try {
@@ -1066,13 +1067,44 @@ export async function getDealerLeads(req, res, next) {
     if (!page) {
       fallbackTriggered = true;
       fallbackStarted = Date.now();
-      page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
+      page = await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query, requestId: req.requestId });
       fallbackEnded = Date.now();
     }
     queryEnded = Date.now();
     serializeStarted = Date.now();
     const responseJson = JSON.stringify(page);
     serializeEnded = Date.now();
+    parseStarted = Date.now();
+    const responseBody = JSON.parse(responseJson);
+    parseEnded = Date.now();
+    const rowCount = Array.isArray(page?.data) ? page.data.length : 0;
+    const fieldCounts = Array.isArray(page?.data) ? page.data.map((item) => Object.keys(item || {}).length) : [];
+    const maxFieldCount = fieldCounts.length ? Math.max(...fieldCounts) : 0;
+    const totalFieldCount = fieldCounts.reduce((sum, count) => sum + count, 0);
+    logInfo("Dealer leads serialization breakdown", {
+      tag: "SERIALIZATION-LATENCY",
+      requestId: req.requestId,
+      path: req.originalUrl,
+      function: "getDealerLeads",
+      file: "backend/controllers/dealer.controller.js",
+      responseShapeDurationMs: 0,
+      leadEnrichmentDurationMs: 0,
+      financeManagerLookupCount: 0,
+      executiveLookupCount: 0,
+      dealershipLookupCount: 0,
+      documentFormattingCount: 0,
+      jsonStringifyDurationMs: serializeEnded - serializeStarted,
+      jsonParseDurationMs: parseEnded - parseStarted,
+      rowCount,
+      totalFieldCount,
+      maxFieldCount,
+      responseBytes: Buffer.byteLength(responseJson),
+      fallbackTriggered,
+      projectionDurationMs: projectionEnded - projectionStarted,
+      fallbackDurationMs: fallbackTriggered ? fallbackEnded - fallbackStarted : 0,
+      controllerDurationMs: Date.now() - startedAt,
+      totalDurationMs: Date.now() - requestStartedAt,
+    });
     logInfo("Dealer leads latency breakdown", {
       tag: "PROJECTION-LATENCY",
       requestId: req.requestId,
@@ -1103,7 +1135,7 @@ export async function getDealerLeads(req, res, next) {
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(page?.data) ? page.data.length : undefined,
     });
-    res.json(JSON.parse(responseJson));
+    res.json(responseBody);
   } catch (error) {
     next(error);
   }

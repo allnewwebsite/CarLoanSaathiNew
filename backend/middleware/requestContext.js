@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { GOVERNANCE_LIMITS } from "../config/governance.js";
-import { logWarn } from "../services/logger.service.js";
+import { logInfo, logWarn } from "../services/logger.service.js";
 import { observeApiRequest } from "../services/observability.service.js";
 import { flushFirestoreReadReport, runRequestScope } from "../services/requestScope.service.js";
 
@@ -12,6 +12,7 @@ export function requestContext(req, res, next) {
   res.setHeader("X-Request-Id", requestId);
   const originalJson = res.json.bind(res);
   res.json = (body) => {
+    const jsonStartedAt = Date.now();
     if (!res.locals.responseBytes) {
       try {
         res.locals.responseBytes = Buffer.byteLength(JSON.stringify(body));
@@ -19,7 +20,24 @@ export function requestContext(req, res, next) {
         res.locals.responseBytes = null;
       }
     }
-    return originalJson(body);
+    const byteMeasureEndedAt = Date.now();
+    const sendStartedAt = Date.now();
+    const result = originalJson(body);
+    const sendEndedAt = Date.now();
+    if (String(req.originalUrl || "").startsWith("/api/dealer/leads")) {
+      logInfo("Express json response serialization completed", {
+        tag: "SERIALIZATION-LATENCY",
+        requestId,
+        path: req.originalUrl,
+        function: "requestContext.res.json",
+        file: "backend/middleware/requestContext.js",
+        responseByteMeasureDurationMs: byteMeasureEndedAt - jsonStartedAt,
+        expressJsonDurationMs: sendEndedAt - sendStartedAt,
+        responseBytes: res.locals.responseBytes,
+        rowCount: Array.isArray(body?.data) ? body.data.length : null,
+      });
+    }
+    return result;
   };
   runRequestScope(req, () => {
     res.on("finish", () => {
