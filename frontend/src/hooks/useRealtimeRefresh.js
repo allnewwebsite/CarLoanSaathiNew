@@ -171,6 +171,17 @@ function scheduleFreshRefresh(callback, delay = 250) {
   globalRefreshTimer = window.setTimeout(() => runFreshRefresh(callback), delay);
 }
 
+function realtimeConnected() {
+  return typeof window !== "undefined" && window.__CLS_REALTIME_CONNECTED === true;
+}
+
+function realtimeEventHasPatch(detail = {}) {
+  if (!detail.realtime) return false;
+  if (detail.kind === "lead" || detail.kind === "document") return Boolean(detail.leadId && detail.lead);
+  if (detail.kind === "notification") return Boolean(detail.notification?.id);
+  return false;
+}
+
 export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "default", mutationFilter = null } = {}) {
   const refreshRef = useRef(onRefresh);
   refreshRef.current = onRefresh;
@@ -183,6 +194,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
     };
     const onMutation = (event) => {
       const detail = event?.detail || {};
+      if (realtimeEventHasPatch(detail)) return;
       if (typeof mutationFilter === "function" && !mutationFilter(detail)) return;
       const key = `${refreshKey}:${detail.source || ""}:${detail.at || ""}:${detail.url || ""}`;
       if (!rememberMutationRefresh(key)) return;
@@ -240,8 +252,12 @@ export function useRoleLeadRealtime({ onRefresh, pageSize = 10, enabled = true, 
     const unsubscribers = specs.map((spec) => subscribeRealtime({
       key: spec.key,
       queryFactory: spec.factory,
-      onChange: debouncedRefresh,
-      onError: debouncedRefresh,
+      onChange: () => {
+        if (!realtimeConnected()) debouncedRefresh();
+      },
+      onError: () => {
+        if (!realtimeConnected()) debouncedRefresh();
+      },
     }));
     return () => {
       debouncedRefresh.cancel();
@@ -272,8 +288,12 @@ export function useLeadDetailRealtime({ lead, leadId, onRefresh, enabled = true,
     const unsubscribers = specs.map((spec) => subscribeRealtime({
       key: spec.key,
       queryFactory: spec.factory,
-      onChange: debouncedRefresh,
-      onError: debouncedRefresh,
+      onChange: () => {
+        if (!realtimeConnected()) debouncedRefresh();
+      },
+      onError: () => {
+        if (!realtimeConnected()) debouncedRefresh();
+      },
     }));
     return () => {
       debouncedRefresh.cancel();

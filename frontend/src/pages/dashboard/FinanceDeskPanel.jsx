@@ -6,6 +6,7 @@ import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.js
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
@@ -178,6 +179,7 @@ function useDealerLeads(filters = {}) {
   useEffect(() => {
     loadLeads({ silent: Boolean(cachedPayload) });
   }, [loadLeads]);
+  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
   useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, loadLeads };
 }
@@ -1309,6 +1311,7 @@ export function FinanceLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
+  useRealtimeLeadDetailPatch({ leadId, setLead });
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;
@@ -1355,6 +1358,7 @@ export function FinanceLeadDocumentsPage() {
     api.get(`/dealer/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => {});
     return () => { active = false; };
   }, [leadId]);
+  useRealtimeLeadDetailPatch({ leadId, setLead });
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadDocs, mutationFilter: leadMutationFilter });
 
   const upload = async (type) => {

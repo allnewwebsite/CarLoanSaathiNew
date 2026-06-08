@@ -86,8 +86,36 @@ export function NotificationCenter() {
   }, [filter, refreshNotifications]);
 
   useEffect(() => {
+    const onRealtime = (event) => {
+      const notification = event?.detail?.notification;
+      if (!notification?.id) return;
+      seenIds.current.add(notification.id);
+      if (filter === "unread" && notification.read) return;
+      let shouldIncrementUnread = false;
+      setItems((current) => {
+        const existing = current.find((item) => item.id === notification.id);
+        shouldIncrementUnread = !existing && !notification.read;
+        const next = existing
+          ? current.map((item) => item.id === notification.id ? { ...item, ...notification } : item)
+          : [{ ...notification, read: notification.read === true }, ...current].slice(0, 20);
+        return next;
+      });
+      if (shouldIncrementUnread) {
+        setUnread((current) => current + 1);
+        setToast(notification.title || "New notification");
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+      }
+    };
+    window.addEventListener("cls:realtime-event", onRealtime);
+    return () => window.removeEventListener("cls:realtime-event", onRealtime);
+  }, [filter]);
+
+  useEffect(() => {
     const onMutation = (event) => {
-      if (!mutationCanAffectNotifications(event?.detail || {})) return;
+      const detail = event?.detail || {};
+      if (detail.realtime && detail.notification?.id) return;
+      if (!mutationCanAffectNotifications(detail)) return;
       window.clearTimeout(mutationTimerRef.current);
       mutationTimerRef.current = window.setTimeout(() => {
         refreshNotifications({ force: false }).catch(() => {});

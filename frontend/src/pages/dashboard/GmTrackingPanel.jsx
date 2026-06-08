@@ -7,6 +7,7 @@ import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
@@ -116,6 +117,7 @@ function useGmLeads(filters = {}) {
   useEffect(() => {
     load({ silent: Boolean(cached) });
   }, [load]);
+  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
   useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, load };
 }
@@ -350,6 +352,7 @@ export function GmLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
+  useRealtimeLeadDetailPatch({ leadId, setLead });
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;

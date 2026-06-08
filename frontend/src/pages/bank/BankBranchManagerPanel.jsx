@@ -6,6 +6,7 @@ import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.js
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
@@ -169,6 +170,7 @@ function useBankLeads(search, status = "") {
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
+  useRealtimeLeadPatch({ setRows, statusFilter: status });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
@@ -749,6 +751,7 @@ export function BankManagerLeadDetailPage() {
   }, [leadId]);
 
   useEffect(() => { loadLead(); }, [loadLead]);
+  useRealtimeLeadDetailPatch({ leadId, setLead });
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailSkeleton />;

@@ -73,6 +73,10 @@ function closeSource() {
     source.close();
     source = null;
   }
+  if (typeof window !== "undefined") {
+    window.__CLS_REALTIME_CONNECTED = false;
+    window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: false } }));
+  }
 }
 
 async function connect() {
@@ -85,6 +89,10 @@ async function connect() {
       const params = new URLSearchParams({ ticket });
       if (lastEventId) params.set("lastEventId", lastEventId);
       source = new EventSource(`${apiBaseUrl()}/realtime/events?${params.toString()}`);
+      source.addEventListener("connected", () => {
+        window.__CLS_REALTIME_CONNECTED = true;
+        window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: true } }));
+      });
       source.addEventListener("operational", (message) => {
         try {
           dispatchRealtimeEvent(JSON.parse(message.data));

@@ -8,6 +8,7 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
@@ -319,6 +320,7 @@ function useAdminPanelData(mode, search, leadFilter) {
   }, [leadFilter, mode, search]);
 
   useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
+  useRealtimeLeadPatch({ setRows, statusFilter: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", enabled: mode === "status" || mode === "leads" });
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
   return { rows, loading, load };
 }
