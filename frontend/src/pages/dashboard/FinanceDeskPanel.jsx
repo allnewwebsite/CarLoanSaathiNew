@@ -1352,6 +1352,10 @@ export function FinanceLeadDocumentsPage() {
     api.get(`/documents/lead/${leadId}`).then((response) => setDocs(response.data || [])).catch(() => setDocs([]));
   }, [leadId]);
 
+  const loadLead = useCallback(() => {
+    return api.get(`/dealer/leads/${leadId}`).then((response) => setLead(response.data)).catch(() => {});
+  }, [leadId]);
+
   useEffect(() => { loadDocs(); }, [loadDocs]);
   useEffect(() => {
     let active = true;
@@ -1359,7 +1363,15 @@ export function FinanceLeadDocumentsPage() {
     return () => { active = false; };
   }, [leadId]);
   useRealtimeLeadDetailPatch({ leadId, setLead });
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadDocs, mutationFilter: leadMutationFilter });
+  useLeadDetailRealtime({
+    lead,
+    leadId,
+    onRefresh: () => {
+      loadDocs();
+      loadLead();
+    },
+    mutationFilter: leadMutationFilter,
+  });
 
   const upload = async (type) => {
     const file = files[type];
@@ -1427,9 +1439,9 @@ export function FinanceLeadDocumentsPage() {
           );
         })}
       </div>
-      {bankDocs.length ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="text-base font-semibold text-slate-900">Bank Uploaded Documents</h2>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-base font-semibold text-slate-900">Bank Uploaded Documents</h2>
+        {bankDocs.length ? (
           <div className="mt-3 grid gap-2">
             {bankDocs.map((doc) => {
               const url = doc.url || doc.fileUrl || doc.downloadUrl;
@@ -1444,8 +1456,10 @@ export function FinanceLeadDocumentsPage() {
               );
             })}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <p className="mt-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">No records found.</p>
+        )}
+      </section>
     </section>
   );
 }
