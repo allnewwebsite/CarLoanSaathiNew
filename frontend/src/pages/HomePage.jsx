@@ -53,7 +53,7 @@ const showcaseCards = [
     stats: ["38 active", "9 follow-ups", "6 uploads"],
   },
   {
-    title: "Admin Dashboard",
+    title: "Operations Dashboard",
     description: "Governance visibility across approvals, status movement, and operations.",
     icon: ShieldCheck,
     accent: "from-slate-700 to-blue-700",
@@ -63,7 +63,7 @@ const showcaseCards = [
 
 const trustSignals = [
   ["Role Based Access", "Every portal opens only the role scope assigned to that user.", LockKeyhole],
-  ["Portal Isolation", "Dealer, bank, executive, finance, and admin surfaces stay separated.", ShieldCheck],
+  ["Portal Isolation", "Dealer, bank, executive, and finance surfaces stay separated.", ShieldCheck],
   ["Audit Logs", "Operational movement remains traceable for governance review.", FileCheck2],
   ["Workflow Visibility", "Teams see case movement without changing the underlying process.", Network],
   ["Secure Operations", "Access, approvals, and status handling remain controlled end to end.", CheckCircle2],
@@ -88,10 +88,14 @@ function SectionHeader({ eyebrow, title, text }) {
 }
 
 function PortalLink({ to, label, variant = "primary" }) {
-  const className =
-    variant === "primary"
-      ? "group inline-flex h-12 items-center justify-center rounded-full bg-blue-700 px-6 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-800 public-soft-shadow"
-      : "group inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5 hover:border-blue-200 hover:text-blue-700 public-soft-shadow";
+  const styles = {
+    dealer: "border-blue-100 bg-blue-50 text-blue-800 hover:border-blue-200 hover:bg-blue-100",
+    bank: "border-emerald-100 bg-emerald-50 text-emerald-800 hover:border-emerald-200 hover:bg-emerald-100",
+    head: "border-amber-100 bg-amber-50 text-amber-800 hover:border-amber-200 hover:bg-amber-100",
+    executive: "border-violet-100 bg-violet-50 text-violet-800 hover:border-violet-200 hover:bg-violet-100",
+    primary: "border-blue-100 bg-blue-50 text-blue-800 hover:border-blue-200 hover:bg-blue-100",
+  };
+  const className = `group inline-flex h-12 min-w-[11rem] items-center justify-center whitespace-nowrap rounded-full border px-5 text-sm font-semibold leading-none transition hover:-translate-y-0.5 public-soft-shadow ${styles[variant] || styles.primary}`;
 
   return (
     <Link to={to} className={className}>
@@ -216,12 +220,13 @@ export function HomePage() {
               Loan workflow management built for modern dealership operations.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              CarLoanSaathi connects dealerships, finance teams, bank branches, executives, and administrators through a controlled platform for case tracking, bank coordination, and operational visibility.
+              CarLoanSaathi connects dealerships, finance teams, bank branches, and executives through a controlled platform for case tracking, bank coordination, and operational visibility.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <PortalLink to="/dealer/login" label="Dealer Login" />
-              <PortalLink to="/bank/login" label="Bank Login" variant="secondary" />
-              <PortalLink to="/admin/login" label="Admin Access" variant="secondary" />
+            <div className="mt-8 flex max-w-4xl flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
+              <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
+              <PortalLink to="/finance/login" label="Dealership Head Login" variant="head" />
+              <PortalLink to="/executive/login" label="Loan Executive Login" variant="executive" />
             </div>
             <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {heroMetrics.map(([value, label, note]) => (
@@ -363,12 +368,14 @@ export function HomePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Platform Access</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">Continue through your dedicated portal.</h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-blue-100">
-              Approved dealerships, bank branches, executives, and administrators can use their existing login paths. Public access paths remain disabled without deleting operational data or internal workflows.
+              Approved dealerships, bank branches, finance heads, and loan executives can use their existing login paths. Public access paths remain disabled without deleting operational data or internal workflows.
             </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <PortalLink to="/dealer/login" label="Dealer Login" />
-            <PortalLink to="/bank/login" label="Bank Login" variant="secondary" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
+            <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
+            <PortalLink to="/finance/login" label="Dealership Head Login" variant="head" />
+            <PortalLink to="/executive/login" label="Loan Executive Login" variant="executive" />
           </div>
         </div>
       </section>

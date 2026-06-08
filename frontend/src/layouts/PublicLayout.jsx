@@ -11,10 +11,6 @@ const customerNav = [
   { label: "Contact", to: "/#contact" },
 ];
 
-const adminNav = [
-  { label: "Admin Access", to: "/admin/login" },
-];
-
 const roleGroups = [
   {
     key: "dealerships",
@@ -22,9 +18,6 @@ const roleGroups = [
     icon: Users,
     items: [
       { label: "Dealer Registration", to: "/dealer/register", description: "Create an approved dealership account." },
-      { label: "Finance Head Registration", to: "/finance/register", description: "For dealership finance managers." },
-      { label: "Dealer Login", to: "/dealer/login", description: "Dealership owner and admin access." },
-      { label: "Finance Head Login", to: "/finance/login", description: "Finance desk workflow access." },
     ],
   },
   {
@@ -33,16 +26,6 @@ const roleGroups = [
     icon: Landmark,
     items: [
       { label: "Bank Registration", to: "/bank/register", description: "Register a branch for approval." },
-      { label: "Bank Login", to: "/bank/login", description: "Branch manager access." },
-    ],
-  },
-  {
-    key: "executives",
-    label: "For Executives",
-    icon: Users,
-    items: [
-      { label: "Loan Executive Registration", to: "/executive/register", description: "Bank-side executive onboarding guidance." },
-      { label: "Loan Executive Login", to: "/executive/login", description: "Assigned loan case access." },
     ],
   },
 ];
@@ -142,7 +125,7 @@ function MobileSection({ title, items, open, onToggle, onNavigate }) {
 export function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState("");
-  const [mobileSections, setMobileSections] = useState({ platform: true, dealerships: false, banks: false, executives: false, admin: false });
+  const [mobileSections, setMobileSections] = useState({ platform: true, dealerships: false, banks: false });
   const headerRef = useRef(null);
 
   useEffect(() => {
@@ -195,12 +178,6 @@ export function PublicLayout() {
                 onClose={() => setOpenGroup("")}
               />
             ))}
-            <Link
-              to="/admin/login"
-              className="ml-2 inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-4 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-800"
-            >
-              Admin Access
-            </Link>
           </div>
 
           <button
@@ -240,13 +217,6 @@ export function PublicLayout() {
                   onNavigate={() => setMobileOpen(false)}
                 />
               ))}
-              <MobileSection
-                title="Admin"
-                items={adminNav}
-                open={mobileSections.admin}
-                onToggle={() => setMobileSections((current) => ({ ...current, admin: !current.admin }))}
-                onNavigate={() => setMobileOpen(false)}
-              />
             </div>
           </aside>
         </div>
