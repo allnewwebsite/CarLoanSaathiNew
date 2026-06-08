@@ -13,6 +13,7 @@ import gmRoutes from "./routes/gm.routes.js";
 import bankRoutes from "./routes/bank.routes.js";
 import timelineRoutes from "./routes/timeline.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import realtimeRoutes from "./routes/realtime.routes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { processSlaBreaches } from "./services/assignment.service.js";
 import { processWhatsAppQueue } from "./services/whatsapp.service.js";
@@ -157,6 +158,7 @@ app.use("/api/gm", gmRoutes);
 app.use("/api/bank", bankRoutes);
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/realtime", realtimeRoutes);
 app.use((_req, res) => res.status(404).json({
   success: false,
   errorCode: "ROUTE_NOT_FOUND",

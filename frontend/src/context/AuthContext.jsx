@@ -16,6 +16,7 @@ import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
+import { startRealtimeClient, stopRealtimeClient } from "../services/realtimeClient.js";
 import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
 const AuthContext = createContext(null);
@@ -122,6 +123,7 @@ export function AuthProvider({ children }) {
   };
 
   const clearLocalSession = async ({ signOutFirebase = true, broadcast = true, reason = "local-clear" } = {}) => {
+    stopRealtimeClient();
     teardownRealtimeSubscriptions();
     clearAuthStorage();
     setFirebaseUser(null);
@@ -146,6 +148,12 @@ export function AuthProvider({ children }) {
       // Backend JWT session remains the source of truth after login.
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated && user?.role) startRealtimeClient();
+    else stopRealtimeClient();
+    return () => stopRealtimeClient();
+  }, [isAuthenticated, user?.role, user?.email, user?.dealershipId, user?.bankId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {

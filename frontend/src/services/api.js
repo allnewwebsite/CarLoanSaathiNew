@@ -35,7 +35,7 @@ function isLocalOrPrivateApiUrl(url) {
   }
 }
 
-function apiBaseUrl() {
+export function apiBaseUrl() {
   let configured = import.meta.env.VITE_API_BASE_URL || DEFAULT_LOCAL_API_BASE_URL;
   if (typeof window === "undefined") return normalizeApiUrl(configured);
 

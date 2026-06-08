@@ -61,10 +61,14 @@ async function assertAllPortalStatuses(leadId, status) {
   await assertLeadDetailStatus(leadId, status);
 }
 
+let statusTick = Date.now();
+
 async function mutateLeadStatus(leadId, status) {
+  statusTick += 1000;
+  const statusUpdatedAt = new Date(statusTick).toISOString();
   const updated = await updateRecord("leads", leadId, {
     status,
-    statusUpdatedAt: new Date().toISOString(),
+    statusUpdatedAt,
     updatedByExecutiveId: "exec-sync-1",
     updatedByExecutiveName: "Sync Executive",
   });

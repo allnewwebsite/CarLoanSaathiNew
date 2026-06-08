@@ -28,6 +28,7 @@ import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -1396,6 +1397,7 @@ export async function acceptBankLead(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_ACCEPTED, lead: updated, actor: req.user, data: { status: nextStatus } });
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "leadId",
@@ -1435,6 +1437,7 @@ export async function rejectBankLead(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_REJECTED, lead: updated, actor: req.user, data: { status: nextStatus } });
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1479,7 +1482,8 @@ export async function reassignBankLead(req, res, next) {
     const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager" });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
-    syncLeadProjectionSoon(updated);
+    await syncLeadProjection(updated);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED, lead: updated, actor: req.user, data: { reason } });
     await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
     res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
   } catch (error) {
@@ -1634,6 +1638,18 @@ export async function updateBankLeadStatus(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
+    publishRealtimeEvent({
+      eventType: normalizedStatus === LEAD_STATUSES.DISBURSED
+        ? REALTIME_EVENTS.LEAD_DISBURSED
+        : normalizedStatus === LEAD_STATUSES.APPROVED
+          ? REALTIME_EVENTS.LEAD_APPROVED
+          : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
+            ? REALTIME_EVENTS.DOCUMENT_REQUESTED
+            : REALTIME_EVENTS.LEAD_STATUS_CHANGED,
+      lead: updated,
+      actor: req.user,
+      data: { status: normalizedStatus, previousStatus: lead.status },
+    });
     res.json({ message: "Lead status updated", lead: updated });
     queueBankLeadStatusSideEffects({ req, lead, updated, partner, ...mutation });
   } catch (error) {
@@ -1715,6 +1731,7 @@ export async function uploadBankLeadDocument(req, res, next) {
     });
     await createNotification({ type: "documents-uploaded", title: "Document uploaded", message: `${document.documentType} uploaded for lead ${lead.caseId || lead.id}`, leadId: lead.id, dealerEmail: lead.dealerEmail, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, documents: [document.documentType] } });
     await writeAuditLog({ req, actionType: "DOCUMENT_UPLOAD", newValue: document.documentType, leadId: lead.id });
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user });
     res.status(201).json({ message: "Document uploaded", document });
   } catch (error) {
     next(error);

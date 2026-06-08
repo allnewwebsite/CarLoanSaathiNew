@@ -8,6 +8,7 @@ import { renderNotificationTemplate } from "./notificationTemplates.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { syncNotificationProjectionSoon } from "./projection.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 
 export async function createNotification({
   type,
@@ -74,6 +75,19 @@ export async function createNotification({
     },
   });
   syncNotificationProjectionSoon(notification);
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.NOTIFICATION_CREATED,
+    notification,
+    lead: lead || null,
+    data: {
+      leadId,
+      caseId,
+      dealershipId: notification.dealershipId,
+      bankId: notification.bankId,
+      executiveId: notification.assignedExecutiveId,
+      recipientId: targetUserId,
+    },
+  });
   await createRecord("notificationLogs", {
     notificationId: notification.id,
     userId: targetUserId,

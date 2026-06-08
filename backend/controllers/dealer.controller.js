@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -1017,6 +1018,12 @@ export async function createDealerLead(req, res, next) {
       dealershipId,
       ifscCode,
     });
+    publishRealtimeEvent({
+      eventType: responseLead.assignedExecutiveId ? REALTIME_EVENTS.EXECUTIVE_ASSIGNED : REALTIME_EVENTS.LEAD_CREATED,
+      lead: responseLead,
+      actor: req.user,
+      data: { dealershipId, bankId: responseLead.bankId || branchTieUp.bankId },
+    });
 
     res.status(201).json({ 
       success: true,
@@ -1143,6 +1150,11 @@ export async function createDealerFinanceManager(req, res, next) {
       updatedAt: now,
     });
     clearCachedValue("dealer:finance-managers:");
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,
+      actor: req.user,
+      data: { dealershipId: dealershipEmail, financeManagerId: manager.id, action: "created" },
+    });
     res.status(201).json(financeManagerRow(manager));
   } catch (error) {
     next(error);
@@ -1161,6 +1173,11 @@ export async function updateDealerFinanceManager(req, res, next) {
       updatedAt: new Date().toISOString(),
     });
     clearCachedValue("dealer:finance-managers:");
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,
+      actor: req.user,
+      data: { dealershipId: dealershipEmail, financeManagerId: updated.id, action: nextActive ? "activated" : "deactivated" },
+    });
     res.json(financeManagerRow(updated));
   } catch (error) {
     next(error);
@@ -1506,6 +1523,11 @@ export async function createDealerSalesperson(req, res, next) {
       active: true,
       status: "active",
     });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.SALESPERSON_CHANGED,
+      actor: req.user,
+      data: { dealershipId: dealershipEmail, salespersonId: salesperson.id, action: "created" },
+    });
     res.status(201).json(salesperson);
   } catch (error) {
     next(error);
@@ -1522,6 +1544,11 @@ export async function removeDealerSalesperson(req, res, next) {
       status: "inactive",
       removedAt: new Date().toISOString(),
       removedBy: dealerEmail(req),
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.SALESPERSON_CHANGED,
+      actor: req.user,
+      data: { dealershipId: dealershipEmail, salespersonId: updated.id, action: "removed" },
     });
     res.json({ message: "Salesperson removed", salesperson: updated });
   } catch (error) {

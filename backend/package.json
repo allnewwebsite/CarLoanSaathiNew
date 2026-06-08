@@ -21,6 +21,7 @@
     "verify:read-reduction": "node scripts/verify-read-reduction.js",
     "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "verify:status-sync": "node scripts/verifyStatusSyncWorkflow.js",
+    "verify:realtime": "node scripts/verifyRealtimeArchitecture.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {

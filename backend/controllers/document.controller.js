@@ -6,6 +6,7 @@ import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidDocumentStatusTransition, DOCUMENT_STATUSES, LEAD_STATUSES } from "../utils/status.constants.js";
 import { ALERT_SEVERITY, recordOperationalEvent } from "../services/observability.service.js";
 import { syncLeadProjectionSoon } from "../services/projection.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 
 function canUploadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -96,6 +97,7 @@ export async function uploadDocument(req, res, next) {
       recipientRole: "loan-executive",
       meta: { caseId: lead.caseId, documents: [req.body.type || "Document"] },
     });
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user });
     res.status(201).json(document);
   } catch (error) {
     next(error);
@@ -135,12 +137,14 @@ export async function updateDocumentStatus(req, res, next) {
       reviewedBy: req.user?.email,
     });
     const needsDocumentFollowup = [DOCUMENT_STATUSES.PENDING, DOCUMENT_STATUSES.REQUESTED, DOCUMENT_STATUSES.REJECTED].includes(nextStatus);
+    let realtimeLead = lead;
     if (needsDocumentFollowup) {
       const updatedLead = await updateRecord("leads", document.leadId, {
         status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
         pendingDocuments: [...new Set([...(Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments : []), document.type].filter(Boolean))],
         pendingDocumentReason: req.body.note || `${document.type || "Document"} needs attention`,
       });
+      realtimeLead = updatedLead;
       syncLeadProjectionSoon(updatedLead);
       await createNotification({
         type: "pending-documents",
@@ -180,6 +184,13 @@ export async function updateDocumentStatus(req, res, next) {
       actorName: req.user?.email || "user",
       actorRole: req.user?.role || "user",
       metadata: { documentId: document.id, documentStatus: nextStatus, documentType: document.type },
+    });
+    publishRealtimeEvent({
+      eventType: needsDocumentFollowup ? REALTIME_EVENTS.DOCUMENT_REQUESTED : REALTIME_EVENTS.DOCUMENT_UPLOADED,
+      lead: realtimeLead,
+      document,
+      actor: req.user,
+      data: { status: realtimeLead.status, documentStatus: nextStatus },
     });
     res.json(document);
   } catch (error) {
