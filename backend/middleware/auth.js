@@ -2,11 +2,12 @@ import jwt from "jsonwebtoken";
 import { jwtSecret } from "../config/env.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { getRecord, updateRecord } from "../services/firestore.service.js";
-import { findIdentityCandidates, resolveCanonicalIdentity } from "../services/identity.service.js";
+import { resolveAuthenticatedIdentity, resolveCanonicalIdentity } from "../services/identity.service.js";
 import { observeAuthFailure } from "../services/observability.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { getRequestScope, setRequestScopeUser } from "../services/requestScope.service.js";
-import { logRealtimeTicketStep, markRealtimeTicketStart, measureRealtimeTicketStep } from "../services/realtimeTicketLatency.service.js";
+import { logInfo } from "../services/logger.service.js";
+import { logRealtimeTicketStep, markRealtimeTicketStart, measureRealtimeTicketStep, realtimeTicketTimingEnabled } from "../services/realtimeTicketLatency.service.js";
 
 const ROLE_PORTALS = {
   "finance-desk": "finance",
@@ -44,6 +45,15 @@ async function tracedCached(step, key, ttlMs, loader, meta = {}) {
     const afterHits = Number(scope?.cache?.hits || 0);
     const afterMisses = Number(scope?.cache?.misses || 0);
     const cacheStatus = afterHits > beforeHits ? "hit" : afterMisses > beforeMisses ? "miss" : "pending-or-unknown";
+    if (realtimeTicketTimingEnabled() && ["hit", "miss"].includes(cacheStatus)) {
+      logInfo(cacheStatus === "hit" ? "REALTIME-AUTH-CACHE-HIT" : "REALTIME-AUTH-CACHE-MISS", {
+        tag: cacheStatus === "hit" ? "REALTIME-AUTH-CACHE-HIT" : "REALTIME-AUTH-CACHE-MISS",
+        requestId: scope?.requestId || null,
+        step,
+        cacheKey: key,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     logRealtimeTicketStep(step, Date.now() - startedAt, {
       cacheStatus,
       cacheKey: key,
@@ -52,14 +62,14 @@ async function tracedCached(step, key, ttlMs, loader, meta = {}) {
   }
 }
 
-async function dealerAccountIsActive(user) {
+async function dealerAccountIsActive(user, resolvedAccount = null) {
   if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
   const dealershipId = String(user.dealershipId || email).trim().toLowerCase();
-  const account = await tracedCached(
+  const account = resolvedAccount || await tracedCached(
     "dealer_account_identity_lookup",
     `auth:dealer-account:${user.uid || email}:${email}`,
-    15000,
+    Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 10 * 60 * 1000),
     () => resolveCanonicalIdentity({ uid: user.uid, email }).catch(() => null),
     { summaryField: "userLookupDurationMs" },
   );
@@ -91,20 +101,19 @@ async function verifiedAccountFromTokenUser(tokenUser = {}) {
   const uid = String(tokenUser.uid || "").trim();
   let account = await tracedCached(
     "user_identity_lookup",
-    `auth:identity:${uid}:${email}`,
-    15000,
-    () => resolveCanonicalIdentity({ uid, email }),
+    `auth:verified-identity:${uid}:${email}`,
+    Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 10 * 60 * 1000),
+    () => resolveAuthenticatedIdentity({ uid, email }),
     { summaryField: "userLookupDurationMs" },
   );
   if (!account) {
-    const candidates = await tracedCached(
+    account = await tracedCached(
       "user_candidate_lookup",
       `auth:candidates:${uid}:${email}`,
-      15000,
-      () => findIdentityCandidates({ uid, email }),
+      Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 10 * 60 * 1000),
+      () => resolveCanonicalIdentity({ uid, email }),
       { summaryField: "userLookupDurationMs" },
     );
-    account = candidates.find((item) => item.role);
   }
   if (!account) {
     const error = new Error("Account is not approved");
@@ -152,7 +161,7 @@ function passwordChangePathForRole(role) {
 
 async function firebaseEmailVerified(email) {
   if (!firebaseAdmin || !email) return true;
-  return tracedCached(`firebase_email_verified_lookup`, `auth:firebase-email-verified:${email}`, 60000, async () => {
+  return tracedCached(`firebase_email_verified_lookup`, `auth:firebase-email-verified:${email}`, Number(process.env.AUTH_PERMISSION_CACHE_TTL_MS || 10 * 60 * 1000), async () => {
     try {
     const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     return firebaseUser.emailVerified === true;
@@ -222,22 +231,20 @@ export async function authenticate(req, res, next) {
       return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN", redirectToPortal: accountPortal });
     }
     logRealtimeTicketStep("permission_lookup", Date.now() - permissionStartedAt, { summaryField: "permissionDurationMs" });
-    if (tokenUser.sessionId) {
-      const session = await tracedCached(
-        "session_lookup",
-        `auth:session:${tokenUser.sessionId}`,
-        8000,
-        () => getRecord("userSessions", tokenUser.sessionId).catch(() => null),
-        { summaryField: "sessionDurationMs" },
-      );
+    const sessionValidationPromise = tokenUser.sessionId ? tracedCached(
+      "session_lookup",
+      `auth:session:${tokenUser.sessionId}`,
+      Number(process.env.AUTH_SESSION_CACHE_TTL_MS || 2 * 60 * 1000),
+      () => getRecord("userSessions", tokenUser.sessionId).catch(() => null),
+      { summaryField: "sessionDurationMs" },
+    ).then((session) => {
       const expired = session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now();
       const inactive = session?.lastSeenAt && (Date.now() - new Date(session.lastSeenAt).getTime()) > 8 * 60 * 60 * 1000;
       const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
       const roleChanged = session && session.role && session.role !== account.role;
       const portalChanged = session && session.portal && session.portal !== accountPortal;
       if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged || portalChanged) {
-        observeAuthFailure(req, "session_invalid");
-        return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
+        return { valid: false };
       }
       const lastSeenAgeMs = session.lastSeenAt ? Date.now() - new Date(session.lastSeenAt).getTime() : Infinity;
       if (lastSeenAgeMs > 2 * 60 * 1000) {
@@ -246,8 +253,19 @@ export async function authenticate(req, res, next) {
           expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
         }).catch(() => {});
       }
+      return { valid: true };
+    }) : Promise.resolve({ valid: true });
+    const emailPermissionPromise = measureRealtimeTicketStep(
+      "firebase_email_permission_lookup",
+      () => firebaseEmailVerified(email),
+      { summaryField: "permissionDurationMs" },
+    );
+    const [sessionValidation, emailVerified] = await Promise.all([sessionValidationPromise, emailPermissionPromise]);
+    if (!sessionValidation.valid) {
+      observeAuthFailure(req, "session_invalid");
+      return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
     }
-    if (!(await measureRealtimeTicketStep("firebase_email_permission_lookup", () => firebaseEmailVerified(email), { summaryField: "permissionDurationMs" }))) {
+    if (!emailVerified) {
       observeAuthFailure(req, "email_not_verified");
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
@@ -276,9 +294,17 @@ export async function authenticate(req, res, next) {
         redirectTo: passwordChangePathForRole(account.role),
       });
     }
-    if (!(await dealerAccountIsActive(req.user))) {
+    if (!(await dealerAccountIsActive(req.user, account))) {
       observeAuthFailure(req, "dealer_account_inactive");
       return res.status(403).json({ message: "Dealer account is inactive or deleted", code: "DEALER_ACCOUNT_INACTIVE" });
+    }
+    if (realtimeTicketTimingEnabled()) {
+      logInfo("REALTIME-AUTH-DURATION", {
+        tag: "REALTIME-AUTH-DURATION",
+        requestId: req.requestId,
+        path: req.originalUrl,
+        durationMs: Date.now() - authStartedAt,
+      });
     }
     logRealtimeTicketStep("authentication_total", Date.now() - authStartedAt, { summaryField: "authDurationMs" });
     return next();

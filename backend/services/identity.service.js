@@ -1,5 +1,6 @@
 import { findRecordsByField, getRecord, upsertRecord } from "./firestore.service.js";
 import { cached, clearCachedValue } from "./ttlCache.service.js";
+import { getRequestCachedValue, setRequestCachedValue } from "./requestScope.service.js";
 
 const ACTIVE_DENY_STATUSES = new Set(["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed"]);
 
@@ -40,7 +41,7 @@ function uniqueRecords(records = []) {
   });
 }
 
-const IDENTITY_CACHE_TTL_MS = Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 30000);
+const IDENTITY_CACHE_TTL_MS = Number(process.env.AUTH_IDENTITY_CACHE_TTL_MS || 10 * 60 * 1000);
 
 function identityCacheKey({ uid = "", email = "" } = {}) {
   return `identity:candidates:${String(uid || "").trim()}:${normalizeIdentityEmail(email)}`;
@@ -72,7 +73,11 @@ export async function findIdentityCandidates({ uid = "", email = "" } = {}) {
   const normalizedEmail = normalizeIdentityEmail(email);
   const normalizedUid = String(uid || "").trim();
   if (!normalizedEmail && !normalizedUid) return [];
-  return cached(identityCacheKey({ uid: normalizedUid, email: normalizedEmail }), IDENTITY_CACHE_TTL_MS, () => loadIdentityCandidates({ uid: normalizedUid, email: normalizedEmail }));
+  const requestKey = identityCacheKey({ uid: normalizedUid, email: normalizedEmail });
+  const requestCached = getRequestCachedValue(requestKey);
+  if (requestCached !== undefined) return requestCached;
+  const records = await cached(requestKey, IDENTITY_CACHE_TTL_MS, () => loadIdentityCandidates({ uid: normalizedUid, email: normalizedEmail }));
+  return setRequestCachedValue(requestKey, records);
 }
 
 export async function resolveCanonicalIdentity({ uid = "", email = "", portal = "" } = {}) {
@@ -96,6 +101,60 @@ export async function resolveCanonicalIdentity({ uid = "", email = "", portal = 
   return activeCandidates.find((record) => normalizedUid && String(record.uid || "").trim() === normalizedUid)
     || activeCandidates.find((record) => portal && record.portalType === portal)
     || activeCandidates[0];
+}
+
+function authenticatedIdentityCacheKey({ uid = "", email = "" } = {}) {
+  return `auth:identity:${String(uid || "").trim()}:${normalizeIdentityEmail(email)}`;
+}
+
+async function loadAuthenticatedIdentityCandidates({ uid = "", email = "" } = {}) {
+  const normalizedEmail = normalizeIdentityEmail(email);
+  const normalizedUid = String(uid || "").trim();
+  if (normalizedEmail) {
+    const matches = await findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []);
+    const matched = uniqueRecords(matches.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
+    if (matched.length) return matched;
+  }
+  return loadIdentityCandidates({ uid: normalizedUid, email: normalizedEmail });
+}
+
+export async function resolveAuthenticatedIdentity({ uid = "", email = "", portal = "" } = {}) {
+  const normalizedEmail = normalizeIdentityEmail(email);
+  const normalizedUid = String(uid || "").trim();
+  if (!normalizedEmail && !normalizedUid) return null;
+  const key = authenticatedIdentityCacheKey({ uid: normalizedUid, email: normalizedEmail });
+  const requestCached = getRequestCachedValue(key);
+  if (requestCached !== undefined) return requestCached;
+  const candidates = await cached(key, IDENTITY_CACHE_TTL_MS, () => loadAuthenticatedIdentityCandidates({ uid: normalizedUid, email: normalizedEmail }));
+  setRequestCachedValue(identityCacheKey({ uid: normalizedUid, email: normalizedEmail }), candidates);
+  const activeCandidates = candidates.filter(activeIdentity);
+  if (activeCandidates.length > 1) {
+    const error = new Error("Multiple active identities exist for this email. Contact support.");
+    error.status = 409;
+    error.code = "IDENTITY_COLLISION";
+    error.details = activeCandidates.map((record) => ({
+      id: record.id,
+      uid: record.uid || null,
+      email: record.email || null,
+      role: record.role || null,
+      portalType: record.portalType || null,
+    }));
+    throw error;
+  }
+  const account = activeCandidates.find((record) => normalizedUid && String(record.uid || "").trim() === normalizedUid)
+    || activeCandidates.find((record) => portal && record.portalType === portal)
+    || activeCandidates[0]
+    || null;
+  return setRequestCachedValue(key, account);
+}
+
+export function clearIdentityCaches({ uid = "", email = "", sessionId = "" } = {}) {
+  const normalizedEmail = normalizeIdentityEmail(email);
+  clearCachedValue("identity:candidates:");
+  clearCachedValue("auth:identity:");
+  clearCachedValue("auth:verified-identity:");
+  if (normalizedEmail) clearCachedValue(`auth:firebase-email-verified:${normalizedEmail}`);
+  if (sessionId) clearCachedValue(`auth:session:${sessionId}`);
 }
 
 export async function assertNoActiveIdentityCollision({ uid = "", email = "", role = "", excludeIds = [] } = {}) {
@@ -127,7 +186,7 @@ export async function upsertCanonicalUser(uid, payload = {}) {
     throw error;
   }
   const email = normalizeIdentityEmail(payload.email);
-  clearCachedValue("identity:candidates:");
+  clearIdentityCaches({ uid: canonicalUid, email });
   return upsertRecord("users", canonicalUid, {
     ...payload,
     uid: canonicalUid,

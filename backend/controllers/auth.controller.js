@@ -8,6 +8,7 @@ import { logError, logInfo, logWarn } from "../services/logger.service.js";
 import {
   activeIdentity,
   assertNoActiveIdentityCollision,
+  clearIdentityCaches,
   findIdentityCandidates,
   resolveCanonicalIdentity,
   upsertCanonicalUser,
@@ -280,6 +281,7 @@ export async function revokeUserSessions(email, reason = "admin-revoked") {
     revokedReason: reason,
   }).catch(() => null)));
   const account = (await findIdentityCandidates({ email })).find((item) => item.role);
+  sessions.forEach((session) => clearIdentityCaches({ email, uid: account?.uid || account?.id || "", sessionId: session.id }));
   if (account) await upsertCanonicalUser(account.uid || account.id || email, { ...account, sessionRevokedAt: now });
 }
 
@@ -1347,6 +1349,7 @@ export async function logout(req, res, next) {
         revokedAt: new Date().toISOString(),
         revokedReason: "user-logout",
       }).catch(() => null);
+      clearIdentityCaches({ email: req.user?.email || req.user?.uid, uid: req.user?.uid, sessionId: req.user.sessionId });
     }
     clearAuthCookie(res);
     res.json({ message: "Logged out" });
