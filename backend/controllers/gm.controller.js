@@ -213,24 +213,23 @@ export async function getGmLead(req, res, next) {
     const dealershipEmail = await dealershipEmailForGm(req);
     const allowed = lead && (lead.dealershipId === dealershipEmail || belongsToDealership(lead, dealershipEmail));
     if (!allowed) return res.status(404).json({ message: "Lead not found" });
-    const { documents, bankDocuments } = await cached(`lead-detail:${lead.id}:gm-docs:v1`, 10000, async () => {
-      const documentsPage = await queryRecords("documents", {
+    const [documentsPage, bankDocumentsPage] = await Promise.all([
+      queryRecords("documents", {
         where: [{ field: "leadId", value: lead.id }],
         orderBy: "createdAt",
         direction: "desc",
         limit: 50,
         maxLimit: 50,
-      });
-      const bankDocumentsPage = await queryRecords("bankDocuments", {
+      }).catch(() => ({ data: [] })),
+      queryRecords("bankDocuments", {
         where: [{ field: "leadId", value: lead.id }],
         orderBy: "createdAt",
         direction: "desc",
         limit: 50,
         maxLimit: 50,
-      }).catch(() => ({ data: [] }));
-      return { documents: documentsPage.data, bankDocuments: bankDocumentsPage.data || [] };
-    });
-    res.json({ ...lead, documents, bankDocuments });
+      }).catch(() => ({ data: [] })),
+    ]);
+    res.json({ ...lead, documents: documentsPage.data || [], bankDocuments: bankDocumentsPage.data || [] });
   } catch (error) {
     next(error);
   }

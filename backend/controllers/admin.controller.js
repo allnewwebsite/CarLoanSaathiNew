@@ -725,6 +725,46 @@ export async function getAdminLeads(req, res, next) {
   }
 }
 
+export async function getAdminLead(req, res, next) {
+  try {
+    let lead = await getRecord("leads", req.params.id);
+    if (!lead) {
+      const page = await queryRecords("leads", {
+        where: [{ field: "caseId", value: req.params.id }],
+        limit: 1,
+        maxLimit: 1,
+      });
+      lead = page.data?.[0] || null;
+    }
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    const [documentsPage, bankDocumentsPage] = await Promise.all([
+      queryRecords("documents", {
+        where: [{ field: "leadId", value: lead.id }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 50,
+        maxLimit: 50,
+      }).catch(() => ({ data: [] })),
+      queryRecords("bankDocuments", {
+        where: [{ field: "leadId", value: lead.id }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit: 50,
+        maxLimit: 50,
+      }).catch(() => ({ data: [] })),
+    ]);
+
+    res.json({
+      ...lead,
+      documents: documentsPage.data || [],
+      bankDocuments: bankDocumentsPage.data || [],
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getAdminOnboardingRequests(req, res, next) {
   try {
     const requests = await listRecentRecords("onboardingRequests", { limit: req.query.limit || 100 });

@@ -8,13 +8,23 @@ import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
+import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { api, getCachedGetData } from "../../services/api.js";
-import { formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
+const customerDocumentTypes = [
+  "Aadhaar",
+  "PAN",
+  "Salary Slip",
+  "ITR",
+  "Bank Statement",
+  "Electricity Bill",
+  "Rent Agreement",
+  "Form 16",
+];
 
 function display(value) {
   return value || "-";
@@ -549,8 +559,24 @@ export function SuperAdminDashboard({ mode = "dashboard" }) {
 export function SuperAdminLeadDetailPage() {
   const { leadId } = useParams();
   const data = useAdminEcosystem();
-  const lead = data.leads.find((item) => item.id === leadId || item.caseId === leadId);
-  const documents = useMemo(() => [...(data.documents || []), ...(data.bankDocuments || [])].filter((item) => item.leadId === (lead?.id || leadId)), [data.bankDocuments, data.documents, lead, leadId]);
+  const cachedLead = getCachedGetData(`/admin/leads/${leadId}`)
+    || data.leads.find((item) => item.id === leadId || item.caseId === leadId);
+  const [detailLead, setDetailLead] = useState(() => cachedLead || null);
+  const lead = detailLead || cachedLead;
+  const loadLead = useCallback(async ({ silent = false } = {}) => {
+    try {
+      const response = await api.get(`/admin/leads/${leadId}`);
+      setDetailLead(response.data);
+    } catch {
+      if (!silent) setDetailLead((current) => current || null);
+    }
+  }, [leadId]);
+  useEffect(() => {
+    loadLead();
+  }, [loadLead]);
+  useRealtimeLeadDetailPatch({ leadId, setLead: setDetailLead });
+  const customerDocuments = useMemo(() => (Array.isArray(lead?.documents) ? lead.documents : []), [lead]);
+  const bankDocuments = useMemo(() => bankDocumentRows(lead), [lead]);
   if (data.loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   return (
@@ -564,18 +590,13 @@ export function SuperAdminLeadDetailPage() {
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
       </section>
       <PendingDocumentsPanel lead={lead} />
-      <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={(documents.length ? documents : [
-        { id: "aadhaar", type: "Aadhaar" },
-        { id: "pan", type: "PAN" },
-        { id: "salary-slip", type: "Salary Slip" },
-        { id: "itr", type: "ITR" },
-        { id: "bank-statement", type: "Bank Statement" },
-        { id: "electricity-bill", type: "Electricity Bill" },
-        { id: "rent-agreement", type: "Rent Agreement" },
-        { id: "form-16", type: "Form 16" },
-      ]).map((document) => {
+      <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={(customerDocuments.length ? customerDocuments : customerDocumentTypes.map((type) => ({ id: type.toLowerCase().replace(/\s+/g, "-"), type }))).map((document) => {
         const url = document.fileUrl || document.url || document.downloadUrl;
         return { key: document.id, cells: [display(document.label || document.type || document.documentType), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
+      })} loading={false} />
+      <DataTable title="Bank Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={bankDocuments.map((document) => {
+        const url = document.fileUrl || document.url || document.downloadUrl;
+        return { key: document.id || document.documentType || document.type, cells: [display(document.label || document.documentType || document.type || "Bank Document"), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
       })} loading={false} />
       <DataTable title="Audit / SLA History" headers={["Type", "Detail", "Time"]} rows={[...data.slaLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `sla-${item.id}`, cells: ["SLA", display(item.status || item.type), formatDate(item.createdAt)] })), ...data.auditLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `audit-${item.id}`, cells: ["Audit", display(item.actionType), formatDate(item.createdAt || item.timestamp)] }))]} loading={false} />
     </section>

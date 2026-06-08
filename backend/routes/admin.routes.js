@@ -9,6 +9,7 @@ import {
   getAdminAnalytics,
   getAdminAuditLogs,
   getAdminEcosystem,
+  getAdminLead,
   getAdminLeads,
   getAdminOnboardingRequests,
   getAdminPartners,
@@ -66,6 +67,7 @@ router.post("/approvals/banks/:id/reject", rejectBankApproval);
 router.post("/approvals/banks/:id/suspend", suspendBankApproval);
 router.get("/approvals/logs", getApprovalLogs);
 router.get("/leads", getAdminLeads);
+router.get("/leads/:id", getAdminLead);
 router.patch("/leads/:id/status", updateAdminLeadStatus);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);
