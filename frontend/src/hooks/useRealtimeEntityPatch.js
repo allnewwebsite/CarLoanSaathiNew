@@ -22,12 +22,44 @@ function patchedLeadFromEvent(event = {}) {
     id: lead.id || lead.leadId || leadId,
     leadId: lead.leadId || lead.id || leadId,
     caseId: lead.caseId || event.caseId || "",
+    fullName: lead.fullName || event.fullName || "",
+    customerName: lead.customerName || event.customerName || event.fullName || "",
+    mobile: lead.mobile || event.mobile || "",
+    city: lead.city || event.city || event.dealershipCity || "",
+    dealershipName: lead.dealershipName || event.dealershipName || "",
+    dealerName: lead.dealerName || event.dealerName || "",
+    dealerEmail: lead.dealerEmail || event.dealerEmail || "",
+    dealershipCity: lead.dealershipCity || event.dealershipCity || event.city || "",
+    carPrice: lead.carPrice || event.carPrice || event.carOnRoadPrice || event.onRoadPrice || "",
+    carOnRoadPrice: lead.carOnRoadPrice || event.carOnRoadPrice || event.onRoadPrice || event.carPrice || "",
+    onRoadPrice: lead.onRoadPrice || event.onRoadPrice || event.carOnRoadPrice || event.carPrice || "",
+    loanAmount: lead.loanAmount || event.loanAmount || event.requiredLoanAmount || "",
+    requiredLoanAmount: lead.requiredLoanAmount || event.requiredLoanAmount || event.loanAmount || "",
     status,
     dealershipId: lead.dealershipId || event.dealershipId || "",
+    dealershipEmail: lead.dealershipEmail || event.dealershipEmail || "",
     bankId: lead.bankId || event.bankId || "",
+    assignedBankName: lead.assignedBankName || event.assignedBankName || event.bankName || "",
+    bankName: lead.bankName || event.bankName || event.assignedBankName || "",
+    assignedBankIfsc: lead.assignedBankIfsc || event.assignedBankIfsc || event.bankIfsc || event.ifscCode || "",
+    bankIfsc: lead.bankIfsc || event.bankIfsc || event.assignedBankIfsc || event.ifscCode || "",
+    ifscCode: lead.ifscCode || event.ifscCode || event.assignedBankIfsc || event.bankIfsc || "",
+    branchId: lead.branchId || event.branchId || "",
+    bankBranchId: lead.bankBranchId || event.bankBranchId || event.branchId || "",
+    bankBranchCity: lead.bankBranchCity || event.bankBranchCity || event.branchCity || "",
+    branchCity: lead.branchCity || event.branchCity || event.bankBranchCity || "",
     assignedExecutiveId: lead.assignedExecutiveId || event.executiveId || "",
+    assignedExecutiveName: lead.assignedExecutiveName || event.assignedExecutiveName || "",
+    assignedExecutiveMobile: lead.assignedExecutiveMobile || event.assignedExecutiveMobile || event.executiveMobile || "",
+    executiveMobile: lead.executiveMobile || event.executiveMobile || event.assignedExecutiveMobile || "",
     financeManagerId: lead.financeManagerId || event.financeManagerId || "",
+    financeManagerName: lead.financeManagerName || event.financeManagerName || event.assignedFinanceManager || "",
+    assignedFinanceManager: lead.assignedFinanceManager || event.assignedFinanceManager || event.financeManagerName || "",
+    financeManagerMobile: lead.financeManagerMobile || event.financeManagerMobile || "",
     salespersonId: lead.salespersonId || event.salespersonId || "",
+    salespersonName: lead.salespersonName || event.salespersonName || event.assignedSalesperson || "",
+    assignedSalesperson: lead.assignedSalesperson || event.assignedSalesperson || event.salespersonName || "",
+    createdAt: lead.createdAt || event.createdAt || event.generatedAt || updatedAt,
     updatedAt,
     statusUpdatedAt: status ? updatedAt : lead.statusUpdatedAt,
     realtimeUpdatedAt: updatedAt,
@@ -37,8 +69,7 @@ function patchedLeadFromEvent(event = {}) {
 }
 
 function hasHydratedLeadPayload(event = {}) {
-  const lead = event.lead;
-  if (!lead || typeof lead !== "object") return false;
+  const lead = event.lead && typeof event.lead === "object" ? event.lead : event;
   return Boolean(
     lead.fullName
     || lead.customerName

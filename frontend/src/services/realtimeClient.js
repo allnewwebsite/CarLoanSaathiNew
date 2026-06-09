@@ -78,8 +78,7 @@ function dispatchRealtimeEvent(event = {}) {
     return;
   }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
-  const hasHydratedPatch = Boolean(event.lead || event.notification || event.document);
-  if (!PHASE_ONE_EVENTS.has(event.eventType || event.event) || !hasHydratedPatch) {
+  if (!PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
     window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
   }
 }
