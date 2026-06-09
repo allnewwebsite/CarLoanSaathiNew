@@ -272,6 +272,10 @@ async function firstAdminLookup(lookups = []) {
 async function incrementPlatformCounters(increments = {}) {
   return incrementRecord("metrics", "global", increments, {
     activeDealerships: 0,
+    approvedDealerships: 0,
+    pendingDealerships: 0,
+    totalDealerships: 0,
+    disabledDealerships: 0,
     bankPartners: 0,
     activeBanks: 0,
     totalBranches: 0,
@@ -282,6 +286,40 @@ async function incrementPlatformCounters(increments = {}) {
 
 function requestLoginEmail(request) {
   return normalizeEmail(request.loginEmail || request.primaryGoogleEmail || request.dealership?.loginEmail || request.financeDesk?.officialEmail || request.dealership?.officialDealershipEmail);
+}
+
+function dealerEventPayload({ loginEmail, dealership = {}, status = "updated" } = {}) {
+  return {
+    dealerId: loginEmail || dealership.dealerId || dealership.loginEmail || "",
+    dealerName: dealership.dealerName || dealership.dealershipName || "",
+    dealerBrand: dealership.dealerBrand || dealership.dealershipBrand || "",
+    dealerState: dealership.dealerState || dealership.state || "",
+    dealerLocation: dealership.dealerLocation || dealership.location || dealership.city || "",
+    dealerStatus: status,
+    monthlySalesCapacity: dealership.monthlySalesCapacity || dealership.monthlyCarSalesCapacity || "",
+  };
+}
+
+function recordDealerSignal(tag, payload = {}) {
+  recordMonitoringSignal(tag, {
+    dealerId: payload.dealerId,
+    dealerBrand: payload.dealerBrand,
+    state: payload.dealerState,
+    location: payload.dealerLocation,
+    monthlySalesCapacity: payload.monthlySalesCapacity,
+  });
+}
+
+function publishDealerEvent(eventType, req, payload = {}) {
+  publishRealtimeEvent({
+    eventType,
+    actor: req.user || null,
+    data: {
+      dealershipId: payload.dealerId,
+      publicDealerCatalog: true,
+      dealerEvent: payload,
+    },
+  });
 }
 
 function firestoreNotFound(error) {
@@ -306,8 +344,20 @@ async function updateRecordIfExists(collection, id, payload) {
 }
 
 async function materializeApprovedDealership({ request, loginEmail, dealership }) {
-  await upsertRecord("dealerships", loginEmail, dealership);
-  await upsertRecord("approvedDealerships", loginEmail, dealership);
+  const dealerLocation = dealership.dealerLocation || dealership.location || dealership.city || request.city || "";
+  const dealerFields = {
+    ...dealership,
+    dealerId: loginEmail,
+    dealerName: dealership.dealerName || dealership.dealershipName || request.dealershipName || "",
+    dealerBrand: dealership.dealerBrand || dealership.dealershipBrand || request.dealershipBrand || "",
+    dealerState: dealership.dealerState || dealership.state || request.state || "",
+    dealerLocation,
+    dealerStatus: "approved",
+    monthlySalesCapacity: dealership.monthlySalesCapacity || dealership.monthlyCarSalesCapacity || "",
+    location: dealerLocation,
+  };
+  await upsertRecord("dealerships", loginEmail, dealerFields);
+  await upsertRecord("approvedDealerships", loginEmail, dealerFields);
   const financeUid = await firebaseUidForEmail(loginEmail);
   const financeCanonicalId = financeUid || loginEmail;
   await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
@@ -319,11 +369,23 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
     await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
   }
-  await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk", accountActive: true });
+  await upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true });
   await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
-  await upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true });
-  await upsertRecord("financeDesk", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
-  await upsertRecord("financeDesks", loginEmail, { dealershipEmail: loginEmail, city: request.city, ...(request.financeDesk || {}), status: "active", active: true });
+  if (request.generalManager?.name || request.generalManager?.mobile || request.generalManager?.email) {
+    await upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true });
+  }
+  const financeDeskPayload = {
+    ...(request.financeDesk || {}),
+    dealershipEmail: loginEmail,
+    dealershipId: loginEmail,
+    city: request.city,
+    officialEmail: normalizeEmail(request.financeDesk?.officialEmail) || loginEmail,
+    email: normalizeEmail(request.financeDesk?.officialEmail) || loginEmail,
+    status: "active",
+    active: true,
+  };
+  await upsertRecord("financeDesk", loginEmail, financeDeskPayload);
+  await upsertRecord("financeDesks", loginEmail, financeDeskPayload);
   await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true });
 }
 
@@ -1020,7 +1082,10 @@ export async function approveDealershipApproval(req, res, next) {
     await materializeApprovedDealership({ request, loginEmail, dealership });
     const updated = await approveDealershipBackrefs({ request, loginEmail, now, approvedBy });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
-    await incrementPlatformCounters({ activeDealerships: 1 });
+    await incrementPlatformCounters({ activeDealerships: 1, approvedDealerships: 1, pendingDealerships: -1 });
+    const dealerPayload = dealerEventPayload({ loginEmail, dealership, status: "approved" });
+    recordDealerSignal("DEALER-APPROVED", dealerPayload);
+    publishDealerEvent(REALTIME_EVENTS.DEALER_APPROVED, req, dealerPayload);
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
     clearAdminApprovalCaches();
@@ -1046,6 +1111,7 @@ export async function rejectDealershipApproval(req, res, next) {
     ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "rejected", approvalStatus: "rejected", rejectionReason: reason, rejectedAt: now, rejectedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "rejected", rejectionReason: reason });
+    await incrementPlatformCounters({ pendingDealerships: -1 });
     await createNotification({ type: "dealership-rejected", title: "Dealership rejected", message: reason, recipientRole: "finance-desk", recipientId: request.loginEmail, dealerEmail: request.loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, priority: "high", meta: { dealershipName: request.dealershipName, reason } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
@@ -1088,7 +1154,10 @@ export async function suspendDealershipApproval(req, res, next) {
     ]);
     if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "suspended", approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
-    await incrementPlatformCounters({ activeDealerships: -1 });
+    await incrementPlatformCounters({ activeDealerships: -1, disabledDealerships: 1 });
+    const dealerPayload = dealerEventPayload({ loginEmail, dealership: request.dealership || request, status: "disabled" });
+    recordDealerSignal("DEALER-DISABLED", dealerPayload);
+    publishDealerEvent(REALTIME_EVENTS.DEALER_DISABLED, req, dealerPayload);
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
     res.json({ message: "Dealership suspended", request: updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now } });
@@ -1201,7 +1270,10 @@ export async function deleteDealershipPermanently(req, res, next) {
     }
 
     await approvalLog({ req, entityType: "dealership", entityId: id, previousStatus: request.status || "unknown", newStatus: "deleted", rejectionReason: "Permanently deleted by Super Admin" });
-    await incrementPlatformCounters({ activeDealerships: -1 });
+    await incrementPlatformCounters({ activeDealerships: -1, disabledDealerships: 1 });
+    const dealerPayload = dealerEventPayload({ loginEmail, dealership: request.dealership || request, status: "deleted" });
+    recordDealerSignal("DEALER-DISABLED", dealerPayload);
+    publishDealerEvent(REALTIME_EVENTS.DEALER_DISABLED, req, dealerPayload);
     await writeAuditLog({ req, actionType: "DEALERSHIP_DELETED_PERMANENTLY", oldValue: request.status || "", newValue: "deleted", meta: { id, loginEmail, deleted, authDeleted, deletedAt: now } });
     clearAdminApprovalCaches();
     res.json({ message: "Dealership permanently deleted", id, loginEmail, deleted, authDeleted });

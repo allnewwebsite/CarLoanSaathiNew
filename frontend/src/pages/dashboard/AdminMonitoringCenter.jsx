@@ -115,6 +115,7 @@ export function AdminMonitoringCenter() {
   const cache = snapshot?.cacheMonitoring || {};
   const queue = snapshot?.queueMonitoring || {};
   const branches = snapshot?.branchMonitoring || {};
+  const dealers = snapshot?.dealerMonitoring || {};
   const alerts = snapshot?.systemAlerts || [];
 
   const projectionCollections = useMemo(() => rows(projection.collections || [], (item) => [
@@ -168,6 +169,33 @@ export function AdminMonitoringCenter() {
     valueOrDash(item.created),
     valueOrDash(item.updated),
   ]), [branches.branchesByCapacity]);
+
+  const dealerBrandRows = useMemo(() => rows(dealers.dealershipsByBrand || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.approved),
+    valueOrDash(item.updated),
+    valueOrDash(item.disabled),
+  ]), [dealers.dealershipsByBrand]);
+
+  const dealerStateRows = useMemo(() => rows(dealers.dealershipsByState || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.approved),
+    valueOrDash(item.updated),
+    valueOrDash(item.disabled),
+  ]), [dealers.dealershipsByState]);
+
+  const dealerLocationRows = useMemo(() => rows(dealers.dealershipsByLocation || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.approved),
+    valueOrDash(item.updated),
+    valueOrDash(item.disabled),
+  ]), [dealers.dealershipsByLocation]);
 
   return (
     <div className="space-y-6">
@@ -271,6 +299,42 @@ export function AdminMonitoringCenter() {
             rows={branchCapacityRows}
             loading={loading}
             virtualizeAt={20}
+          />
+        </div>
+      </Section>
+
+      <Section title="Dealer Monitoring" subtitle="Dealership telemetry from onboarding, approval, and realtime dealer sync events.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <MetricTile label="Total Dealerships" value={dealers.totalDealerships || 0} />
+          <MetricTile label="Approved Dealerships" value={dealers.approvedDealerships || 0} />
+          <MetricTile label="Pending Dealerships" value={dealers.pendingDealerships || 0} />
+          <MetricTile label="Disabled Dealerships" value={dealers.disabledDealerships || 0} />
+          <MetricTile label="Realtime Dealer Events" value={dealers.realtimeDealerEvents || 0} />
+          <MetricTile label="Dealer Created" value={dealers.dealerCreationEvents || 0} />
+          <MetricTile label="Dealer Approved" value={dealers.dealerApprovalEvents || 0} />
+          <MetricTile label="Dealer Updated" value={dealers.dealerUpdateEvents || 0} />
+        </div>
+        <div className="grid gap-3 xl:grid-cols-3">
+          <OperationalTable
+            title="Dealerships By Brand"
+            headers={["Brand", "Events", "Created", "Approved", "Updated", "Disabled"]}
+            rows={dealerBrandRows}
+            loading={loading}
+            virtualizeAt={30}
+          />
+          <OperationalTable
+            title="Dealerships By State"
+            headers={["State", "Events", "Created", "Approved", "Updated", "Disabled"]}
+            rows={dealerStateRows}
+            loading={loading}
+            virtualizeAt={20}
+          />
+          <OperationalTable
+            title="Dealerships By Location"
+            headers={["Location", "Events", "Created", "Approved", "Updated", "Disabled"]}
+            rows={dealerLocationRows}
+            loading={loading}
+            virtualizeAt={30}
           />
         </div>
       </Section>

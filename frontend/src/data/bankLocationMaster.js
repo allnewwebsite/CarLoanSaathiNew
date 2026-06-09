@@ -78,6 +78,43 @@ export const bankLoanCapacityRanges = [
   "250+",
 ];
 
+export const dealershipBrands = [
+  "Maruti Suzuki",
+  "Hyundai",
+  "Tata Motors",
+  "Mahindra",
+  "Kia",
+  "Honda",
+  "Toyota",
+  "MG",
+  "Skoda",
+  "Volkswagen",
+  "Nissan",
+  "Renault",
+  "BMW",
+  "Audi",
+  "Mercedes-Benz",
+  "Volvo",
+  "Jeep",
+  "Citroen",
+  "BYD",
+  "Force Motors",
+  "Isuzu",
+  "Jaguar",
+  "Land Rover",
+  "Porsche",
+  "Lexus",
+  "Mini",
+  "Rolls Royce",
+  "Bentley",
+  "Ferrari",
+  "Lamborghini",
+  "Maserati",
+  "McLaren",
+  "Aston Martin",
+  "Others",
+];
+
 export function locationsForState(state = "") {
   return BANK_LOCATION_MASTER[state] || [];
 }

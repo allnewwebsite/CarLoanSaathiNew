@@ -1,4 +1,4 @@
-import { createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
+import { createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, incrementRecord, listRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { financeDeskLeadSchema } from "../validations/lead.validation.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
@@ -25,20 +25,7 @@ import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { paginationParams } from "../utils/pagination.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
-
-const supportedDealerCities = new Set([
-  "Bahadurgarh",
-  "Jhajjar",
-  "Rohtak",
-  "Sonipat",
-  "Beri",
-  "Gurugram",
-  "Jind",
-  "Manesar",
-  "Gohana",
-  "Murthal",
-  "Panipat",
-]);
+import { normalizeBankLocation, normalizeBankState, normalizeDealershipBrand } from "../services/bankLocationMaster.service.js";
 
 function dealerEmail(req) {
   return req.user?.email || req.user?.firebase?.identities?.email?.[0] || req.user?.uid;
@@ -673,13 +660,17 @@ function normalizeFinanceStatus(status) {
 
 export async function registerDealerOnboarding(req, res, next) {
   try {
-    const city = required(req.body.city, "City");
-    if (!supportedDealerCities.has(city)) {
-      return res.status(400).json({ message: "Dealer city is not supported for onboarding" });
-    }
-
     const loginEmail = required(req.body.primaryGoogleEmail || req.body.loginEmail || req.body.officialDealershipEmail, "Official login email").toLowerCase();
     const now = new Date().toISOString();
+    const state = normalizeBankState(req.body.state || "Haryana");
+    const city = normalizeBankLocation(state, req.body.city || req.body.dealerLocation || req.body.location);
+    if (!state || !city) {
+      return res.status(400).json({ message: "Dealer location is not supported for onboarding" });
+    }
+    const dealershipBrand = normalizeDealershipBrand(req.body.dealershipBrand);
+    if (!dealershipBrand) {
+      return res.status(400).json({ message: "Dealership brand is not supported" });
+    }
     let pendingAccount = await getRecord("pendingDealerAccounts", req.body.registrationId || loginEmail).catch(() => null)
       || await getRecord("pendingDealerAccounts", req.body.dealerUid || "").catch(() => null)
       || (await findRecordsByField("pendingDealerAccounts", "email", loginEmail, 3))[0]
@@ -723,19 +714,27 @@ export async function registerDealerOnboarding(req, res, next) {
     }
     const dealership = {
       dealershipName: required(req.body.dealershipName, "Dealership name"),
-      dealershipBrand: required(req.body.dealershipBrand, "Dealership brand"),
+      dealershipBrand,
       authorizedDealerCode: required(req.body.authorizedDealerCode, "Authorized dealer code"),
       gstin: required(req.body.gstin, "GSTIN number"),
       officialDealershipEmail: required(req.body.officialDealershipEmail, "Official dealership email").toLowerCase(),
       officialDealershipMobile: required(req.body.officialDealershipMobile, "Official dealership mobile"),
-      state: "Haryana",
+      state,
       city,
+      location: city,
       pincode: required(req.body.pincode, "Pincode"),
       address: required(req.body.address, "Full dealership address"),
       landmark: String(req.body.landmark || "").trim(),
       monthlyCarSalesCapacity: required(req.body.monthlyCarSalesCapacity, "Monthly car sales capacity"),
-      expectedMonthlyLoanApplications: required(req.body.expectedMonthlyLoanApplications, "Expected monthly loan applications"),
+      ...(optionalText(req.body.expectedMonthlyLoanApplications) ? { expectedMonthlyLoanApplications: optionalText(req.body.expectedMonthlyLoanApplications) } : {}),
       status: "Pending Approval",
+      dealerId: loginEmail,
+      dealerName: required(req.body.dealershipName, "Dealership name"),
+      dealerBrand: dealershipBrand,
+      dealerState: state,
+      dealerLocation: city,
+      dealerStatus: "pending",
+      monthlySalesCapacity: required(req.body.monthlyCarSalesCapacity, "Monthly car sales capacity"),
       active: false,
       accountActive: false,
       approved: false,
@@ -745,10 +744,27 @@ export async function registerDealerOnboarding(req, res, next) {
     };
 
     const documents = Array.isArray(req.body.documents) ? req.body.documents : [];
+    const generalManager = [req.body.gmName, req.body.gmMobile, req.body.gmEmail].some((value) => optionalText(value))
+      ? {
+          name: optionalText(req.body.gmName),
+          mobile: optionalText(req.body.gmMobile),
+          email: optionalEmail(req.body.gmEmail),
+        }
+      : null;
+    const financeDesk = [req.body.financeHeadName, req.body.financeHeadMobile, req.body.financeDeskEmail, req.body.financeTeamSize].some((value) => optionalText(value))
+      ? {
+          headName: optionalText(req.body.financeHeadName),
+          headMobile: optionalText(req.body.financeHeadMobile),
+          officialEmail: optionalEmail(req.body.financeDeskEmail) || loginEmail,
+          teamSize: optionalText(req.body.financeTeamSize),
+        }
+      : null;
     const registrationPayload = {
       type: "dealership",
       status: "Pending Approval",
+      state,
       city,
+      location: city,
       dealershipName: dealership.dealershipName,
       dealershipBrand: dealership.dealershipBrand,
       loginEmail,
@@ -760,17 +776,8 @@ export async function registerDealerOnboarding(req, res, next) {
         mobile: required(req.body.ownerMobile, "Owner mobile number"),
         email: required(req.body.ownerEmail, "Owner official email").toLowerCase(),
       },
-      generalManager: {
-        name: required(req.body.gmName, "General manager name"),
-        mobile: required(req.body.gmMobile, "GM mobile number"),
-        email: required(req.body.gmEmail, "GM official email").toLowerCase(),
-      },
-      financeDesk: {
-        headName: required(req.body.financeHeadName, "Finance desk head name"),
-        headMobile: required(req.body.financeHeadMobile, "Finance desk head mobile"),
-        officialEmail: required(req.body.financeDeskEmail, "Finance desk official email").toLowerCase(),
-        teamSize: required(req.body.financeTeamSize, "Finance team size"),
-      },
+      ...(generalManager ? { generalManager } : {}),
+      ...(financeDesk ? { financeDesk } : {}),
       verification: {
         gstinVerified: false,
         dealershipVerified: false,
@@ -785,7 +792,9 @@ export async function registerDealerOnboarding(req, res, next) {
       type: "dealership",
       accountType: "dealership",
       status: "pending",
+      state,
       city,
+      location: city,
       dealershipName: dealership.dealershipName,
       dealershipBrand: dealership.dealershipBrand,
       loginEmail,
@@ -794,8 +803,8 @@ export async function registerDealerOnboarding(req, res, next) {
       documents,
       dealership,
       owner: onboardingRequest.owner,
-      generalManager: onboardingRequest.generalManager,
-      financeDesk: onboardingRequest.financeDesk,
+      ...(onboardingRequest.generalManager ? { generalManager: onboardingRequest.generalManager } : {}),
+      ...(onboardingRequest.financeDesk ? { financeDesk: onboardingRequest.financeDesk } : {}),
       verification: registrationPayload.verification,
     });
 
@@ -827,7 +836,10 @@ export async function registerDealerOnboarding(req, res, next) {
       email: loginEmail,
       dealershipName: dealership.dealershipName,
       dealerBrand: dealership.dealershipBrand,
+      state,
       city,
+      dealerState: state,
+      dealerLocation: city,
       mobile: dealership.officialDealershipMobile,
       registrationStatus: "pending-approval",
       submittedAt: now,
@@ -870,6 +882,33 @@ export async function registerDealerOnboarding(req, res, next) {
         });
       }
     }
+
+    await incrementDealerCounters({ totalDealerships: 1, pendingDealerships: 1 });
+    const dealerEvent = {
+      dealerId: loginEmail,
+      dealerName: dealership.dealershipName,
+      dealerBrand: dealership.dealershipBrand,
+      dealerState: state,
+      dealerLocation: city,
+      dealerStatus: "pending",
+      monthlySalesCapacity: dealership.monthlyCarSalesCapacity,
+    };
+    recordMonitoringSignal("DEALER-CREATED", {
+      dealerId: loginEmail,
+      dealerBrand: dealership.dealershipBrand,
+      state,
+      location: city,
+      monthlySalesCapacity: dealership.monthlyCarSalesCapacity,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.DEALER_CREATED,
+      actor: req.user || null,
+      data: {
+        dealershipId: loginEmail,
+        publicDealerCatalog: true,
+        dealerEvent,
+      },
+    });
 
     res.status(201).json({
       message: "Your dealership onboarding request has been submitted successfully. CarLoanSaathi verification team will review your application shortly.",
@@ -1338,6 +1377,25 @@ export async function getDealerStaff(req, res, next) {
   } catch (error) {
     next(error);
   }
+}
+
+function optionalText(value) {
+  return String(value || "").trim();
+}
+
+function optionalEmail(value) {
+  return optionalText(value).toLowerCase();
+}
+
+async function incrementDealerCounters(increments = {}) {
+  return incrementRecord("metrics", "global", increments, {
+    totalDealerships: 0,
+    approvedDealerships: 0,
+    pendingDealerships: 0,
+    disabledDealerships: 0,
+    activeDealerships: 0,
+    updatedAt: new Date().toISOString(),
+  }).catch(() => null);
 }
 
 export async function getDealerStaffDetail(req, res, next) {

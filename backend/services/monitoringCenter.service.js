@@ -101,11 +101,15 @@ export function recordMonitoringSignal(tag, meta = {}) {
     path: meta.path || "",
     collection: meta.collection || null,
     projectionId: meta.projectionId || meta.leadId || meta.sourceId || null,
+    dealerId: meta.dealerId || null,
+    dealerBrand: meta.dealerBrand || null,
+    dealerStatus: meta.dealerStatus || null,
     bankId: meta.bankId || null,
     branchId: meta.branchId || null,
     state: meta.state || null,
     location: meta.location || meta.branchLocation || null,
     capacityRange: meta.capacityRange || meta.monthlyLoanCapacity || null,
+    monthlySalesCapacity: meta.monthlySalesCapacity || null,
     sourceCollection: meta.sourceCollection || null,
     cacheKey: meta.cacheKey || null,
     estimatedReads: Number(meta.estimatedReads || 0),
@@ -339,6 +343,61 @@ function branchSummary(signalItems, realtimeItems) {
   };
 }
 
+function dealerSummary(signalItems, realtimeItems) {
+  const dealerCreated = signalItems.filter((item) => item.tag === "DEALER-CREATED");
+  const dealerApproved = signalItems.filter((item) => item.tag === "DEALER-APPROVED");
+  const dealerUpdated = signalItems.filter((item) => item.tag === "DEALER-UPDATED" || item.tag === "DEALER-LOCATION-UPDATED" || item.tag === "DEALER-CAPACITY-UPDATED");
+  const dealerDisabled = signalItems.filter((item) => item.tag === "DEALER-DISABLED");
+  const dealerSignals = [...dealerCreated, ...dealerApproved, ...dealerUpdated, ...dealerDisabled];
+  const byBrand = groupBy(
+    dealerSignals,
+    (item) => item.dealerBrand || "unknown",
+    () => ({ count: 0, created: 0, approved: 0, updated: 0, disabled: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "DEALER-CREATED") row.created += 1;
+      if (item.tag === "DEALER-APPROVED") row.approved += 1;
+      if (item.tag === "DEALER-UPDATED" || item.tag === "DEALER-LOCATION-UPDATED" || item.tag === "DEALER-CAPACITY-UPDATED") row.updated += 1;
+      if (item.tag === "DEALER-DISABLED") row.disabled += 1;
+    },
+  ).sort((a, b) => b.count - a.count).slice(0, 20);
+  const byState = groupBy(
+    dealerSignals,
+    (item) => item.state || "unknown",
+    () => ({ count: 0, created: 0, approved: 0, updated: 0, disabled: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "DEALER-CREATED") row.created += 1;
+      if (item.tag === "DEALER-APPROVED") row.approved += 1;
+      if (item.tag === "DEALER-UPDATED" || item.tag === "DEALER-LOCATION-UPDATED" || item.tag === "DEALER-CAPACITY-UPDATED") row.updated += 1;
+      if (item.tag === "DEALER-DISABLED") row.disabled += 1;
+    },
+  );
+  const byLocation = groupBy(
+    dealerSignals,
+    (item) => item.location || "unknown",
+    () => ({ count: 0, created: 0, approved: 0, updated: 0, disabled: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "DEALER-CREATED") row.created += 1;
+      if (item.tag === "DEALER-APPROVED") row.approved += 1;
+      if (item.tag === "DEALER-UPDATED" || item.tag === "DEALER-LOCATION-UPDATED" || item.tag === "DEALER-CAPACITY-UPDATED") row.updated += 1;
+      if (item.tag === "DEALER-DISABLED") row.disabled += 1;
+    },
+  ).sort((a, b) => b.count - a.count).slice(0, 20);
+  const realtimeDealerEvents = realtimeItems.filter((item) => /DEALER/.test(item.eventType || ""));
+  return {
+    dealerCreationEvents: dealerCreated.length,
+    dealerApprovalEvents: dealerApproved.length,
+    dealerUpdateEvents: dealerUpdated.length,
+    dealerDisabledEvents: dealerDisabled.length,
+    realtimeDealerEvents: realtimeDealerEvents.length,
+    dealershipsByBrand: byBrand,
+    dealershipsByState: byState,
+    dealershipsByLocation: byLocation,
+  };
+}
+
 export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const apiItems = todayItems(state.api);
   const readItems = todayItems(state.reads);
@@ -350,6 +409,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const cache = cacheSummary(readItems, signalItems);
   const realtime = realtimeSummary(realtimeItems, realtimeStats);
   const branches = branchSummary(signalItems, realtimeItems);
+  const dealers = dealerSummary(signalItems, realtimeItems);
 
   return {
     generatedAt: nowIso(),
@@ -366,6 +426,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
     cache,
     realtime,
     branches,
+    dealers,
     statuses: {
       api: statusFromThreshold(api.p95Ms, 1000, 2000),
       firestore: statusFromThreshold(firestore.estimatedReadsToday, 50000, 150000),

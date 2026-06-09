@@ -18,6 +18,7 @@ function leadUrlForEvent(event = {}) {
   if (event.kind === "notification") return "/notifications";
   if (event.kind === "staff") return "/dealer/staff";
   if (event.kind === "bank") return "/banks";
+  if (event.kind === "dealer") return "/dealers";
   return "/lead-mutation";
 }
 
@@ -29,7 +30,9 @@ function mutationPayload(event = {}) {
       ? "staff"
       : event.kind === "bank"
         ? "bank"
-        : "lead";
+        : event.kind === "dealer"
+          ? "dealer"
+          : "lead";
   return {
     realtime: true,
     url,
@@ -47,6 +50,7 @@ function mutationPayload(event = {}) {
     salespersonId: event.salespersonId || event.lead?.salespersonId || "",
     lead: event.lead || null,
     bankEvent: event.bankEvent || null,
+    dealerEvent: event.dealerEvent || null,
     notification: event.notification || null,
     document: event.document || null,
     at: Date.now(),
@@ -73,6 +77,16 @@ function invalidateRealtimeCaches(event = {}) {
     invalidateGetCache({ prefix: "/dealer/bank-tieups", purge: true });
     invalidateGetCache({ prefix: "/admin/approvals/banks", purge: true });
     invalidateGetCache({ prefix: "/admin/monitoring", purge: true });
+    return;
+  }
+  if (event.kind === "dealer") {
+    invalidateGetCache({ prefix: "/admin/approvals/dealerships", purge: true });
+    invalidateGetCache({ prefix: "/admin/dealerships", purge: true });
+    invalidateGetCache({ prefix: "/admin/monitoring", purge: true });
+    invalidateGetCache({ prefix: "/dealer/profile", purge: true });
+    invalidateGetCache({ prefix: "/dashboard", purge: true });
+    invalidateGetCache({ prefix: "/bank/dealerships", purge: true });
+    invalidateGetCache({ prefix: "/executive/dealerships", purge: true });
     return;
   }
   [

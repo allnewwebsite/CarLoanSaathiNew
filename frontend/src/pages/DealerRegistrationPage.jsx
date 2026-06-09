@@ -10,10 +10,8 @@ import { auth } from "../services/firebase.js";
 import { db } from "../services/firebaseDb.js";
 import { storage } from "../services/firebaseStorage.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { bankStates, dealershipBrands, locationsForState } from "../data/bankLocationMaster.js";
 
-const cities = ["Bahadurgarh", "Jhajjar", "Rohtak", "Sonipat", "Beri", "Gurugram", "Jind", "Manesar", "Gohana", "Murthal", "Panipat"];
-const dealershipBrands = ["Tata Motors", "Hyundai", "Kia", "Mahindra", "Maruti Suzuki", "Toyota", "Honda", "MG", "Skoda", "Volkswagen", "Nissan", "Renault", "BMW", "Audi", "Mercedes-Benz", "Volvo"];
-const financeTeamSizes = ["1-2", "3-5", "5-10", "10+"];
 const salesCapacity = ["10+", "25+", "50+", "70+", "100+", "200+"];
 const documentFields = ["GST Certificate", "Dealership License", "Office Exterior Photo", "Office Interior Photo"];
 const documentConfig = {
@@ -29,7 +27,7 @@ const benefitCards = [
   "Faster loan approvals",
   "Real-time case tracking",
   "Finance desk management",
-  "City-based lead routing",
+  "Location-based lead routing",
   "Salesperson performance visibility",
   "Secure document workflow",
   "Bank SLA monitoring",
@@ -46,20 +44,12 @@ const initialForm = {
   ownerFullName: "",
   ownerMobile: "",
   ownerEmail: "",
-  gmName: "",
-  gmMobile: "",
-  gmEmail: "",
-  financeHeadName: "",
-  financeHeadMobile: "",
-  financeDeskEmail: "",
-  financeTeamSize: "",
   state: "Haryana",
   city: "",
   pincode: "",
   address: "",
   landmark: "",
   monthlyCarSalesCapacity: "",
-  expectedMonthlyLoanApplications: "",
   loginEmail: "",
 };
 
@@ -457,7 +447,6 @@ export function DealerRegistrationFormPage() {
   const [form, setForm] = useState(() => ({
     ...initialForm,
     loginEmail: registrationSession.email || "",
-    financeDeskEmail: registrationSession.email || "",
   }));
   const [documents, setDocuments] = useState({});
   const [error, setError] = useState("");
@@ -466,6 +455,7 @@ export function DealerRegistrationFormPage() {
   const navigate = useNavigate();
   const dealerUid = firebaseUser?.uid || auth.currentUser?.uid || registrationSession.uid || registrationSession.registrationId || registrationSession.email || "";
   const dealerEmail = firebaseUser?.email || auth.currentUser?.email || registrationSession.email || "";
+  const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
   const hasVerifiedEmail = Boolean(
     dealerEmail
@@ -483,16 +473,17 @@ export function DealerRegistrationFormPage() {
       setForm((current) => ({
         ...current,
         loginEmail: current.loginEmail || dealerEmail,
-        financeDeskEmail: current.financeDeskEmail || dealerEmail,
       }));
     }
   }, [dealerEmail]);
 
   const update = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
-    if (field === "officialDealershipEmail" && !form.loginEmail) {
-      setForm((current) => ({ ...current, officialDealershipEmail: value, loginEmail: value }));
-    }
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "state") next.city = "";
+      if (field === "officialDealershipEmail" && !current.loginEmail) next.loginEmail = value;
+      return next;
+    });
   };
 
   const fieldClass = "field mt-1.5 h-10 rounded-md";
@@ -584,23 +575,17 @@ export function DealerRegistrationFormPage() {
       ["ownerFullName", "Owner Full Name"],
       ["ownerMobile", "Owner Mobile Number"],
       ["ownerEmail", "Owner Official Email"],
-      ["gmName", "General Manager Name"],
-      ["gmMobile", "GM Mobile Number"],
-      ["gmEmail", "GM Official Email"],
-      ["financeHeadName", "Finance Desk Head Name"],
-      ["financeHeadMobile", "Finance Desk Head Mobile Number"],
-      ["financeDeskEmail", "Finance Desk Official Email"],
-      ["financeTeamSize", "Finance Team Size"],
-      ["city", "City"],
+      ["state", "State"],
+      ["city", "Location"],
       ["pincode", "Pincode"],
       ["address", "Full Dealership Address"],
       ["monthlyCarSalesCapacity", "Monthly Car Sales Capacity"],
-      ["expectedMonthlyLoanApplications", "Expected Monthly Loan Applications"],
       ["loginEmail", "Official Login Email"],
     ];
     const missing = requiredFields.find(([field]) => !String(form[field] || "").trim());
     if (missing) return `${missing[1]} is required.`;
-    if (!cities.includes(form.city)) return "Please select a supported dealership city.";
+    if (!bankStates.includes(form.state)) return "Please select a supported dealership state.";
+    if (!locationOptions.includes(form.city)) return "Please select a supported dealership location.";
     if (!hasVerifiedEmail || !dealerEmail) return "Create an email/password account before submitting dealership registration.";
     return "";
   };
@@ -621,7 +606,6 @@ export function DealerRegistrationFormPage() {
         ...form,
         registrationId: registrationSession.registrationId,
         loginEmail: dealerEmail,
-        financeDeskEmail: dealerEmail,
         dealerUid,
         documents: Object.entries(documents).filter(([, item]) => item.status === "uploaded").map(([type, item]) => ({
           type,
@@ -639,7 +623,10 @@ export function DealerRegistrationFormPage() {
           email: dealerEmail,
           dealershipName: form.dealershipName,
           dealerBrand: form.dealershipBrand,
+          state: form.state,
           city: form.city,
+          dealerState: form.state,
+          dealerLocation: form.city,
           mobile: form.officialDealershipMobile,
           registrationStatus: "pending-approval",
           submittedAt: serverTimestamp(),
@@ -715,7 +702,7 @@ export function DealerRegistrationFormPage() {
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">Partner with CarLoanSaathi</h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">India's smart automotive finance network for dealership finance desks.</p>
             <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {["25+ Partner Banks", "City-based Lead Distribution", "Real-time Dashboard", "Faster Approvals"].map((item) => (
+              {["25+ Partner Banks", "Location-based Lead Distribution", "Real-time Dashboard", "Faster Approvals"].map((item) => (
                 <div key={item} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700">{item}</div>
               ))}
             </div>
@@ -725,7 +712,7 @@ export function DealerRegistrationFormPage() {
             <div className="mt-14 rounded-lg bg-white p-4">
               <Sparkles className="h-6 w-6 text-[#0d47a1]" />
               <p className="mt-3 text-lg font-semibold text-slate-900">Finance desk onboarding</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Verified dealership identity, city mapping, finance desk readiness, and document status.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Verified dealership identity, location mapping, approval readiness, and document status.</p>
             </div>
           </div>
         </section>
@@ -759,32 +746,18 @@ export function DealerRegistrationFormPage() {
               <label className={`${labelClass} md:col-span-2`}>Owner Official Email *<input required type="email" className={fieldClass} value={form.ownerEmail} onChange={(e) => update("ownerEmail", e.target.value)} /></label>
             </SectionCard>
 
-            <SectionCard number="3" title="General Manager Details">
-              <label className={labelClass}>General Manager Name *<input required className={fieldClass} value={form.gmName} onChange={(e) => update("gmName", e.target.value)} /></label>
-              <label className={labelClass}>GM Mobile Number *<input required className={fieldClass} value={form.gmMobile} onChange={(e) => update("gmMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
-              <label className={`${labelClass} md:col-span-2`}>GM Official Email *<input required type="email" className={fieldClass} value={form.gmEmail} onChange={(e) => update("gmEmail", e.target.value)} /></label>
-            </SectionCard>
-
-            <SectionCard number="4" title="Finance Desk Details">
-              <label className={labelClass}>Finance Desk Head Name *<input required className={fieldClass} value={form.financeHeadName} onChange={(e) => update("financeHeadName", e.target.value)} /></label>
-              <label className={labelClass}>Finance Desk Head Mobile Number *<input required className={fieldClass} value={form.financeHeadMobile} onChange={(e) => update("financeHeadMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
-              <label className={labelClass}>Finance Desk Official Email *<input required readOnly type="email" className={`${fieldClass} bg-slate-50`} value={form.financeDeskEmail} /></label>
-              <StandardSelect label="Finance Team Size *" value={form.financeTeamSize} options={financeTeamSizes} onChange={(value) => update("financeTeamSize", value)} placeholder="Select team size" />
-            </SectionCard>
-
-            <SectionCard number="5" title="Dealership Location">
-              <label className={labelClass}>State<input disabled className={`${fieldClass} bg-[#f5f7fb]`} value={form.state} /></label>
-              <SelectBox label="City *" value={form.city} options={cities} onChange={(value) => update("city", value)} placeholder="Search supported city" />
+            <SectionCard number="3" title="Dealership Location">
+              <StandardSelect label="State *" value={form.state} options={bankStates} onChange={(value) => update("state", value)} placeholder="Select state" />
+              <SelectBox label="Location *" value={form.city} options={locationOptions} onChange={(value) => update("city", value)} placeholder="Search supported location" />
               <label className={labelClass}>Pincode *<input required className={fieldClass} value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
               <label className={labelClass}>Landmark<input className={fieldClass} value={form.landmark} onChange={(e) => update("landmark", e.target.value)} /></label>
               <label className={`${labelClass} md:col-span-2`}>Full Dealership Address *<textarea required className="field mt-2 min-h-28 rounded-2xl py-3" value={form.address} onChange={(e) => update("address", e.target.value)} /></label>
             </SectionCard>
 
-            <SectionCard number="6" title="Business & Loan Capacity">
+            <SectionCard number="4" title="Business & Loan Capacity">
               <StandardSelect label="Monthly Car Sales Capacity *" value={form.monthlyCarSalesCapacity} options={salesCapacity} onChange={(value) => update("monthlyCarSalesCapacity", value)} placeholder="Select monthly capacity" />
-              <label className={labelClass}>Expected Monthly Loan Applications *<input required type="number" className={fieldClass} value={form.expectedMonthlyLoanApplications} onChange={(e) => update("expectedMonthlyLoanApplications", e.target.value)} /></label>
             </SectionCard>
-            <SectionCard number="7" title="Document Uploads">
+            <SectionCard number="5" title="Document Uploads">
               <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal leading-6 text-slate-600">
                 Optional during registration. You can upload dealership verification documents later after testing the required details.
               </div>
@@ -813,7 +786,7 @@ export function DealerRegistrationFormPage() {
               ))}
             </SectionCard>
 
-            <SectionCard number="8" title="Account Access">
+            <SectionCard number="6" title="Account Access">
               <label className={labelClass}>Official Login Email *<input required readOnly type="email" className={`${fieldClass} bg-slate-50`} value={form.loginEmail} /></label>
               <div className="rounded-lg bg-slate-50 p-3 text-sm font-normal text-slate-600">After approval, this email/password account can sign in to CarLoanSaathi. Passwords are handled only by Firebase Authentication.</div>
             </SectionCard>
@@ -827,12 +800,12 @@ export function DealerRegistrationFormPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50"><ShieldCheck className="h-5 w-5 text-[#0d47a1]" /></div>
             <h2 className="mt-4 text-lg font-semibold text-slate-900">Why dealerships join</h2>
             <div className="mt-4 space-y-2">
-              {["Multi-bank finance processing", "Faster loan approvals", "City-wise lead routing", "Dealer dashboard", "Secure document handling", "Real-time tracking", "Finance desk management"].map((benefit) => (
+              {["Multi-bank finance processing", "Faster loan approvals", "Location-wise lead routing", "Dealer dashboard", "Secure document handling", "Real-time tracking", "Finance desk management"].map((benefit) => (
                 <p key={benefit} className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-2 text-sm font-normal text-slate-700"><CheckCircle2 className="h-4 w-4 text-emerald-600" />{benefit}</p>
               ))}
             </div>
             <div className="mt-4 rounded-lg bg-[#0d47a1] p-3 text-sm font-normal leading-6 text-white">
-              Lead distribution runs city-wise: customer city to dealership city to active bank city.
+              Lead distribution runs location-wise: customer location to dealership location to active bank branch location.
             </div>
             <div className="mt-4 grid grid-cols-4 gap-2">
               {Object.values(brandLogos).slice(0, 8).map((logo) => <div key={logo} className="flex h-12 items-center justify-center rounded-xl bg-[#f8fbff]"><img src={logo} alt="" className="max-h-7 max-w-14 object-contain" /></div>)}

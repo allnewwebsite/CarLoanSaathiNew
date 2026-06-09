@@ -34,6 +34,12 @@ export const REALTIME_EVENTS = {
   BRANCH_CREATED: "BRANCH_CREATED",
   BRANCH_UPDATED: "BRANCH_UPDATED",
   BRANCH_DISABLED: "BRANCH_DISABLED",
+  DEALER_CREATED: "DEALER_CREATED",
+  DEALER_APPROVED: "DEALER_APPROVED",
+  DEALER_UPDATED: "DEALER_UPDATED",
+  DEALER_DISABLED: "DEALER_DISABLED",
+  DEALER_LOCATION_UPDATED: "DEALER_LOCATION_UPDATED",
+  DEALER_CAPACITY_UPDATED: "DEALER_CAPACITY_UPDATED",
   NOTIFICATION_CREATED: "NOTIFICATION_CREATED",
   FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
   SALESPERSON_CHANGED: "SALESPERSON_CHANGED",
@@ -166,6 +172,7 @@ function eventKind(eventType = "") {
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
   if (eventType.includes("BANK") || eventType.includes("BRANCH")) return "bank";
+  if (eventType.includes("DEALER")) return "dealer";
   if (eventType.includes("SALESPERSON") || eventType.includes("FINANCE_MANAGER")) return "staff";
   return "lead";
 }
@@ -203,6 +210,7 @@ function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
   if (user.role === "super-admin") return true;
   if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm-sm"].includes(user.role)) return true;
+  if (event.kind === "dealer" && event.publicDealerCatalog === true && ["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(user.role)) return true;
   const scopes = event.scopes || {};
   const userEmail = scope(user.email || user.uid);
   if (["finance-desk", "gm-sm"].includes(user.role)) {
@@ -317,6 +325,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
   const leadSummary = lightweightLeadPatch(lead || data.lead || {}, { ...data, timestamp: now });
   const leadScopes = leadSummary ? leadRealtimeScopes({ ...lead, ...leadSummary }) : { dealershipIds: [], bankIds: [], executiveIds: [], branchIds: [] };
   const notificationScopes = notification ? notificationRealtimeScopes(notification) : { dealershipIds: [], bankIds: [], executiveIds: [], recipientIds: [] };
+  const kind = eventKind(eventType);
   const scopes = {
     dealershipIds: unique([...(leadScopes.dealershipIds || []), ...(notificationScopes.dealershipIds || []), data.dealershipId]),
     bankIds: unique([...(leadScopes.bankIds || []), ...(notificationScopes.bankIds || []), data.bankId]),
@@ -328,7 +337,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
     event: eventType,
     eventType,
-    kind: eventKind(eventType),
+    kind,
     leadId: leadSummary?.leadId || data.leadId || notification?.leadId || document?.leadId || "",
     caseId: leadSummary?.caseId || data.caseId || notification?.caseId || document?.caseId || "",
     status: leadSummary?.status || data.status || notification?.leadSnapshot?.status || "",
@@ -370,7 +379,9 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     assignedSalesperson: leadSummary?.assignedSalesperson || "",
     createdAt: leadSummary?.createdAt || now,
     timestamp: now,
-    affectedPortals: affectedPortalsForScopes(scopes),
+    affectedPortals: kind === "dealer" && data.publicDealerCatalog === true
+      ? ["admin", "finance", "gm", "bank-manager", "loan-executive"]
+      : affectedPortalsForScopes(scopes),
     scopes,
     actor: actor ? { id: actor.uid || actor.email || "", email: actor.email || "", role: actor.role || "" } : null,
     tenantId: scopes.dealershipIds[0] || scopes.bankIds[0] || "platform",
@@ -378,6 +389,8 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     previousStatus: data.previousStatus || "",
     bankEvent: data.bankEvent || null,
     publicCatalog: Boolean(data.publicCatalog),
+    dealerEvent: data.dealerEvent || null,
+    publicDealerCatalog: Boolean(data.publicDealerCatalog),
     documentId: document?.id || data.documentId || "",
     documentType: document?.type || document?.documentType || data.documentType || "",
     remarkType: data.remarkType || "",

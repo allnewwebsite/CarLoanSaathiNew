@@ -76,6 +76,43 @@ export const BANK_LOAN_CAPACITY_RANGES = Object.freeze([
   "250+",
 ]);
 
+export const DEALERSHIP_BRANDS = Object.freeze([
+  "Maruti Suzuki",
+  "Hyundai",
+  "Tata Motors",
+  "Mahindra",
+  "Kia",
+  "Honda",
+  "Toyota",
+  "MG",
+  "Skoda",
+  "Volkswagen",
+  "Nissan",
+  "Renault",
+  "BMW",
+  "Audi",
+  "Mercedes-Benz",
+  "Volvo",
+  "Jeep",
+  "Citroen",
+  "BYD",
+  "Force Motors",
+  "Isuzu",
+  "Jaguar",
+  "Land Rover",
+  "Porsche",
+  "Lexus",
+  "Mini",
+  "Rolls Royce",
+  "Bentley",
+  "Ferrari",
+  "Lamborghini",
+  "Maserati",
+  "McLaren",
+  "Aston Martin",
+  "Others",
+]);
+
 export function normalizeIfsc(value = "") {
   return String(value || "").trim().toUpperCase();
 }
@@ -90,6 +127,11 @@ export function normalizeBankLocation(state = "", value = "") {
   const location = String(value || "").trim();
   if (!normalizedState) return "";
   return BANK_LOCATION_MASTER[normalizedState].find((item) => item.toLowerCase() === location.toLowerCase()) || "";
+}
+
+export function normalizeDealershipBrand(value = "") {
+  const brand = String(value || "").trim();
+  return DEALERSHIP_BRANDS.find((item) => item.toLowerCase() === brand.toLowerCase()) || "";
 }
 
 export function validateBankLocation({ state = "", location = "" } = {}) {
