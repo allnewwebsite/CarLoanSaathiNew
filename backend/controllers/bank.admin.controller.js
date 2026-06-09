@@ -66,6 +66,7 @@ export async function registerBankBranchAdmin(req, res, next) {
       branchId: bank.branchId || bank.ifscCode,
       state: bank.state,
       location: bank.branchName || bank.city,
+      capacityRange: bank.monthlyLoanCapacity || null,
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.BRANCH_CREATED,
@@ -120,6 +121,7 @@ export async function approveBankBranchAdmin(req, res, next) {
       branchId: bank.branchId || bank.ifscCode || bankId,
       state: bank.state,
       location: bank.branchName || bank.city,
+      capacityRange: bank.monthlyLoanCapacity || null,
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.BRANCH_UPDATED,
@@ -194,6 +196,34 @@ export async function rejectBankBranchAdmin(req, res, next) {
       branchId: bank.branchId || bank.ifscCode || bankId,
       state: bank.state,
       location: bank.branchName || bank.city,
+      capacityRange: bank.monthlyLoanCapacity || null,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_DISABLED,
+      actor: req.user,
+      data: {
+        publicCatalog: true,
+        bankEvent: {
+          bankId: bank.bankId || bankId,
+          bankName: bank.bankName,
+          branchIfsc: bank.ifscCode || bankId,
+          branchLocation: bank.branchName || bank.city,
+          state: bank.state,
+          status: "disabled",
+        },
+        bankId: bank.bankId || bankId,
+        branchId: bank.branchId || bank.ifscCode || bankId,
+        ifscCode: bank.ifscCode || bankId,
+      },
+    });
+    recordMonitoringSignal("BRANCH-DISABLED", {
+      collection: "branches",
+      projectionId: bank.ifscCode || bankId,
+      bankId: bank.bankId || bankId,
+      branchId: bank.branchId || bank.ifscCode || bankId,
+      state: bank.state,
+      location: bank.branchName || bank.city,
+      capacityRange: bank.monthlyLoanCapacity || null,
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.BRANCH_DISABLED,
@@ -396,6 +426,7 @@ export async function updateBankBranchAdmin(req, res, next) {
       branchId: bank.branchId || bank.ifscCode || bankId,
       state: bank.state,
       location: bank.branchName || bank.city,
+      capacityRange: bank.monthlyLoanCapacity || null,
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.BRANCH_UPDATED,

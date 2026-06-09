@@ -105,6 +105,7 @@ export function recordMonitoringSignal(tag, meta = {}) {
     branchId: meta.branchId || null,
     state: meta.state || null,
     location: meta.location || meta.branchLocation || null,
+    capacityRange: meta.capacityRange || meta.monthlyLoanCapacity || null,
     sourceCollection: meta.sourceCollection || null,
     cacheKey: meta.cacheKey || null,
     estimatedReads: Number(meta.estimatedReads || 0),
@@ -315,6 +316,16 @@ function branchSummary(signalItems, realtimeItems) {
       if (item.tag === "BRANCH-DISABLED") row.disabled += 1;
     },
   ).sort((a, b) => b.count - a.count).slice(0, 20);
+  const byCapacity = groupBy(
+    [...branchCreated, ...branchUpdated],
+    (item) => item.capacityRange || "Not metered",
+    () => ({ count: 0, created: 0, updated: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "BRANCH-CREATED") row.created += 1;
+      if (item.tag === "BRANCH-UPDATED") row.updated += 1;
+    },
+  );
   const syncEvents = realtimeItems.filter((item) => /BANK|BRANCH/.test(item.eventType || ""));
   return {
     branchCreationEvents: branchCreated.length,
@@ -324,6 +335,7 @@ function branchSummary(signalItems, realtimeItems) {
     realtimeSyncEvents: syncEvents.length,
     branchesByState: byState,
     branchesByLocation: byLocation,
+    branchesByCapacity: byCapacity,
   };
 }
 

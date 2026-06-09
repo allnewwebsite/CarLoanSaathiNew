@@ -1248,6 +1248,7 @@ export async function approveBankApproval(req, res, next) {
       branchId: ifsc,
       state: location.state,
       location: branchLocation,
+      capacityRange: request.monthlyLoanCapacity || null,
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.BRANCH_CREATED,

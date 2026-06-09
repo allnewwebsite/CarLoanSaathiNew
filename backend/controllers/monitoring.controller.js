@@ -144,6 +144,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
           disabledBranches: metrics.disabledBranches || 0,
           branchesByState: telemetry.branches.branchesByState,
           branchesByLocation: telemetry.branches.branchesByLocation,
+          branchesByCapacity: telemetry.branches.branchesByCapacity,
           ifscDuplicates: telemetry.branches.ifscDuplicates,
           realtimeSyncEvents: telemetry.branches.realtimeSyncEvents,
           branchCreationEvents: telemetry.branches.branchCreationEvents,

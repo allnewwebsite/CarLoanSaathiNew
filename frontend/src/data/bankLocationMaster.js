@@ -69,6 +69,15 @@ export const BANK_LOCATION_MASTER = {
 
 export const bankStates = Object.keys(BANK_LOCATION_MASTER);
 
+export const bankLoanCapacityRanges = [
+  "1-10",
+  "11-25",
+  "26-50",
+  "51-100",
+  "101-250",
+  "250+",
+];
+
 export function locationsForState(state = "") {
   return BANK_LOCATION_MASTER[state] || [];
 }

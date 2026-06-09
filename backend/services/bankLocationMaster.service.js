@@ -67,6 +67,15 @@ export const BANK_LOCATION_MASTER = Object.freeze({
   ]),
 });
 
+export const BANK_LOAN_CAPACITY_RANGES = Object.freeze([
+  "1-10",
+  "11-25",
+  "26-50",
+  "51-100",
+  "101-250",
+  "250+",
+]);
+
 export function normalizeIfsc(value = "") {
   return String(value || "").trim().toUpperCase();
 }
@@ -91,4 +100,17 @@ export function validateBankLocation({ state = "", location = "" } = {}) {
     state: normalizedState,
     location: normalizedLocation,
   };
+}
+
+export function normalizeLoanCapacity(value = "") {
+  const capacity = String(value || "").trim();
+  return BANK_LOAN_CAPACITY_RANGES.find((item) => item === capacity) || "";
+}
+
+export function loanCapacityUpperBound(value = "") {
+  const capacity = normalizeLoanCapacity(value);
+  if (!capacity) return 0;
+  if (capacity.endsWith("+")) return Number.parseInt(capacity, 10) || 0;
+  const [, upper] = capacity.split("-");
+  return Number.parseInt(upper, 10) || 0;
 }

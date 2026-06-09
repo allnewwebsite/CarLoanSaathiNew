@@ -5,7 +5,7 @@ import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebas
 import { useAuth } from "../../context/AuthContext.jsx";
 import { auth } from "../../services/firebase.js";
 import { storage } from "../../services/firebaseStorage.js";
-import { bankStates, locationsForState } from "../../data/bankLocationMaster.js";
+import { bankLoanCapacityRanges, bankStates, locationsForState } from "../../data/bankLocationMaster.js";
 
 const banks = [
   "State Bank of India (SBI)",
@@ -46,7 +46,6 @@ const banks = [
   "Other",
 ];
 const executiveCounts = ["1", "2", "3", "5", "10", "15", "20", "25+", "50+"];
-const loanCapacities = ["10+", "25+", "50+", "100+", "250+", "500+", "1000+"];
 const benefits = ["Verified dealership leads", "Branch-wise assignment", "SLA management", "Executive dashboards", "Real-time approvals", "Faster disbursement"];
 const workflow = ["Bank Registration", "Super Admin Verification", "Branch Activation", "Executive Mapping", "Lead Assignment", "Loan Processing", "Disbursement"];
 const documents = [
@@ -67,7 +66,6 @@ const initialForm = {
   managerName: "",
   managerMobile: "",
   email: "",
-  landline: "",
   executiveCount: "",
   monthlyLoanCapacity: "",
 };
@@ -80,6 +78,7 @@ function fieldError(form) {
   if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(form.gstin)) return "Enter a valid GSTIN number.";
   if (!/^[6-9][0-9]{9}$/.test(form.managerMobile)) return "Enter a valid 10 digit manager mobile number.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Enter a valid official bank email.";
+  if (!bankLoanCapacityRanges.includes(form.monthlyLoanCapacity)) return "Select monthly loan capacity.";
   return "";
 }
 
@@ -227,7 +226,6 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           managerName: form.managerName,
           mobile: form.managerMobile,
           officialEmail: bankEmail,
-          landline: form.landline,
           city: form.branchLocation,
           bankBranchLocation: form.branchLocation,
           state: form.state,
@@ -394,7 +392,6 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
             <label className="text-sm font-medium text-slate-700">Bank Manager Name *<input required className="field mt-2" value={form.managerName} onChange={(event) => update("managerName", event.target.value)} /></label>
             <label className="text-sm font-medium text-slate-700">Bank Manager Contact Number *<input required inputMode="numeric" className="field mt-2" value={form.managerMobile} onChange={(event) => update("managerMobile", event.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
             <label className="text-sm font-medium text-slate-700">Official Bank Email *<input required readOnly disabled type="email" className="field mt-2 bg-slate-50 text-slate-600" value={bankEmail || form.email} /></label>
-            <label className="text-sm font-medium text-slate-700">Branch Landline Number<input className="field mt-2" value={form.landline} onChange={(event) => update("landline", event.target.value)} /></label>
           </div>
         </section>
 
@@ -402,7 +399,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           <h2 className="text-base font-semibold text-slate-950">Branch Operations</h2>
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <label className="text-sm font-medium text-slate-700">Number of Loan Executives *<select required className="field mt-2" value={form.executiveCount} onChange={(event) => update("executiveCount", event.target.value)}><option value="">Select count</option>{executiveCounts.map((count) => <option key={count}>{count}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">Monthly Loan Capacity *<select required className="field mt-2" value={form.monthlyLoanCapacity} onChange={(event) => update("monthlyLoanCapacity", event.target.value)}><option value="">Select capacity</option>{loanCapacities.map((capacity) => <option key={capacity}>{capacity}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Monthly Loan Capacity *<select required className="field mt-2" value={form.monthlyLoanCapacity} onChange={(event) => update("monthlyLoanCapacity", event.target.value)}><option value="">Select capacity</option>{bankLoanCapacityRanges.map((capacity) => <option key={capacity}>{capacity}</option>)}</select></label>
           </div>
         </section>
 

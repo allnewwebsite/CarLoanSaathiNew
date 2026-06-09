@@ -162,6 +162,13 @@ export function AdminMonitoringCenter() {
     valueOrDash(item.disabled),
   ]), [branches.branchesByLocation]);
 
+  const branchCapacityRows = useMemo(() => rows(branches.branchesByCapacity || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.updated),
+  ]), [branches.branchesByCapacity]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -243,7 +250,7 @@ export function AdminMonitoringCenter() {
           <MetricTile label="Branch Created" value={branches.branchCreationEvents || 0} />
           <MetricTile label="Branch Updated" value={branches.branchUpdateEvents || 0} />
         </div>
-        <div className="grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-3">
           <OperationalTable
             title="Branches By State"
             headers={["State", "Events", "Created", "Updated", "Disabled"]}
@@ -257,6 +264,13 @@ export function AdminMonitoringCenter() {
             rows={branchLocationRows}
             loading={loading}
             virtualizeAt={30}
+          />
+          <OperationalTable
+            title="Branch Count By Capacity"
+            headers={["Capacity", "Events", "Created", "Updated"]}
+            rows={branchCapacityRows}
+            loading={loading}
+            virtualizeAt={20}
           />
         </div>
       </Section>

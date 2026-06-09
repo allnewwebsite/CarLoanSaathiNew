@@ -30,7 +30,7 @@ import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../service
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
-import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
+import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -725,6 +725,10 @@ export async function registerBankPartner(req, res, next) {
     if (!location.valid) {
       return res.status(400).json({ message: "Supported state and bank branch location are required" });
     }
+    const monthlyLoanCapacity = normalizeLoanCapacity(req.body.monthlyLoanCapacity || req.body.approvalLimit);
+    if (!monthlyLoanCapacity) {
+      return res.status(400).json({ message: "Monthly loan capacity is required", code: "INVALID_LOAN_CAPACITY" });
+    }
     const duplicate = await existingBranchForIfsc(ifsc);
     if (duplicate && !["rejected", "deleted", "removed"].includes(String(duplicate.status || duplicate.approvalStatus || "").toLowerCase())) {
       recordMonitoringSignal("IFSC-DUPLICATE", {
@@ -757,17 +761,16 @@ export async function registerBankPartner(req, res, next) {
       managerName: String(req.body.managerName || req.body.contactPerson || "").trim(),
       mobile: String(req.body.mobile || "").trim(),
       officialEmail: String(req.body.officialEmail || email).trim().toLowerCase(),
-      landline: String(req.body.landline || "").trim(),
       state: location.state,
       executiveCount: String(req.body.executiveCount || "").trim(),
-      monthlyLoanCapacity: String(req.body.monthlyLoanCapacity || req.body.approvalLimit || "").trim(),
+      monthlyLoanCapacity,
       supportedBanks,
       operatingCity: location.location,
       serviceArea: location.location,
       branchId: ifsc,
       bankId: ifsc,
       bankPartnerId: ifsc,
-      approvalLimit: Number.parseInt(String(req.body.monthlyLoanCapacity || req.body.approvalLimit || "100").replace(/\D/g, ""), 10) || 100,
+      approvalLimit: loanCapacityUpperBound(monthlyLoanCapacity),
       assignedManagers: Array.isArray(req.body.assignedManagers) ? req.body.assignedManagers : [],
       executives: Array.isArray(req.body.executives) ? req.body.executives : [],
       documents: Array.isArray(req.body.documents) ? req.body.documents : [],
