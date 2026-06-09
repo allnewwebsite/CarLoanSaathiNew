@@ -20,6 +20,22 @@ function percent(value) {
   return value === null || value === undefined ? "Not metered" : `${value}%`;
 }
 
+function dateTime(value) {
+  if (!value) return "None";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Invalid" : date.toLocaleString();
+}
+
+function yesNo(value) {
+  return value ? "Yes" : "No";
+}
+
+function shortText(value, maxLength = 90) {
+  if (!value) return "None";
+  const text = String(value);
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function StatusCard({ title, icon: Icon, item }) {
   const status = item?.status || "Warning";
   return (
@@ -97,6 +113,7 @@ export function AdminMonitoringCenter() {
   const projection = snapshot?.projectionHealth || {};
   const realtime = snapshot?.realtimeMonitoring || {};
   const cache = snapshot?.cacheMonitoring || {};
+  const queue = snapshot?.queueMonitoring || {};
   const alerts = snapshot?.systemAlerts || [];
 
   const projectionCollections = useMemo(() => rows(projection.collections || [], (item) => [
@@ -108,6 +125,24 @@ export function AdminMonitoringCenter() {
     valueOrDash(item.rebuilds),
     percent(item.projectionHit + item.projectionMiss ? Math.round((item.projectionHit / (item.projectionHit + item.projectionMiss)) * 100) : null),
   ]), [projection.collections]);
+
+  const queueRows = useMemo(() => rows(queue.queues || [], (item) => [
+    item.queueName,
+    item.status,
+    valueOrDash(item.failedJobsTotal),
+    valueOrDash(item.failedJobsLastHour),
+    valueOrDash(item.failedJobsLast24Hours),
+    valueOrDash(item.historicalFailedJobs),
+    dateTime(item.oldestFailedJobTimestamp),
+    dateTime(item.newestFailedJobTimestamp),
+    shortText(item.latestFailedReason),
+    dateTime(item.lastSuccessfulJobTimestamp),
+    valueOrDash(item.waitingJobs),
+    valueOrDash(item.activeJobs),
+    valueOrDash(item.delayedJobs),
+    yesNo(item.paused),
+    yesNo(item.workerConnected),
+  ]), [queue.queues]);
 
   return (
     <div className="space-y-6">
@@ -222,6 +257,25 @@ export function AdminMonitoringCenter() {
           </div>
         </Section>
       </div>
+
+      <Section title="Queue Monitoring" subtitle="Active health uses failures from the last 24 hours. Retained BullMQ failures are shown separately as historical context.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <MetricTile label="Queue Status" value={queue.enabled ? queue.status : "local-fallback"} />
+          <MetricTile label="Failed Last Hour" value={queue.failedJobsLastHour || 0} />
+          <MetricTile label="Failed Last 24 Hours" value={queue.failedJobsLast24Hours || 0} />
+          <MetricTile label="Historical Failures" value={queue.historicalFailedJobs || 0} />
+          <MetricTile label="Waiting Jobs" value={queue.waitingJobs || 0} />
+          <MetricTile label="Delayed Jobs" value={queue.delayedJobs || 0} />
+        </div>
+        <OperationalTable
+          title="Queues"
+          headers={["Queue Name", "Health", "Failed Total", "Failed 1h", "Failed 24h", "Historical Failed", "Oldest Failed", "Newest Failed", "Latest Failed Reason", "Last Success", "Waiting", "Active", "Delayed", "Paused", "Worker Connected"]}
+          rows={queueRows}
+          loading={loading}
+          virtualizeAt={20}
+          rowHeight={40}
+        />
+      </Section>
 
       <Section title="System Alerts">
         <div className="grid gap-3">

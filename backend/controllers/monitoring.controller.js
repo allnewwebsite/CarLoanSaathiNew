@@ -18,7 +18,38 @@ function card(status, detail = "") {
   };
 }
 
-function buildAlerts({ telemetry, operational }) {
+function buildQueueMonitoring(redisQueues = {}) {
+  const queueItems = Object.values(redisQueues.queues || {});
+  const totals = queueItems.reduce((acc, item) => {
+    acc.failedJobsTotal += Number(item.failedJobsTotal || 0);
+    acc.failedJobsLastHour += Number(item.failedJobsLastHour || 0);
+    acc.failedJobsLast24Hours += Number(item.failedJobsLast24Hours || 0);
+    acc.historicalFailedJobs += Number(item.historicalFailedJobs || 0);
+    acc.waitingJobs += Number(item.waitingJobs || 0);
+    acc.activeJobs += Number(item.activeJobs || 0);
+    acc.delayedJobs += Number(item.delayedJobs || 0);
+    return acc;
+  }, {
+    failedJobsTotal: 0,
+    failedJobsLastHour: 0,
+    failedJobsLast24Hours: 0,
+    historicalFailedJobs: 0,
+    waitingJobs: 0,
+    activeJobs: 0,
+    delayedJobs: 0,
+  });
+
+  return {
+    enabled: Boolean(redisQueues.enabled),
+    status: redisQueues.status || "local-fallback",
+    generatedAt: redisQueues.generatedAt || null,
+    healthRules: redisQueues.healthRules || {},
+    queues: queueItems,
+    ...totals,
+  };
+}
+
+function buildAlerts({ telemetry, operational, queueMonitoring }) {
   const alerts = [];
   const projectionRate = telemetry.projection.projectionHitRate;
   const cacheRate = telemetry.cache.hitRate;
@@ -37,9 +68,23 @@ function buildAlerts({ telemetry, operational }) {
   if (telemetry.realtime.realtimeErrors > 0 || telemetry.realtime.disconnectedClients > 10) {
     alerts.push({ severity: "warning", title: "Realtime instability detected", detail: `${telemetry.realtime.realtimeErrors} errors, ${telemetry.realtime.disconnectedClients} disconnects` });
   }
+  for (const queue of queueMonitoring.queues || []) {
+    const recentFailures = Number(queue.failedJobsLast24Hours || 0);
+    if (recentFailures > 0) {
+      alerts.push({
+        severity: recentFailures > 10 ? "critical" : "warning",
+        title: "Active queue failures detected",
+        detail: `${queue.queueName} has ${recentFailures} failures in the last 24 hours; ${queue.historicalFailedJobs || 0} retained historical failures`,
+      });
+    }
+  }
+  const operationalAlerts = (operational.alerts || []).filter((item) => {
+    if (item.type !== "queue_failures") return true;
+    return Number(item.meta?.activeFailedLast24Hours || item.meta?.failedJobsLast24Hours || 0) > 0;
+  });
   return [
     ...alerts,
-    ...(operational.alerts || []).slice(0, 8).map((item) => ({
+    ...operationalAlerts.slice(0, 8).map((item) => ({
       severity: item.severity || "warning",
       title: item.title || item.type || "Operational alert",
       detail: item.message || "",
@@ -59,6 +104,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
       ]);
       const telemetry = monitoringTelemetrySummary({ realtimeStats: currentRealtimeStats });
       const activeUsers = telemetry.realtime.activeSseConnections;
+      const queueMonitoring = buildQueueMonitoring(health.checks?.redisQueues);
       const healthCards = {
         systemStatus: card(health.status, `${health.environment} / uptime ${health.uptimeSeconds}s`),
         apiHealth: card(telemetry.statuses.api, `p95 ${telemetry.api.p95Ms}ms`),
@@ -91,7 +137,8 @@ export async function getAdminMonitoringCenter(_req, res, next) {
         projectionHealth: telemetry.projection,
         realtimeMonitoring: telemetry.realtime,
         cacheMonitoring: telemetry.cache,
-        systemAlerts: buildAlerts({ telemetry, operational }),
+        queueMonitoring,
+        systemAlerts: buildAlerts({ telemetry, operational, queueMonitoring }),
         operationalEvents: (operational.events || []).slice(0, 10),
         sampleWindow: telemetry.sampleWindow,
         readModel: {

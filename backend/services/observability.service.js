@@ -167,17 +167,19 @@ export function observeAuthFailure(req, reason = "auth_failure") {
 export async function observeQueueHealth(health) {
   if (!health?.enabled) return;
   for (const [queue, counts] of Object.entries(health.queues || {})) {
-    const failed = Number(counts.failed || 0);
-    const backlog = Number(counts.waiting || 0) + Number(counts.delayed || 0);
-    if (failed >= defaultThresholds.queueFailedJobs) {
+    const activeFailures = Number(counts.failedJobsLast24Hours ?? counts.failed ?? 0);
+    const failedTotal = Number(counts.failedJobsTotal ?? counts.failed ?? 0);
+    const historicalFailures = Number(counts.historicalFailedJobs || Math.max(failedTotal - activeFailures, 0));
+    const backlog = Number(counts.waitingJobs ?? counts.waiting ?? 0) + Number(counts.delayedJobs ?? counts.delayed ?? 0);
+    if (activeFailures > 0) {
       await emitOperationalAlert({
         type: "queue_failures",
-        severity: ALERT_SEVERITY.HIGH,
+        severity: activeFailures > defaultThresholds.queueFailedJobs ? ALERT_SEVERITY.HIGH : ALERT_SEVERITY.MEDIUM,
         component: "queue",
-        title: "Queue failures detected",
-        message: `${queue} has ${failed} failed jobs`,
+        title: "Active queue failures detected",
+        message: `${queue} has ${activeFailures} failed jobs in the last 24 hours (${historicalFailures} retained historical failures)`,
         entityId: queue,
-        meta: counts,
+        meta: { ...counts, activeFailedLast24Hours: activeFailures, failedJobsTotal: failedTotal, historicalFailures },
       });
     }
     if (backlog >= defaultThresholds.queueBacklogJobs) {

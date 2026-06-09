@@ -19,6 +19,110 @@ const queues = new Map();
 const workers = new Map();
 let redisConnection = null;
 const queueCircuitBreakers = new Map();
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+function queueHealthSampleLimit() {
+  return Math.max(1, Math.min(Number(process.env.QUEUE_HEALTH_FAILED_SAMPLE_LIMIT || 500), 1000));
+}
+
+function timestampFromJob(job) {
+  const timestamp = Number(job?.finishedOn || job?.processedOn || job?.timestamp || 0);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+}
+
+function isoFromTimestamp(timestamp) {
+  return timestamp ? new Date(timestamp).toISOString() : null;
+}
+
+function queueStatusForRecentFailures(failedJobsLast24Hours) {
+  if (failedJobsLast24Hours > 10) return "critical";
+  if (failedJobsLast24Hours > 0) return "warning";
+  return "healthy";
+}
+
+function aggregateQueueStatus(queueItems) {
+  if (queueItems.some((item) => item.status === "critical")) return "critical";
+  if (queueItems.some((item) => item.status === "warning")) return "warning";
+  return "healthy";
+}
+
+function isWorkerConnected(name) {
+  const worker = workers.get(name);
+  if (!worker) return false;
+  if (typeof worker.isRunning === "function") return Boolean(worker.isRunning());
+  return true;
+}
+
+async function getLatestCompletedTimestamp(queue) {
+  try {
+    const completed = typeof queue.getCompleted === "function"
+      ? await queue.getCompleted(0, 0)
+      : await queue.getJobs(["completed"], 0, 0, false);
+    return isoFromTimestamp(timestampFromJob(completed?.[0]));
+  } catch (error) {
+    logWarn("Queue completed job health sample failed", { queue: queue.name, error: error.message });
+    return null;
+  }
+}
+
+async function getFailureSummary(queue, failedJobsTotal) {
+  const sampleLimit = Math.min(failedJobsTotal, queueHealthSampleLimit());
+  if (sampleLimit <= 0) {
+    return {
+      failedJobsLastHour: 0,
+      failedJobsLast24Hours: 0,
+      historicalFailedJobs: 0,
+      oldestFailedJobTimestamp: null,
+      newestFailedJobTimestamp: null,
+      latestFailedReason: null,
+      latestFailedJobId: null,
+      failureSampleSize: 0,
+      failureSampleLimited: false,
+    };
+  }
+
+  try {
+    const failedJobs = typeof queue.getFailed === "function"
+      ? await queue.getFailed(0, sampleLimit - 1)
+      : await queue.getJobs(["failed"], 0, sampleLimit - 1, false);
+    const now = Date.now();
+    const failedTimes = failedJobs.map(timestampFromJob).filter(Boolean);
+    const failedJobsLastHour = failedTimes.filter((timestamp) => now - timestamp <= HOUR_MS).length;
+    const failedJobsLast24Hours = failedTimes.filter((timestamp) => now - timestamp <= DAY_MS).length;
+    const oldestFailedTimestamp = failedTimes.length ? Math.min(...failedTimes) : null;
+    const newestFailedTimestamp = failedTimes.length ? Math.max(...failedTimes) : null;
+    const newestJob = failedJobs
+      .map((job) => ({ job, timestamp: timestampFromJob(job) || 0 }))
+      .sort((a, b) => b.timestamp - a.timestamp)[0]?.job;
+
+    return {
+      failedJobsLastHour,
+      failedJobsLast24Hours,
+      historicalFailedJobs: Math.max(failedJobsTotal - failedJobsLast24Hours, 0),
+      oldestFailedJobTimestamp: isoFromTimestamp(oldestFailedTimestamp),
+      newestFailedJobTimestamp: isoFromTimestamp(newestFailedTimestamp),
+      latestFailedReason: newestJob?.failedReason || newestJob?.stacktrace?.[0] || null,
+      latestFailedJobId: newestJob?.id || null,
+      failureSampleSize: failedJobs.length,
+      failureSampleLimited: failedJobsTotal > failedJobs.length,
+    };
+  } catch (error) {
+    logWarn("Queue failed job health sample failed", { queue: queue.name, error: error.message });
+    return {
+      failedJobsLastHour: 0,
+      failedJobsLast24Hours: 0,
+      historicalFailedJobs: failedJobsTotal,
+      oldestFailedJobTimestamp: null,
+      newestFailedJobTimestamp: null,
+      latestFailedReason: null,
+      latestFailedJobId: null,
+      failureSampleSize: 0,
+      failureSampleLimited: true,
+      failureSampleError: error.message,
+    };
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -151,9 +255,50 @@ export async function queueHealth() {
   const health = {};
   for (const name of Object.values(QUEUE_NAMES)) {
     const queue = getQueue(name);
-    health[name] = await queue.getJobCounts("waiting", "active", "failed", "delayed");
+    const [counts, paused, lastSuccessfulJobTimestamp] = await Promise.all([
+      queue.getJobCounts("waiting", "active", "failed", "delayed"),
+      typeof queue.isPaused === "function" ? queue.isPaused().catch(() => false) : Promise.resolve(false),
+      getLatestCompletedTimestamp(queue),
+    ]);
+    const failedJobsTotal = Number(counts.failed || 0);
+    const failureSummary = await getFailureSummary(queue, failedJobsTotal);
+    const status = queueStatusForRecentFailures(failureSummary.failedJobsLast24Hours);
+    health[name] = {
+      queueName: name,
+      failedJobsTotal,
+      failedJobsLastHour: failureSummary.failedJobsLastHour,
+      failedJobsLast24Hours: failureSummary.failedJobsLast24Hours,
+      historicalFailedJobs: failureSummary.historicalFailedJobs,
+      oldestFailedJobTimestamp: failureSummary.oldestFailedJobTimestamp,
+      newestFailedJobTimestamp: failureSummary.newestFailedJobTimestamp,
+      latestFailedReason: failureSummary.latestFailedReason,
+      latestFailedJobId: failureSummary.latestFailedJobId,
+      lastSuccessfulJobTimestamp,
+      waitingJobs: Number(counts.waiting || 0),
+      activeJobs: Number(counts.active || 0),
+      delayedJobs: Number(counts.delayed || 0),
+      paused,
+      workerConnected: isWorkerConnected(name),
+      status,
+      statusReason: status === "healthy"
+        ? "No failures in the last 24 hours"
+        : `${failureSummary.failedJobsLast24Hours} failures in the last 24 hours`,
+      failureSampleSize: failureSummary.failureSampleSize,
+      failureSampleLimited: failureSummary.failureSampleLimited,
+      failureSampleError: failureSummary.failureSampleError || null,
+    };
   }
-  return { enabled: true, queues: health };
+  return {
+    enabled: true,
+    status: aggregateQueueStatus(Object.values(health)),
+    generatedAt: new Date().toISOString(),
+    healthRules: {
+      healthy: "No failures in last 24 hours",
+      warning: "1-10 failures in last 24 hours",
+      critical: "More than 10 failures in last 24 hours",
+    },
+    queues: health,
+  };
 }
 
 export function logQueueDisabled() {
