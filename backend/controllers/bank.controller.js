@@ -30,6 +30,7 @@ import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../service
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
+import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -657,6 +658,23 @@ function groupDealershipsFromLeads(leads = []) {
   return [...grouped.values()].sort((left, right) => String(right.lastLeadAt || "").localeCompare(String(left.lastLeadAt || "")));
 }
 
+async function existingBranchForIfsc(ifsc = "") {
+  const normalized = normalizeIfsc(ifsc);
+  if (!normalized) return null;
+  const direct = await getRecord("branches", normalized).catch(() => null)
+    || await getRecord("banks", normalized).catch(() => null)
+    || await getRecord("bankPartners", normalized).catch(() => null)
+    || await getRecord("pendingBankApprovals", normalized).catch(() => null);
+  if (direct) return direct;
+  const [pending, bank, partner, branch] = await Promise.all([
+    findRecordsByField("pendingBankApprovals", "ifsc", normalized, 1).catch(() => []),
+    findRecordsByField("banks", "ifscCode", normalized, 1).catch(() => []),
+    findRecordsByField("bankPartners", "ifscCode", normalized, 1).catch(() => []),
+    findRecordsByField("branches", "ifscCode", normalized, 1).catch(() => []),
+  ]);
+  return pending[0] || bank[0] || partner[0] || branch[0] || null;
+}
+
 export async function registerBankPartner(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -699,15 +717,29 @@ export async function registerBankPartner(req, res, next) {
       ? req.body.supportedBanks
       : String(req.body.supportedBanks || "").split(",").map((item) => item.trim()).filter(Boolean);
     const bankBranchLocation = String(req.body.bankBranchLocation || req.body.branchLocation || req.body.city || "").trim();
-    const ifsc = String(req.body.ifsc || "").trim().toUpperCase();
+    const ifsc = normalizeIfsc(req.body.branchIfsc || req.body.ifsc || req.body.ifscCode);
     if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
       return res.status(400).json({ message: "Valid IFSC code is required for branch registration" });
     }
-    if (!bankBranchLocation) {
-      return res.status(400).json({ message: "Bank branch location is required" });
+    const location = validateBankLocation({ state: req.body.state || "Haryana", location: bankBranchLocation });
+    if (!location.valid) {
+      return res.status(400).json({ message: "Supported state and bank branch location are required" });
+    }
+    const duplicate = await existingBranchForIfsc(ifsc);
+    if (duplicate && !["rejected", "deleted", "removed"].includes(String(duplicate.status || duplicate.approvalStatus || "").toLowerCase())) {
+      recordMonitoringSignal("IFSC-DUPLICATE", {
+        collection: "branches",
+        projectionId: ifsc,
+        branchId: ifsc,
+        state: location.state,
+        location: location.location,
+        reason: "registration_duplicate_ifsc",
+      });
+      return res.status(409).json({ message: "This IFSC is already registered or pending approval.", code: "DUPLICATE_IFSC" });
     }
 
-    const request = await createRecord("pendingBankApprovals", {
+    const request = await upsertRecord("pendingBankApprovals", ifsc, {
+      id: ifsc,
       email,
       type: "bank",
       accountType: "bank",
@@ -715,19 +747,26 @@ export async function registerBankPartner(req, res, next) {
       companyName: String(req.body.companyName || "").trim(),
       bankName: String(req.body.bankName || req.body.companyName || req.body.supportedBanks?.[0] || "").trim(),
       ifsc,
+      branchIfsc: ifsc,
+      ifscCode: ifsc,
+      bankIfsc: ifsc,
       gstin: String(req.body.gstin || "").trim().toUpperCase(),
-      branchLocation: bankBranchLocation,
-      bankBranchLocation,
+      branchLocation: location.location,
+      bankBranchLocation: location.location,
       contactPerson: String(req.body.contactPerson || "").trim(),
       managerName: String(req.body.managerName || req.body.contactPerson || "").trim(),
       mobile: String(req.body.mobile || "").trim(),
       officialEmail: String(req.body.officialEmail || email).trim().toLowerCase(),
       landline: String(req.body.landline || "").trim(),
-      state: "Haryana",
+      state: location.state,
       executiveCount: String(req.body.executiveCount || "").trim(),
       monthlyLoanCapacity: String(req.body.monthlyLoanCapacity || req.body.approvalLimit || "").trim(),
       supportedBanks,
-      operatingCity: bankBranchLocation,
+      operatingCity: location.location,
+      serviceArea: location.location,
+      branchId: ifsc,
+      bankId: ifsc,
+      bankPartnerId: ifsc,
       approvalLimit: Number.parseInt(String(req.body.monthlyLoanCapacity || req.body.approvalLimit || "100").replace(/\D/g, ""), 10) || 100,
       assignedManagers: Array.isArray(req.body.assignedManagers) ? req.body.assignedManagers : [],
       executives: Array.isArray(req.body.executives) ? req.body.executives : [],

@@ -17,16 +17,24 @@ function leadUrlForEvent(event = {}) {
   if (event.kind === "document") return "/documents";
   if (event.kind === "notification") return "/notifications";
   if (event.kind === "staff") return "/dealer/staff";
+  if (event.kind === "bank") return "/banks";
   return "/lead-mutation";
 }
 
 function mutationPayload(event = {}) {
   const url = leadUrlForEvent(event);
+  const kind = event.kind === "notification"
+    ? "notification"
+    : event.kind === "staff"
+      ? "staff"
+      : event.kind === "bank"
+        ? "bank"
+        : "lead";
   return {
     realtime: true,
     url,
     canonicalUrl: event.kind === "lead" || event.kind === "document" ? "/lead-mutation" : url,
-    kind: event.kind === "notification" ? "notification" : event.kind === "staff" ? "staff" : "lead",
+    kind,
     event: event.event || event.eventType,
     eventType: event.eventType || event.event,
     leadId: event.leadId || event.lead?.leadId || "",
@@ -38,6 +46,7 @@ function mutationPayload(event = {}) {
     financeManagerId: event.financeManagerId || event.lead?.financeManagerId || "",
     salespersonId: event.salespersonId || event.lead?.salespersonId || "",
     lead: event.lead || null,
+    bankEvent: event.bankEvent || null,
     notification: event.notification || null,
     document: event.document || null,
     at: Date.now(),
@@ -56,6 +65,14 @@ function invalidateRealtimeCaches(event = {}) {
     invalidateGetCache({ prefix: "/dealer/salespersons", purge: true });
     invalidateGetCache({ prefix: "/dealer/finance-managers", purge: true });
     invalidateGetCache({ prefix: "/gm/salespersons", purge: true });
+    return;
+  }
+  if (event.kind === "bank") {
+    invalidateGetCache({ prefix: "/catalog/banks", purge: true });
+    invalidateGetCache({ prefix: "/dealer/available-banks", purge: true });
+    invalidateGetCache({ prefix: "/dealer/bank-tieups", purge: true });
+    invalidateGetCache({ prefix: "/admin/approvals/banks", purge: true });
+    invalidateGetCache({ prefix: "/admin/monitoring", purge: true });
     return;
   }
   [

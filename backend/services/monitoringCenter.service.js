@@ -101,6 +101,10 @@ export function recordMonitoringSignal(tag, meta = {}) {
     path: meta.path || "",
     collection: meta.collection || null,
     projectionId: meta.projectionId || meta.leadId || meta.sourceId || null,
+    bankId: meta.bankId || null,
+    branchId: meta.branchId || null,
+    state: meta.state || null,
+    location: meta.location || meta.branchLocation || null,
     sourceCollection: meta.sourceCollection || null,
     cacheKey: meta.cacheKey || null,
     estimatedReads: Number(meta.estimatedReads || 0),
@@ -284,6 +288,45 @@ function realtimeSummary(realtimeItems, currentStats = {}) {
   };
 }
 
+function branchSummary(signalItems, realtimeItems) {
+  const branchCreated = signalItems.filter((item) => item.tag === "BRANCH-CREATED");
+  const branchUpdated = signalItems.filter((item) => item.tag === "BRANCH-UPDATED");
+  const branchDisabled = signalItems.filter((item) => item.tag === "BRANCH-DISABLED");
+  const duplicateIfsc = signalItems.filter((item) => item.tag === "IFSC-DUPLICATE");
+  const byState = groupBy(
+    [...branchCreated, ...branchUpdated, ...branchDisabled],
+    (item) => item.state || "unknown",
+    () => ({ count: 0, created: 0, updated: 0, disabled: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "BRANCH-CREATED") row.created += 1;
+      if (item.tag === "BRANCH-UPDATED") row.updated += 1;
+      if (item.tag === "BRANCH-DISABLED") row.disabled += 1;
+    },
+  );
+  const byLocation = groupBy(
+    [...branchCreated, ...branchUpdated, ...branchDisabled],
+    (item) => item.location || "unknown",
+    () => ({ count: 0, created: 0, updated: 0, disabled: 0 }),
+    (row, item) => {
+      row.count += 1;
+      if (item.tag === "BRANCH-CREATED") row.created += 1;
+      if (item.tag === "BRANCH-UPDATED") row.updated += 1;
+      if (item.tag === "BRANCH-DISABLED") row.disabled += 1;
+    },
+  ).sort((a, b) => b.count - a.count).slice(0, 20);
+  const syncEvents = realtimeItems.filter((item) => /BANK|BRANCH/.test(item.eventType || ""));
+  return {
+    branchCreationEvents: branchCreated.length,
+    branchUpdateEvents: branchUpdated.length,
+    branchDisabledEvents: branchDisabled.length,
+    ifscDuplicates: duplicateIfsc.length,
+    realtimeSyncEvents: syncEvents.length,
+    branchesByState: byState,
+    branchesByLocation: byLocation,
+  };
+}
+
 export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const apiItems = todayItems(state.api);
   const readItems = todayItems(state.reads);
@@ -294,6 +337,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const projection = projectionSummary(signalItems);
   const cache = cacheSummary(readItems, signalItems);
   const realtime = realtimeSummary(realtimeItems, realtimeStats);
+  const branches = branchSummary(signalItems, realtimeItems);
 
   return {
     generatedAt: nowIso(),
@@ -309,6 +353,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
     projection,
     cache,
     realtime,
+    branches,
     statuses: {
       api: statusFromThreshold(api.p95Ms, 1000, 2000),
       firestore: statusFromThreshold(firestore.estimatedReadsToday, 50000, 150000),

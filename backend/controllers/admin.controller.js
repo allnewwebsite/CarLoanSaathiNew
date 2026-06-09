@@ -18,6 +18,7 @@ import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -273,6 +274,8 @@ async function incrementPlatformCounters(increments = {}) {
     activeDealerships: 0,
     bankPartners: 0,
     activeBanks: 0,
+    totalBranches: 0,
+    disabledBranches: 0,
     updatedAt: new Date().toISOString(),
   }).catch(() => null);
 }
@@ -351,11 +354,12 @@ async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy 
   return updated;
 }
 
-async function materializeApprovedBank({ request, bankEmail, bankName, branchLocation, ifsc, branchId, partnerId, now, approvedBy }) {
-  await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, bankName, ifsc, ifscCode: ifsc, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy });
+async function materializeApprovedBank({ request, bankEmail, bankName, branchLocation, state, ifsc, branchId, partnerId, now, approvedBy }) {
+  await upsertRecord("bankPartners", partnerId, { ...request, id: partnerId, email: bankEmail, officialEmail: bankEmail, bankId: partnerId, bankPartnerId: partnerId, branchId, bankName, ifsc, branchIfsc: ifsc, ifscCode: ifsc, bankIfsc: ifsc, branchLocation, bankBranchLocation: branchLocation, branchCity: branchLocation, city: branchLocation, state, serviceArea: branchLocation, status: "active", active: true, approved: true, frozen: false, approvedAt: now, approvedBy });
   await upsertRecord("banks", partnerId, {
     id: partnerId,
     bankId: partnerId,
+    branchId,
     email: bankEmail,
     officialEmail: bankEmail,
     name: bankName,
@@ -365,10 +369,12 @@ async function materializeApprovedBank({ request, bankEmail, bankName, branchLoc
     bankBranchLocation: branchLocation,
     city: branchLocation,
     branchCity: branchLocation,
-    state: request.state || "Haryana",
+    state,
     ifsc,
     ifscCode: ifsc,
+    branchIfsc: ifsc,
     bankIfsc: ifsc,
+    serviceArea: branchLocation,
     status: "active",
     approvalStatus: "approved",
     active: true,
@@ -376,15 +382,15 @@ async function materializeApprovedBank({ request, bankEmail, bankName, branchLoc
     approvedAt: now,
     approvedBy,
   });
-  await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, ifsc, state: request.state || "Haryana", status: "approved", active: true, approved: true, publicStatus: "approved" });
-  await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state: "Haryana", branchId: partnerId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+  await upsertRecord("branches", branchId, { id: branchId, bankPartnerId: partnerId, bankId: partnerId, branchId, bankName, branchName: branchLocation, branchLocation, bankBranchLocation: branchLocation, city: branchLocation, branchCity: branchLocation, ifscCode: ifsc, branchIfsc: ifsc, bankIfsc: ifsc, ifsc, state, serviceArea: branchLocation, status: "approved", active: true, approved: true, publicStatus: "approved" });
+  await upsertRecord("branchManagers", bankEmail, { email: bankEmail, officialEmail: bankEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, ifsc, ifscCode: ifsc, branchIfsc: ifsc, bankIfsc: ifsc, bankBranchLocation: branchLocation, branchLocation, branchCity: branchLocation, city: branchLocation, state, serviceArea: branchLocation, branchId, name: request.managerName || request.contactPerson, mobile: request.mobile, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
 }
 
-async function activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, partnerId }) {
+async function activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, state, ifsc, partnerId }) {
   const bankUid = await firebaseUidForEmail(bankEmail);
   const bankCanonicalId = bankUid || bankEmail;
   await assertNoActiveIdentityCollision({ uid: bankCanonicalId, email: bankEmail, role: "bank-manager", excludeIds: [bankCanonicalId, bankEmail] });
-  await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+  await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, branchIfsc: ifsc, ifscCode: ifsc, bankIfsc: ifsc, branchLocation, bankBranchLocation: branchLocation, state, status: "active" });
   if (firebaseAdmin) {
     try {
       const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
@@ -395,6 +401,7 @@ async function activateApprovedBankUsers({ request, bankEmail, bankName, branchL
         dealershipId: null,
         bankId: partnerId,
         branchId: partnerId || null,
+        branchIfsc: ifsc,
       });
     } catch {
       // Firebase account may be created later; login will repair claims.
@@ -403,9 +410,9 @@ async function activateApprovedBankUsers({ request, bankEmail, bankName, branchL
   for (const executive of Array.isArray(request.executives) ? request.executives : []) {
     const executiveEmail = normalizeEmail(executive.email || executive.officialEmail);
     if (executiveEmail) {
-      await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, branchCity: branchLocation, bankBranchLocation: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
+      await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, ifsc, ifscCode: ifsc, branchIfsc: ifsc, bankIfsc: ifsc, branchCity: branchLocation, branchLocation, bankBranchLocation: branchLocation, state, serviceArea: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
       await assertNoActiveIdentityCollision({ uid: executiveEmail, email: executiveEmail, role: "loan-executive", excludeIds: [executiveEmail] });
-      await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, status: "active" });
+      await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, branchIfsc: ifsc, ifscCode: ifsc, bankIfsc: ifsc, branchLocation, bankBranchLocation: branchLocation, state, status: "active" });
     }
   }
 }
@@ -424,6 +431,11 @@ async function approveBankBackrefs({ request, bankEmail, bankName, branchLocatio
     bankId: partnerId,
     bankPartnerId: partnerId,
     branchId: partnerId,
+    branchIfsc: partnerId,
+    ifscCode: partnerId,
+    bankIfsc: partnerId,
+    branchLocation,
+    bankBranchLocation: branchLocation,
     approvedAt: now,
     approvedBy,
   };
@@ -448,6 +460,11 @@ async function approveBankBackrefs({ request, bankEmail, bankName, branchLocatio
       bankId: partnerId,
       bankPartnerId: partnerId,
       branchId: partnerId,
+      branchIfsc: partnerId,
+      ifscCode: partnerId,
+      bankIfsc: partnerId,
+      branchLocation,
+      bankBranchLocation: branchLocation,
       approvedAt: now,
       approvedBy,
     });
@@ -464,6 +481,11 @@ async function approveBankBackrefs({ request, bankEmail, bankName, branchLocatio
       bankId: partnerId,
       bankPartnerId: partnerId,
       branchId: partnerId,
+      branchIfsc: partnerId,
+      ifscCode: partnerId,
+      bankIfsc: partnerId,
+      branchLocation,
+      bankBranchLocation: branchLocation,
       approvalRequestId: request.id,
       approvedAt: now,
       approvedBy,
@@ -1199,16 +1221,52 @@ export async function approveBankApproval(req, res, next) {
     const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     if (!bankEmail) return res.status(400).json({ message: "Bank manager email is missing on this approval request" });
     const bankName = String(request.bankName || request.companyName || request.name || "Bank Branch").trim();
-    const branchLocation = String(request.bankBranchLocation || request.branchLocation || request.branchName || request.city || "Primary Branch").trim();
-    const ifsc = String(request.ifsc || request.ifscCode || request.bankIfsc || "").trim().toUpperCase();
+    const branchLocationInput = String(request.bankBranchLocation || request.branchLocation || request.branchName || request.city || "").trim();
+    const ifsc = normalizeIfsc(request.branchIfsc || request.ifsc || request.ifscCode || request.bankIfsc);
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) return res.status(400).json({ message: "Valid IFSC code is required before bank approval" });
+    const location = validateBankLocation({ state: request.state || "Haryana", location: branchLocationInput });
+    if (!location.valid) return res.status(400).json({ message: "Supported state and bank branch location are required before approval" });
+    const existingBranch = await getRecord("branches", ifsc).catch(() => null)
+      || await getRecord("banks", ifsc).catch(() => null)
+      || await getRecord("bankPartners", ifsc).catch(() => null);
+    if (existingBranch && String(existingBranch.id || existingBranch.bankId || "") !== ifsc) {
+      return res.status(409).json({ message: "This IFSC is already registered to another branch.", code: "DUPLICATE_IFSC" });
+    }
+    const branchLocation = location.location;
     const branchId = ifsc || `${bankEmail}:${branchLocation}`;
     const partnerId = branchId;
     const approvedBy = req.user?.email || "super-admin";
-    await materializeApprovedBank({ request, bankEmail, bankName, branchLocation, ifsc, branchId, partnerId, now, approvedBy });
-    await activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, partnerId });
+    await materializeApprovedBank({ request, bankEmail, bankName, branchLocation, state: location.state, ifsc, branchId, partnerId, now, approvedBy });
+    await activateApprovedBankUsers({ request, bankEmail, bankName, branchLocation, state: location.state, ifsc, partnerId });
     const updated = await approveBankBackrefs({ request, bankEmail, bankName, branchLocation, partnerId, now, approvedBy });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
-    await incrementPlatformCounters({ bankPartners: 1, activeBanks: 1 });
+    await incrementPlatformCounters({ bankPartners: 1, activeBanks: 1, totalBranches: 1 });
+    recordMonitoringSignal("BRANCH-CREATED", {
+      collection: "branches",
+      projectionId: ifsc,
+      bankId: partnerId,
+      branchId: ifsc,
+      state: location.state,
+      location: branchLocation,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_CREATED,
+      actor: req.user,
+      data: {
+        publicCatalog: true,
+        bankEvent: {
+          bankId: partnerId,
+          bankName,
+          branchIfsc: ifsc,
+          branchLocation,
+          state: location.state,
+          status: "active",
+        },
+        bankId: partnerId,
+        branchId: ifsc,
+        ifscCode: ifsc,
+      },
+    });
     await createNotification({ type: "bank-approved", title: "Bank branch approved", message: `${bankName} ${branchLocation} branch approved. Login access is active.`, recipientRole: "bank-manager", recipientId: bankEmail, partnerId: partnerId, phoneNumber: request.mobile, meta: { bankName, city: branchLocation, bankBranchLocation: branchLocation } });
     await writeAuditLog({ req, actionType: "BANK_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, bankId: partnerId } });
     clearAdminApprovalCaches();
@@ -1249,7 +1307,8 @@ export async function suspendBankApproval(req, res, next) {
     const request = await getRecord("pendingBankApprovals", req.params.id);
     if (!request) return res.status(404).json({ message: "Bank approval request not found" });
     const now = new Date().toISOString();
-    const bankId = request.email;
+    const bankId = normalizeIfsc(request.branchIfsc || request.ifsc || request.ifscCode || request.bankIfsc) || request.email;
+    const bankEmail = normalizeEmail(request.email || request.officialEmail || request.primaryGoogleEmail || request.managerEmail);
     const updated = await updateRecordIfExists("pendingBankApprovals", request.id, {
       status: "suspended",
       approvalStatus: "suspended",
@@ -1259,8 +1318,12 @@ export async function suspendBankApproval(req, res, next) {
     });
     if (bankId) {
       await upsertRecord("bankPartners", bankId, { status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
-      await upsertRecord("branchManagers", bankId, { email: bankId, status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
-      await upsertRecord("users", bankId, { uid: bankId, email: bankId, role: "bank-manager", approved: true, active: false, accountActive: false, status: "suspended" });
+      await upsertRecord("banks", bankId, { status: "suspended", active: false, approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now });
+      await upsertRecord("branches", bankId, { status: "suspended", active: false, publicStatus: "suspended", suspensionReason: reason, suspendedAt: now });
+      if (bankEmail) {
+        await upsertRecord("branchManagers", bankEmail, { email: bankEmail, bankId, branchId: bankId, status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
+        await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: false, accountActive: false, bankId, branchId: bankId, status: "suspended" });
+      }
     }
     const pendingBankAccount = await firstAdminLookup([
       () => getRecord("pendingBankAccounts", request.email),
@@ -1269,7 +1332,33 @@ export async function suspendBankApproval(req, res, next) {
     ]);
     if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
     await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
-    await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1 });
+    await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1, disabledBranches: 1 });
+    recordMonitoringSignal("BRANCH-DISABLED", {
+      collection: "branches",
+      projectionId: bankId,
+      bankId,
+      branchId: bankId,
+      state: request.state || "",
+      location: request.bankBranchLocation || request.branchLocation || "",
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_DISABLED,
+      actor: req.user,
+      data: {
+        publicCatalog: true,
+        bankEvent: {
+          bankId,
+          bankName: request.bankName || request.companyName || "",
+          branchIfsc: bankId,
+          branchLocation: request.bankBranchLocation || request.branchLocation || "",
+          state: request.state || "",
+          status: "suspended",
+        },
+        bankId,
+        branchId: bankId,
+        ifscCode: bankId,
+      },
+    });
     await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
     res.json({ message: "Bank suspended", request: updated || { ...request, status: "suspended", suspendedAt: now, suspensionReason: reason } });

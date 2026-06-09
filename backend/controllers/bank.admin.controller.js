@@ -14,6 +14,7 @@ import { logInfo } from "../services/logger.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { paginationParams } from "../utils/pagination.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 
 function logReadMetric(event, req, meta = {}) {
   recordMonitoringSignal(event, { endpoint: meta.endpoint || req.route?.path, path: req.originalUrl, ...meta });
@@ -58,6 +59,32 @@ export async function registerBankBranchAdmin(req, res, next) {
 
     // Register bank branch
     const bank = await registerBankBranch(payload, req);
+    recordMonitoringSignal("BRANCH-CREATED", {
+      collection: "branches",
+      projectionId: bank.ifscCode,
+      bankId: bank.bankId || bank.ifscCode,
+      branchId: bank.branchId || bank.ifscCode,
+      state: bank.state,
+      location: bank.branchName || bank.city,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_CREATED,
+      actor: req.user,
+      data: {
+        publicCatalog: bank.approved === true,
+        bankEvent: {
+          bankId: bank.bankId || bank.ifscCode,
+          bankName: bank.bankName,
+          branchIfsc: bank.ifscCode,
+          branchLocation: bank.branchName || bank.city,
+          state: bank.state,
+          status: bank.approvalStatus || bank.status || "pending",
+        },
+        bankId: bank.bankId || bank.ifscCode,
+        branchId: bank.branchId || bank.ifscCode,
+        ifscCode: bank.ifscCode,
+      },
+    });
 
     res.status(201).json({
       success: true,
@@ -86,6 +113,32 @@ export async function approveBankBranchAdmin(req, res, next) {
     }
 
     const bank = await approveBankBranch(bankId, req);
+    recordMonitoringSignal("BRANCH-UPDATED", {
+      collection: "branches",
+      projectionId: bank.ifscCode || bankId,
+      bankId: bank.bankId || bankId,
+      branchId: bank.branchId || bank.ifscCode || bankId,
+      state: bank.state,
+      location: bank.branchName || bank.city,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_UPDATED,
+      actor: req.user,
+      data: {
+        publicCatalog: true,
+        bankEvent: {
+          bankId: bank.bankId || bankId,
+          bankName: bank.bankName,
+          branchIfsc: bank.ifscCode || bankId,
+          branchLocation: bank.branchName || bank.city,
+          state: bank.state,
+          status: "approved",
+        },
+        bankId: bank.bankId || bankId,
+        branchId: bank.branchId || bank.ifscCode || bankId,
+        ifscCode: bank.ifscCode || bankId,
+      },
+    });
 
     // Send notification to bank manager
     if (bank.email) {
@@ -134,6 +187,32 @@ export async function rejectBankBranchAdmin(req, res, next) {
 
     // Deactivate with rejection reason
     const bank = await deactivateBankBranch(bankId, reason, req);
+    recordMonitoringSignal("BRANCH-DISABLED", {
+      collection: "branches",
+      projectionId: bank.ifscCode || bankId,
+      bankId: bank.bankId || bankId,
+      branchId: bank.branchId || bank.ifscCode || bankId,
+      state: bank.state,
+      location: bank.branchName || bank.city,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_DISABLED,
+      actor: req.user,
+      data: {
+        publicCatalog: true,
+        bankEvent: {
+          bankId: bank.bankId || bankId,
+          bankName: bank.bankName,
+          branchIfsc: bank.ifscCode || bankId,
+          branchLocation: bank.branchName || bank.city,
+          state: bank.state,
+          status: "disabled",
+        },
+        bankId: bank.bankId || bankId,
+        branchId: bank.branchId || bank.ifscCode || bankId,
+        ifscCode: bank.ifscCode || bankId,
+      },
+    });
 
     // Send notification
     if (bank.email) {
@@ -310,6 +389,32 @@ export async function updateBankBranchAdmin(req, res, next) {
     }
 
     const bank = await updateBankBranch(bankId, payload, req);
+    recordMonitoringSignal("BRANCH-UPDATED", {
+      collection: "branches",
+      projectionId: bank.ifscCode || bankId,
+      bankId: bank.bankId || bankId,
+      branchId: bank.branchId || bank.ifscCode || bankId,
+      state: bank.state,
+      location: bank.branchName || bank.city,
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BRANCH_UPDATED,
+      actor: req.user,
+      data: {
+        publicCatalog: bank.approved === true && bank.active !== false,
+        bankEvent: {
+          bankId: bank.bankId || bankId,
+          bankName: bank.bankName,
+          branchIfsc: bank.ifscCode || bankId,
+          branchLocation: bank.branchName || bank.city,
+          state: bank.state,
+          status: bank.approvalStatus || bank.status || "updated",
+        },
+        bankId: bank.bankId || bankId,
+        branchId: bank.branchId || bank.ifscCode || bankId,
+        ifscCode: bank.ifscCode || bankId,
+      },
+    });
 
     logInfo("Bank branch updated", {
       bankId,

@@ -1,9 +1,10 @@
-import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
+import { findRecordsByField, getRecord, queryRecords, updateRecord, upsertRecord, deleteRecord } from "./firestore.service.js";
 import { createNotification } from "./notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { logInfo, logWarn, logError } from "./logger.service.js";
 import { cached, clearCachedValue } from "./ttlCache.service.js";
+import { normalizeIfsc, validateBankLocation } from "./bankLocationMaster.service.js";
 
 async function boundedBankSourceRecords(collection) {
   const fields = ["id", "bankId", "ifscCode", "ifsc", "bankIfsc", "bankName", "name", "companyName", "branchName", "branchLocation", "bankBranchLocation", "city", "branchCity", "state", "contactPerson", "managerName", "phone", "mobile", "email", "officialEmail", "approved", "active", "status", "approvalStatus", "approvedAt", "createdAt", "updatedAt"];
@@ -25,22 +26,34 @@ async function boundedBankSourceRecords(collection) {
  * @returns {Promise<{valid: boolean, error?: string}>}
  */
 export async function validateIFSCCode(ifscCode, excludeBankId = null) {
-  const normalized = String(ifscCode || "").trim().toUpperCase();
+  const normalized = normalizeIfsc(ifscCode);
   
   // IFSC format: 4 letters + 0 + 6 digits = 11 characters total
   if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(normalized)) {
     return { valid: false, error: "IFSC code format invalid. Must be 11 characters: 4 letters + 0 + 6 alphanumeric characters (e.g., HDFC0001234)" };
   }
 
-  // Check uniqueness
-  const existingBanks = await queryRecords("banks", {
-    where: [{ field: "ifscCode", value: normalized }],
-    maxLimit: 1,
-  });
-
-  if (existingBanks.data.length > 0) {
-    const existing = existingBanks.data[0];
-    if (!excludeBankId || existing.id !== excludeBankId) {
+  const allowedExistingIds = new Set([String(excludeBankId || "").trim()].filter(Boolean));
+  const directMatches = await Promise.all([
+    getRecord("banks", normalized).catch(() => null),
+    getRecord("branches", normalized).catch(() => null),
+    getRecord("bankPartners", normalized).catch(() => null),
+    getRecord("pendingBankApprovals", normalized).catch(() => null),
+  ]);
+  const fieldMatches = await Promise.all([
+    findRecordsByField("banks", "ifscCode", normalized, 3).catch(() => []),
+    findRecordsByField("branches", "ifscCode", normalized, 3).catch(() => []),
+    findRecordsByField("bankPartners", "ifscCode", normalized, 3).catch(() => []),
+    findRecordsByField("pendingBankApprovals", "ifsc", normalized, 3).catch(() => []),
+  ]);
+  const existingRows = [...directMatches.filter(Boolean), ...fieldMatches.flat()];
+  for (const existing of existingRows) {
+    const status = String(existing.status || existing.approvalStatus || "").toLowerCase();
+    if (["rejected", "deleted", "removed"].includes(status)) continue;
+    const ids = [existing.id, existing.bankId, existing.branchId, existing.bankPartnerId, existing.ifscCode, existing.ifsc, existing.branchIfsc]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (!ids.some((id) => allowedExistingIds.has(id))) {
       return { valid: false, error: `IFSC code ${normalized} is already registered` };
     }
   }
@@ -52,14 +65,21 @@ export async function validateIFSCCode(ifscCode, excludeBankId = null) {
  * Create or register a new bank branch
  */
 export async function registerBankBranch(payload, req = null) {
-  const ifscCode = String(payload.ifscCode || "").trim().toUpperCase();
+  const ifscCode = normalizeIfsc(payload.ifscCode);
   const bankName = String(payload.bankName || "").trim();
-  const branchName = String(payload.branchName || "").trim();
+  const location = validateBankLocation({ state: payload.state || "Haryana", location: payload.city || payload.branchName });
+  const branchName = location.location || String(payload.branchName || "").trim();
 
   // Validate required fields
   if (!ifscCode) throw new Error("IFSC code is required");
   if (!bankName) throw new Error("Bank name is required");
   if (!branchName) throw new Error("Branch name is required");
+  if (!location.valid) {
+    const error = new Error("Supported state and bank branch location are required");
+    error.status = 400;
+    error.code = "INVALID_BRANCH_LOCATION";
+    throw error;
+  }
 
   // Validate IFSC format and uniqueness
   const ifscValidation = await validateIFSCCode(ifscCode);
@@ -71,27 +91,45 @@ export async function registerBankBranch(payload, req = null) {
   }
 
   const now = new Date().toISOString();
-  const bankId = `bank-${ifscCode}-${Date.now()}`;
+  const bankId = ifscCode;
 
   const bankData = {
+    id: bankId,
     bankId,
+    branchId: bankId,
+    bankBranchId: bankId,
     ifscCode,
+    ifsc: ifscCode,
+    bankIfsc: ifscCode,
+    branchIfsc: ifscCode,
     bankName,
     branchName,
+    branchLocation: branchName,
+    bankBranchLocation: branchName,
     address: String(payload.address || "").trim(),
     contactPerson: String(payload.contactPerson || "").trim(),
     phone: String(payload.phone || "").trim(),
     email: String(payload.email || "").trim(),
-    city: String(payload.city || "").trim(),
-    state: String(payload.state || "").trim(),
+    city: branchName,
+    branchCity: branchName,
+    state: location.state,
+    serviceArea: branchName,
     active: payload.active !== false,
     approved: payload.approved === true ? true : false, // Requires admin approval
+    status: payload.approved === true ? "active" : "pending",
+    approvalStatus: payload.approved === true ? "approved" : "pending",
     registeredAt: now,
     approvedAt: payload.approved === true ? now : null,
     updatedAt: now,
   };
 
-  const bank = await createRecord("banks", bankData);
+  const bank = await upsertRecord("banks", bankId, bankData);
+  await upsertRecord("branches", bankId, {
+    ...bankData,
+    sourceCollection: "banks",
+    sourceId: bankId,
+    publicStatus: bankData.approvalStatus,
+  });
 
   // Audit log
   if (req) {
@@ -113,6 +151,7 @@ export async function registerBankBranch(payload, req = null) {
     approved: bank.approved,
   });
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank:active-branches:v2");
   clearCachedValue("bank-branch-catalog:available:");
 
   return bank;
@@ -133,8 +172,57 @@ export async function approveBankBranch(bankId, req = null) {
   const updated = await updateRecord("banks", bankId, {
     approved: true,
     active: true,
+    status: "active",
+    approvalStatus: "approved",
     approvedAt: now,
     updatedAt: now,
+  });
+  await upsertRecord("branches", bankId, {
+    id: bankId,
+    bankId,
+    branchId: bankId,
+    bankBranchId: bankId,
+    ifscCode: bank.ifscCode || bankId,
+    ifsc: bank.ifscCode || bankId,
+    bankIfsc: bank.ifscCode || bankId,
+    branchIfsc: bank.ifscCode || bankId,
+    bankName: bank.bankName,
+    branchName: bank.branchName,
+    branchLocation: bank.branchLocation || bank.branchName || bank.city || "",
+    bankBranchLocation: bank.bankBranchLocation || bank.branchName || bank.city || "",
+    city: bank.city || bank.branchName || "",
+    branchCity: bank.branchCity || bank.branchName || bank.city || "",
+    state: bank.state || "Haryana",
+    serviceArea: bank.serviceArea || bank.branchName || bank.city || "",
+    approved: true,
+    active: true,
+    status: "approved",
+    approvalStatus: "approved",
+    publicStatus: "approved",
+    approvedAt: now,
+  });
+  await upsertRecord("bankPartners", bankId, {
+    id: bankId,
+    bankId,
+    bankPartnerId: bankId,
+    branchId: bankId,
+    ifscCode: bank.ifscCode || bankId,
+    ifsc: bank.ifscCode || bankId,
+    bankIfsc: bank.ifscCode || bankId,
+    branchIfsc: bank.ifscCode || bankId,
+    bankName: bank.bankName,
+    branchName: bank.branchName,
+    branchLocation: bank.branchLocation || bank.branchName || bank.city || "",
+    bankBranchLocation: bank.bankBranchLocation || bank.branchName || bank.city || "",
+    city: bank.city || bank.branchName || "",
+    state: bank.state || "Haryana",
+    email: bank.email || "",
+    officialEmail: bank.email || "",
+    approved: true,
+    active: true,
+    status: "active",
+    approvalStatus: "approved",
+    approvedAt: now,
   });
 
   // Audit log
@@ -157,6 +245,7 @@ export async function approveBankBranch(bankId, req = null) {
     bankName: bank.bankName,
   });
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank:active-branches:v2");
   clearCachedValue("bank-branch-catalog:available:");
 
   return updated;
@@ -176,7 +265,24 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
   const now = new Date().toISOString();
   const updated = await updateRecord("banks", bankId, {
     active: false,
+    status: "disabled",
+    approvalStatus: "disabled",
     updatedAt: now,
+    deactivationReason: reason,
+    deactivatedAt: now,
+  });
+  await upsertRecord("branches", bankId, {
+    active: false,
+    status: "disabled",
+    approvalStatus: "disabled",
+    publicStatus: "disabled",
+    deactivationReason: reason,
+    deactivatedAt: now,
+  });
+  await upsertRecord("bankPartners", bankId, {
+    active: false,
+    status: "disabled",
+    approvalStatus: "disabled",
     deactivationReason: reason,
     deactivatedAt: now,
   });
@@ -200,6 +306,7 @@ export async function deactivateBankBranch(bankId, reason = "", req = null) {
     reason,
   });
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank:active-branches:v2");
   clearCachedValue("bank-branch-catalog:available:");
 
   return updated;
@@ -427,6 +534,19 @@ export async function updateBankBranch(bankId, payload, req = null) {
   };
 
   const updated = await updateRecord("banks", bankId, updateData);
+  await upsertRecord("branches", bankId, {
+    ...updateData,
+    branchLocation: updateData.branchName || bank.branchLocation || bank.branchName || "",
+    bankBranchLocation: updateData.branchName || bank.bankBranchLocation || bank.branchName || "",
+    branchCity: updateData.city || updateData.branchName || bank.branchCity || bank.city || "",
+    serviceArea: updateData.city || updateData.branchName || bank.serviceArea || bank.city || "",
+  });
+  await upsertRecord("bankPartners", bankId, {
+    ...updateData,
+    branchLocation: updateData.branchName || bank.branchLocation || bank.branchName || "",
+    bankBranchLocation: updateData.branchName || bank.bankBranchLocation || bank.branchName || "",
+    serviceArea: updateData.city || updateData.branchName || bank.serviceArea || bank.city || "",
+  });
 
   // Audit log
   if (req) {
@@ -441,6 +561,7 @@ export async function updateBankBranch(bankId, payload, req = null) {
     });
   }
   clearCachedValue("bank:active-branches");
+  clearCachedValue("bank:active-branches:v2");
   clearCachedValue("bank-branch-catalog:available:");
 
   return updated;

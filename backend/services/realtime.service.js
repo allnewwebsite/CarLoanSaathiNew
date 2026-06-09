@@ -28,6 +28,12 @@ export const REALTIME_EVENTS = {
   DOCUMENT_REQUESTED: "DOCUMENT_REQUESTED",
   LEAD_APPROVED: "LEAD_APPROVED",
   LEAD_DISBURSED: "LEAD_DISBURSED",
+  BANK_CREATED: "BANK_CREATED",
+  BANK_UPDATED: "BANK_UPDATED",
+  BANK_DISABLED: "BANK_DISABLED",
+  BRANCH_CREATED: "BRANCH_CREATED",
+  BRANCH_UPDATED: "BRANCH_UPDATED",
+  BRANCH_DISABLED: "BRANCH_DISABLED",
   NOTIFICATION_CREATED: "NOTIFICATION_CREATED",
   FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
   SALESPERSON_CHANGED: "SALESPERSON_CHANGED",
@@ -159,6 +165,7 @@ function lightweightLeadPatch(lead = {}, data = {}) {
 function eventKind(eventType = "") {
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
+  if (eventType.includes("BANK") || eventType.includes("BRANCH")) return "bank";
   if (eventType.includes("SALESPERSON") || eventType.includes("FINANCE_MANAGER")) return "staff";
   return "lead";
 }
@@ -195,6 +202,7 @@ export function consumeRealtimeTicket(ticket = "") {
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
   if (user.role === "super-admin") return true;
+  if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm-sm"].includes(user.role)) return true;
   const scopes = event.scopes || {};
   const userEmail = scope(user.email || user.uid);
   if (["finance-desk", "gm-sm"].includes(user.role)) {
@@ -368,6 +376,8 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     tenantId: scopes.dealershipIds[0] || scopes.bankIds[0] || "platform",
     branchId: scopes.branchIds?.[0] || "",
     previousStatus: data.previousStatus || "",
+    bankEvent: data.bankEvent || null,
+    publicCatalog: Boolean(data.publicCatalog),
     documentId: document?.id || data.documentId || "",
     documentType: document?.type || document?.documentType || data.documentType || "",
     remarkType: data.remarkType || "",

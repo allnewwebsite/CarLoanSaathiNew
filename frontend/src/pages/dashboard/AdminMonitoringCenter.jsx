@@ -114,6 +114,7 @@ export function AdminMonitoringCenter() {
   const realtime = snapshot?.realtimeMonitoring || {};
   const cache = snapshot?.cacheMonitoring || {};
   const queue = snapshot?.queueMonitoring || {};
+  const branches = snapshot?.branchMonitoring || {};
   const alerts = snapshot?.systemAlerts || [];
 
   const projectionCollections = useMemo(() => rows(projection.collections || [], (item) => [
@@ -144,6 +145,22 @@ export function AdminMonitoringCenter() {
     yesNo(item.paused),
     yesNo(item.workerConnected),
   ]), [queue.queues]);
+
+  const branchStateRows = useMemo(() => rows(branches.branchesByState || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.updated),
+    valueOrDash(item.disabled),
+  ]), [branches.branchesByState]);
+
+  const branchLocationRows = useMemo(() => rows(branches.branchesByLocation || [], (item) => [
+    item.key,
+    valueOrDash(item.count),
+    valueOrDash(item.created),
+    valueOrDash(item.updated),
+    valueOrDash(item.disabled),
+  ]), [branches.branchesByLocation]);
 
   return (
     <div className="space-y-6">
@@ -214,6 +231,34 @@ export function AdminMonitoringCenter() {
           loading={loading}
           virtualizeAt={20}
         />
+      </Section>
+
+      <Section title="Bank Branch Monitoring" subtitle="IFSC-first branch telemetry from counters and realtime branch events.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <MetricTile label="Total Banks" value={branches.totalBanks || 0} />
+          <MetricTile label="Total Branches" value={branches.totalBranches || 0} />
+          <MetricTile label="Disabled Branches" value={branches.disabledBranches || 0} />
+          <MetricTile label="IFSC Duplicates" value={branches.ifscDuplicates || 0} />
+          <MetricTile label="Realtime Sync Events" value={branches.realtimeSyncEvents || 0} />
+          <MetricTile label="Branch Created" value={branches.branchCreationEvents || 0} />
+          <MetricTile label="Branch Updated" value={branches.branchUpdateEvents || 0} />
+        </div>
+        <div className="grid gap-3 xl:grid-cols-2">
+          <OperationalTable
+            title="Branches By State"
+            headers={["State", "Events", "Created", "Updated", "Disabled"]}
+            rows={branchStateRows}
+            loading={loading}
+            virtualizeAt={20}
+          />
+          <OperationalTable
+            title="Branches By Location"
+            headers={["Location", "Events", "Created", "Updated", "Disabled"]}
+            rows={branchLocationRows}
+            loading={loading}
+            virtualizeAt={30}
+          />
+        </div>
       </Section>
 
       <Section title="Projection Health">

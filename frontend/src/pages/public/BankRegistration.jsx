@@ -5,6 +5,7 @@ import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebas
 import { useAuth } from "../../context/AuthContext.jsx";
 import { auth } from "../../services/firebase.js";
 import { storage } from "../../services/firebaseStorage.js";
+import { bankStates, locationsForState } from "../../data/bankLocationMaster.js";
 
 const banks = [
   "State Bank of India (SBI)",
@@ -44,7 +45,6 @@ const banks = [
   "Yes Bank",
   "Other",
 ];
-const branchLocations = ["Bahadurgarh", "Jhajjar", "Rohtak", "Gurugram", "Sonipat", "Panipat", "Karnal", "Hisar", "Jind", "Rewari"];
 const executiveCounts = ["1", "2", "3", "5", "10", "15", "20", "25+", "50+"];
 const loanCapacities = ["10+", "25+", "50+", "100+", "250+", "500+", "1000+"];
 const benefits = ["Verified dealership leads", "Branch-wise assignment", "SLA management", "Executive dashboards", "Real-time approvals", "Faster disbursement"];
@@ -73,7 +73,10 @@ const initialForm = {
 };
 
 function fieldError(form) {
+  if (!form.bankName) return "Select a bank.";
   if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc)) return "Enter a valid IFSC code.";
+  if (!form.state) return "Select a state.";
+  if (!form.branchLocation) return "Select a branch service area.";
   if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(form.gstin)) return "Enter a valid GSTIN number.";
   if (!/^[6-9][0-9]{9}$/.test(form.managerMobile)) return "Enter a valid 10 digit manager mobile number.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Enter a valid official bank email.";
@@ -172,8 +175,13 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
   const bankUid = auth.currentUser?.uid || session.uid || session.email || form.email || "bank";
   const bankEmail = auth.currentUser?.email || session.email || form.email || authEmail;
   const hasEmailAccount = Boolean(auth.currentUser || session.email);
+  const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
-  const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const update = (field, value) => setForm((current) => {
+    const next = { ...current, [field]: value };
+    if (field === "state") next.branchLocation = "";
+    return next;
+  });
   const setUpload = (type, value) => setUploads((current) => ({ ...current, [type]: typeof value === "function" ? value(current[type] || {}) : value }));
 
   const startEmailAccount = async () => {
@@ -199,7 +207,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
     event.preventDefault();
     setError("");
     if (!hasEmailAccount || !bankEmail) return setError("Create an email/password account before submitting bank registration.");
-    const validation = fieldError({ ...form, email: bankEmail, state: "Haryana" });
+    const validation = fieldError({ ...form, email: bankEmail });
     if (validation) return setError(validation);
     setLoading(true);
     try {
@@ -211,6 +219,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           bankName: form.bankName,
           ifsc: form.ifsc,
           ifscCode: form.ifsc,
+          branchIfsc: form.ifsc,
           gstin: form.gstin,
           branchName: form.branchLocation,
           branchLocation: form.branchLocation,
@@ -374,8 +383,8 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
             <label className="text-sm font-medium text-slate-700">Name of Bank *<select required className="field mt-2" value={form.bankName} onChange={(event) => update("bankName", event.target.value)}><option value="">Select bank</option>{banks.map((bank) => <option key={bank}>{bank}</option>)}</select></label>
             <label className="text-sm font-medium text-slate-700">Branch IFSC Code *<input required className="field mt-2 uppercase" value={form.ifsc} onChange={(event) => update("ifsc", event.target.value.toUpperCase())} /></label>
             <label className="text-sm font-medium text-slate-700">GSTIN Number *<input required className="field mt-2 uppercase" value={form.gstin} onChange={(event) => update("gstin", event.target.value.toUpperCase())} /></label>
-            <label className="text-sm font-medium text-slate-700">Bank Branch Location *<select required className="field mt-2" value={form.branchLocation} onChange={(event) => update("branchLocation", event.target.value)}><option value="">Select location</option>{branchLocations.map((location) => <option key={location}>{location}</option>)}</select></label>
-            <label className="text-sm font-medium text-slate-700">State *<input required disabled className="field mt-2 bg-slate-50 text-slate-600" value="Haryana" /></label>
+            <label className="text-sm font-medium text-slate-700">State *<select required className="field mt-2" value={form.state} onChange={(event) => update("state", event.target.value)}><option value="">Select state</option>{bankStates.map((state) => <option key={state}>{state}</option>)}</select></label>
+            <label className="text-sm font-medium text-slate-700">Bank Branch Location *<select required className="field mt-2" value={form.branchLocation} onChange={(event) => update("branchLocation", event.target.value)}><option value="">Select location</option>{locationOptions.map((location) => <option key={location}>{location}</option>)}</select></label>
           </div>
         </section>
 
