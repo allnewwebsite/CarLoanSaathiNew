@@ -89,7 +89,7 @@ async function dealerAccountIsActive(user, resolvedAccount = null) {
   const dealership = await tracedCached(
     "dealership_lookup",
     `auth:dealership:${dealershipId}`,
-    15000,
+    Number(process.env.AUTH_DEALERSHIP_CACHE_TTL_MS || 5 * 60 * 1000),
     async () => await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId),
     { summaryField: "dealershipLookupDurationMs" },
   );
@@ -193,18 +193,23 @@ export async function authenticate(req, res, next) {
       return res.status(401).json({ message: "Authentication token is required" });
     }
 
-    if (firebaseAdmin) {
-      try {
-        await firebaseAdmin.auth().verifyIdToken(token);
-        observeAuthFailure(req, "jwt_required");
-        return res.status(401).json({ message: "Backend session token is required", code: "JWT_REQUIRED" });
-      } catch {
-        // Fall through to JWT for service-issued tokens.
+    const jwtStartedAt = Date.now();
+    let tokenUser;
+    try {
+      tokenUser = jwt.verify(token, jwtSecret());
+    } catch (jwtError) {
+      if (firebaseAdmin) {
+        try {
+          await firebaseAdmin.auth().verifyIdToken(token);
+          observeAuthFailure(req, "jwt_required");
+          return res.status(401).json({ message: "Backend session token is required", code: "JWT_REQUIRED" });
+        } catch {
+          // Not a valid Firebase token either.
+        }
       }
+      throw jwtError;
     }
-
-    const tokenUser = jwt.verify(token, jwtSecret());
-    logRealtimeTicketStep("jwt_verify", Date.now() - authStartedAt);
+    logRealtimeTicketStep("jwt_verify", Date.now() - jwtStartedAt);
     const email = String(tokenUser.email || tokenUser.uid || "").trim().toLowerCase();
     if (!email) {
       observeAuthFailure(req, "invalid_session_email");

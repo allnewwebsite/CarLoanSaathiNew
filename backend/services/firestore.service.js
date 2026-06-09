@@ -4,6 +4,7 @@ import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQuery
 import { logInfo, logWarn } from "./logger.service.js";
 import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, setRequestCachedValue } from "./requestScope.service.js";
 import { logRealtimeTicketStep } from "./realtimeTicketLatency.service.js";
+import { clearCachedValue } from "./ttlCache.service.js";
 import crypto from "node:crypto";
 
 const memoryStore = {
@@ -207,8 +208,26 @@ function clearCollectionReadCache(collection) {
   clearRequestCachedValue(collectionCachePrefix(collection));
 }
 
+function clearAuthCacheForWrite(collection, id = "") {
+  if (collection === "users") {
+    clearCachedValue("identity:candidates:");
+    clearCachedValue("auth:identity:");
+    clearCachedValue("auth:verified-identity:");
+    clearCachedValue("auth:firebase-email-verified:");
+  }
+  if (collection === "userSessions") {
+    if (id) clearCachedValue(`auth:session:${id}`);
+    else clearCachedValue("auth:session:");
+  }
+  if (collection === "dealerships" || collection === "approvedDealerships") {
+    if (id) clearCachedValue(`auth:dealership:${String(id).trim().toLowerCase()}`);
+    else clearCachedValue("auth:dealership:");
+  }
+}
+
 export async function createRecord(collection, payload) {
   clearCollectionReadCache(collection);
+  clearAuthCacheForWrite(collection, payload?.id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const record = { id: `${collection}-${Date.now()}`, ...cleanPayload, createdAt: new Date().toISOString() };
   if (!firestore) {
@@ -743,6 +762,7 @@ export async function getRecord(collection, id) {
 
 export async function updateRecord(collection, id, payload) {
   clearCollectionReadCache(collection);
+  clearAuthCacheForWrite(collection, id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const update = { ...cleanPayload, updatedAt: new Date().toISOString() };
   if (!firestore) {
@@ -768,6 +788,7 @@ export async function updateRecord(collection, id, payload) {
 
 export async function upsertRecord(collection, id, payload) {
   clearCollectionReadCache(collection);
+  clearAuthCacheForWrite(collection, id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const update = { ...cleanPayload, updatedAt: new Date().toISOString() };
   if (!firestore) {

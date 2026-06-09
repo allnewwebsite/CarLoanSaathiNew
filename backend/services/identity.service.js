@@ -50,22 +50,17 @@ function identityCacheKey({ uid = "", email = "" } = {}) {
 async function loadIdentityCandidates({ uid = "", email = "" } = {}) {
   const normalizedEmail = normalizeIdentityEmail(email);
   const normalizedUid = String(uid || "").trim();
-  const candidates = [];
+  const lookups = [];
   if (normalizedUid) {
-    const byUid = await getRecord("users", normalizedUid).catch(() => null);
-    if (byUid) candidates.push(byUid);
+    lookups.push(getRecord("users", normalizedUid).catch(() => null));
+    lookups.push(findRecordsByField("users", "uid", normalizedUid, 5).catch(() => []));
   }
   if (normalizedEmail) {
-    const byEmail = await getRecord("users", normalizedEmail).catch(() => null);
-    if (byEmail) candidates.push(byEmail);
-
-    const emailMatches = await findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []);
-    candidates.push(...emailMatches);
+    lookups.push(getRecord("users", normalizedEmail).catch(() => null));
+    lookups.push(findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []));
   }
-  if (normalizedUid) {
-    const uidMatches = await findRecordsByField("users", "uid", normalizedUid, 5).catch(() => []);
-    candidates.push(...uidMatches);
-  }
+  const results = await Promise.all(lookups);
+  const candidates = results.flat().filter(Boolean);
   return uniqueRecords(candidates.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
 }
 
@@ -110,11 +105,6 @@ function authenticatedIdentityCacheKey({ uid = "", email = "" } = {}) {
 async function loadAuthenticatedIdentityCandidates({ uid = "", email = "" } = {}) {
   const normalizedEmail = normalizeIdentityEmail(email);
   const normalizedUid = String(uid || "").trim();
-  if (normalizedEmail) {
-    const matches = await findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []);
-    const matched = uniqueRecords(matches.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
-    if (matched.length) return matched;
-  }
   return loadIdentityCandidates({ uid: normalizedUid, email: normalizedEmail });
 }
 
@@ -153,6 +143,7 @@ export function clearIdentityCaches({ uid = "", email = "", sessionId = "" } = {
   clearCachedValue("identity:candidates:");
   clearCachedValue("auth:identity:");
   clearCachedValue("auth:verified-identity:");
+  clearCachedValue("auth:dealership:");
   if (normalizedEmail) clearCachedValue(`auth:firebase-email-verified:${normalizedEmail}`);
   if (sessionId) clearCachedValue(`auth:session:${sessionId}`);
 }
