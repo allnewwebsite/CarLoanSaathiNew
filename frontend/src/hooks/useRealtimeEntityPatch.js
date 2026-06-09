@@ -16,19 +16,23 @@ function patchedLeadFromEvent(event = {}) {
   const leadId = event.leadId || lead.leadId || lead.id;
   if (!leadId && !event.caseId) return null;
   const updatedAt = event.timestamp || lead.updatedAt || new Date().toISOString();
+  const status = event.status || event.data?.status || lead.status || "";
   return {
     ...lead,
     id: lead.id || lead.leadId || leadId,
     leadId: lead.leadId || lead.id || leadId,
     caseId: lead.caseId || event.caseId || "",
-    status: event.status || lead.status || "",
+    status,
     dealershipId: lead.dealershipId || event.dealershipId || "",
     bankId: lead.bankId || event.bankId || "",
     assignedExecutiveId: lead.assignedExecutiveId || event.executiveId || "",
     financeManagerId: lead.financeManagerId || event.financeManagerId || "",
     salespersonId: lead.salespersonId || event.salespersonId || "",
     updatedAt,
-    statusUpdatedAt: event.status ? updatedAt : lead.statusUpdatedAt,
+    statusUpdatedAt: status ? updatedAt : lead.statusUpdatedAt,
+    realtimeUpdatedAt: updatedAt,
+    documentUpdatedAt: (event.eventType || event.event) === "DOCUMENT_UPLOADED" ? updatedAt : lead.documentUpdatedAt,
+    remarksUpdatedAt: (event.eventType || event.event) === "LEAD_REMARK_ADDED" ? updatedAt : lead.remarksUpdatedAt,
   };
 }
 
@@ -45,8 +49,9 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
       if (!["lead", "document"].includes(detail.kind)) return;
       const patch = patchedLeadFromEvent(detail);
       if (!patch) return;
+      const eventType = detail.eventType || detail.event;
       setRows((current) => {
-        if (!Array.isArray(current) || !current.length) return current;
+        if (!Array.isArray(current)) return current;
         let changed = false;
         const next = current
           .map((row) => {
@@ -55,6 +60,9 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
             return { ...row, ...patch };
           })
           .filter((row) => !sameLead(row, patch) || statusMatchesFilter(row, statusFilter));
+        if (!changed && eventType === "LEAD_CREATED" && statusMatchesFilter(patch, statusFilter)) {
+          return [patch, ...current].slice(0, Math.max(current.length || 10, 10));
+        }
         return changed ? next : current;
       });
     };

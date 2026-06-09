@@ -17,6 +17,7 @@ import { getLeadDetailProjection, queryLeadProjectionForUser, syncLeadProjection
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -1479,6 +1480,10 @@ export async function updateAdminLeadStatus(req, res, next) {
     const lead = await updateRecord("leads", req.params.id, { status });
     clearLeadMutationCaches(req.params.id);
     syncLeadProjectionSoon(lead);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead, actor: req.user, data: { status, previousStatus: existing.status } });
+    if (req.body.adminRemarks) {
+      publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_REMARK_ADDED, lead, actor: req.user, data: { remarkType: "admin", status } });
+    }
     await applyAdminLeadStatusSideEffects({ req, existing, lead, status });
     res.json({ message: "Lead status updated", lead });
   } catch (error) {

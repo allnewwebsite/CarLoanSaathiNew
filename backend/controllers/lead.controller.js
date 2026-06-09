@@ -362,7 +362,7 @@ export async function updateLeadStatus(req, res, next) {
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
     clearLeadMutationCaches(req.params.id);
     await syncLeadProjection(lead);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_CHANGED, lead, actor: req.user, data: { status: nextStatus, previousStatus: existing.status } });
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead, actor: req.user, data: { status: nextStatus, previousStatus: existing.status } });
     // Branch tie-up workflow does not perform automatic reassignment on rejection.
     await applyLeadStatusSideEffects({ req, existing, lead, nextStatus });
     res.json(lead);

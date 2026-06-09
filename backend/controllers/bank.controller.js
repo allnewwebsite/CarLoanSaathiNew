@@ -1572,7 +1572,7 @@ export async function acceptBankLead(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_ACCEPTED, lead: updated, actor: req.user, data: { status: nextStatus } });
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead: updated, actor: req.user, data: { status: nextStatus, previousStatus: lead.status } });
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "leadId",
@@ -1612,7 +1612,7 @@ export async function rejectBankLead(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_REJECTED, lead: updated, actor: req.user, data: { status: nextStatus } });
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead: updated, actor: req.user, data: { status: nextStatus, previousStatus: lead.status } });
     await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
@@ -1814,13 +1814,7 @@ export async function updateBankLeadStatus(req, res, next) {
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
     publishRealtimeEvent({
-      eventType: normalizedStatus === LEAD_STATUSES.DISBURSED
-        ? REALTIME_EVENTS.LEAD_DISBURSED
-        : normalizedStatus === LEAD_STATUSES.APPROVED
-          ? REALTIME_EVENTS.LEAD_APPROVED
-          : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
-            ? REALTIME_EVENTS.DOCUMENT_REQUESTED
-            : REALTIME_EVENTS.LEAD_STATUS_CHANGED,
+      eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED,
       lead: updated,
       actor: req.user,
       data: { status: normalizedStatus, previousStatus: lead.status },
@@ -1851,6 +1845,12 @@ export async function updateBankLeadRemarks(req, res, next) {
       leadSnapshot: lead,
     });
     await writeAuditLog({ req, actionType: "REMARKS_CHANGE", newValue: remarks, leadId: lead.id });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.LEAD_REMARK_ADDED,
+      lead: updated,
+      actor: req.user,
+      data: { remarkType: "bank", status: updated.status },
+    });
     res.json({ message: "Remarks saved", lead: updated });
   } catch (error) {
     next(error);

@@ -6,6 +6,13 @@ let active = false;
 let reconnectTimer = 0;
 let lastEventId = "";
 
+const PHASE_ONE_EVENTS = new Set([
+  "LEAD_CREATED",
+  "LEAD_STATUS_UPDATED",
+  "LEAD_REMARK_ADDED",
+  "DOCUMENT_UPLOADED",
+]);
+
 function leadUrlForEvent(event = {}) {
   if (event.kind === "document") return "/documents";
   if (event.kind === "notification") return "/notifications";
@@ -20,7 +27,8 @@ function mutationPayload(event = {}) {
     url,
     canonicalUrl: event.kind === "lead" || event.kind === "document" ? "/lead-mutation" : url,
     kind: event.kind === "notification" ? "notification" : event.kind === "staff" ? "staff" : "lead",
-    eventType: event.eventType,
+    event: event.event || event.eventType,
+    eventType: event.eventType || event.event,
     leadId: event.leadId || event.lead?.leadId || "",
     caseId: event.caseId || event.lead?.caseId || "",
     status: event.status || event.lead?.status || "",
@@ -38,6 +46,7 @@ function mutationPayload(event = {}) {
 }
 
 function invalidateRealtimeCaches(event = {}) {
+  if (PHASE_ONE_EVENTS.has(event.eventType || event.event)) return;
   if (event.kind === "notification") {
     invalidateGetCache({ prefix: "/notifications", purge: true });
     return;
@@ -64,8 +73,14 @@ function dispatchRealtimeEvent(event = {}) {
   if (typeof window === "undefined") return;
   lastEventId = String(event.id || lastEventId || "");
   invalidateRealtimeCaches(event);
+  if (!event.leadId && !event.caseId && PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
+    console.info("SSE_EVENT_IGNORED", { tag: "SSE_EVENT_IGNORED", eventType: event.eventType || event.event, reason: "missing_lead_identity" });
+    return;
+  }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
-  window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
+  if (!PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
+    window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
+  }
 }
 
 function closeSource() {

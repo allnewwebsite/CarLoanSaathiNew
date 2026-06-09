@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import IORedis from "ioredis";
-import { logWarn } from "./logger.service.js";
+import { logInfo, logWarn } from "./logger.service.js";
 import { logRealtimeTicketStep, measureRealtimeTicketSync } from "./realtimeTicketLatency.service.js";
 import { recordRealtimeMetric } from "./monitoringCenter.service.js";
 
@@ -17,7 +17,9 @@ let redisReady = false;
 
 export const REALTIME_EVENTS = {
   LEAD_CREATED: "LEAD_CREATED",
-  LEAD_STATUS_CHANGED: "LEAD_STATUS_CHANGED",
+  LEAD_STATUS_UPDATED: "LEAD_STATUS_UPDATED",
+  LEAD_STATUS_CHANGED: "LEAD_STATUS_UPDATED",
+  LEAD_REMARK_ADDED: "LEAD_REMARK_ADDED",
   LEAD_ACCEPTED: "LEAD_ACCEPTED",
   LEAD_REJECTED: "LEAD_REJECTED",
   EXECUTIVE_ASSIGNED: "EXECUTIVE_ASSIGNED",
@@ -30,6 +32,13 @@ export const REALTIME_EVENTS = {
   FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
   SALESPERSON_CHANGED: "SALESPERSON_CHANGED",
 };
+
+const PHASE_ONE_EVENTS = new Set([
+  REALTIME_EVENTS.LEAD_CREATED,
+  REALTIME_EVENTS.LEAD_STATUS_UPDATED,
+  REALTIME_EVENTS.LEAD_REMARK_ADDED,
+  REALTIME_EVENTS.DOCUMENT_UPLOADED,
+]);
 
 function cleanTickets() {
   const now = Date.now();
@@ -87,7 +96,8 @@ function leadRealtimeScopes(lead = {}) {
   const dealershipIds = unique([lead.dealershipId, lead.dealershipEmail, lead.dealerEmail, lead.createdBy]);
   const bankIds = unique([lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.assignedBankName]);
   const executiveIds = unique([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.updatedByExecutiveId]);
-  return { dealershipIds, bankIds, executiveIds };
+  const branchIds = unique([lead.branchId, lead.bankBranchId, lead.assignedBankIfsc, lead.ifscCode, lead.bankIfsc, lead.bankBranchCity, lead.branchCity]);
+  return { dealershipIds, bankIds, executiveIds, branchIds };
 }
 
 function notificationRealtimeScopes(notification = {}) {
@@ -99,10 +109,9 @@ function notificationRealtimeScopes(notification = {}) {
   };
 }
 
-function buildLeadSummary(lead = {}) {
+function lightweightLeadPatch(lead = {}, data = {}) {
   if (!lead?.id) return null;
   return {
-    id: lead.id,
     leadId: lead.id,
     caseId: lead.caseId || "",
     status: lead.status || "",
@@ -111,10 +120,9 @@ function buildLeadSummary(lead = {}) {
     bankId: lead.bankId || lead.assignedBankId || lead.assignedPartnerId || "",
     assignedBankName: lead.assignedBankName || lead.bankName || "",
     assignedExecutiveId: lead.assignedExecutiveId || "",
-    assignedExecutiveEmail: lead.assignedExecutiveEmail || "",
     financeManagerId: lead.financeManagerId || "",
     salespersonId: lead.salespersonId || "",
-    updatedAt: lead.statusUpdatedAt || lead.updatedAt || new Date().toISOString(),
+    timestamp: data.timestamp || lead.statusUpdatedAt || lead.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -165,7 +173,10 @@ function canReceiveEvent(user = {}, event = {}) {
   }
   if (user.role === "bank-manager") {
     const bankIds = unique([user.bankId, user.bankName, user.email, user.uid]);
-    return bankIds.some((id) => scopes.bankIds?.includes(id));
+    const branchIds = unique([user.branchId, user.bankIfsc, user.ifscCode, user.branchCity]);
+    const sameBank = bankIds.some((id) => scopes.bankIds?.includes(id));
+    const sameBranch = Boolean(scopes.branchIds?.length) && branchIds.some((id) => scopes.branchIds?.includes(id));
+    return sameBank && sameBranch;
   }
   if (user.role === "loan-executive") {
     const executiveIds = unique([user.uid, user.email]);
@@ -214,8 +225,12 @@ function dispatchLocalEvent(event) {
 
   let delivered = 0;
   let errors = 0;
+  let ignored = 0;
   for (const client of clients.values()) {
-    if (!canReceiveEvent(client.user, event)) continue;
+    if (!canReceiveEvent(client.user, event)) {
+      ignored += 1;
+      continue;
+    }
     try {
       writeSse(client.res, event);
       delivered += 1;
@@ -231,22 +246,49 @@ function dispatchLocalEvent(event) {
     activeClients: clients.size,
     durationMs: Date.now() - startedAt,
   });
+  logInfo("SSE_EVENT_DELIVERED", {
+    tag: "SSE_EVENT_DELIVERED",
+    eventType: event.eventType,
+    delivered,
+    errors,
+    activeClients: clients.size,
+    eventId: event.id,
+  });
+  if (ignored) {
+    logInfo("SSE_EVENT_IGNORED", {
+      tag: "SSE_EVENT_IGNORED",
+      eventType: event.eventType,
+      ignored,
+      eventId: event.id,
+    });
+  }
+  if (errors) {
+    logWarn("SSE_EVENT_FAILED", {
+      tag: "SSE_EVENT_FAILED",
+      eventType: event.eventType,
+      errors,
+      eventId: event.id,
+    });
+  }
 }
 
 export function publishRealtimeEvent({ eventType, lead = null, notification = null, document = null, actor = null, data = {} } = {}) {
   initRedisPubSub();
   const now = new Date().toISOString();
-  const leadSummary = buildLeadSummary(lead || data.lead || {});
-  const leadScopes = leadSummary ? leadRealtimeScopes({ ...lead, ...leadSummary }) : { dealershipIds: [], bankIds: [], executiveIds: [] };
+  const phaseOneEvent = PHASE_ONE_EVENTS.has(eventType);
+  const leadSummary = lightweightLeadPatch(lead || data.lead || {}, { ...data, timestamp: now });
+  const leadScopes = leadSummary ? leadRealtimeScopes({ ...lead, ...leadSummary }) : { dealershipIds: [], bankIds: [], executiveIds: [], branchIds: [] };
   const notificationScopes = notification ? notificationRealtimeScopes(notification) : { dealershipIds: [], bankIds: [], executiveIds: [], recipientIds: [] };
   const scopes = {
     dealershipIds: unique([...(leadScopes.dealershipIds || []), ...(notificationScopes.dealershipIds || []), data.dealershipId]),
     bankIds: unique([...(leadScopes.bankIds || []), ...(notificationScopes.bankIds || []), data.bankId]),
     executiveIds: unique([...(leadScopes.executiveIds || []), ...(notificationScopes.executiveIds || []), data.executiveId]),
     recipientIds: unique([...(notificationScopes.recipientIds || []), data.recipientId]),
+    branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.ifscCode]),
   };
   const event = {
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+    event: eventType,
     eventType,
     kind: eventKind(eventType),
     leadId: leadSummary?.leadId || data.leadId || notification?.leadId || document?.leadId || "",
@@ -261,33 +303,62 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     affectedPortals: affectedPortalsForScopes(scopes),
     scopes,
     actor: actor ? { id: actor.uid || actor.email || "", email: actor.email || "", role: actor.role || "" } : null,
-    lead: leadSummary,
-    notification: notification ? {
-      id: notification.id,
-      title: notification.title,
-      message: notification.message,
-      read: notification.read === true,
-      priority: notification.priority || "normal",
-      type: notification.type || notification.notificationType || "",
-      leadId: notification.leadId || "",
-      caseId: notification.caseId || "",
-      createdAt: notification.createdAt || now,
-    } : null,
-    document: document ? {
-      id: document.id,
-      leadId: document.leadId || "",
-      caseId: document.caseId || "",
-      type: document.type || document.documentType || "",
-      status: document.status || "",
-      createdAt: document.createdAt || now,
-    } : null,
-    data,
+    tenantId: scopes.dealershipIds[0] || scopes.bankIds[0] || "platform",
+    branchId: scopes.branchIds?.[0] || "",
+    previousStatus: data.previousStatus || "",
+    documentId: document?.id || data.documentId || "",
+    documentType: document?.type || document?.documentType || data.documentType || "",
+    remarkType: data.remarkType || "",
+    data: {
+      status: data.status || leadSummary?.status || "",
+      previousStatus: data.previousStatus || "",
+      documentStatus: data.documentStatus || "",
+      remarkType: data.remarkType || "",
+    },
+    ...(!phaseOneEvent ? {
+      lead: leadSummary,
+      notification: notification ? {
+        id: notification.id,
+        title: notification.title,
+        message: notification.message,
+        read: notification.read === true,
+        priority: notification.priority || "normal",
+        type: notification.type || notification.notificationType || "",
+        leadId: notification.leadId || "",
+        caseId: notification.caseId || "",
+        createdAt: notification.createdAt || now,
+      } : null,
+      document: document ? {
+        id: document.id,
+        leadId: document.leadId || "",
+        caseId: document.caseId || "",
+        type: document.type || document.documentType || "",
+        status: document.status || "",
+        createdAt: document.createdAt || now,
+      } : null,
+      data,
+    } : {}),
     originInstanceId: instanceId,
   };
 
+  logInfo("SSE_EVENT_PUBLISHED", {
+    tag: "SSE_EVENT_PUBLISHED",
+    eventType,
+    leadId: event.leadId,
+    dealershipId: event.dealershipId,
+    bankId: event.bankId,
+    branchId: event.branchId,
+    affectedPortals: event.affectedPortals,
+  });
   dispatchLocalEvent(event);
   if (redisPublisher) {
     redisPublisher.publish(REALTIME_REDIS_CHANNEL, JSON.stringify(event)).catch((error) => {
+      logWarn("SSE_EVENT_FAILED", {
+        tag: "SSE_EVENT_FAILED",
+        eventType,
+        phase: "redis_publish",
+        error: error.message,
+      });
       logWarn("Realtime Redis publish failed; local clients were still notified", { eventType, error: error.message });
     });
   }

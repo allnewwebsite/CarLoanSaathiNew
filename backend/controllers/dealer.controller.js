@@ -1071,7 +1071,7 @@ export async function createDealerLead(req, res, next) {
       ifscCode,
     });
     publishRealtimeEvent({
-      eventType: responseLead.assignedExecutiveId ? REALTIME_EVENTS.EXECUTIVE_ASSIGNED : REALTIME_EVENTS.LEAD_CREATED,
+      eventType: REALTIME_EVENTS.LEAD_CREATED,
       lead: responseLead,
       actor: req.user,
       data: { dealershipId, bankId: responseLead.bankId || branchTieUp.bankId },
