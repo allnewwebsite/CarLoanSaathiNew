@@ -423,7 +423,8 @@ async function accountForEmail(email, portal, uid = "", identityContext = null) 
   const context = identityContext || await identityContextFor(email, uid);
   if (portal === "admin" || email === adminEmail) {
     if (email !== adminEmail) return null;
-    const adminUser = context.candidates.find((item) => item.role === "super-admin");
+    const adminCandidates = context.candidates.filter((item) => item.role === "super-admin" && uidMatchesRecord(item, email, uid));
+    const adminUser = adminCandidates.find(activeIdentity) || adminCandidates[0];
     return adminUser?.role === "super-admin" && uidMatchesRecord(adminUser, email, uid) ? { ...adminUser, accountSource: "users", accountSourceId: adminUser.id || email } : null;
   }
   const canonical = canonicalFromContext(context, { uid, portal });
@@ -461,6 +462,9 @@ function roleGuidance(role) {
 function inactiveAccountMessage(account = {}) {
   const status = String(account.accountStatus || account.status || "").toLowerCase();
   if (accountLocked(account)) return accountLockedPayload(account);
+  if (account.role === "super-admin" && (account.active === false || account.accountActive === false || account.approved === false || account.accountApproved === false)) {
+    return { code: "ACCOUNT_DISABLED", message: "Super Admin profile is inactive. Repair the configured Super Admin account before login." };
+  }
   if (["suspended", "disabled", "removed", "inactive", "paused"].includes(status)) {
     return { code: "ACCOUNT_DISABLED", message: "Your account has been temporarily disabled. Contact support." };
   }
@@ -1198,7 +1202,41 @@ export async function lookupAccountForLogin(req, res, next) {
     }
 
     if (!firebaseUser) return res.json({ exists: false, code: "NO_ACCOUNT", message: "No account found for this email." });
-    return res.json({ exists: true, code: "ACCOUNT_NOT_APPROVED", message: "Your account exists but is awaiting approval from Super Admin." });
+
+    if (portal === "dealer") {
+      const registration = await dealerRegistrationStatus(email);
+      return res.json({
+        exists: false,
+        code: registration ? "APPROVAL_PENDING" : "NO_ACCOUNT",
+        message: registration?.registrationSubmitted === true
+          ? "Your dealership account is still pending approval."
+          : "Please create your dealership account from Dealer Registration before using Dealer Login.",
+        redirectTo: registration ? "/dealer-registration/pending" : "/dealer-registration",
+        actionLabel: registration ? "Check Approval Status" : "Go to Dealer Registration",
+      });
+    }
+
+    if (portal === "bank") {
+      const registration = await bankRegistrationStatus(email);
+      const gate = bankLoginGate(registration);
+      return res.json({
+        exists: false,
+        code: registration ? "APPROVAL_PENDING" : "NO_ACCOUNT",
+        message: gate.message,
+        redirectTo: gate.redirectTo,
+        actionLabel: gate.actionLabel,
+      });
+    }
+
+    if (portal === "admin" && email === superAdminEmail()) {
+      return res.json({
+        exists: false,
+        code: "SUPER_ADMIN_PROFILE_MISSING",
+        message: "Super Admin authentication exists, but the Firestore profile is missing or inactive. Repair the configured Super Admin account before login.",
+      });
+    }
+
+    return res.json({ exists: false, code: "NO_ACCOUNT", message: "No active account profile found for this email." });
   } catch (error) {
     next(error);
   }

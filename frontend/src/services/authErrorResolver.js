@@ -61,6 +61,20 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
     });
   }
 
+  if (data.redirectTo || data.actionLabel) {
+    return base(data.message || message || "Login could not be completed.", {
+      actionLabel: data.actionLabel || "Continue",
+      actionTo: data.redirectTo || "",
+      showForgotPassword: false,
+    });
+  }
+
+  if (code === "SUPER_ADMIN_PROFILE_MISSING") {
+    return base(data.message || "Super Admin profile is missing or inactive. Repair the configured Super Admin account before login.", {
+      showForgotPassword: false,
+    });
+  }
+
   if (code === "APPROVAL_PENDING" || code === "ACCOUNT_NOT_APPROVED" || /awaiting approval|pending approval|still pending/i.test(message)) {
     return base(data.message || "Your account exists but is awaiting approval from Super Admin.", {
       actionLabel: data.actionLabel || "",
@@ -83,7 +97,7 @@ export function resolveAuthError(error, portal = "dealer", action = "login") {
   }
 
   if (code === "auth/user-not-found" || code === "NO_ACCOUNT" || error?.response?.status === 404) {
-    return base("No account found for this email.", {
+    return base(data.message || "No account found for this email.", {
       actionLabel: CREATE_ACCOUNT_PATHS[portal] ? "Create Account" : "",
       actionTo: CREATE_ACCOUNT_PATHS[portal] || "",
       showCreateAccount: Boolean(CREATE_ACCOUNT_PATHS[portal]),
