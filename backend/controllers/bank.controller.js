@@ -29,6 +29,7 @@ import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -271,11 +272,22 @@ function partnerCanAccessLead(partner, lead) {
 }
 
 function logProjectionRead(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: req.route?.path, path: req.originalUrl, ...meta });
   logInfo(event, {
     tag: event,
     requestId: req.requestId,
     path: req.originalUrl,
     endpoint: req.route?.path,
+    ...meta,
+  });
+}
+
+function logReadMetric(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: meta.endpoint || req.route?.path, path: req.originalUrl, ...meta });
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
     ...meta,
   });
 }
@@ -967,14 +979,27 @@ export async function getBankExecutives(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can view executives" });
     const identity = bankIdentity(partner);
-    const projected = await queryExecutiveSummaryProjection({ bankId: identity.bankId, query: req.query }).catch(() => null);
-    if (projected?.length) return res.json({ data: projected });
+    const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 50 }, { defaultLimit: 50, maxLimit: 100 });
+    logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/bank/executives", estimatedReads: 200 });
+    const projectionCacheKey = `bank:executives:projection:${identity.bankId}:${JSON.stringify(req.query || {})}`;
+    let projectionCacheHit = true;
+    const projected = await cached(projectionCacheKey, 30000, async () => {
+      projectionCacheHit = false;
+      return queryExecutiveSummaryProjection({ bankId: identity.bankId, query: { ...req.query, limit } }).catch(() => null);
+    });
+    if (projectionCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/executives", cacheKey: projectionCacheKey });
+    if (projected?.length) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "executiveSummaryProjection", resultCount: projected.length });
+      logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/executives", estimatedReads: projectionCacheHit ? 0 : Math.min(limit, projected.length), limit });
+      return res.json({ data: projected });
+    }
+    logProjectionRead("PROJECTION-MISS", req, { collection: "executiveSummaryProjection", reason: "missing_projection_page" });
     const [executivesPage, leads] = await cached(`bank:executives:${identity.bankId}:${partner.email || partner.id}`, 15000, () => Promise.all([
       queryRecords("loanExecutives", {
         where: [{ field: "bankId", value: identity.bankId }],
         orderBy: "createdAt",
         direction: "desc",
-        limit: 100,
+        limit,
         maxLimit: 100,
       }),
       assignedLeadsForPartner(partner),
@@ -1006,6 +1031,7 @@ export async function getBankExecutives(req, res, next) {
       totalAssignedCases: row.totalAssignedCases,
       currentActiveCases: row.currentActiveCases,
     }));
+    logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/executives", estimatedReads: limit + 100, fallback: true });
     res.json({ data: rows });
   } catch (error) {
     next(error);
@@ -1371,10 +1397,32 @@ export async function getBankAnalytics(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const analyticsCacheKey = `bank:analytics:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`;
-    const leads = await cached(analyticsCacheKey, 15000, () => assignedLeadsForPartner(partner, { limit: 100 }, BANK_ANALYTICS_LEAD_FIELDS));
-    const today = new Date().toISOString().slice(0, 10);
     const identity = bankIdentity(partner);
+    logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/bank/analytics", estimatedReads: 200 });
+    const analyticsCacheKey = `bank:analytics:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`;
+    let analyticsCacheHit = true;
+    const leads = await cached(analyticsCacheKey, 30000, async () => {
+      analyticsCacheHit = false;
+      const projected = await queryLeadProjectionForUser({
+        user: partner.roleType === "loan-executive"
+          ? { role: "loan-executive", uid: partner.id, email: partner.email }
+          : { role: "bank-manager", bankId: identity.bankId },
+        query: { limit: 100 },
+        fields: BANK_ANALYTICS_LEAD_FIELDS,
+      }).catch(() => null);
+      if (projected?.data) {
+        logProjectionRead("PROJECTION-HIT", req, { collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews", resultCount: projected.data.length });
+        const scoped = partner.roleType === "loan-executive"
+          ? projected.data
+          : projected.data.filter((lead) => partnerCanAccessLead(partner, lead));
+        return scoped;
+      }
+      logProjectionRead("PROJECTION-MISS", req, { collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews", reason: "missing_analytics_projection" });
+      return assignedLeadsForPartner(partner, { limit: 100 }, BANK_ANALYTICS_LEAD_FIELDS);
+    });
+    if (analyticsCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/analytics", cacheKey: analyticsCacheKey });
+    logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/analytics", estimatedReads: analyticsCacheHit ? 0 : Math.min(100, leads.length || 100), cacheHit: analyticsCacheHit });
+    const today = new Date().toISOString().slice(0, 10);
     const activeStatuses = [
       LEAD_STATUSES.NEW,
       LEAD_STATUSES.CONTACTED,

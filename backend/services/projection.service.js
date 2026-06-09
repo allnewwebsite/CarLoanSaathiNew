@@ -2,6 +2,11 @@ import { getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo, logWarn } from "./logger.service.js";
+import { recordMonitoringSignal } from "./monitoringCenter.service.js";
+
+export const PROJECTION_VERSION = Number(process.env.PROJECTION_VERSION || 2);
+const PROJECTION_VALIDATION_SAMPLE_LIMIT = Number(process.env.PROJECTION_VALIDATION_SAMPLE_LIMIT || 3);
+const rebuilding = new Set();
 
 const VIEW_LEAD_FIELDS = [
   "id",
@@ -56,6 +61,17 @@ const VIEW_LEAD_FIELDS = [
 ];
 
 const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName", "salespersonJobId", "salespersonEmail", "assignedSalesperson", "financeManagerName", "financeManagerEmployeeId", "financeManagerEmail", "assignedFinanceManager"];
+const PROJECTION_META_FIELDS = [
+  "projectionVersion",
+  "projectionType",
+  "projectionUpdatedAt",
+  "projectionLastUpdatedAt",
+  "sourceUpdatedAt",
+  "projectionLagMs",
+  "projectionHealthStatus",
+  "projectionHealthCheckedAt",
+  "projectionHealthReason",
+];
 
 function pick(record = {}, fields = VIEW_LEAD_FIELDS) {
   return fields.reduce((next, field) => {
@@ -86,10 +102,144 @@ function latestTimestamp(...values) {
     .sort((left, right) => timestampValue(right) - timestampValue(left))[0] || "";
 }
 
+function isoNow() {
+  return new Date().toISOString();
+}
+
+function projectionMetadata({ sourceCollection, sourceId, sourceUpdatedAt, projectionType }) {
+  const projectionUpdatedAt = isoNow();
+  const sourceTime = timestampValue(sourceUpdatedAt);
+  const projectionTime = timestampValue(projectionUpdatedAt);
+  return {
+    projectionVersion: PROJECTION_VERSION,
+    projectionType,
+    projectionUpdatedAt,
+    projectionLastUpdatedAt: projectionUpdatedAt,
+    sourceCollection,
+    sourceId: sourceId || null,
+    sourceUpdatedAt: sourceUpdatedAt || projectionUpdatedAt,
+    projectionLagMs: sourceTime ? Math.max(0, projectionTime - sourceTime) : 0,
+    projectionHealthStatus: "fresh",
+    projectionHealthCheckedAt: projectionUpdatedAt,
+  };
+}
+
+function withProjectionMetadata(payload = {}, meta = {}) {
+  return {
+    ...payload,
+    ...projectionMetadata({
+      sourceCollection: meta.sourceCollection || payload.sourceCollection,
+      sourceId: meta.sourceId || payload.sourceId,
+      sourceUpdatedAt: meta.sourceUpdatedAt || payload.updatedAt || payload.createdAt,
+      projectionType: meta.projectionType || payload.viewType || payload.projectionType || "projection",
+    }),
+  };
+}
+
+function freshnessProblem(record = {}) {
+  if (!record) return "missing";
+  if (Number(record.projectionVersion || 0) !== PROJECTION_VERSION) return "version_mismatch";
+  if (!record.projectionUpdatedAt || !record.sourceUpdatedAt) return "missing_freshness_metadata";
+  if (record.projectionHealthStatus === "stale" || record.projectionHealthStatus === "rebuild-failed") return record.projectionHealthStatus;
+  return "";
+}
+
+async function markProjectionStale(collection, record = {}, reason = "stale") {
+  if (!record?.id) return;
+  recordMonitoringSignal("PROJECTION-STALE", {
+    collection,
+    reason,
+    projectionLagMs: Number(record.projectionLagMs || 0),
+  });
+  await upsertRecord(collection, record.id, {
+    projectionHealthStatus: "stale",
+    projectionHealthReason: reason,
+    projectionHealthCheckedAt: isoNow(),
+  }).catch(() => {});
+}
+
+async function rebuildLeadBasedProjection(record = {}, reason = "stale") {
+  const leadId = scopeId(record.leadId || record.sourceId);
+  if (!leadId) return false;
+  const key = `lead:${leadId}`;
+  if (rebuilding.has(key)) return true;
+  rebuilding.add(key);
+  try {
+    const lead = await getRecord("leads", leadId).catch(() => null);
+    if (!lead) return false;
+    await syncLeadProjection(lead);
+    recordMonitoringSignal("PROJECTION-REBUILD", {
+      collection: record.sourceCollection || "leads",
+      reason,
+      projectionLagMs: Date.now() - timestampValue(record.sourceUpdatedAt),
+    });
+    logInfo("Projection self-heal rebuild completed", {
+      tag: "PROJECTION-REBUILD",
+      leadId,
+      reason,
+    });
+    return true;
+  } catch (error) {
+    logWarn("Projection self-heal rebuild failed", { leadId, reason, error: error.message });
+    return false;
+  } finally {
+    rebuilding.delete(key);
+  }
+}
+
+async function rebuildProjectionFromSource(collection, record = {}, reason = "stale") {
+  if (["financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"].includes(collection)) {
+    return rebuildLeadBasedProjection(record, reason);
+  }
+  if (collection === "timelineProjection") {
+    const sourceId = scopeId(record.sourceId || record.id);
+    if (!sourceId) return false;
+    const event = await getRecord("leadTimeline", sourceId).catch(() => null);
+    if (!event) return false;
+    await syncTimelineProjection(event);
+    recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason });
+    return true;
+  }
+  if (["staffViewProjection", "executiveSummaryProjection", "salespersonSummaryProjection"].includes(collection)) {
+    const sourceCollection = record.sourceCollection;
+    const sourceId = scopeId(record.sourceId || record.id);
+    if (!sourceCollection || !sourceId) return false;
+    const source = await getRecord(sourceCollection, sourceId).catch(() => null);
+    if (!source) return false;
+    if (collection === "staffViewProjection") await syncStaffViewProjection({ ...source, sourceCollection });
+    if (collection === "executiveSummaryProjection") await syncExecutiveSummaryProjection(source);
+    if (collection === "salespersonSummaryProjection") await syncSalespersonSummaryProjection(source);
+    recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason });
+    return true;
+  }
+  recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason: `${reason}:source_rebuild_not_available` });
+  return false;
+}
+
+async function ensureFreshProjection(collection, record = {}) {
+  const reason = freshnessProblem(record);
+  if (!reason) {
+    recordMonitoringSignal("PROJECTION-FRESHNESS", {
+      collection,
+      projectionLagMs: Number(record.projectionLagMs || 0),
+    });
+    return true;
+  }
+  await markProjectionStale(collection, record, reason);
+  rebuildProjectionFromSource(collection, record, reason).catch(() => {});
+  return false;
+}
+
+async function freshProjectionRows(collection, rows = []) {
+  if (!rows.length) return rows;
+  const checks = await Promise.all(rows.map((row) => ensureFreshProjection(collection, row)));
+  return rows.filter((_, index) => checks[index]);
+}
+
 function projectionPayload(lead = {}, { scopeType, scopeId: scope }) {
   const projected = pick(lead);
   const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
-  return {
+  return withProjectionMetadata({
     ...projected,
     viewType: "lead",
     sourceCollection: "leads",
@@ -100,7 +250,7 @@ function projectionPayload(lead = {}, { scopeType, scopeId: scope }) {
     updatedAt,
     status: lead.status || "NEW",
     searchText: VIEW_SEARCH_FIELDS.map((field) => lead[field]).filter(Boolean).join(" ").toLowerCase(),
-  };
+  }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "lead-view" });
 }
 
 function leadTargets(lead = {}) {
@@ -157,7 +307,7 @@ export async function syncNotificationProjection(notification = {}) {
   if (!notification?.id) return null;
   const targets = notificationTargets(notification);
   const updatedAt = notification.updatedAt || notification.readAt || notification.createdAt || new Date().toISOString();
-  const payload = {
+  const payload = withProjectionMetadata({
     id: notification.id,
     sourceId: notification.id,
     sourceCollection: "notifications",
@@ -174,7 +324,7 @@ export async function syncNotificationProjection(notification = {}) {
     actor: notification.actor || notification.actorName || notification.meta?.actor || "",
     createdAt: notification.createdAt || updatedAt,
     updatedAt,
-  };
+  }, { sourceCollection: "notifications", sourceId: notification.id, sourceUpdatedAt: updatedAt, projectionType: "notification-view" });
   await Promise.all(targets.map((target) => upsertRecord(target.collection, target.docId, {
     ...payload,
     scopeType: target.scopeType,
@@ -226,7 +376,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       page,
       search: query.search,
       searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
-      fields: [...new Set(["sourceId", "viewType", "scopeId", ...fields])],
+      fields: [...new Set(["sourceId", "viewType", "scopeId", "leadId", ...PROJECTION_META_FIELDS, ...fields])],
       maxLimit: 100,
     });
     const durationMs = Date.now() - projectionStartedAt;
@@ -248,8 +398,10 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       search: Boolean(query.search),
     });
     if (!resultCount) return null;
+    const freshRows = await freshProjectionRows(collection, result.data);
+    if (!freshRows.length) return null;
     const mapStartedAt = Date.now();
-    const data = result.data.map((item) => ({ ...item, id: item.sourceId || item.id }));
+    const data = freshRows.map((item) => ({ ...item, id: item.sourceId || item.id }));
     const mapEndedAt = Date.now();
     const shapeStartedAt = Date.now();
     const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
@@ -320,9 +472,12 @@ function isActiveStatus(status) {
 
 function dealershipSummarySeed(lead = {}, scope = bankDealershipScope(lead)) {
   const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
-  return {
+  return withProjectionMetadata({
     id: safeDocId(`bank_dealership_${scope.bankId}_${scope.dealershipId}`),
     viewType: "bank-dealership",
+    sourceCollection: "leads",
+    sourceId: lead.id,
+    leadId: lead.id,
     bankId: scope.bankId,
     dealershipId: scope.dealershipId,
     dealershipName: lead.dealershipName || lead.dealerName || lead.dealerBusinessName || lead.dealershipEmail || lead.dealerEmail || scope.dealershipId,
@@ -346,7 +501,7 @@ function dealershipSummarySeed(lead = {}, scope = bankDealershipScope(lead)) {
       lead.city,
       lead.assignedBankName,
     ].filter(Boolean).join(" ").toLowerCase(),
-  };
+  }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "bank-dealership" });
 }
 
 async function applyBankDealershipDelta({ summaryId, seed, totalDelta = 0, disbursedDelta = 0, activeDelta = 0 }) {
@@ -403,8 +558,10 @@ export async function syncBankDealershipProjection(lead = {}) {
     activeDelta: (currentActive ? 1 : 0) - (sameRelationship && previous?.isActive ? 1 : 0),
   });
 
-  const marker = {
+  const marker = withProjectionMetadata({
     id: markerId,
+    sourceCollection: "leads",
+    sourceId: lead.id,
     leadId: lead.id,
     caseId: lead.caseId || lead.id,
     bankId: scope.bankId,
@@ -414,7 +571,7 @@ export async function syncBankDealershipProjection(lead = {}) {
     isActive: currentActive,
     updatedAt: now,
     createdAt: previous?.createdAt || lead.createdAt || now,
-  };
+  }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: now, projectionType: "bank-dealership-marker" });
   await upsertRecord("bankDealershipLeadProjection", markerId, marker);
   return marker;
 }
@@ -442,6 +599,9 @@ export async function queryBankDealershipProjection({ bankId, query = {} } = {})
     fields: [
       "id",
       "viewType",
+      "sourceId",
+      "leadId",
+      ...PROJECTION_META_FIELDS,
       "bankId",
       "dealershipId",
       "dealershipName",
@@ -461,7 +621,9 @@ export async function queryBankDealershipProjection({ bankId, query = {} } = {})
     ],
     maxLimit: 100,
   });
-  return pageResponse({ data: result.data, limit, nextCursor: result.nextCursor });
+  const freshRows = await freshProjectionRows("bankDealershipViews", result.data);
+  if (!freshRows.length) return null;
+  return pageResponse({ data: freshRows, limit, nextCursor: result.nextCursor });
 }
 
 export async function queryNotificationProjectionForUser({ user = {}, query = {} } = {}) {
@@ -498,6 +660,7 @@ export async function queryNotificationProjectionForUser({ user = {}, query = {}
       "sourceId",
       "viewType",
       "scopeId",
+      ...PROJECTION_META_FIELDS,
       "title",
       "message",
       "read",
@@ -512,8 +675,10 @@ export async function queryNotificationProjectionForUser({ user = {}, query = {}
     ],
   });
   if (!result.data.length) return null;
+  const freshRows = await freshProjectionRows(collection, result.data);
+  if (!freshRows.length) return null;
   return pageResponse({
-    data: result.data.map((item) => ({ ...item, id: item.sourceId || item.id })),
+    data: freshRows.map((item) => ({ ...item, id: item.sourceId || item.id })),
     limit,
     nextCursor: result.nextCursor,
   });
@@ -527,7 +692,7 @@ export async function syncLeadDetailProjection(lead = {}, extras = {}) {
     bankDocuments: Array.isArray(extras.bankDocuments) ? extras.bankDocuments.length : Number(lead.bankDocumentCount || 0),
     pendingDocuments: Array.isArray(lead.pendingDocuments) ? lead.pendingDocuments.length : 0,
   };
-  const payload = {
+  const payload = withProjectionMetadata({
     ...pick(lead),
     sourceCollection: "leads",
     sourceId: lead.id,
@@ -556,7 +721,7 @@ export async function syncLeadDetailProjection(lead = {}, extras = {}) {
     updatedAt,
     createdAt: lead.createdAt || updatedAt,
     searchText: VIEW_SEARCH_FIELDS.map((field) => lead[field]).filter(Boolean).join(" ").toLowerCase(),
-  };
+  }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "lead-detail" });
   if (Array.isArray(extras.documents)) payload.documents = extras.documents;
   if (Array.isArray(extras.bankDocuments)) payload.bankDocuments = extras.bankDocuments;
   await upsertRecord("leadDetailsProjection", safeDocId(lead.id), payload);
@@ -577,14 +742,16 @@ export async function getLeadDetailProjection(leadId) {
     limit: 1,
     maxLimit: 1,
   });
-  return direct.data[0] || null;
+  const row = direct.data[0] || null;
+  if (!row) return null;
+  return await ensureFreshProjection("leadDetailsProjection", row) ? row : null;
 }
 
 export async function syncTimelineProjection(event = {}) {
   if (!event?.id) return null;
   const metadata = event.metadata || {};
   const timestamp = event.createdAt || event.updatedAt || new Date().toISOString();
-  const payload = {
+  const payload = withProjectionMetadata({
     id: event.id,
     sourceCollection: "leadTimeline",
     sourceId: event.id,
@@ -619,7 +786,7 @@ export async function syncTimelineProjection(event = {}) {
     ].filter(Boolean).join(" ").toLowerCase(),
     createdAt: timestamp,
     updatedAt: event.updatedAt || timestamp,
-  };
+  }, { sourceCollection: "leadTimeline", sourceId: event.id, sourceUpdatedAt: event.updatedAt || timestamp, projectionType: "timeline" });
   await upsertRecord("timelineProjection", safeDocId(event.id), payload);
   return payload;
 }
@@ -652,8 +819,10 @@ export async function queryTimelineProjection({ leadId = "", query = {}, actor =
     searchFields: ["searchText"],
   });
   if (!result.data.length) return null;
+  const freshRows = await freshProjectionRows("timelineProjection", result.data);
+  if (!freshRows.length) return null;
   return pageResponse({
-    data: result.data.map((item) => ({ ...item, id: item.sourceId || item.id })),
+    data: freshRows.map((item) => ({ ...item, id: item.sourceId || item.id })),
     limit,
     nextCursor: result.nextCursor,
   });
@@ -662,10 +831,10 @@ export async function queryTimelineProjection({ leadId = "", query = {}, actor =
 function staffProjectionPayload(record = {}) {
   const email = scopeId(record.email || record.officialEmail || record.id).toLowerCase();
   const dealershipId = scopeId(record.dealershipId || record.dealershipEmail);
-  return {
+  return withProjectionMetadata({
     id: safeDocId(`staff_${dealershipId}_${email}`),
     sourceId: record.id || email,
-    sourceCollection: record.sourceCollection || "staff",
+    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "staff",
     viewType: "staff",
     dealershipId,
     dealershipEmail: dealershipId,
@@ -688,7 +857,12 @@ function staffProjectionPayload(record = {}) {
     permissions: record.permissions || [],
     createdAt: record.createdAt || new Date().toISOString(),
     updatedAt: record.updatedAt || new Date().toISOString(),
-  };
+  }, {
+    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "staff",
+    sourceId: record.id || email,
+    sourceUpdatedAt: record.updatedAt || record.createdAt || new Date().toISOString(),
+    projectionType: "staff",
+  });
 }
 
 export async function syncStaffViewProjection(record = {}) {
@@ -715,14 +889,17 @@ export async function queryStaffViewProjection({ dealershipId, query = {} } = {}
     page,
     maxLimit: 100,
   });
-  return result.data.length ? result.data : null;
+  if (!result.data.length) return null;
+  const freshRows = await freshProjectionRows("staffViewProjection", result.data);
+  return freshRows.length ? freshRows : null;
 }
 
 export async function syncExecutiveSummaryProjection(executive = {}, counts = {}) {
   const bankId = scopeId(executive.bankId || executive.bankPartnerId || executive.partnerId);
   const executiveId = scopeId(executive.id || executive.jobId || executive.email || executive.mobile);
   if (!bankId || !executiveId) return null;
-  const payload = {
+  const updatedAt = executive.updatedAt || new Date().toISOString();
+  const payload = withProjectionMetadata({
     ...executive,
     id: safeDocId(`executive_${bankId}_${executiveId}`),
     sourceId: executive.id || executiveId,
@@ -735,9 +912,9 @@ export async function syncExecutiveSummaryProjection(executive = {}, counts = {}
     totalAssignedCases: Number(counts.totalAssignedCases || executive.totalAssignedCases || 0),
     currentActiveCases: Number(counts.currentActiveCases || executive.currentActiveCases || 0),
     status: executive.active === false ? "inactive" : executive.status || "active",
-    updatedAt: executive.updatedAt || new Date().toISOString(),
-    createdAt: executive.createdAt || new Date().toISOString(),
-  };
+    updatedAt,
+    createdAt: executive.createdAt || updatedAt,
+  }, { sourceCollection: "loanExecutives", sourceId: executive.id || executiveId, sourceUpdatedAt: updatedAt, projectionType: "executive-summary" });
   await upsertRecord("executiveSummaryProjection", payload.id, payload);
   return payload;
 }
@@ -759,14 +936,17 @@ export async function queryExecutiveSummaryProjection({ bankId, query = {} } = {
     page,
     maxLimit: 100,
   });
-  return result.data.length ? result.data : null;
+  if (!result.data.length) return null;
+  const freshRows = await freshProjectionRows("executiveSummaryProjection", result.data);
+  return freshRows.length ? freshRows : null;
 }
 
 export async function syncSalespersonSummaryProjection(person = {}, counts = {}) {
   const dealershipId = scopeId(person.dealershipId || person.dealershipEmail);
   const salespersonId = scopeId(person.id || person.jobId || person.email || person.mobile);
   if (!dealershipId || !salespersonId) return null;
-  const payload = {
+  const updatedAt = person.updatedAt || new Date().toISOString();
+  const payload = withProjectionMetadata({
     ...person,
     id: safeDocId(`salesperson_${dealershipId}_${salespersonId}`),
     sourceId: person.id || salespersonId,
@@ -782,9 +962,9 @@ export async function syncSalespersonSummaryProjection(person = {}, counts = {})
     disbursedCases: Number(counts.disbursedCases || person.disbursedCases || 0),
     rejectedCases: Number(counts.rejectedCases || person.rejectedCases || 0),
     pendingCases: Number(counts.pendingCases || person.pendingCases || 0),
-    updatedAt: person.updatedAt || new Date().toISOString(),
-    createdAt: person.createdAt || new Date().toISOString(),
-  };
+    updatedAt,
+    createdAt: person.createdAt || updatedAt,
+  }, { sourceCollection: person.sourceCollection || "salespersons", sourceId: person.id || salespersonId, sourceUpdatedAt: updatedAt, projectionType: "salesperson-summary" });
   await upsertRecord("salespersonSummaryProjection", payload.id, payload);
   return payload;
 }
@@ -806,5 +986,72 @@ export async function querySalespersonSummaryProjection({ dealershipId, query = 
     page,
     maxLimit: 100,
   });
-  return result.data.length ? result.data : null;
+  if (!result.data.length) return null;
+  const freshRows = await freshProjectionRows("salespersonSummaryProjection", result.data);
+  return freshRows.length ? freshRows : null;
+}
+
+const VALIDATED_PROJECTION_COLLECTIONS = [
+  "financeViews",
+  "gmViews",
+  "bankViews",
+  "executiveViews",
+  "leadDetailsProjection",
+  "staffViewProjection",
+  "salespersonSummaryProjection",
+  "timelineProjection",
+  "bankDealershipViews",
+];
+
+async function projectionDriftReason(record = {}) {
+  const metadataReason = freshnessProblem(record);
+  if (metadataReason) return metadataReason;
+  if (!record.sourceCollection || !record.sourceId) return "";
+  const source = await getRecord(record.sourceCollection, record.sourceId).catch(() => null);
+  if (!source) return "source_missing";
+  const sourceUpdatedAt = latestTimestamp(source.statusUpdatedAt, source.updatedAt, source.generatedAt, source.createdAt);
+  if (timestampValue(sourceUpdatedAt) > timestampValue(record.sourceUpdatedAt)) return "source_newer_than_projection";
+  return "";
+}
+
+export async function validateProjectionFreshness({ sampleLimit = PROJECTION_VALIDATION_SAMPLE_LIMIT } = {}) {
+  const startedAt = Date.now();
+  const summary = {
+    checkedCollections: VALIDATED_PROJECTION_COLLECTIONS.length,
+    checked: 0,
+    stale: 0,
+    rebuildQueued: 0,
+    durationMs: 0,
+  };
+
+  for (const collection of VALIDATED_PROJECTION_COLLECTIONS) {
+    const page = await queryRecords(collection, {
+      orderBy: "projectionUpdatedAt",
+      direction: "asc",
+      limit: sampleLimit,
+      maxLimit: Math.min(Math.max(sampleLimit, 1), 10),
+    }).catch(() => ({ data: [] }));
+    for (const row of page.data || []) {
+      summary.checked += 1;
+      const reason = await projectionDriftReason(row);
+      if (!reason) continue;
+      summary.stale += 1;
+      await markProjectionStale(collection, row, reason);
+      rebuildProjectionFromSource(collection, row, reason).catch(() => {});
+      summary.rebuildQueued += 1;
+    }
+  }
+
+  summary.durationMs = Date.now() - startedAt;
+  recordMonitoringSignal("PROJECTION-FRESHNESS", {
+    collection: "all",
+    resultCount: summary.checked,
+    durationMs: summary.durationMs,
+    staleProjectionCount: summary.stale,
+  });
+  logInfo("Projection freshness validation completed", {
+    tag: "PROJECTION-FRESHNESS",
+    ...summary,
+  });
+  return summary;
 }

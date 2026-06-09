@@ -23,6 +23,8 @@ import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { paginationParams } from "../utils/pagination.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 
 const supportedDealerCities = new Set([
   "Bahadurgarh",
@@ -61,11 +63,22 @@ function owned(leads, email, dealershipEmail = email) {
 }
 
 function logProjectionRead(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: req.route?.path, path: req.originalUrl, ...meta });
   logInfo(event, {
     tag: event,
     requestId: req.requestId,
     path: req.originalUrl,
     endpoint: req.route?.path,
+    ...meta,
+  });
+}
+
+function logReadMetric(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: meta.endpoint || req.route?.path, path: req.originalUrl, ...meta });
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
     ...meta,
   });
 }
@@ -1297,11 +1310,25 @@ export async function updateDealerFinanceManager(req, res, next) {
 export async function getDealerStaff(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
-    const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: req.query }).catch(() => null);
-    if (projected?.length) return res.json(projected);
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
-    staff.forEach((row) => syncStaffViewProjectionSoon({ ...row, dealershipId: dealershipEmail, dealershipEmail }));
-    res.json(staff);
+    const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 100 }, { defaultLimit: 100, maxLimit: 100 });
+    logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/dealer/staff", estimatedReads: 200 });
+    const cacheKey = `dealer:staff:${dealershipEmail}:${JSON.stringify({ ...req.query, limit })}`;
+    let cacheHit = true;
+    const cachedStaff = await cached(cacheKey, 30000, async () => {
+      cacheHit = false;
+      const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { ...req.query, limit } }).catch(() => null);
+      if (projected?.length) {
+        logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: projected.length });
+        return projected;
+      }
+      logProjectionRead("PROJECTION-MISS", req, { collection: "staffViewProjection", reason: "missing_staff_projection" });
+      const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
+      staff.forEach((row) => syncStaffViewProjectionSoon({ ...row, dealershipId: dealershipEmail, dealershipEmail }));
+      return staff.slice(0, limit);
+    });
+    if (cacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/dealer/staff", cacheKey });
+    logReadMetric("READS-AFTER", req, { endpoint: "GET /api/dealer/staff", estimatedReads: cacheHit ? 0 : Math.min(limit, cachedStaff.length || limit), limit });
+    return res.json(cachedStaff);
   } catch (error) {
     next(error);
   }

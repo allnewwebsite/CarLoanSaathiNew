@@ -8,6 +8,7 @@ import { cached } from "../services/ttlCache.service.js";
 import { getRequestScope, setRequestScopeUser } from "../services/requestScope.service.js";
 import { logInfo } from "../services/logger.service.js";
 import { logRealtimeTicketStep, markRealtimeTicketStart, measureRealtimeTicketStep, realtimeTicketTimingEnabled } from "../services/realtimeTicketLatency.service.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 
 const ROLE_PORTALS = {
   "finance-desk": "finance",
@@ -45,6 +46,15 @@ async function tracedCached(step, key, ttlMs, loader, meta = {}) {
     const afterHits = Number(scope?.cache?.hits || 0);
     const afterMisses = Number(scope?.cache?.misses || 0);
     const cacheStatus = afterHits > beforeHits ? "hit" : afterMisses > beforeMisses ? "miss" : "pending-or-unknown";
+    if (["hit", "miss"].includes(cacheStatus)) {
+      recordMonitoringSignal(cacheStatus === "hit" ? "CACHE-HIT" : "CACHE-MISS", {
+        endpoint: scope?.endpoint,
+        path: scope?.endpoint,
+        cacheKey: key,
+        durationMs: Date.now() - startedAt,
+        step,
+      });
+    }
     if (realtimeTicketTimingEnabled() && ["hit", "miss"].includes(cacheStatus)) {
       logInfo(cacheStatus === "hit" ? "REALTIME-AUTH-CACHE-HIT" : "REALTIME-AUTH-CACHE-MISS", {
         tag: cacheStatus === "hit" ? "REALTIME-AUTH-CACHE-HIT" : "REALTIME-AUTH-CACHE-MISS",

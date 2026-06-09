@@ -4,6 +4,7 @@ import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { queryDealershipLeads } from "../services/leadQuery.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { getLeadDetailProjection, queryLeadProjectionForUser, queryNotificationProjectionForUser, querySalespersonSummaryProjection, syncSalespersonSummaryProjectionSoon } from "../services/projection.service.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 
 function userEmail(req) {
   return req.user?.email || req.user?.uid;
@@ -26,6 +27,7 @@ function belongsToDealership(lead, dealershipEmail) {
 }
 
 function logProjectionRead(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: req.route?.path, path: req.originalUrl, ...meta });
   logInfo(event, {
     tag: event,
     requestId: req.requestId,

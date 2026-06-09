@@ -16,6 +16,7 @@ import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../service
 import { getLeadDetailProjection, queryLeadProjectionForUser, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { revokeUserSessions } from "./auth.controller.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -749,6 +750,12 @@ export async function getAdminLead(req, res, next) {
   try {
     const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
     if (projection && Array.isArray(projection.documents) && Array.isArray(projection.bankDocuments)) {
+      recordMonitoringSignal("PROJECTION-HIT", {
+        endpoint: req.route?.path,
+        path: req.originalUrl,
+        collection: "leadDetailsProjection",
+        leadId: req.params.id,
+      });
       logInfo("PROJECTION-HIT", {
         tag: "PROJECTION-HIT",
         requestId: req.requestId,
@@ -762,6 +769,13 @@ export async function getAdminLead(req, res, next) {
         bankDocuments: projection.bankDocuments || [],
       }));
     }
+    recordMonitoringSignal("PROJECTION-MISS", {
+      endpoint: req.route?.path,
+      path: req.originalUrl,
+      collection: "leadDetailsProjection",
+      leadId: req.params.id,
+      reason: projection ? "invalid_projection" : "missing_projection",
+    });
     logInfo("PROJECTION-MISS", {
       tag: "PROJECTION-MISS",
       requestId: req.requestId,
@@ -770,6 +784,12 @@ export async function getAdminLead(req, res, next) {
       collection: "leadDetailsProjection",
       leadId: req.params.id,
       reason: projection ? "invalid_projection" : "missing_projection",
+    });
+    recordMonitoringSignal("CANONICAL-FALLBACK", {
+      endpoint: req.route?.path,
+      path: req.originalUrl,
+      collection: "leads",
+      leadId: req.params.id,
     });
     logInfo("CANONICAL-FALLBACK", {
       tag: "CANONICAL-FALLBACK",

@@ -383,8 +383,10 @@ export async function getAllBanks(filters = {}) {
     where,
     orderBy: filters.orderBy || "bankName",
     direction: filters.direction || "asc",
-    limit: filters.limit || 100,
-    maxLimit: 5000,
+    limit: filters.limit || 50,
+    cursor: filters.cursor || null,
+    page: filters.page || null,
+    maxLimit: 100,
   });
 
   return banks;

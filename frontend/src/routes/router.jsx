@@ -30,6 +30,7 @@ const pageModules = {
   financeDesk: () => import("../pages/dashboard/FinanceDeskPanel.jsx"),
   gmTracking: () => import("../pages/dashboard/GmTrackingPanel.jsx"),
   superAdmin: () => import("../pages/dashboard/SuperAdminDashboard.jsx"),
+  adminMonitoring: () => import("../pages/dashboard/AdminMonitoringCenter.jsx"),
 };
 
 const dashboardModules = [
@@ -38,6 +39,7 @@ const dashboardModules = [
   pageModules.bankBranchManager,
   pageModules.loanExecutive,
   pageModules.superAdmin,
+  pageModules.adminMonitoring,
   pageModules.executiveChangePassword,
   pageModules.loginActivity,
 ];
@@ -73,6 +75,7 @@ const SuperAdminDashboard = lazyPage(pageModules.superAdmin, "SuperAdminDashboar
 const SuperAdminDealershipDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminDealershipDetailPage");
 const SuperAdminApprovalDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminApprovalDetailPage");
 const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLeadDetailPage");
+const AdminMonitoringCenter = lazyPage(pageModules.adminMonitoring, "AdminMonitoringCenter");
 
 export const router = createBrowserRouter([
   {
@@ -250,6 +253,7 @@ export const router = createBrowserRouter([
           { path: "status", element: <SuperAdminDashboard mode="status" /> },
           { path: "leads", element: <SuperAdminDashboard mode="leads" /> },
           { path: "leads/:leadId", element: <SuperAdminLeadDetailPage /> },
+          { path: "monitoring", element: <AdminMonitoringCenter /> },
           { path: "approvals/dealerships", element: <SuperAdminDashboard mode="approval-dealerships" /> },
           { path: "approvals/dealerships/:id", element: <SuperAdminApprovalDetailPage type="dealerships" /> },
           { path: "approvals/banks", element: <SuperAdminDashboard mode="approval-banks" /> },

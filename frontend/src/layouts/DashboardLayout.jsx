@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Shield, Users, X } from "lucide-react";
+import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Shield, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -43,6 +43,7 @@ const navByRole = {
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
     { label: "Status", to: "/admin/status", icon: FileClock },
     { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
+    { label: "Monitoring", to: "/admin/monitoring", icon: Activity },
   ],
 };
 

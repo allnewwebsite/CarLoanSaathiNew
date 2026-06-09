@@ -1,6 +1,7 @@
 import { createRecord, queryRecords } from "./firestore.service.js";
 import { logError, logInfo, logSecurity, logWarn } from "./logger.service.js";
 import { captureOperationalIncident, captureSecurityIncident } from "./monitoring.service.js";
+import { recordApiMetric } from "./monitoringCenter.service.js";
 
 export const ALERT_SEVERITY = Object.freeze({
   CRITICAL: "critical",
@@ -99,6 +100,15 @@ export async function emitOperationalAlert(alert = {}) {
 
 export async function observeApiRequest(req, res, durationMs) {
   const statusCode = res.statusCode;
+  recordApiMetric({
+    method: req.method,
+    endpoint: req.originalUrl,
+    statusCode,
+    durationMs,
+    responseBytes: Number(res.getHeader("content-length") || 0) || res.locals.responseBytes || 0,
+    userId: req.user?.uid,
+    role: req.user?.role,
+  });
   const severity = durationMs >= defaultThresholds.criticalApiMs
     ? ALERT_SEVERITY.HIGH
     : durationMs >= defaultThresholds.slowApiMs

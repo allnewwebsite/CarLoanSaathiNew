@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "async_hooks";
 import { logInfo, logWarn } from "./logger.service.js";
+import { recordReadMeterMetric } from "./monitoringCenter.service.js";
 
 const storage = new AsyncLocalStorage();
 
@@ -99,6 +100,24 @@ export function flushFirestoreReadReport(meta = {}) {
 
   logInfo("Firestore read meter", {
     tag: "READ-METER",
+    requestId: scope.requestId,
+    route: scope.endpoint,
+    endpoint: scope.endpoint,
+    method: scope.method,
+    role: scope.role,
+    queryCount: scope.reads.length,
+    totalEstimatedReads,
+    cacheHit: scope.cache.hits,
+    cacheMiss: scope.cache.misses,
+    cacheHitRate,
+    duplicateReadCount: duplicateReads.reduce((sum, item) => sum + item.count - 1, 0),
+    duplicateReads,
+    statusCode: meta.statusCode || null,
+    durationMs: meta.durationMs || null,
+    responseBytes: meta.responseBytes || null,
+    byCollection,
+  });
+  recordReadMeterMetric({
     requestId: scope.requestId,
     route: scope.endpoint,
     endpoint: scope.endpoint,

@@ -44,6 +44,7 @@ import {
   getAnalyticsOverview,
   getAnalyticsSla,
 } from "../controllers/analytics.controller.js";
+import { getAdminMonitoringCenter } from "../controllers/monitoring.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { ROLES } from "../utils/constants.js";
@@ -71,6 +72,7 @@ router.get("/leads/:id", getAdminLead);
 router.patch("/leads/:id/status", updateAdminLeadStatus);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);
+router.get("/monitoring", getAdminMonitoringCenter);
 router.get("/analytics/overview", getAnalyticsOverview);
 router.get("/analytics/monthly", getAnalyticsMonthly);
 router.get("/analytics/cities", getAnalyticsCities);

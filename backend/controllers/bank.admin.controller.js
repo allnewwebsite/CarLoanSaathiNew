@@ -11,6 +11,19 @@ import { createNotification } from "../services/notification.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { logInfo } from "../services/logger.service.js";
+import { cached } from "../services/ttlCache.service.js";
+import { paginationParams } from "../utils/pagination.js";
+import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
+
+function logReadMetric(event, req, meta = {}) {
+  recordMonitoringSignal(event, { endpoint: meta.endpoint || req.route?.path, path: req.originalUrl, ...meta });
+  logInfo(event, {
+    tag: event,
+    requestId: req.requestId,
+    path: req.originalUrl,
+    ...meta,
+  });
+}
 
 /**
  * Bank Branch Management - Admin endpoints
@@ -196,6 +209,8 @@ export async function deactivateBankBranchAdmin(req, res, next) {
  */
 export async function getAdminBankBranches(req, res, next) {
   try {
+    const beforeReads = Number(req.query.limit || 100);
+    logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/admin/bank-branches", estimatedReads: Math.min(Math.max(beforeReads, 1), 5000), previousMaxReads: 5000 });
     const filters = {};
     if (req.query.approved !== undefined) {
       filters.approved = req.query.approved === "true";
@@ -212,14 +227,29 @@ export async function getAdminBankBranches(req, res, next) {
     if (req.query.bankName) {
       filters.bankName = String(req.query.bankName).trim();
     }
+    const { limit, cursor, page } = paginationParams(req.query, { defaultLimit: 50, maxLimit: 100 });
+    filters.limit = limit;
+    filters.cursor = cursor;
+    filters.page = page;
 
-    const banks = await getAllBanks(filters);
+    const cacheKey = `admin:bank-branches:${JSON.stringify(filters)}`;
+    let cacheHit = true;
+    const pageResult = await cached(cacheKey, 30000, async () => {
+      cacheHit = false;
+      return getAllBanks(filters);
+    });
+    if (cacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/admin/bank-branches", cacheKey });
+    logReadMetric("READS-AFTER", req, { endpoint: "GET /api/admin/bank-branches", estimatedReads: cacheHit ? 0 : limit, limit });
+    const banks = Array.isArray(pageResult?.data) ? pageResult.data : Array.isArray(pageResult) ? pageResult : [];
 
     res.json({
       success: true,
       totalBranches: banks.length,
       banks,
       filters,
+      limit,
+      nextCursor: pageResult?.nextCursor || null,
+      hasMore: Boolean(pageResult?.nextCursor),
     });
   } catch (error) {
     next(error);

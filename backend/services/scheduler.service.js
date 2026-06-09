@@ -1,6 +1,7 @@
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { archiveClosedLeads, cleanupExpiredNotifications } from "./archival.service.js";
 import { validateMetricsIntegrity } from "./metricsBackfill.service.js";
+import { validateProjectionFreshness } from "./projection.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { markWorkerHealth } from "./health.service.js";
 
@@ -38,6 +39,8 @@ export function registerScheduledOperations() {
   ));
 
   schedule("metrics-integrity", Number(process.env.METRICS_INTEGRITY_INTERVAL_MS || 60 * 60 * 1000), validateMetricsIntegrity);
+
+  schedule("projection-freshness", Number(process.env.PROJECTION_FRESHNESS_INTERVAL_MS || 10 * 60 * 1000), validateProjectionFreshness);
 
   return scheduled;
 }

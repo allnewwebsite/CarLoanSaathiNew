@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import IORedis from "ioredis";
 import { logWarn } from "./logger.service.js";
 import { logRealtimeTicketStep, measureRealtimeTicketSync } from "./realtimeTicketLatency.service.js";
+import { recordRealtimeMetric } from "./monitoringCenter.service.js";
 
 const TICKET_TTL_MS = 60 * 1000;
 const EVENT_BUFFER_LIMIT = 500;
@@ -191,6 +192,7 @@ export function connectRealtimeClient({ user, req, res }) {
   res.write(`event: connected\ndata: ${JSON.stringify({ clientId, timestamp: new Date().toISOString() })}\n\n`);
   const client = { id: clientId, user, res };
   clients.set(clientId, client);
+  recordRealtimeMetric({ eventType: "SSE_CONNECTED", activeClients: clients.size });
 
   const lastEventId = Number(req.headers["last-event-id"] || req.query.lastEventId || 0);
   if (Number.isFinite(lastEventId) && lastEventId > 0) {
@@ -201,21 +203,34 @@ export function connectRealtimeClient({ user, req, res }) {
 
   req.on("close", () => {
     clients.delete(clientId);
+    recordRealtimeMetric({ eventType: "SSE_DISCONNECTED", activeClients: clients.size, disconnected: 1 });
   });
 }
 
 function dispatchLocalEvent(event) {
+  const startedAt = Date.now();
   eventBuffer.push(event);
   if (eventBuffer.length > EVENT_BUFFER_LIMIT) eventBuffer.splice(0, eventBuffer.length - EVENT_BUFFER_LIMIT);
 
+  let delivered = 0;
+  let errors = 0;
   for (const client of clients.values()) {
     if (!canReceiveEvent(client.user, event)) continue;
     try {
       writeSse(client.res, event);
+      delivered += 1;
     } catch {
+      errors += 1;
       clients.delete(client.id);
     }
   }
+  recordRealtimeMetric({
+    eventType: event.eventType,
+    delivered,
+    errors,
+    activeClients: clients.size,
+    durationMs: Date.now() - startedAt,
+  });
 }
 
 export function publishRealtimeEvent({ eventType, lead = null, notification = null, document = null, actor = null, data = {} } = {}) {
