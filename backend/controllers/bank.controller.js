@@ -1290,6 +1290,7 @@ export async function getBankExecutiveCases(req, res, next) {
       const projected = await queryLeadProjectionForUser({
         user: { role: "loan-executive", uid: executive.sourceId || executive.executiveId || executive.id || executive.jobId || executive.email, email: executive.email },
         query: { ...req.query, limit: req.query.limit || 100 },
+        recordMetrics: false,
       }).catch(() => null);
       if (projected?.data) {
         logProjectionRead("PROJECTION-HIT", req, { collection: "executiveViews", resultCount: projected.data.length });
@@ -1409,6 +1410,7 @@ export async function getBankAnalytics(req, res, next) {
           : { role: "bank-manager", bankId: identity.bankId },
         query: { limit: 100 },
         fields: BANK_ANALYTICS_LEAD_FIELDS,
+        recordMetrics: false,
       }).catch(() => null);
       if (projected?.data) {
         logProjectionRead("PROJECTION-HIT", req, { collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews", resultCount: projected.data.length });

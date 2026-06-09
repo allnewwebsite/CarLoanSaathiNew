@@ -7,6 +7,8 @@ import { recordMonitoringSignal } from "./monitoringCenter.service.js";
 export const PROJECTION_VERSION = Number(process.env.PROJECTION_VERSION || 2);
 const PROJECTION_VALIDATION_SAMPLE_LIMIT = Number(process.env.PROJECTION_VALIDATION_SAMPLE_LIMIT || 3);
 const rebuilding = new Set();
+const LEAD_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"]);
+const NOTIFICATION_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews"]);
 
 const VIEW_LEAD_FIELDS = [
   "id",
@@ -106,6 +108,19 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+function recordProjectionMetric(tag, meta = {}) {
+  recordMonitoringSignal(tag, meta);
+  logInfo(tag, {
+    tag,
+    requestId: meta.requestId || null,
+    collection: meta.collection || null,
+    role: meta.role || null,
+    resultCount: meta.resultCount || 0,
+    durationMs: meta.durationMs || 0,
+    reason: meta.reason || null,
+  });
+}
+
 function projectionMetadata({ sourceCollection, sourceId, sourceUpdatedAt, projectionType }) {
   const projectionUpdatedAt = isoNow();
   const sourceTime = timestampValue(sourceUpdatedAt);
@@ -146,8 +161,12 @@ function freshnessProblem(record = {}) {
 
 async function markProjectionStale(collection, record = {}, reason = "stale") {
   if (!record?.id) return;
+  if (record.projectionHealthStatus === "stale" && record.projectionHealthReason === reason) return;
   recordMonitoringSignal("PROJECTION-STALE", {
     collection,
+    projectionId: record.id,
+    sourceId: record.sourceId || record.leadId || null,
+    sourceCollection: record.sourceCollection || null,
     reason,
     projectionLagMs: Number(record.projectionLagMs || 0),
   });
@@ -158,7 +177,8 @@ async function markProjectionStale(collection, record = {}, reason = "stale") {
   }).catch(() => {});
 }
 
-async function rebuildLeadBasedProjection(record = {}, reason = "stale") {
+async function rebuildLeadBasedProjection(collection, record = {}, reason = "stale") {
+  const startedAt = Date.now();
   const leadId = scopeId(record.leadId || record.sourceId);
   if (!leadId) return false;
   const key = `lead:${leadId}`;
@@ -169,14 +189,20 @@ async function rebuildLeadBasedProjection(record = {}, reason = "stale") {
     if (!lead) return false;
     await syncLeadProjection(lead);
     recordMonitoringSignal("PROJECTION-REBUILD", {
-      collection: record.sourceCollection || "leads",
+      collection,
+      projectionId: record.id,
+      sourceId: leadId,
+      sourceCollection: "leads",
       reason,
-      projectionLagMs: Date.now() - timestampValue(record.sourceUpdatedAt),
+      durationMs: Date.now() - startedAt,
+      projectionLagMs: Math.max(0, Date.now() - timestampValue(record.sourceUpdatedAt)),
     });
     logInfo("Projection self-heal rebuild completed", {
       tag: "PROJECTION-REBUILD",
+      collection,
       leadId,
       reason,
+      durationMs: Date.now() - startedAt,
     });
     return true;
   } catch (error) {
@@ -187,20 +213,61 @@ async function rebuildLeadBasedProjection(record = {}, reason = "stale") {
   }
 }
 
+async function rebuildNotificationProjection(collection, record = {}, reason = "stale") {
+  const startedAt = Date.now();
+  const notificationId = scopeId(record.sourceId || record.id);
+  if (!notificationId) return false;
+  const key = `notification:${notificationId}`;
+  if (rebuilding.has(key)) return true;
+  rebuilding.add(key);
+  try {
+    const notification = await getRecord("notifications", notificationId).catch(() => null);
+    if (!notification) return false;
+    await syncNotificationProjection(notification);
+    recordMonitoringSignal("PROJECTION-REBUILD", {
+      collection,
+      projectionId: record.id,
+      sourceId: notificationId,
+      sourceCollection: "notifications",
+      reason,
+      durationMs: Date.now() - startedAt,
+      projectionLagMs: Math.max(0, Date.now() - timestampValue(record.sourceUpdatedAt)),
+    });
+    logInfo("Projection self-heal rebuild completed", {
+      tag: "PROJECTION-REBUILD",
+      collection,
+      notificationId,
+      reason,
+      durationMs: Date.now() - startedAt,
+    });
+    return true;
+  } catch (error) {
+    logWarn("Notification projection self-heal rebuild failed", { collection, notificationId, reason, error: error.message });
+    return false;
+  } finally {
+    rebuilding.delete(key);
+  }
+}
+
 async function rebuildProjectionFromSource(collection, record = {}, reason = "stale") {
-  if (["financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"].includes(collection)) {
-    return rebuildLeadBasedProjection(record, reason);
+  if (LEAD_VIEW_COLLECTIONS.has(collection) && (record.viewType === "lead" || record.viewType === "lead-detail" || record.viewType === "bank-dealership" || record.sourceCollection === "leads")) {
+    return rebuildLeadBasedProjection(collection, record, reason);
+  }
+  if (NOTIFICATION_VIEW_COLLECTIONS.has(collection) && (record.viewType === "notification" || record.sourceCollection === "notifications")) {
+    return rebuildNotificationProjection(collection, record, reason);
   }
   if (collection === "timelineProjection") {
+    const startedAt = Date.now();
     const sourceId = scopeId(record.sourceId || record.id);
     if (!sourceId) return false;
     const event = await getRecord("leadTimeline", sourceId).catch(() => null);
     if (!event) return false;
     await syncTimelineProjection(event);
-    recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason });
+    recordMonitoringSignal("PROJECTION-REBUILD", { collection, projectionId: record.id, sourceId, sourceCollection: "leadTimeline", reason, durationMs: Date.now() - startedAt });
     return true;
   }
   if (["staffViewProjection", "executiveSummaryProjection", "salespersonSummaryProjection"].includes(collection)) {
+    const startedAt = Date.now();
     const sourceCollection = record.sourceCollection;
     const sourceId = scopeId(record.sourceId || record.id);
     if (!sourceCollection || !sourceId) return false;
@@ -209,10 +276,10 @@ async function rebuildProjectionFromSource(collection, record = {}, reason = "st
     if (collection === "staffViewProjection") await syncStaffViewProjection({ ...source, sourceCollection });
     if (collection === "executiveSummaryProjection") await syncExecutiveSummaryProjection(source);
     if (collection === "salespersonSummaryProjection") await syncSalespersonSummaryProjection(source);
-    recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason });
+    recordMonitoringSignal("PROJECTION-REBUILD", { collection, projectionId: record.id, sourceId, sourceCollection, reason, durationMs: Date.now() - startedAt });
     return true;
   }
-  recordMonitoringSignal("PROJECTION-REBUILD", { collection, reason: `${reason}:source_rebuild_not_available` });
+  recordMonitoringSignal("PROJECTION-REBUILD-SKIPPED", { collection, projectionId: record.id, sourceId: record.sourceId || record.leadId || null, sourceCollection: record.sourceCollection || null, reason: `${reason}:source_rebuild_not_available` });
   return false;
 }
 
@@ -337,7 +404,7 @@ export function syncNotificationProjectionSoon(notification = {}) {
   Promise.resolve().then(() => syncNotificationProjection(notification)).catch(() => {});
 }
 
-export async function queryLeadProjectionForUser({ user = {}, query = {}, fields = VIEW_LEAD_FIELDS, requestId = null } = {}) {
+export async function queryLeadProjectionForUser({ user = {}, query = {}, fields = VIEW_LEAD_FIELDS, requestId = null, recordMetrics = true } = {}) {
   const projectionStartedAt = Date.now();
   const { limit, cursor, page } = paginationParams(query);
   const role = user.role;
@@ -397,9 +464,15 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       cursor: Boolean(cursor),
       search: Boolean(query.search),
     });
-    if (!resultCount) return null;
+    if (!resultCount) {
+      if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs, reason: "empty_projection_result" });
+      return null;
+    }
     const freshRows = await freshProjectionRows(collection, result.data);
-    if (!freshRows.length) return null;
+    if (!freshRows.length) {
+      if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs: Date.now() - projectionStartedAt, reason: "stale_projection_rows" });
+      return null;
+    }
     const mapStartedAt = Date.now();
     const data = freshRows.map((item) => ({ ...item, id: item.sourceId || item.id }));
     const mapEndedAt = Date.now();
@@ -420,8 +493,16 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       dealershipLookupCount: 0,
       documentFormattingCount: 0,
     });
+    if (recordMetrics) recordProjectionMetric("PROJECTION-HIT", { requestId, collection, role, resultCount: data.length, durationMs: Date.now() - projectionStartedAt });
     return response;
   } catch (error) {
+    if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", {
+      requestId,
+      collection,
+      role,
+      durationMs: Date.now() - projectionStartedAt,
+      reason: error.code || error.message,
+    });
     logWarn("Lead projection lookup failed", {
       tag: "PROJECTION-LATENCY",
       requestId,
@@ -992,6 +1073,7 @@ export async function querySalespersonSummaryProjection({ dealershipId, query = 
 }
 
 const VALIDATED_PROJECTION_COLLECTIONS = [
+  "adminViews",
   "financeViews",
   "gmViews",
   "bankViews",

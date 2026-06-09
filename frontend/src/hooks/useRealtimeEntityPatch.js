@@ -36,6 +36,21 @@ function patchedLeadFromEvent(event = {}) {
   };
 }
 
+function hasHydratedLeadPayload(event = {}) {
+  const lead = event.lead;
+  if (!lead || typeof lead !== "object") return false;
+  return Boolean(
+    lead.fullName
+    || lead.customerName
+    || lead.mobile
+    || lead.city
+    || lead.carOnRoadPrice
+    || lead.carPrice
+    || lead.loanAmount
+    || lead.requiredLoanAmount
+  );
+}
+
 function statusMatchesFilter(lead = {}, statusFilter = "") {
   if (!statusFilter) return true;
   return normalizeStatus(lead.status) === normalizeStatus(statusFilter);
@@ -50,6 +65,7 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
       const patch = patchedLeadFromEvent(detail);
       if (!patch) return;
       const eventType = detail.eventType || detail.event;
+      const canInsertCreatedRow = eventType === "LEAD_CREATED" && hasHydratedLeadPayload(detail);
       setRows((current) => {
         if (!Array.isArray(current)) return current;
         let changed = false;
@@ -60,7 +76,7 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
             return { ...row, ...patch };
           })
           .filter((row) => !sameLead(row, patch) || statusMatchesFilter(row, statusFilter));
-        if (!changed && eventType === "LEAD_CREATED" && statusMatchesFilter(patch, statusFilter)) {
+        if (!changed && canInsertCreatedRow && statusMatchesFilter(patch, statusFilter)) {
           return [patch, ...current].slice(0, Math.max(current.length || 10, 10));
         }
         return changed ? next : current;

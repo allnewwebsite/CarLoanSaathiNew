@@ -123,6 +123,7 @@ export function AdminMonitoringCenter() {
     valueOrDash(item.canonicalFallback),
     valueOrDash(item.stale),
     valueOrDash(item.rebuilds),
+    valueOrDash(item.rebuildSkipped),
     percent(item.projectionHit + item.projectionMiss ? Math.round((item.projectionHit / (item.projectionHit + item.projectionMiss)) * 100) : null),
   ]), [projection.collections]);
 
@@ -216,18 +217,19 @@ export function AdminMonitoringCenter() {
       </Section>
 
       <Section title="Projection Health">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <MetricTile label="Projection Hit" value={projection.projectionHit || 0} />
           <MetricTile label="Projection Miss" value={projection.projectionMiss || 0} />
           <MetricTile label="Canonical Fallback" value={projection.canonicalFallback || 0} />
           <MetricTile label="Rebuild Count" value={projection.projectionRebuildCount || 0} />
+          <MetricTile label="Rebuild Skipped" value={projection.projectionRebuildSkippedCount || 0} />
           <MetricTile label="Stale Count" value={projection.staleProjectionCount || 0} />
           <MetricTile label="Projection Lag" value={projection.projectionLagMs === null ? "Not metered" : `${projection.projectionLagMs}ms`} />
           <MetricTile label="Freshness" value={projection.projectionFreshness || "Not metered"} />
         </div>
         <OperationalTable
           title="Projection Collections"
-          headers={["Collection", "Hit", "Miss", "Fallback", "Stale", "Rebuild", "Hit Rate"]}
+          headers={["Collection", "Hit", "Miss", "Fallback", "Stale", "Rebuild", "Skipped", "Hit Rate"]}
           rows={projectionCollections}
           loading={loading}
           virtualizeAt={20}

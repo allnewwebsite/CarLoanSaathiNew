@@ -1729,6 +1729,7 @@ export async function getDealerEarnings(req, res, next) {
       user: { ...req.user, role: "finance-desk", dealershipId: dealershipEmail },
       query: { limit: 100 },
       requestId: req.requestId,
+      recordMetrics: false,
     }).catch(() => null);
     let leads;
     if (projected?.data) {

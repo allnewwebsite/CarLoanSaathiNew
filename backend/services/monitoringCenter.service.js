@@ -100,6 +100,8 @@ export function recordMonitoringSignal(tag, meta = {}) {
     endpoint: routeKey(meta.endpoint || meta.path || ""),
     path: meta.path || "",
     collection: meta.collection || null,
+    projectionId: meta.projectionId || meta.leadId || meta.sourceId || null,
+    sourceCollection: meta.sourceCollection || null,
     cacheKey: meta.cacheKey || null,
     estimatedReads: Number(meta.estimatedReads || 0),
     resultCount: Number(meta.resultCount || 0),
@@ -211,17 +213,19 @@ function projectionSummary(signalItems) {
   const fallbacks = signalItems.filter((item) => item.tag === "CANONICAL-FALLBACK");
   const stale = signalItems.filter((item) => item.tag === "PROJECTION-STALE");
   const rebuilds = signalItems.filter((item) => item.tag === "PROJECTION-REBUILD");
+  const rebuildSkipped = signalItems.filter((item) => item.tag === "PROJECTION-REBUILD-SKIPPED");
   const freshness = signalItems.filter((item) => item.tag === "PROJECTION-FRESHNESS");
   const byCollection = groupBy(
-    [...hits, ...misses, ...fallbacks, ...stale, ...rebuilds],
+    [...hits, ...misses, ...fallbacks, ...stale, ...rebuilds, ...rebuildSkipped],
     (item) => item.collection || "unknown",
-    () => ({ projectionHit: 0, projectionMiss: 0, canonicalFallback: 0, stale: 0, rebuilds: 0 }),
+    () => ({ projectionHit: 0, projectionMiss: 0, canonicalFallback: 0, stale: 0, rebuilds: 0, rebuildSkipped: 0 }),
     (row, item) => {
       if (item.tag === "PROJECTION-HIT") row.projectionHit += 1;
       if (item.tag === "PROJECTION-MISS") row.projectionMiss += 1;
       if (item.tag === "CANONICAL-FALLBACK") row.canonicalFallback += 1;
       if (item.tag === "PROJECTION-STALE") row.stale += 1;
       if (item.tag === "PROJECTION-REBUILD") row.rebuilds += 1;
+      if (item.tag === "PROJECTION-REBUILD-SKIPPED") row.rebuildSkipped += 1;
     },
   );
   const total = hits.length + misses.length;
@@ -233,6 +237,7 @@ function projectionSummary(signalItems) {
     projectionMiss: misses.length,
     canonicalFallback: fallbacks.length,
     projectionRebuildCount: rebuilds.length,
+    projectionRebuildSkippedCount: rebuildSkipped.length,
     staleProjectionCount: stale.length,
     projectionHitRate: total ? Math.round((hits.length / total) * 100) : null,
     projectionLagMs: lagSamples.length ? Math.max(...lagSamples) : null,
