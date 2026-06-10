@@ -16,7 +16,7 @@ const navByRole = {
   "finance-desk": [
     { label: "Total Leads", to: "/finance/total-leads", icon: ClipboardList },
     { label: "Add Lead", to: "/finance/add-lead", icon: ClipboardCheck },
-    { label: "Manage Staff", to: "/finance/manage-staff", icon: Users },
+    { label: "Add GM or SM", to: "/finance/manage-staff", icon: Users },
     { label: "Add Finance Manager", to: "/finance/finance-managers", icon: Users },
     { label: "Add / Remove Salesperson", to: "/finance/salespersons", icon: Users },
     { label: "Active Salespersons", to: "/finance/active-salespersons", icon: Users },

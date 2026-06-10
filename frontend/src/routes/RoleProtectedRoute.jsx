@@ -3,7 +3,6 @@ import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ROLES, isKnownRole, loginPathForRole, passwordPathForRole, requiresPasswordChange } from "../auth/roleSystem.js";
 import { DetailPageSkeleton } from "../components/ui/Loading.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { clearAuthStorage } from "../services/authSessionManager.js";
 
 export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   const { user, loading } = useAuth();
@@ -14,7 +13,6 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
 
   useEffect(() => {
     if (!portalRoleMismatch) return;
-    clearAuthStorage();
     navigate(loginPathForRole(user.role), { replace: true, state: { reason: "portal-role-mismatch" } });
   }, [navigate, portalRoleMismatch, user?.role]);
 

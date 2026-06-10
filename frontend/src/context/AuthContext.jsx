@@ -183,7 +183,6 @@ export function AuthProvider({ children }) {
         const lookup = await api.post("/auth/account-lookup", { email: normalizedEmail, portal, targetPortal }).catch(() => null);
         if (lookup?.data) error.accountLookup = lookup.data;
       }
-      await clearLocalSession({ signOutFirebase: true, reason: "login-rejected" });
       throw error;
     }
     const session = sessionFromResponse(response);

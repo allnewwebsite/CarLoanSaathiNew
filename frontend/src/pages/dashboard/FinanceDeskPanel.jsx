@@ -377,7 +377,7 @@ function StaffManagementScreen() {
 
   return (
     <section className="space-y-4">
-      <SectionTitle title="Manage Staff" subtitle="Create dealership Finance Head, GM, and SM accounts with temporary password security." />
+      <SectionTitle title="Add GM or SM" subtitle="Create dealership GM and SM accounts with temporary password security." />
       {credentials ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

@@ -1,3 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const sourceRoot = resolve(__dirname, "../src");
+
 class MemoryStorage {
   constructor() {
     this.items = new Map();
@@ -43,6 +50,47 @@ function session(email, role) {
   return { email, role, accountApproved: true, accountActive: true };
 }
 
+function sourceFile(relativePath) {
+  return readFileSync(resolve(sourceRoot, relativePath), "utf8");
+}
+
+function assertNoFailedLoginMutation() {
+  const source = sourceFile("context/AuthContext.jsx");
+  const loginStart = source.indexOf("const loginWithEmailPassword");
+  const loginEnd = source.indexOf("const sendPasswordReset", loginStart);
+  const loginSource = loginStart >= 0 && loginEnd > loginStart ? source.slice(loginStart, loginEnd) : "";
+  assert(loginSource, "Could not locate loginWithEmailPassword for auth isolation verification.");
+  assert(!/reason:\s*["']login-rejected["']/.test(loginSource), "Rejected login path must not publish or clear logout state.");
+  assert(!/clearLocalSession\s*\(/.test(loginSource), "Login failure path must not call clearLocalSession.");
+  assert(!/clearAuthStorage\s*\(/.test(loginSource), "Login failure path must not clear auth storage.");
+  assert(!/publishAuthEvent\s*\(/.test(loginSource), "Login failure path must not broadcast logout.");
+  assert(!/signOut\s*\(/.test(loginSource), "Login failure path must not sign out Firebase.");
+}
+
+function assertNoRouteMismatchMutation() {
+  const source = sourceFile("routes/RoleProtectedRoute.jsx");
+  assert(!/clearAuthStorage\s*\(/.test(source), "Role mismatch route guard must not clear auth storage.");
+  assert(!/publishAuthEvent\s*\(/.test(source), "Role mismatch route guard must not broadcast logout.");
+}
+
+function assertFailedAttemptLeavesSessionUntouched({ activePath, activeUser, activeToken, attemptedPath, label }) {
+  setPath(activePath);
+  storeAuthSession(activeUser, activeToken);
+  const beforeUser = JSON.stringify(getStoredUser());
+  const beforeToken = getStoredToken();
+
+  setPath(attemptedPath);
+  // Failed login attempts are intentionally non-mutating: no storage clear,
+  // no logout broadcast, no role overwrite, and no token write.
+
+  setPath(activePath);
+  assert(getStoredToken() === beforeToken, `${label}: active token changed after failed login attempt.`);
+  assert(JSON.stringify(getStoredUser()) === beforeUser, `${label}: active user changed after failed login attempt.`);
+}
+
+assertNoFailedLoginMutation();
+assertNoRouteMismatchMutation();
+
 setPath("/finance/total-leads");
 storeAuthSession(session("finance@example.com", "finance-desk"), "finance-token");
 assert(getStoredToken() === "finance-token", "Finance token was not stored in finance scope.");
@@ -80,5 +128,45 @@ assert(getStoredToken() === "bank-manager-token", "Loan executive logout cleared
 
 setPath("/finance/total-leads");
 assert(getStoredToken() === "finance-token", "Loan executive logout cleared finance token.");
+
+assertFailedAttemptLeavesSessionUntouched({
+  activePath: "/finance/total-leads",
+  activeUser: session("finance-active@example.com", "finance-desk"),
+  activeToken: "finance-active-token",
+  attemptedPath: "/gm/login",
+  label: "Finance active + GM wrong password",
+});
+
+assertFailedAttemptLeavesSessionUntouched({
+  activePath: "/finance/total-leads",
+  activeUser: session("finance-bank-test@example.com", "finance-desk"),
+  activeToken: "finance-bank-test-token",
+  attemptedPath: "/bank/login",
+  label: "Finance active + Bank wrong password",
+});
+
+assertFailedAttemptLeavesSessionUntouched({
+  activePath: "/finance/total-leads",
+  activeUser: session("finance-exec-test@example.com", "finance-desk"),
+  activeToken: "finance-exec-test-token",
+  attemptedPath: "/executive/login",
+  label: "Finance active + Executive wrong password",
+});
+
+assertFailedAttemptLeavesSessionUntouched({
+  activePath: "/gm/total-leads",
+  activeUser: session("gm-active@example.com", "gm-sm"),
+  activeToken: "gm-active-token",
+  attemptedPath: "/finance/login",
+  label: "GM active + Finance wrong password",
+});
+
+assertFailedAttemptLeavesSessionUntouched({
+  activePath: "/admin/leads",
+  activeUser: session("admin@example.com", "super-admin"),
+  activeToken: "admin-token",
+  attemptedPath: "/dealer/login",
+  label: "Admin active + Dealer wrong password",
+});
 
 console.log("Auth session isolation verification passed.");
