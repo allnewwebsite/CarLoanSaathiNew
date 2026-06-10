@@ -966,6 +966,9 @@ export async function createDealerLead(req, res, next) {
     }
 
     const financeManagerId = financeManagerIdFrom(req.body.financeManagerId);
+    if (!financeManagerId) {
+      return res.status(400).json({ message: "Finance Manager selection is required" });
+    }
     let salesperson;
     let financeManager;
     try {

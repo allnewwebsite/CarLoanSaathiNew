@@ -593,7 +593,8 @@ function AddLeadOnlyScreen() {
     if (!Number(nextForm.carPrice) || Number(nextForm.carPrice) < 0) nextErrors.carPrice = "Field required";
     if (!Number(nextForm.loanAmount) || Number(nextForm.loanAmount) < 0) nextErrors.loanAmount = "Field required";
     if (Number(nextForm.loanAmount) > Number(nextForm.carPrice)) nextErrors.loanAmount = "Required Loan Amount cannot exceed Car On-Road Price";
-    if (!nextForm.salespersonId) nextErrors.salespersonId = "Field required";
+    if (!nextForm.salespersonId) nextErrors.salespersonId = salespersons.length ? "Field required" : "Add salesperson first";
+    if (!nextForm.financeManagerId) nextErrors.financeManagerId = financeManagers.length ? "Field required" : "Add Finance Manager first";
     return nextErrors;
   };
 
@@ -640,20 +641,31 @@ function AddLeadOnlyScreen() {
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         {branchesError ? <p className="mb-4 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{branchesError}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
-          <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Tied-up Bank Branch" error={errors.branchId}>
-            <select aria-invalid={Boolean(errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+          <Field label="Customer Name *" error={errors.fullName}><input required aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number *" error={errors.mobile}><input required aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Customer City *" error={errors.city}><input required aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Tied-up Bank Branch *" error={errors.branchId}>
+            <select required aria-invalid={Boolean(errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
               <option value="">Select branch</option>
               {branches.map((branch) => <option key={bankKey(branch)} value={bankKey(branch)}>{branchLabel(branch)}</option>)}
             </select>
             {!branchesLoading && branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Open Bank Tie-Ups from the sidebar first.</p> : null}
           </Field>
-          <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
-          <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
-          <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
-          <Field label="Finance Manager"><select className="field mt-1.5" value={form.financeManagerId} onChange={(e) => update("financeManagerId", e.target.value)}><option value="">Unassigned</option>{financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}</select></Field>
+          <Field label="Car On-Road Price *" error={errors.carPrice}><input required aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
+          <Field label="Required Loan Amount *" error={errors.loanAmount}><input required aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
+          <Field label="Select Salesperson *" error={errors.salespersonId}><select required aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">{salespersons.length ? "Select salesperson" : "No salesperson found"}</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <Field label="Finance Manager *" error={errors.financeManagerId}>
+            <select required aria-invalid={Boolean(errors.financeManagerId)} className="field mt-1.5" value={form.financeManagerId} onBlur={() => validateField("financeManagerId")} onChange={(e) => update("financeManagerId", e.target.value)}>
+              <option value="">{financeManagers.length ? "Select Finance Manager" : "No Finance Manager found"}</option>
+              {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
+            </select>
+            {!financeManagers.length ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-rose-600">
+                <span>No Finance Manager found. Please add one first.</span>
+                <button type="button" onClick={() => navigate("/finance/finance-managers")} className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">Add Finance Manager</button>
+              </div>
+            ) : null}
+          </Field>
           <div className="flex items-end">
             <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>
