@@ -716,10 +716,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
     ]
     : [
       ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["GSTIN", item.dealership?.gstin], ["Address", item.dealership?.address]]],
-      ["Owner Details", [["Name", item.owner?.fullName], ["Mobile", item.owner?.mobile], ["Email", item.owner?.email]]],
-      ["GM Details", [["Name", item.generalManager?.name], ["Mobile", item.generalManager?.mobile], ["Email", item.generalManager?.email]]],
-      ["Finance Desk Details", [["Head", item.financeDesk?.headName], ["Mobile", item.financeDesk?.headMobile], ["Email", item.financeDesk?.officialEmail], ["Team Size", item.financeDesk?.teamSize]]],
-      ["Business Capacity", [["Monthly Sales", item.dealership?.monthlyCarSalesCapacity], ["Monthly Loan Apps", item.dealership?.expectedMonthlyLoanApplications]]],
+      ["Business Capacity", [["Monthly Sales", item.dealership?.monthlyCarSalesCapacity]]],
     ];
   return (
     <section className="space-y-5">
