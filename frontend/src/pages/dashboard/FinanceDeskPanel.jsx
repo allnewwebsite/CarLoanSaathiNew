@@ -660,10 +660,7 @@ function AddLeadOnlyScreen() {
               {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
             </select>
             {!financeManagers.length ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-rose-600">
-                <span>No Finance Manager found. Please add one first.</span>
-                <button type="button" onClick={() => navigate("/finance/finance-managers")} className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">Add Finance Manager</button>
-              </div>
+              <p className="mt-2 text-sm text-red-600">No Finance Manager found. Please add one first.</p>
             ) : null}
           </Field>
           <div className="flex items-end">
