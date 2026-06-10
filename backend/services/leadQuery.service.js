@@ -72,17 +72,17 @@ function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
     NEW: "New",
-    CONTACTED: "Bank Processing",
+    CONTACTED: "Contacted",
     REQUEST_DOCUMENT: "Pending Documents",
-    DOCUMENT_RECEIVED: "Pending Documents",
+    DOCUMENT_RECEIVED: "Document Received",
     REQUEST_PENDING_DOCUMENTS: "Pending Documents",
-    ALL_DOCUMENTS_RECEIVED: "Bank Processing",
-    UNDER_BANK_PROCESS: "Bank Processing",
+    ALL_DOCUMENTS_RECEIVED: "Document Received",
+    UNDER_BANK_PROCESS: "Under Bank Process",
     ASSIGNED: "New",
-    ACCEPTED: "Bank Processing",
-    UNDER_REVIEW: "Bank Processing",
+    ACCEPTED: "Under Bank Process",
+    UNDER_REVIEW: "Under Bank Process",
     DOCS_PENDING: "Pending Documents",
-    APPROVED: "Approved",
+    APPROVED: "Under Bank Process",
     REJECTED: "Rejected",
     DISBURSED: "Disbursed",
     CLOSED: "Disbursed",
@@ -151,7 +151,9 @@ function statusValuesForQuery(status) {
   const normalized = normalizeStatus(value);
   if (normalized === LEAD_STATUSES.NEW || value === "New Lead" || value === "New") return [LEAD_STATUSES.NEW, LEAD_STATUSES.ASSIGNED];
   if (value === "Bank Processing") return [LEAD_STATUSES.CONTACTED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW];
-  if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
+  if (value === "Pending Documents") return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
+  if (value === "Document Received") return [LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED];
+  if (value === "Under Bank Process") return [LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED];
   if (value === "Disbursed") return [LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED];
   if (value === "Rejected With Reason") return [LEAD_STATUSES.REJECTED];
   return [normalized];

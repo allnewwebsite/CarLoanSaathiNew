@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createDealerFinanceManager, createDealerLead, createDealerSalesperson, createDealerStaff, deleteDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerFinanceManagers, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, getDealerStaffDetail, registerDealerOnboarding, removeDealerSalesperson, startDealerRegistration, updateDealerBankTieUps, updateDealerFinanceManager, updateDealerProfile } from "../controllers/dealer.controller.js";
+import { createDealerFinanceManager, createDealerLead, createDealerSalesperson, createDealerStaff, deleteDealerFinanceManager, deleteDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerFinanceManagers, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, getDealerStaffDetail, registerDealerOnboarding, removeDealerSalesperson, startDealerRegistration, updateDealerBankTieUps, updateDealerFinanceManager, updateDealerProfile } from "../controllers/dealer.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
@@ -21,6 +21,7 @@ router.delete("/salespersons/:id", removeDealerSalesperson);
 router.get("/finance-managers", getDealerFinanceManagers);
 router.post("/finance-managers", createDealerFinanceManager);
 router.patch("/finance-managers/:id", updateDealerFinanceManager);
+router.delete("/finance-managers/:id", deleteDealerFinanceManager);
 router.get("/staff", getDealerStaff);
 router.post("/staff", createDealerStaff);
 router.get("/staff/:id", getDealerStaffDetail);

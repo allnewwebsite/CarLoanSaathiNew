@@ -59,18 +59,18 @@ function leadDetailResponseFromProjection(projection = {}, extras = {}) {
 function financeStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
-    [LEAD_STATUSES.CONTACTED]: "Bank Processing",
+    [LEAD_STATUSES.CONTACTED]: "Contacted",
     [LEAD_STATUSES.REQUEST_DOCUMENT]: "Pending Documents",
-    [LEAD_STATUSES.DOCUMENT_RECEIVED]: "Pending Documents",
+    [LEAD_STATUSES.DOCUMENT_RECEIVED]: "Document Received",
     [LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS]: "Pending Documents",
-    [LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED]: "Bank Processing",
-    [LEAD_STATUSES.UNDER_BANK_PROCESS]: "Bank Processing",
+    [LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED]: "Document Received",
+    [LEAD_STATUSES.UNDER_BANK_PROCESS]: "Under Bank Process",
     [LEAD_STATUSES.ASSIGNED]: "New",
-    [LEAD_STATUSES.ACCEPTED]: "Bank Processing",
-    [LEAD_STATUSES.UNDER_REVIEW]: "Bank Processing",
+    [LEAD_STATUSES.ACCEPTED]: "Under Bank Process",
+    [LEAD_STATUSES.UNDER_REVIEW]: "Under Bank Process",
     [LEAD_STATUSES.DOCS_PENDING]: "Pending Documents",
-    [LEAD_STATUSES.APPROVED]: "Bank Processing",
-    [LEAD_STATUSES.REJECTED]: "Rejected With Reason",
+    [LEAD_STATUSES.APPROVED]: "Under Bank Process",
+    [LEAD_STATUSES.REJECTED]: "Rejected",
     [LEAD_STATUSES.DISBURSED]: "Disbursed",
     [LEAD_STATUSES.CLOSED]: "Disbursed",
   };
@@ -230,8 +230,8 @@ export async function getGmSalespersons(req, res, next) {
           email: person.email,
           totalCases: cases.length,
           disbursedCases: cases.filter((lead) => financeStatus(lead.status) === "Disbursed").length,
-          rejectedCases: cases.filter((lead) => financeStatus(lead.status) === "Rejected With Reason").length,
-          pendingCases: cases.filter((lead) => !["Disbursed", "Rejected With Reason"].includes(financeStatus(lead.status))).length,
+          rejectedCases: cases.filter((lead) => normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED).length,
+          pendingCases: cases.filter((lead) => ![LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED, LEAD_STATUSES.REJECTED].includes(normalizeStatus(lead.status))).length,
         };
       });
     salespersons.forEach((person) => syncSalespersonSummaryProjectionSoon({ ...person, dealershipId: dealershipEmail }, person));

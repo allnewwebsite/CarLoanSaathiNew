@@ -640,17 +640,17 @@ function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
   const map = {
     NEW: "New",
-    CONTACTED: "Bank Processing",
+    CONTACTED: "Contacted",
     REQUEST_DOCUMENT: "Pending Documents",
-    DOCUMENT_RECEIVED: "Pending Documents",
+    DOCUMENT_RECEIVED: "Document Received",
     REQUEST_PENDING_DOCUMENTS: "Pending Documents",
-    ALL_DOCUMENTS_RECEIVED: "Bank Processing",
-    UNDER_BANK_PROCESS: "Bank Processing",
+    ALL_DOCUMENTS_RECEIVED: "Document Received",
+    UNDER_BANK_PROCESS: "Under Bank Process",
     ASSIGNED: "New",
-    ACCEPTED: "Bank Processing",
-    UNDER_REVIEW: "Bank Processing",
+    ACCEPTED: "Under Bank Process",
+    UNDER_REVIEW: "Under Bank Process",
     DOCS_PENDING: "Pending Documents",
-    APPROVED: "Approved",
+    APPROVED: "Under Bank Process",
     REJECTED: "Rejected",
     DISBURSED: "Disbursed",
     CLOSED: "Disbursed",
@@ -1356,6 +1356,34 @@ export async function updateDealerFinanceManager(req, res, next) {
   }
 }
 
+export async function deleteDealerFinanceManager(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const manager = await getRecord("financeManagers", req.params.id);
+    if (!manager || manager.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Finance Manager not found" });
+
+    await deleteRecord("financeManagers", manager.id);
+    clearCachedValue("dealer:finance-managers:");
+    clearCachedValue("dealer:leads:");
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,
+      actor: req.user,
+      data: { dealershipId: dealershipEmail, financeManagerId: manager.id, action: "deleted" },
+    });
+    await writeAuditLog({
+      req,
+      actionType: "FINANCE_MANAGER_PERMANENT_DELETE",
+      targetEntity: "financeManagers",
+      targetId: manager.id,
+      oldValue: manager,
+      meta: { dealershipId: dealershipEmail, email: manager.email || "" },
+    });
+    res.json({ message: "Finance Manager permanently deleted", financeManagerId: manager.id });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getDealerStaff(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
@@ -1744,18 +1772,26 @@ export async function removeDealerSalesperson(req, res, next) {
     const { dealershipEmail } = await financeDeskContext(req);
     const salesperson = await getRecord("salespersons", req.params.id);
     if (!salesperson || salesperson.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Salesperson not found" });
-    const updated = await updateRecord("salespersons", salesperson.id, {
-      active: false,
-      status: "inactive",
-      removedAt: new Date().toISOString(),
-      removedBy: dealerEmail(req),
-    });
+    await deleteRecord("salespersons", salesperson.id);
+    await deleteRecordsByQuery("salespersonSummaryProjection", {
+      where: [{ field: "dealershipId", value: dealershipEmail }, { field: "salespersonId", value: salesperson.id }],
+    }).catch(() => 0);
+    clearCachedValue("gm:salespersons:");
+    clearCachedValue("dealer:leads:");
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.SALESPERSON_CHANGED,
       actor: req.user,
-      data: { dealershipId: dealershipEmail, salespersonId: updated.id, action: "removed" },
+      data: { dealershipId: dealershipEmail, salespersonId: salesperson.id, action: "deleted" },
     });
-    res.json({ message: "Salesperson removed", salesperson: updated });
+    await writeAuditLog({
+      req,
+      actionType: "SALESPERSON_PERMANENT_DELETE",
+      targetEntity: "salespersons",
+      targetId: salesperson.id,
+      oldValue: salesperson,
+      meta: { dealershipId: dealershipEmail, email: salesperson.email || "" },
+    });
+    res.json({ message: "Salesperson permanently deleted", salespersonId: salesperson.id });
   } catch (error) {
     next(error);
   }

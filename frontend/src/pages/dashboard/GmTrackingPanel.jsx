@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
-import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
@@ -18,7 +18,7 @@ const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/leads", "/dealer/leads", "/bank/leads", "/documents"]);
 const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/salespersons", "/dealer/salespersons"]);
 const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusCards = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
+const statusCards = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 function display(value) {
   return value || "-";
@@ -252,7 +252,10 @@ function SalespersonsScreen() {
 
 function StatusScreen() {
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") || LEAD_STATUSES.NEW;
+  const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
+    ? normalizeStatus(requestedStatus)
+    : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const { leads, total, hasMore, loading, load } = useGmLeads({ status });
   const choose = (nextStatus) => {

@@ -25,6 +25,7 @@ const statusOptions = [
   LEAD_STATUSES.UNDER_BANK_PROCESS,
   LEAD_STATUSES.DISBURSED,
   LEAD_STATUSES.REJECTED,
+  LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
 ].map((value) => ({ label: leadStatusLabel(value), value }));
 const statusFilters = BANK_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
 
@@ -143,7 +144,7 @@ function PendingDocsModal({ lead, status = LEAD_STATUSES.REQUEST_PENDING_DOCUMEN
     }
   };
   return (
-    <Modal title={status === LEAD_STATUSES.REQUEST_DOCUMENT ? "Request Documents" : "Request Pending Documents"} onClose={onClose}>
+    <Modal title="Pending Documents" onClose={onClose}>
       <div className="grid gap-2 sm:grid-cols-2">
         {[...docs, otherDocumentLabel].map((doc) => (
           <label key={doc} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-slate-700 ${selected.includes(doc) ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
@@ -223,7 +224,10 @@ function TotalLeadsPage({ mode }) {
   const debouncedSearch = useDebouncedValue(search, 180);
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
-  const status = mode === "status" ? params.get("status") || LEAD_STATUSES.NEW : "";
+  const requestedStatus = mode === "status" ? params.get("status") || BANK_STATUS_OPTIONS[0] : "";
+  const status = mode === "status" && BANK_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
+    ? normalizeStatus(requestedStatus)
+    : mode === "status" ? BANK_STATUS_OPTIONS[0] : "";
   const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search: debouncedSearch, status });
 
   const updateStatus = async (lead, nextStatus) => {

@@ -3,7 +3,7 @@ import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
-import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
@@ -305,7 +305,10 @@ function TotalLeadsPage() {
 function StatusPage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") || LEAD_STATUSES.NEW;
+  const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
+    ? normalizeStatus(requestedStatus)
+    : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
   const [search, setSearch] = useState(params.get("search") || "");
   const debouncedSearch = useDebouncedValue(search, 180);
   const { rows, total, hasMore, loading, page, onPage } = useBankLeads(debouncedSearch, status);
@@ -336,7 +339,7 @@ function StatusPage() {
         setParams({ status, page: "1", ...(value ? { search: value } : {}) });
       }} />
       <div className="flex flex-wrap gap-2">
-        {BANK_STATUS_OPTIONS.map((value) => <button key={value} onClick={() => choose(value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{standardStatusLabel(value)}</button>)}
+        {CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => <button key={value} onClick={() => choose(value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{standardStatusLabel(value)}</button>)}
       </div>
       <Table title="Status Cases" headers={headers} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>

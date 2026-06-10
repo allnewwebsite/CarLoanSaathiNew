@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
-import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
@@ -19,7 +19,7 @@ const financeManagerMutationFilter = (detail) => mutationUrlMatches(detail, ["/d
 const staffMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/staff"]);
 const tieUpMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/bank-tieups"]);
 const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-const statusTabs = BANK_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
+const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 const emptyLead = {
   fullName: "",
@@ -203,13 +203,10 @@ function leadRows(leads, mode = "total") {
         caseId(lead),
         display(lead.fullName || lead.customerName),
         display(lead.mobile),
-        display(bankDisplay(lead)),
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         <StatusBadge key="status" lead={lead} />,
       ];
-      if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED) {
-        cells.splice(6, 0, display(lead.rejectionReason));
-      }
+      if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED) cells.push(display(lead.rejectionReason));
       cells.push(
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.assignedExecutiveName),
@@ -224,7 +221,6 @@ function leadRows(leads, mode = "total") {
         key: lead.id,
         cells: [
           ...base,
-          display(bankDisplay(lead)),
           moneyValue(lead.carPrice || lead.carOnRoadPrice),
           moneyValue(lead.loanAmount || lead.requiredLoanAmount),
           display(lead.bankPartner || lead.assignedBankName),
@@ -513,7 +509,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Loan Amount", "Generated Date", "Finance Manager", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Assigned Bank", "Loan Amount", "Generated Date", "Finance Manager", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1084,6 +1080,8 @@ function SalespersonManagementScreen() {
     }
   };
   const remove = async (person) => {
+    const confirmed = window.confirm(`Delete ${person.name || person.email || "this salesperson"} permanently? Existing cases will keep their copied history.`);
+    if (!confirmed) return;
     await api.delete(`/dealer/salespersons/${person.id}`);
     await loadSalespersons();
   };
@@ -1094,8 +1092,7 @@ function SalespersonManagementScreen() {
       person.mobile,
       person.jobId,
       person.email,
-      person.active ? "Active" : "Inactive",
-      person.active ? <button key="remove" onClick={() => remove(person)} className="rounded-md border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button> : "-",
+      <button key="delete" onClick={() => remove(person)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
     ],
   }));
   return (
@@ -1112,8 +1109,8 @@ function SalespersonManagementScreen() {
         </div>
       </form>
       <div className="space-y-4">
-        <SectionTitle title="Add / Remove Salesperson" subtitle="Soft remove keeps existing case history intact." />
-        <Table headers={["Salesperson Name", "Mobile Number", "Job ID", "Mail ID", "Status", "Action"]} rows={rows} loading={loading} />
+        <SectionTitle title="Add / Remove Salesperson" subtitle="Delete removes the salesperson master record. Existing cases keep copied history." />
+        <Table headers={["Salesperson Name", "Mobile Number", "Job ID", "Mail ID", "Action"]} rows={rows} loading={loading} />
       </div>
     </div>
   );
@@ -1156,8 +1153,10 @@ function FinanceManagerManagementScreen() {
       setSaving(false);
     }
   };
-  const toggleStatus = async (manager) => {
-    await api.patch(`/dealer/finance-managers/${manager.id}`, { active: !manager.active });
+  const deleteManager = async (manager) => {
+    const confirmed = window.confirm(`Delete ${manager.name || manager.email || "this Finance Manager"} permanently? Existing cases will keep their copied history.`);
+    if (!confirmed) return;
+    await api.delete(`/dealer/finance-managers/${manager.id}`);
     await loadFinanceManagers();
   };
   const rows = financeManagers.map((manager) => ({
@@ -1167,8 +1166,7 @@ function FinanceManagerManagementScreen() {
       manager.mobile,
       manager.employeeId,
       manager.email,
-      manager.active ? "Active" : "Inactive",
-      <button key="toggle" onClick={() => toggleStatus(manager)} className={`rounded-md border px-2.5 py-1.5 text-xs font-medium ${manager.active ? "border-amber-200 text-amber-700" : "border-emerald-200 text-emerald-700"}`}>{manager.active ? "Mark Inactive" : "Mark Active"}</button>,
+      <button key="delete" onClick={() => deleteManager(manager)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
     ],
   }));
   return (
@@ -1186,7 +1184,7 @@ function FinanceManagerManagementScreen() {
       </form>
       <div className="space-y-4">
         <SectionTitle title="Finance Managers" subtitle="Dealership-scoped ownership master for loan processing responsibility." />
-        <Table headers={["Finance Manager Name", "Mobile Number", "Employee ID", "Email ID", "Status", "Action"]} rows={rows} loading={loading} />
+        <Table headers={["Finance Manager Name", "Mobile Number", "Employee ID", "Email ID", "Action"]} rows={rows} loading={loading} />
       </div>
     </div>
   );
@@ -1238,7 +1236,7 @@ function AllCasesScreen() {
           {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
         </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Selected Bank", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Finance Manager", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Finance Manager", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1246,27 +1244,21 @@ function AllCasesScreen() {
 function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const [page, setPage] = useState(Number(params.get("page") || 1));
-  const status = params.get("status") || LEAD_STATUSES.NEW;
-  const financeManagerId = params.get("financeManagerId") || "";
-  const { financeManagers } = useFinanceManagers();
-  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status, financeManagerId });
+  const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
+    ? normalizeStatus(requestedStatus)
+    : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status });
   const choose = (value) => {
     setPage(1);
-    const next = { status: value, financeManagerId, page: "1" };
-    Object.keys(next).forEach((key) => !next[key] && delete next[key]);
-    setParams(next);
-    loadLeads({ ...next, page: 1 });
-  };
-  const chooseManager = (value) => {
-    setPage(1);
-    const next = { status, financeManagerId: value, page: "1" };
+    const next = { status: value, page: "1" };
     Object.keys(next).forEach((key) => !next[key] && delete next[key]);
     setParams(next);
     loadLeads({ ...next, page: 1 });
   };
   const pageTo = (nextPage) => {
     setPage(nextPage);
-    loadLeads({ page: nextPage, status, financeManagerId });
+    loadLeads({ page: nextPage, status });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
@@ -1275,13 +1267,7 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <div className="max-w-xs">
-        <select className="field h-10" value={financeManagerId} onChange={(e) => chooseManager(e.target.value)}>
-          <option value="">All Finance Managers</option>
-          {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
-        </select>
-      </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Rejection Reason", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Selected Bank", "Loan Amount", "Current Status", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", "Current Status", "Rejection Reason", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", "Current Status", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1339,7 +1325,7 @@ export function FinanceLeadDetailPage() {
           <button onClick={() => navigate(`/finance/leads/${lead.id}/documents`)} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white">View Documents</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Selected Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Assigned Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", financeStatus(lead)]].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>
