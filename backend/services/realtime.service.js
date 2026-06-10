@@ -108,7 +108,18 @@ function leadRealtimeScopes(lead = {}) {
   const dealershipIds = unique([lead.dealershipId, lead.dealershipEmail, lead.dealerEmail, lead.createdBy]);
   const bankIds = unique([lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.assignedBankName]);
   const executiveIds = unique([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.updatedByExecutiveId]);
-  const branchIds = unique([lead.branchId, lead.bankBranchId, lead.assignedBankIfsc, lead.ifscCode, lead.bankIfsc, lead.bankBranchCity, lead.branchCity]);
+  const branchIds = unique([
+    lead.branchId,
+    lead.bankBranchId,
+    lead.branchIfsc,
+    lead.assignedBankIfsc,
+    lead.ifscCode,
+    lead.bankIfsc,
+    lead.bankBranchCity,
+    lead.branchCity,
+    lead.branchLocation,
+    lead.bankBranchLocation,
+  ]);
   return { dealershipIds, bankIds, executiveIds, branchIds };
 }
 
@@ -219,9 +230,19 @@ function canReceiveEvent(user = {}, event = {}) {
   }
   if (user.role === "bank-manager") {
     const bankIds = unique([user.bankId, user.bankName, user.email, user.uid]);
-    const branchIds = unique([user.branchId, user.bankIfsc, user.ifscCode, user.branchCity]);
+    const branchIds = unique([
+      user.branchId,
+      user.branchIfsc,
+      user.bankIfsc,
+      user.ifscCode,
+      user.branchCity,
+      user.branchLocation,
+      user.bankBranchLocation,
+    ]);
     const sameBank = bankIds.some((id) => scopes.bankIds?.includes(id));
-    const sameBranch = Boolean(scopes.branchIds?.length) && branchIds.some((id) => scopes.branchIds?.includes(id));
+    const sameBranch = scopes.branchIds?.length
+      ? branchIds.some((id) => scopes.branchIds?.includes(id))
+      : sameBank;
     return sameBank && sameBranch;
   }
   if (user.role === "loan-executive") {
@@ -331,7 +352,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     bankIds: unique([...(leadScopes.bankIds || []), ...(notificationScopes.bankIds || []), data.bankId]),
     executiveIds: unique([...(leadScopes.executiveIds || []), ...(notificationScopes.executiveIds || []), data.executiveId]),
     recipientIds: unique([...(notificationScopes.recipientIds || []), data.recipientId]),
-    branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.ifscCode]),
+    branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.branchIfsc, data.bankIfsc, data.ifscCode, data.branchLocation]),
   };
   const event = {
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),

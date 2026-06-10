@@ -7,6 +7,7 @@ import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { countOpenExecutiveLeads } from "./leadQuery.service.js";
 import { queryExecutiveSummaryProjection, syncLeadProjectionSoon } from "./projection.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 
 function queueIdForLead(lead) {
@@ -400,6 +401,15 @@ export async function retrieveAndReassignLead(leadId, reason = "manual-reassignm
 
   const freshLead = await getRecord("leads", leadId);
   const assignment = await assignLeadRoundRobin(freshLead, { excludePartnerIds: excluded, reason });
+  const reassignedLead = await getRecord("leads", leadId);
+  if (reassignedLead) {
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED,
+      lead: reassignedLead,
+      actor: { email: requestedBy, role: requestedBy === "sla-engine" ? "system" : "user" },
+      data: { reason },
+    });
+  }
 
   await createNotification({
     type: "executive-reassigned",
@@ -576,6 +586,15 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     assignedExecutiveId: updated.assignedExecutiveId || null,
     leadSnapshot: updated,
   });
+
+  if (reason !== "lead-created-auto-assignment") {
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED,
+      lead: updated,
+      actor: { email: requestedBy, role: requestedBy === "sla-engine" ? "system" : "bank-manager" },
+      data: { reason },
+    });
+  }
 
   return updated;
 }

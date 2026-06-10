@@ -59,7 +59,6 @@ function mutationPayload(event = {}) {
 }
 
 function invalidateRealtimeCaches(event = {}) {
-  if (PHASE_ONE_EVENTS.has(event.eventType || event.event)) return;
   if (event.kind === "notification") {
     invalidateGetCache({ prefix: "/notifications", purge: true });
     return;
@@ -109,9 +108,7 @@ function dispatchRealtimeEvent(event = {}) {
     return;
   }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
-  if (!PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
-    window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
-  }
+  window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
 }
 
 function closeSource() {
@@ -138,6 +135,20 @@ async function connect() {
       source.addEventListener("connected", () => {
         window.__CLS_REALTIME_CONNECTED = true;
         window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: true } }));
+        if (lastEventId) {
+          window.dispatchEvent(new CustomEvent("cls:data-mutated", {
+            detail: {
+              realtime: true,
+              kind: "lead",
+              url: "/lead-mutation",
+              canonicalUrl: "/lead-mutation",
+              event: "SSE_RECONNECTED",
+              eventType: "SSE_RECONNECTED",
+              at: Date.now(),
+              source: "sse-reconnect",
+            },
+          }));
+        }
       });
       source.addEventListener("operational", (message) => {
         try {

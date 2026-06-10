@@ -1720,7 +1720,6 @@ export async function reassignBankLead(req, res, next) {
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED, lead: updated, actor: req.user, data: { reason } });
     await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
     res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
   } catch (error) {
