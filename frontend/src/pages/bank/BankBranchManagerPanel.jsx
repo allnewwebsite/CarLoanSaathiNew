@@ -3,6 +3,7 @@ import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
+import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -297,7 +298,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Finance Manager", "Finance Manager Mobile", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -329,8 +330,8 @@ function StatusPage() {
     ],
   })), [navigate, rows, status]);
   const headers = normalizeStatus(status) === LEAD_STATUSES.REJECTED
-    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Rejection Reason", "Assigned Executive", "Documents"]
-    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Current Status", "Last Updated", "Assigned Executive", "Documents"];
+    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
+    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
   return (
     <section className="space-y-4">
       <PageTitle title="Status" />
@@ -426,7 +427,7 @@ function AnalyticsPage() {
       </div>
       <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={emptyLoading} />
       <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={emptyLoading} />
-      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Current Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
+      <Table title="Recent Case Movement" headers={["Case ID", "Customer", LEAD_TABLE_LABELS.assignedExecutive, "Branch", LEAD_TABLE_LABELS.currentStatus, "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
     </section>
   );
 }
@@ -640,7 +641,7 @@ function ExecutiveCasesPage() {
   return (
     <section className="space-y-4">
       <PageTitle title={payload.executive ? `${payload.executive.name || payload.executive.fullName} Cases` : "Executive Cases"} />
-      <Table title="Assigned Cases" headers={["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Loan Amount", "Current Status", "Assigned Date", "Last Updated", "Documents"]} rows={rows} loading={loading} />
+      <Table title="Assigned Cases" headers={["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Assigned Date", LEAD_TABLE_LABELS.lastUpdated, "Documents"]} rows={rows} loading={loading} />
     </section>
   );
 }
@@ -708,7 +709,7 @@ function BankDealershipDisbursedPage() {
       <PageTitle title={`${dealershipName} Disbursed Cases`} />
       <p className="text-sm text-slate-500">Disbursed cases for this dealership within the current bank scope.</p>
       <SearchBar value={search} onChange={setSearch} />
-      <Table title="Disbursed Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", "Executive", "Executive Mobile", "Current Status", "Case Generated", "Last Updated", "Action"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title="Disbursed Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.generatedDate, LEAD_TABLE_LABELS.lastUpdated, "Action"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -789,7 +790,7 @@ export function BankManagerLeadDetailPage() {
       <PageTitle title="Customer Documents" />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>

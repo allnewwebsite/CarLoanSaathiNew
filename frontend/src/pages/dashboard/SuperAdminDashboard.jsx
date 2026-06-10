@@ -5,6 +5,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
+import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -475,13 +476,13 @@ function AdminListPage({ mode }) {
       const rejectedReason = leadFilter === "REJECTED_REASON";
       return {
         title: rejectedReason ? "Loan Rejected" : "Status",
-        headers: rejectedReason ? ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", "Assigned Executive", "Executive Mobile", "Current Status", "Rejection Reason", "Updated By", "Last Updated"] : ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", "Assigned Executive", "Executive Mobile", "Current Status", "Last Updated"],
+        headers: rejectedReason ? ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Updated By", LEAD_TABLE_LABELS.lastUpdated] : ["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Required Loan", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated],
         rows: records.map((lead) => ({ key: lead.id, cells: rejectedReason ? [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city), `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), display(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), display(lead.rejectionReason || lead.loanRejectionReason), display(lead.updatedBy || lead.assignedExecutiveEmail), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt)] : [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city), `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), display(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt)] })),
       };
     }
     return {
       title: "Total Leads",
-      headers: ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Dealership Name", "Dealer City", "Case Generated", "Assigned Bank Name", "Assigned Bank IFSC Code", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Status", "Last Updated", "Documents"],
+      headers: ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Dealership Name", "Dealer City", LEAD_TABLE_LABELS.generatedDate, "Assigned Bank Name", "Assigned Bank IFSC Code", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Documents"],
       rows: records.map((lead) => ({ key: lead.id, cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), `Rs. ${money.format(Number(lead.onRoadPrice || lead.carOnRoadPrice || lead.carPrice || 0))}`, `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, assignmentDisplay(lead.dealershipName || lead.dealerName || lead.dealerEmail, "Pending"), display(lead.dealershipCity || lead.city), generatedAt(lead.createdAt), assignmentDisplay(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), bankIfscDisplay(lead), assignmentDisplay(lead.assignedExecutiveName || lead.assignedExecutiveEmail), assignmentDisplay(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt), <button key="docs" onClick={() => navigate(`/admin/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>] })),
     };
   }, [leadFilter, mode, navigate, pageData.rows, updatingId]);
@@ -589,7 +590,7 @@ export function SuperAdminLeadDetailPage() {
     <section className="space-y-5">
       <PageTitle mode="lead details" />
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], ["Executive", lead.assignedExecutiveName || lead.assignedExecutiveEmail], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], ["Current Status", statusLabel(leadStatus(lead))], ["SLA", slaState(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], [LEAD_TABLE_LABELS.currentStatus, statusLabel(leadStatus(lead))], ["SLA", slaState(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
@@ -625,7 +626,7 @@ export function SuperAdminDealershipDetailPage() {
       <div className="grid gap-3 md:grid-cols-4">
         {[["Dealership", dealer.dealershipName], ["Brand", dealer.dealershipBrand], ["City", dealer.city], ["Login Email", dealer.loginEmail || dealer.email || email], ["Salesperson Count", dealer.salespersonCount || "-"], ["Total Leads", leads.length], ["Approval Ratio", approvalRatio(leads)], ["Status", dealer.status]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
-      <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", "Current Status", "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" lead={lead} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
+      <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", LEAD_TABLE_LABELS.currentStatus, "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" lead={lead} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { ButtonSpinner, DetailPageSkeleton } from "../../components/ui/Loading.jsx";
+import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
@@ -509,7 +510,7 @@ function TotalLeadsScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All cases submitted by this dealership finance desk." />
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Assigned Bank", "Loan Amount", "Generated Date", "Finance Manager", "Current Status", "Assigned Executive", "Executive Mobile", "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Assigned Bank", "Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, "Documents"]} rows={leadRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1236,7 +1237,7 @@ function AllCasesScreen() {
           {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
         </select>
       </div>
-      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Finance Manager", "Assigned Executive", "Executive Mobile", "Current Status", "Status Updated Date", "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Bank", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Documents"]} rows={leadRows(leads, "cases")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1267,7 +1268,7 @@ function StatusScreen() {
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", "Current Status", "Rejection Reason", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", "Current Status", "Finance Manager", "Executive Name", "Executive Mobile", "Last Updated", "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -1325,7 +1326,7 @@ export function FinanceLeadDetailPage() {
           <button onClick={() => navigate(`/finance/leads/${lead.id}/documents`)} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white">View Documents</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Assigned Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Executive", lead.assignedExecutiveName], ["Executive Mobile", lead.assignedExecutiveMobile || lead.executiveMobile], ["Current Status", financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Assigned Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, financeStatus(lead)]].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>
