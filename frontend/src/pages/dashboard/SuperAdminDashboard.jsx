@@ -31,6 +31,10 @@ function display(value) {
   return value || "-";
 }
 
+function bankCapacityDisplay(item) {
+  return display(item?.monthlyLoanCapacity || item?.monthlyCapacity || item?.approvalLimit);
+}
+
 function assignmentDisplay(value, fallback = "Not Assigned") {
   return value === undefined || value === null || value === "" ? fallback : value;
 }
@@ -457,14 +461,14 @@ function AdminListPage({ mode }) {
       return {
         title: "Approved Banks",
         headers: ["Bank Name", "IFSC Code", "Bank Location", "Manager Name", "Manager Mobile", "Official Email", "Monthly Capacity", "Number Of Executives", "Approval Date", "Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), display(item.executiveCount), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), bankCapacityDisplay(item), display(item.executiveCount), formatDate(item.approvedAt || item.updatedAt), display(item.accountActive === false ? "Disabled" : item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "approval-banks") {
       return {
         title: "Pending Approval Banks",
         headers: ["Bank Name", "IFSC Code", "Location", "Manager Name", "Manager Mobile", "Official Email", "Monthly Capacity", "Registration Date", "Status", "Actions"],
-        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), display(item.monthlyCapacity), formatDate(item.submittedAt || item.createdAt), display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
+        rows: records.map((item) => ({ key: item.id, cells: [display(item.bankName || item.companyName), display(item.ifsc), display(item.bankBranchLocation || item.branchLocation || item.city), display(item.managerName || item.contactPerson), display(item.mobile), display(item.email), bankCapacityDisplay(item), formatDate(item.submittedAt || item.createdAt), display(item.status), <div key="actions" className="flex flex-wrap gap-2"><button onClick={() => navigate(`/admin/approvals/banks/${item.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button><button disabled={updatingId === item.id} onClick={() => deleteBank(item)} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Delete</button></div>] })),
       };
     }
     if (mode === "status") {
@@ -629,13 +633,38 @@ export function SuperAdminDealershipDetailPage() {
 export function SuperAdminApprovalDetailPage({ type }) {
   const { id } = useParams();
   const data = useAdminEcosystem();
+  const [directItem, setDirectItem] = useState(null);
+  const [directLoading, setDirectLoading] = useState(true);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const navigate = useNavigate();
   const item = type === "banks"
-    ? data.pendingBankApprovals.find((entry) => entry.id === id)
-    : data.pendingDealershipApprovals.find((entry) => entry.id === id);
+    ? directItem || data.pendingBankApprovals.find((entry) => entry.id === id)
+    : directItem || data.pendingDealershipApprovals.find((entry) => entry.id === id);
+  useEffect(() => {
+    let active = true;
+    const loadDirectItem = async () => {
+      setDirectLoading(true);
+      try {
+        const endpoint = type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships";
+        const [pendingResponse, approvedResponse] = await Promise.all([
+          api.get(endpoint, { params: { status: "pending", search: id, limit: 25 } }),
+          api.get(endpoint, { params: { status: "approved", search: id, limit: 25 } }),
+        ]);
+        const rows = [...responseRows(pendingResponse), ...responseRows(approvedResponse)];
+        const match = rows.find((entry) => entry.id === id || entry.ifsc === id || entry.ifscCode === id || entry.loginEmail === id);
+        if (active) setDirectItem(match || null);
+      } catch {
+        if (active) setDirectItem(null);
+      } finally {
+        if (active) setDirectLoading(false);
+      }
+    };
+    if (!item) loadDirectItem();
+    else setDirectLoading(false);
+    return () => { active = false; };
+  }, [id, item, type]);
   const approve = async () => {
     setBusy(true);
     setActionError("");
@@ -674,16 +703,16 @@ export function SuperAdminApprovalDetailPage({ type }) {
       setBusy(false);
     }
   };
-  if (data.loading && !item) return <DetailPageSkeleton />;
+  if ((data.loading || directLoading) && !item) return <DetailPageSkeleton />;
   if (!item) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Application not found.</section>;
   const canAct = canActOnApproval(item);
   const sections = type === "banks"
     ? [
       ["Bank Details", [["Bank Name", item.bankName || item.companyName], ["Email", item.email], ["Mobile", item.mobile]]],
       ["Branch Details", [["Bank Branch Location", item.bankBranchLocation || item.branchLocation || item.city], ["State", item.state || "Haryana"], ["IFSC", item.ifsc], ["GSTIN", item.gstin]]],
-      ["Branch Manager Details", [["Manager", item.managerName || item.contactPerson], ["Email", item.email], ["Mobile", item.mobile], ["Landline", item.landline]]],
+      ["Branch Manager Details", [["Manager", item.managerName || item.contactPerson], ["Email", item.officialEmail || item.email], ["Mobile", item.mobile]]],
       ["Executive List", (item.executives || []).map((exec, index) => [`Executive ${index + 1}`, exec.name || exec.fullName || exec.email])],
-      ["SLA Configuration", [["Approval Limit", item.approvalLimit || 100], ["SLA Score", item.slaScore || 100]]],
+      ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount], ["SLA Score", item.slaScore || 100]]],
     ]
     : [
       ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["GSTIN", item.dealership?.gstin], ["Address", item.dealership?.address]]],
