@@ -1106,11 +1106,16 @@ export async function createBankExecutive(req, res, next) {
     if (duplicate?.mobile === mobile) return res.status(409).json({ message: "Mobile number already exists for this bank" });
     if (duplicate?.jobId === jobId) return res.status(409).json({ message: "Job ID already exists for this bank" });
     if (duplicate?.email === email || duplicate?.officialEmail === email || duplicate?.id === email) return res.status(409).json({ message: "Official email already exists for an executive" });
+    const existingExecutiveByEmail = await getRecord("loanExecutives", email).catch(() => null);
+    if (existingExecutiveByEmail?.active !== false && existingExecutiveByEmail?.bankId && existingExecutiveByEmail.bankId !== identity.bankId) {
+      return res.status(409).json({ message: "Official email already exists for another bank executive" });
+    }
 
     const now = new Date().toISOString();
     const temporaryPassword = generateTemporaryPassword();
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     let firebaseUser;
+    let reusedExistingAuthUser = false;
     try {
       firebaseUser = await firebaseAdmin.auth().createUser({
         email,
@@ -1120,8 +1125,19 @@ export async function createBankExecutive(req, res, next) {
         disabled: false,
       });
     } catch (firebaseError) {
-      if (firebaseError.code === "auth/email-already-exists") return res.status(409).json({ message: "Firebase Auth account already exists for this email" });
-      throw firebaseError;
+      if (firebaseError.code === "auth/email-already-exists") {
+        firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+        await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role: "loan-executive", excludeIds: [] });
+        await firebaseAdmin.auth().updateUser(firebaseUser.uid, {
+          password: temporaryPassword,
+          displayName: name,
+          emailVerified: true,
+          disabled: false,
+        });
+        reusedExistingAuthUser = true;
+      } else {
+        throw firebaseError;
+      }
     }
     await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role: "loan-executive", excludeIds: [] });
 
@@ -1185,7 +1201,7 @@ export async function createBankExecutive(req, res, next) {
     });
     const executive = await getRecord("loanExecutives", email);
     clearBankSummaryCaches();
-    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId } });
+    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId, reusedExistingAuthUser } });
     res.status(201).json({
       ...executive,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,
