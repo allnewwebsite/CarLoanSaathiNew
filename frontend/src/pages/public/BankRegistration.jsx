@@ -147,7 +147,7 @@ function UploadBox({ doc, bankUid, value, onChange }) {
           </div>
         </div>
       )}
-      {error && <p className="mt-2 text-xs font-medium text-red-600">{error}</p>}
+      <p className={`validation-slot mt-2 ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>
     </div>
   );
 }
@@ -362,7 +362,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
             <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-950 md:text-4xl">Partner with CarLoanSaathi</h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">Register your banking branch network to receive dealership finance leads, manage executives, process automotive loans, and track approvals in real-time.</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{benefits.map((item) => <div key={item} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-800">{item}</div>)}</div>
-            {error && <p className="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+            <p className={`mt-5 min-h-11 rounded-lg px-4 py-3 text-sm font-semibold ${error ? "bg-red-50 text-red-700" : "invisible bg-red-50 text-red-700"}`}>{error || "No validation issue"}</p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
               <input type="password" placeholder="Password" className="field h-11 rounded-md" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
@@ -393,7 +393,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           </div>
         </section>
 
-        {error && <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+        <p className={`min-h-11 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ${error ? "" : "invisible"}`}>{error || "No validation issue"}</p>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-3 border-b border-slate-200 pb-4"><FileCheck2 className="h-5 w-5 text-[#0d47a1]" /><h1 className="text-xl font-semibold text-slate-950">Bank Registration Form</h1></div>

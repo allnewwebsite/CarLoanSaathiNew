@@ -50,18 +50,25 @@ function identityCacheKey({ uid = "", email = "" } = {}) {
 async function loadIdentityCandidates({ uid = "", email = "" } = {}) {
   const normalizedEmail = normalizeIdentityEmail(email);
   const normalizedUid = String(uid || "").trim();
-  const lookups = [];
+  const exactLookups = [];
   if (normalizedUid) {
-    lookups.push(getRecord("users", normalizedUid).catch(() => null));
-    lookups.push(findRecordsByField("users", "uid", normalizedUid, 5).catch(() => []));
+    exactLookups.push(getRecord("users", normalizedUid).catch(() => null));
   }
-  if (normalizedEmail) {
-    lookups.push(getRecord("users", normalizedEmail).catch(() => null));
-    lookups.push(findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []));
+  if (normalizedEmail && normalizedEmail !== normalizedUid) {
+    exactLookups.push(getRecord("users", normalizedEmail).catch(() => null));
   }
+
+  const exactResults = await Promise.all(exactLookups);
+  const exactCandidates = uniqueRecords(exactResults.filter(Boolean).filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
+  if (exactCandidates.some(activeIdentity)) return exactCandidates;
+
+  const lookups = [];
+  if (normalizedUid) lookups.push(findRecordsByField("users", "uid", normalizedUid, 5).catch(() => []));
+  if (normalizedEmail) lookups.push(findRecordsByField("users", "email", normalizedEmail, 5).catch(() => []));
+
   const results = await Promise.all(lookups);
   const candidates = results.flat().filter(Boolean);
-  return uniqueRecords(candidates.filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
+  return uniqueRecords([...exactCandidates, ...candidates].filter((record) => identityMatches(record, { uid: normalizedUid, email: normalizedEmail })));
 }
 
 export async function findIdentityCandidates({ uid = "", email = "" } = {}) {

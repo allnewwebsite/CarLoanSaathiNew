@@ -660,10 +660,10 @@ function AddLeadOnlyScreen() {
               {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
             </select>
             {!financeManagers.length ? (
-              <p className="mt-2 text-sm text-red-600">No Finance Manager found. Please add one first.</p>
+              <p className="validation-slot text-sm">No Finance Manager found. Please add one first.</p>
             ) : null}
           </Field>
-          <div className="flex items-end">
+          <div className="flex min-h-[4.375rem] items-end">
             <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>
         </div>
@@ -1296,7 +1296,7 @@ function SectionTitle({ title, subtitle }) {
 }
 
 function Field({ label, children, error }) {
-  return <label className="text-sm font-medium text-slate-700">{label}{children}{error ? <span className="mt-1 block text-xs font-medium text-red-600">{error}</span> : null}</label>;
+  return <label className="text-sm font-medium text-slate-700">{label}{children}<span className={`validation-slot ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</span></label>;
 }
 
 export function FinanceLeadDetailPage() {

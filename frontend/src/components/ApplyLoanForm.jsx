@@ -97,9 +97,13 @@ function SearchableSelect({ label, value, options, placeholder, error, onChange,
           </div>
         </div>
       )}
-      {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
+      <p className={`validation-slot font-semibold ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>
     </label>
   );
+}
+
+function ValidationSlot({ error }) {
+  return <p className={`validation-slot ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>;
 }
 
 export function ApplyLoanForm({ initialSelection }) {
@@ -271,15 +275,15 @@ export function ApplyLoanForm({ initialSelection }) {
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <label className={labelClass}>Full Name *
             <input className={fieldClass} value={form.fullName} onChange={(e) => update("fullName", e.target.value)} />
-            {errors.fullName && <p className="mt-1 text-xs text-red-600">{errors.fullName}</p>}
+            <ValidationSlot error={errors.fullName} />
           </label>
           <label className={labelClass}>Mobile Number *
             <input className={fieldClass} inputMode="numeric" maxLength="10" value={form.mobile} onChange={(e) => update("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))} />
-            {errors.mobile && <p className="mt-1 text-xs text-red-600">{errors.mobile}</p>}
+            <ValidationSlot error={errors.mobile} />
           </label>
           <label className={`${labelClass} md:col-span-2`}>City *
             <input className={fieldClass} value={form.city} onChange={(e) => update("city", e.target.value)} />
-            {errors.city && <p className="mt-1 text-xs text-red-600">{errors.city}</p>}
+            <ValidationSlot error={errors.city} />
           </label>
         </div>
       )}
@@ -290,11 +294,11 @@ export function ApplyLoanForm({ initialSelection }) {
           <SearchableSelect label="Selected Model *" value={form.selectedModel} options={modelOptions} placeholder={brandSlug ? "Search and select model" : "Select brand first"} error={errors.selectedModel} onChange={selectModel} disabled={!brandSlug} />
           <label className={labelClass}>Car Price (Rs.) *
             <input className={fieldClass} type="number" value={form.carPrice} onChange={(e) => update("carPrice", e.target.value)} />
-            {errors.carPrice && <p className="mt-1 text-xs text-red-600">{errors.carPrice}</p>}
+            <ValidationSlot error={errors.carPrice} />
           </label>
           <label className={labelClass}>Loan Amount Required (Rs.) *
             <input className={fieldClass} type="number" value={form.loanAmount} onChange={(e) => update("loanAmount", e.target.value)} />
-            {errors.loanAmount && <p className="mt-1 text-xs text-red-600">{errors.loanAmount}</p>}
+            <ValidationSlot error={errors.loanAmount} />
           </label>
           <label className={labelClass}>Employment Type *
             <select className={fieldClass} value={form.employmentType} onChange={(e) => update("employmentType", e.target.value)}>
@@ -303,7 +307,7 @@ export function ApplyLoanForm({ initialSelection }) {
               <option>Self Employed</option>
               <option>Business Owner</option>
             </select>
-            {errors.employmentType && <p className="mt-1 text-xs text-red-600">{errors.employmentType}</p>}
+            <ValidationSlot error={errors.employmentType} />
           </label>
         </div>
       )}

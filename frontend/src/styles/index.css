@@ -109,6 +109,18 @@ a {
     @apply h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 outline-none transition focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
   }
 
+  .validation-slot {
+    @apply mt-1 block min-h-5 text-xs font-medium leading-5 text-red-600;
+  }
+
+  .validation-slot-empty {
+    @apply invisible;
+  }
+
+  .form-action-row {
+    @apply mt-4 flex min-h-10 items-center gap-3;
+  }
+
   .glass-card {
     @apply rounded-lg border border-slate-200 bg-white shadow-sm;
   }

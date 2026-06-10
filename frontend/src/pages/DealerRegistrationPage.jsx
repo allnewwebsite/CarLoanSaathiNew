@@ -95,7 +95,7 @@ function SelectBox({ label, value, options, onChange, placeholder = "Select", er
           </div>
         </div>
       )}
-      {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
+      <p className={`validation-slot font-semibold ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>
     </label>
   );
 }
@@ -115,7 +115,7 @@ function StandardSelect({ label, value, options, onChange, placeholder = "Select
           <option key={option} value={option}>{option}</option>
         ))}
       </select>
-      {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
+      <p className={`validation-slot font-semibold ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>
     </label>
   );
 }

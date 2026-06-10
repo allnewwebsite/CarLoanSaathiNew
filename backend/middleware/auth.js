@@ -270,11 +270,19 @@ export async function authenticate(req, res, next) {
       }
       return { valid: true };
     }) : Promise.resolve({ valid: true });
-    const emailPermissionPromise = measureRealtimeTicketStep(
-      "firebase_email_permission_lookup",
-      () => firebaseEmailVerified(email),
-      { summaryField: "permissionDurationMs" },
-    );
+    const emailPermissionPromise = tokenUser.emailVerified === true
+      ? Promise.resolve(true).then((verified) => {
+        logRealtimeTicketStep("firebase_email_permission_lookup", 0, {
+          cacheStatus: "jwt-claim",
+          summaryField: "permissionDurationMs",
+        });
+        return verified;
+      })
+      : measureRealtimeTicketStep(
+        "firebase_email_permission_lookup",
+        () => firebaseEmailVerified(email),
+        { summaryField: "permissionDurationMs" },
+      );
     const [sessionValidation, emailVerified] = await Promise.all([sessionValidationPromise, emailPermissionPromise]);
     if (!sessionValidation.valid) {
       observeAuthFailure(req, "session_invalid");
