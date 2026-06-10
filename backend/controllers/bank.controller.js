@@ -748,6 +748,7 @@ export async function registerBankPartner(req, res, next) {
       type: "bank",
       accountType: "bank",
       status: "pending",
+      approvalStatus: "pending",
       companyName: String(req.body.companyName || "").trim(),
       bankName: String(req.body.bankName || req.body.companyName || req.body.supportedBanks?.[0] || "").trim(),
       ifsc,
@@ -777,6 +778,7 @@ export async function registerBankPartner(req, res, next) {
       supportedBrands: ["All"],
       role: "bank-manager",
       slaScore: 100,
+      createdAt: now,
       submittedAt: now,
     });
     await updateRecord("pendingBankAccounts", pendingAccount.id, {

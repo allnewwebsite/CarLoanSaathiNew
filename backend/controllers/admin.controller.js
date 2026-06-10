@@ -1009,7 +1009,7 @@ export async function getPendingBankApprovals(req, res, next) {
     const payload = await cached(`admin:approvals:banks:${JSON.stringify({ status, search, cursor: req.query.cursor || "", limit: req.query.limit || 100 })}`, 10000, async () => {
       const page = await queryRecords("pendingBankApprovals", {
         ...(status && status !== "pending" ? { where: [{ field: "status", value: status }] } : {}),
-        orderBy: "createdAt",
+        orderBy: "updatedAt",
         direction: "desc",
         limit: req.query.limit || 100,
         maxLimit: 100,
