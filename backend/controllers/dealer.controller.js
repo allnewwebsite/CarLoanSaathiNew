@@ -759,6 +759,11 @@ export async function registerDealerOnboarding(req, res, next) {
           teamSize: optionalText(req.body.financeTeamSize),
         }
       : null;
+    const owner = {
+      fullName: optionalText(req.body.ownerFullName) || dealership.dealershipName,
+      mobile: optionalText(req.body.ownerMobile) || dealership.officialDealershipMobile,
+      email: optionalEmail(req.body.ownerEmail) || loginEmail,
+    };
     const registrationPayload = {
       type: "dealership",
       status: "Pending Approval",
@@ -771,11 +776,7 @@ export async function registerDealerOnboarding(req, res, next) {
       submittedAt: now,
       documents,
       dealership,
-      owner: {
-        fullName: required(req.body.ownerFullName, "Owner full name"),
-        mobile: required(req.body.ownerMobile, "Owner mobile number"),
-        email: required(req.body.ownerEmail, "Owner official email").toLowerCase(),
-      },
+      owner,
       ...(generalManager ? { generalManager } : {}),
       ...(financeDesk ? { financeDesk } : {}),
       verification: {

@@ -41,9 +41,6 @@ const initialForm = {
   gstin: "",
   officialDealershipEmail: "",
   officialDealershipMobile: "",
-  ownerFullName: "",
-  ownerMobile: "",
-  ownerEmail: "",
   state: "Haryana",
   city: "",
   pincode: "",
@@ -572,9 +569,6 @@ export function DealerRegistrationFormPage() {
       ["gstin", "GSTIN Number"],
       ["officialDealershipEmail", "Official Dealership Email"],
       ["officialDealershipMobile", "Official Dealership Mobile Number"],
-      ["ownerFullName", "Owner Full Name"],
-      ["ownerMobile", "Owner Mobile Number"],
-      ["ownerEmail", "Owner Official Email"],
       ["state", "State"],
       ["city", "Location"],
       ["pincode", "Pincode"],
@@ -740,13 +734,7 @@ export function DealerRegistrationFormPage() {
               <label className={labelClass}>Official Dealership Mobile Number *<input required className={fieldClass} value={form.officialDealershipMobile} onChange={(e) => update("officialDealershipMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
             </SectionCard>
 
-            <SectionCard number="2" title="Owner Details">
-              <label className={labelClass}>Owner Full Name *<input required className={fieldClass} value={form.ownerFullName} onChange={(e) => update("ownerFullName", e.target.value)} /></label>
-              <label className={labelClass}>Owner Mobile Number *<input required className={fieldClass} value={form.ownerMobile} onChange={(e) => update("ownerMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
-              <label className={`${labelClass} md:col-span-2`}>Owner Official Email *<input required type="email" className={fieldClass} value={form.ownerEmail} onChange={(e) => update("ownerEmail", e.target.value)} /></label>
-            </SectionCard>
-
-            <SectionCard number="3" title="Dealership Location">
+            <SectionCard number="2" title="Dealership Location">
               <StandardSelect label="State *" value={form.state} options={bankStates} onChange={(value) => update("state", value)} placeholder="Select state" />
               <SelectBox label="Location *" value={form.city} options={locationOptions} onChange={(value) => update("city", value)} placeholder="Search supported location" />
               <label className={labelClass}>Pincode *<input required className={fieldClass} value={form.pincode} onChange={(e) => update("pincode", e.target.value.replace(/\D/g, "").slice(0, 6))} /></label>
@@ -754,10 +742,10 @@ export function DealerRegistrationFormPage() {
               <label className={`${labelClass} md:col-span-2`}>Full Dealership Address *<textarea required className="field mt-2 min-h-28 rounded-2xl py-3" value={form.address} onChange={(e) => update("address", e.target.value)} /></label>
             </SectionCard>
 
-            <SectionCard number="4" title="Business & Loan Capacity">
+            <SectionCard number="3" title="Business & Loan Capacity">
               <StandardSelect label="Monthly Car Sales Capacity *" value={form.monthlyCarSalesCapacity} options={salesCapacity} onChange={(value) => update("monthlyCarSalesCapacity", value)} placeholder="Select monthly capacity" />
             </SectionCard>
-            <SectionCard number="5" title="Document Uploads">
+            <SectionCard number="4" title="Document Uploads">
               <div className="md:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-normal leading-6 text-slate-600">
                 Optional during registration. You can upload dealership verification documents later after testing the required details.
               </div>
@@ -786,7 +774,7 @@ export function DealerRegistrationFormPage() {
               ))}
             </SectionCard>
 
-            <SectionCard number="6" title="Account Access">
+            <SectionCard number="5" title="Account Access">
               <label className={labelClass}>Official Login Email *<input required readOnly type="email" className={`${fieldClass} bg-slate-50`} value={form.loginEmail} /></label>
               <div className="rounded-lg bg-slate-50 p-3 text-sm font-normal text-slate-600">After approval, this email/password account can sign in to CarLoanSaathi. Passwords are handled only by Firebase Authentication.</div>
             </SectionCard>
