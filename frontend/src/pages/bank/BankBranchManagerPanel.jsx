@@ -297,7 +297,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Finance Manager", "Finance Manager Mobile", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Lead Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Case Generated", "Finance Manager", "Finance Manager Mobile", "Assigned Executive Name", "Assigned Executive Mobile Number", "Current Status", "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
@@ -423,7 +423,7 @@ function AnalyticsPage() {
       </div>
       <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={emptyLoading} />
       <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={emptyLoading} />
-      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
+      <Table title="Recent Case Movement" headers={["Case ID", "Customer", "Executive", "Branch", "Current Status", "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
     </section>
   );
 }
