@@ -78,6 +78,7 @@ function MobileRows({ headers, rows }) {
     </div>
   );
 }
+const MemoMobileRows = memo(MobileRows);
 
 function TableSkeletonRows({ headers, rows = 8, gridTemplateColumns }) {
   return (
@@ -124,7 +125,7 @@ export const OperationalTable = memo(function OperationalTable({
   rowHeight = 32,
   action = null,
 }) {
-  const renderInfo = markTableRenderStart({ component: "OperationalTable", title });
+  const renderInfo = useMemo(() => markTableRenderStart({ component: "OperationalTable", title }), [title, rows?.length]);
   useRenderDiagnostics("OperationalTable", { title: title || "", rowCount: rows?.length || 0 });
   const knownTotal = Number.isFinite(Number(total)) && Number(total) > 0;
   const pages = knownTotal ? Math.max(Math.ceil(Number(total) / pageSize), 1) : Math.max(page + (hasMore ? 1 : 0), 1);
@@ -133,7 +134,7 @@ export const OperationalTable = memo(function OperationalTable({
   const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
   const gridTemplateColumns = useMemo(() => headers.map(columnTemplate).join(" "), [headers]);
   const tableMinWidth = useMemo(() => `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`, [headers]);
-  const mobileRows = useMemo(() => visibleRows.slice(0, Math.max(pageSize, 20)), [pageSize, visibleRows]);
+  const mobileRows = useMemo(() => visibleRows.slice(0, Math.min(Math.max(pageSize, 20), 30)), [pageSize, visibleRows]);
 
   useEffect(() => {
     markTableRenderComplete(renderInfo, {
@@ -141,7 +142,7 @@ export const OperationalTable = memo(function OperationalTable({
       title,
       rowCount: visibleRows.length,
     });
-  });
+  }, [renderInfo, title, visibleRows.length]);
 
   return (
     <section className="card overflow-hidden">
@@ -184,7 +185,7 @@ export const OperationalTable = memo(function OperationalTable({
             </div>
           )}
         </div>
-        {hasRows ? <MobileRows headers={headers} rows={mobileRows} /> : null}
+        {hasRows ? <MemoMobileRows headers={headers} rows={mobileRows} /> : null}
         {loading && !hasRows ? <MobileSkeletonRows /> : null}
         {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
       </div>

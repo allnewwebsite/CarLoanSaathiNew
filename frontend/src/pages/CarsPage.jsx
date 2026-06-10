@@ -19,6 +19,7 @@ function ModelCard({ car, index, onSelect }) {
       <div className="mx-auto flex aspect-square items-center justify-center rounded-lg bg-slate-100 p-3">
         <img
           loading="lazy"
+          decoding="async"
           src={car.image}
           alt={car.name}
           className="h-full w-full object-contain"

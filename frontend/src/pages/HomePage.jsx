@@ -18,7 +18,6 @@ import {
   Table2,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 const heroMetrics = [
@@ -269,28 +268,7 @@ function ShowcaseMock({ card }) {
 }
 
 function CountUpMetric({ value }) {
-  const [count, setCount] = useState(value);
-
-  useEffect(() => {
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
-      setCount(value);
-      return undefined;
-    }
-    let frame = 0;
-    let start = 0;
-    const duration = 1200;
-    const tick = (timestamp) => {
-      if (!start) start = timestamp;
-      const progress = Math.min((timestamp - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(value * eased));
-      if (progress < 1) frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
-  }, [value]);
-
-  return <span>{count.toLocaleString("en-IN")}</span>;
+  return <span>{Number(value || 0).toLocaleString("en-IN")}</span>;
 }
 
 function AnimatedWorkflow() {

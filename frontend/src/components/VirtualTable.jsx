@@ -1,4 +1,4 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useMemo } from "react";
 import { List } from "react-window";
 import { markTableRenderComplete, markTableRenderStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 
@@ -27,18 +27,38 @@ function columnWidth(label = "") {
   return 145;
 }
 
-export function VirtualTable({ columns, rows, rowHeight = 32, height = 520, overscan = 8 }) {
-  const renderInfo = markTableRenderStart({ component: "VirtualTable" });
+function MobileRows({ rows, columns }) {
+  return (
+    <div className="divide-y divide-slate-100 bg-white md:hidden">
+      {rows.map((row) => (
+        <article key={row.id || row.caseId} className="space-y-3 p-4">
+          {columns.slice(0, 6).map((column) => (
+            <div key={column.key}>
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">{column.label}</p>
+              <div className="mt-1 min-w-0 break-words text-sm text-slate-700">{column.render ? column.render(row) : row[column.key]}</div>
+            </div>
+          ))}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const MemoMobileRows = memo(MobileRows);
+
+export const VirtualTable = memo(function VirtualTable({ columns, rows, rowHeight = 32, height = 520, overscan = 6, mobileLimit = 30 }) {
+  const renderInfo = useMemo(() => markTableRenderStart({ component: "VirtualTable" }), [rows?.length]);
   useRenderDiagnostics("VirtualTable", { rowCount: rows?.length || 0 });
-  const gridTemplateColumns = columns.map((column) => `minmax(${columnWidth(column.label)}px, 1fr)`).join(" ");
-  const tableMinWidth = `${Math.max(columns.reduce((sum, column) => sum + columnWidth(column.label), 0), 720)}px`;
+  const gridTemplateColumns = useMemo(() => columns.map((column) => `minmax(${columnWidth(column.label)}px, 1fr)`).join(" "), [columns]);
+  const tableMinWidth = useMemo(() => `${Math.max(columns.reduce((sum, column) => sum + columnWidth(column.label), 0), 720)}px`, [columns]);
+  const mobileRows = useMemo(() => rows.slice(0, mobileLimit), [mobileLimit, rows]);
   useEffect(() => {
     markTableRenderComplete(renderInfo, {
       component: "VirtualTable",
       title: "",
       rowCount: rows.length,
     });
-  });
+  }, [renderInfo, rows.length]);
   return (
     <section className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -58,19 +78,8 @@ export function VirtualTable({ columns, rows, rowHeight = 32, height = 520, over
             style={{ height }}
           />
         </div>
-        <div className="divide-y divide-slate-100 bg-white md:hidden">
-          {rows.map((row) => (
-            <article key={row.id || row.caseId} className="space-y-3 p-4">
-              {columns.slice(0, 6).map((column) => (
-                <div key={column.key}>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">{column.label}</p>
-                  <div className="mt-1 min-w-0 break-words text-sm text-slate-700">{column.render ? column.render(row) : row[column.key]}</div>
-                </div>
-              ))}
-            </article>
-          ))}
-        </div>
+        <MemoMobileRows rows={mobileRows} columns={columns} />
       </div>
     </section>
   );
-}
+});

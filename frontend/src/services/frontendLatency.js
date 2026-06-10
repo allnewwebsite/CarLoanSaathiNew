@@ -4,6 +4,7 @@ const DUPLICATE_WINDOW_MS = 1500;
 const renderCounters = new Map();
 const requestWindow = new Map();
 const apiSamples = [];
+const LATENCY_LOG_LIMIT = 500;
 
 let activeNavigation = {
   requestId: "",
@@ -14,6 +15,17 @@ let activeNavigation = {
   path: "",
 };
 let listenersInstalled = false;
+
+function latencyEnabled() {
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_FRONTEND_LATENCY === "true") return true;
+  if (typeof import.meta !== "undefined" && import.meta.env?.DEV) return true;
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("CLS_FRONTEND_LATENCY") === "true";
+  } catch {
+    return false;
+  }
+}
 
 function now() {
   if (typeof performance !== "undefined" && typeof performance.now === "function") return performance.now();
@@ -35,6 +47,7 @@ function endpointKey(method, url, params) {
 }
 
 function log(tag, payload = {}) {
+  if (!latencyEnabled()) return null;
   const entry = {
     tag,
     at: wallTime(),
@@ -45,6 +58,9 @@ function log(tag, payload = {}) {
   if (typeof window !== "undefined") {
     window.__CLS_FRONTEND_LATENCY__ = window.__CLS_FRONTEND_LATENCY__ || { logs: [], apiSamples };
     window.__CLS_FRONTEND_LATENCY__.logs.push(entry);
+    if (window.__CLS_FRONTEND_LATENCY__.logs.length > LATENCY_LOG_LIMIT) {
+      window.__CLS_FRONTEND_LATENCY__.logs.splice(0, window.__CLS_FRONTEND_LATENCY__.logs.length - LATENCY_LOG_LIMIT);
+    }
   }
   // eslint-disable-next-line no-console
   console.info(tag, entry);
@@ -100,24 +116,26 @@ export function markComponentMount(page, meta = {}) {
 export function markApiRequestStart(config = {}, { cacheHit = false } = {}) {
   const startedAt = now();
   const key = endpointKey(config.method, config.url, config.params);
-  const existing = requestWindow.get(key)?.filter((time) => startedAt - time <= DUPLICATE_WINDOW_MS) || [];
-  existing.push(startedAt);
-  requestWindow.set(key, existing);
+  if (latencyEnabled()) {
+    const existing = requestWindow.get(key)?.filter((time) => startedAt - time <= DUPLICATE_WINDOW_MS) || [];
+    existing.push(startedAt);
+    requestWindow.set(key, existing);
 
-  if (existing.length > 1) {
-    log("DUPLICATE-REQUEST", {
-      endpoint: key,
-      requestCount: existing.length,
-      timeWindowMs: DUPLICATE_WINDOW_MS,
-    });
-  }
+    if (existing.length > 1) {
+      log("DUPLICATE-REQUEST", {
+        endpoint: key,
+        requestCount: existing.length,
+        timeWindowMs: DUPLICATE_WINDOW_MS,
+      });
+    }
 
-  const params = config.params || {};
-  if (params.search || params.q || params.query) {
-    log("SEARCH-REQUEST", { endpoint: key, search: params.search || params.q || params.query });
-  }
-  if (params.page || params.cursor || params.nextCursor) {
-    log("PAGINATION-REQUEST", { endpoint: key, page: params.page || "", cursor: params.cursor || params.nextCursor || "" });
+    const params = config.params || {};
+    if (params.search || params.q || params.query) {
+      log("SEARCH-REQUEST", { endpoint: key, search: params.search || params.q || params.query });
+    }
+    if (params.page || params.cursor || params.nextCursor) {
+      log("PAGINATION-REQUEST", { endpoint: key, page: params.page || "", cursor: params.cursor || params.nextCursor || "" });
+    }
   }
 
   config.__frontendLatency = {
@@ -134,10 +152,12 @@ export function markApiResponseEnd(config = {}, response = null, error = null) {
   const endedAt = now();
   const durationMs = sample.startedAt ? Math.round(endedAt - sample.startedAt) : null;
   let responseBytes = null;
-  try {
-    responseBytes = response?.data === undefined ? null : new Blob([JSON.stringify(response.data)]).size;
-  } catch {
-    responseBytes = null;
+  if (latencyEnabled()) {
+    try {
+      responseBytes = response?.data === undefined ? null : new Blob([JSON.stringify(response.data)]).size;
+    } catch {
+      responseBytes = null;
+    }
   }
   const entry = {
     endpoint: sample.endpoint || endpointKey(config.method, config.url, config.params),
@@ -148,7 +168,10 @@ export function markApiResponseEnd(config = {}, response = null, error = null) {
     error: error ? error.message : "",
     endedAt,
   };
-  apiSamples.push(entry);
+  if (latencyEnabled()) {
+    apiSamples.push(entry);
+    if (apiSamples.length > LATENCY_LOG_LIMIT) apiSamples.splice(0, apiSamples.length - LATENCY_LOG_LIMIT);
+  }
   log("FRONTEND-API", entry);
   return entry;
 }
@@ -163,6 +186,7 @@ export function markTableRenderStart(meta = {}) {
 }
 
 export function markTableRenderComplete(renderInfo = {}, meta = {}) {
+  if (!latencyEnabled()) return null;
   const completedAt = now();
   const lastApi = apiSamples.at(-1);
   const renderDurationMs = renderInfo.startedAt ? Math.round(completedAt - renderInfo.startedAt) : null;
@@ -198,6 +222,7 @@ export function useRenderDiagnostics(component, meta = {}) {
   const countRef = useRef(0);
   countRef.current += 1;
   useEffect(() => {
+    if (!latencyEnabled()) return;
     const previous = renderCounters.get(component) || 0;
     const renderCount = Math.max(previous + 1, countRef.current);
     renderCounters.set(component, renderCount);
@@ -213,9 +238,11 @@ export function useRenderDiagnostics(component, meta = {}) {
 export function usePageLatency(page, meta = {}) {
   useRenderDiagnostics(page, meta);
   useEffect(() => {
+    if (!latencyEnabled()) return;
     markComponentMount(page, meta);
   }, [page]);
   useLayoutEffect(() => {
+    if (!latencyEnabled()) return undefined;
     const started = now();
     const frame = window.requestAnimationFrame?.(() => {
       log("FRONTEND-PAGE-INTERACTIVE", {

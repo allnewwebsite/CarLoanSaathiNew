@@ -19,7 +19,7 @@ export function MarketplacePage() {
       <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
         {cars.map((car) => (
           <article className="card overflow-hidden" key={car.id}>
-            <img className="h-52 w-full object-cover" src={car.image} alt={`${car.brand} ${car.model}`} />
+            <img className="h-52 w-full object-cover" src={car.image} alt={`${car.brand} ${car.model}`} loading="lazy" decoding="async" />
             <div className="p-5">
               <p className="text-sm text-muted">{car.brand}</p>
               <h3 className="mt-1 text-lg font-semibold text-ink">{car.model}</h3>

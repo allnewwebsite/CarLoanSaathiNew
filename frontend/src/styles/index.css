@@ -292,21 +292,21 @@ main [class*="text-[#3f51ff]"]:not(button):not(a) {
 }
 
 .public-nav-blur {
-  backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: none;
 }
 
 .public-soft-shadow {
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .public-premium-shadow {
-  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .public-glass {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  backdrop-filter: saturate(180%) blur(18px);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  backdrop-filter: none;
 }
 
 .public-counter {
@@ -314,7 +314,9 @@ main [class*="text-[#3f51ff]"]:not(button):not(a) {
 }
 
 .public-gradient-orb {
-  animation: public-gradient-shift 12s ease-in-out infinite alternate;
+  animation: none;
+  filter: none !important;
+  opacity: 0.18;
 }
 
 .public-fade-in {
@@ -322,52 +324,71 @@ main [class*="text-[#3f51ff]"]:not(button):not(a) {
 }
 
 .public-float {
-  animation: public-float 6s ease-in-out infinite;
+  animation: none;
 }
 
 .public-float-delayed {
-  animation: public-float 7s ease-in-out infinite;
-  animation-delay: 1.2s;
+  animation: none;
 }
 
 .public-flow-y {
-  animation: public-flow-y 2.4s linear infinite;
-  will-change: transform;
+  animation: none;
+  will-change: auto;
 }
 
 .public-flow-x {
-  animation: public-flow-x 1.8s linear infinite;
-  will-change: transform;
+  animation: none;
+  will-change: auto;
 }
 
 .public-stage-glow {
-  animation: public-stage-glow 2.8s ease-in-out infinite;
-  will-change: transform, box-shadow;
+  animation: none;
+  will-change: auto;
 }
 
 .public-soft-pulse {
-  animation: public-soft-pulse 2.8s ease-in-out infinite;
-  will-change: transform, opacity;
+  animation: none;
+  will-change: auto;
 }
 
 .public-lifecycle-pulse {
-  animation: public-lifecycle-pulse 3s ease-in-out infinite;
-  will-change: transform, border-color;
+  animation: none;
+  will-change: auto;
 }
 
 .public-dot-pulse {
-  animation: public-dot-pulse 3s ease-in-out infinite;
-  will-change: opacity;
+  animation: none;
+  will-change: auto;
 }
 
 .public-node-float {
-  animation: public-node-float 3s ease-in-out infinite;
-  will-change: transform;
+  animation: none;
+  will-change: auto;
 }
 
 .public-notification-pulse {
-  animation: public-notification-pulse 4s ease-in-out infinite;
-  will-change: transform, opacity;
+  animation: none;
+  will-change: auto;
+}
+
+main > section,
+.card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}
+
+[role="table"] {
+  contain: layout paint;
+}
+
+@media (max-width: 768px) {
+  .public-gradient-orb {
+    display: none;
+  }
+
+  * {
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes public-fade-up {

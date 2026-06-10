@@ -808,7 +808,7 @@ export function DealerRegistrationFormPage() {
               Lead distribution runs location-wise: customer location to dealership location to active bank branch location.
             </div>
             <div className="mt-4 grid grid-cols-4 gap-2">
-              {Object.values(brandLogos).slice(0, 8).map((logo) => <div key={logo} className="flex h-12 items-center justify-center rounded-xl bg-[#f8fbff]"><img src={logo} alt="" className="max-h-7 max-w-14 object-contain" /></div>)}
+              {Object.values(brandLogos).slice(0, 8).map((logo) => <div key={logo} className="flex h-12 items-center justify-center rounded-xl bg-[#f8fbff]"><img src={logo} alt="" loading="lazy" decoding="async" className="max-h-7 max-w-14 object-contain" /></div>)}
             </div>
           </aside>
         </form>
