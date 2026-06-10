@@ -884,6 +884,19 @@ export async function login(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "not-approved", req });
       return res.status(403).json({ message: "Your account is awaiting CarLoanSaathi administrator approval." });
     }
+    if (["dealer", "finance"].includes(portal) && account?.role && !accountActive(account) && await approvedDealerAccess(normalizedEmail, account)) {
+      const repairedAccount = {
+        ...account,
+        active: true,
+        approved: true,
+        accountApproved: true,
+        accountActive: true,
+        accountStatus: "active",
+        status: "active",
+      };
+      await upsertCanonicalUser(account.uid || account.id || firebaseUid || normalizedEmail, repairedAccount).catch(() => null);
+      account = repairedAccount;
+    }
     if (!accountActive(account)) {
       authPhase = "account-active-check";
       const inactive = inactiveAccountMessage(account);

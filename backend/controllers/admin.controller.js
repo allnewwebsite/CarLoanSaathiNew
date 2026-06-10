@@ -371,13 +371,13 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
   const financeUid = await firebaseUidForEmail(loginEmail);
   const financeCanonicalId = financeUid || loginEmail;
   await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
-  await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+  await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active", accountStatus: "active" });
   if (request.generalManager?.email) {
     const gmEmail = normalizeEmail(request.generalManager.email);
     const gmUid = await firebaseUidForEmail(gmEmail);
     const gmCanonicalId = gmUid || gmEmail;
     await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
-    await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active" });
+    await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active", accountStatus: "active" });
   }
   await upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true });
   await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
@@ -635,6 +635,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     accountApproved: true,
     accountActive: true,
     dealershipId: loginEmail,
+    accountStatus: "active",
     status: "active",
   });
 
@@ -650,6 +651,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
       accountApproved: true,
       accountActive: true,
       dealershipId: loginEmail,
+      accountStatus: "active",
       status: "active",
     });
   }
