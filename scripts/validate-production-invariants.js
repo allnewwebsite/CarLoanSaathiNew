@@ -108,6 +108,33 @@ check("bank executive management exposes only view and permanent delete", () => 
   ], "bank executive delete controller");
 });
 
+check("WhatsApp business notifications are idempotent and backend-only", () => {
+  const whatsappService = read("backend/services/whatsapp.service.js");
+  const notificationService = read("backend/services/notification.service.js");
+  const queueService = read("backend/services/queue.service.js");
+  const queueWorkers = read("backend/services/queueWorkers.service.js");
+  const realtimeService = read("backend/services/realtime.service.js");
+  const realtimeClient = read("frontend/src/services/realtimeClient.js");
+  includesAll(whatsappService, [
+    "notificationIdentity",
+    "canonicalEventType",
+    "WHATSAPP_NOTIFICATION_DEDUPED",
+    "processingWhatsAppKeys",
+    "upsertRecord(\"whatsappQueue\", identity.notificationKey",
+    "upsertRecord(\"notificationLogs\", notificationKey",
+    ".filter((candidate) => !candidate.messageSid)",
+    "status: \"processing\"",
+    "processWhatsAppQueue({ queueId: payload?.queueId, limit: 1 })",
+  ], "WhatsApp idempotency");
+  includesAll(notificationService, ["queueWhatsAppNotification", "publishRealtimeEvent"], "notification service");
+  includesAll(queueService, ["jobId: options.jobId || payload.jobId || undefined"], "queue stable job ids");
+  includesAll(queueWorkers, ["processWhatsAppQueue({ queueId: payload?.queueId })"], "WhatsApp queue worker");
+  assert(!realtimeService.includes("queueWhatsAppNotification"), "SSE service must not queue WhatsApp sends");
+  assert(!realtimeService.includes("sendWhatsApp"), "SSE service must not send WhatsApp messages");
+  assert(!realtimeClient.includes("queueWhatsAppNotification"), "frontend realtime client must not queue WhatsApp sends");
+  assert(!realtimeClient.includes("sendWhatsApp"), "frontend realtime client must not send WhatsApp messages");
+});
+
 let failed = 0;
 for (const item of checks) {
   try {

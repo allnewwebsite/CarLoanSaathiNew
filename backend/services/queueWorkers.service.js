@@ -15,7 +15,7 @@ export function registerQueueWorkers() {
     }
     return createNotification(payload);
   }, { concurrency: 1 });
-  registerWorker(QUEUE_NAMES.WHATSAPP, async () => processWhatsAppQueue(), { concurrency: 2 });
+  registerWorker(QUEUE_NAMES.WHATSAPP, async (payload) => processWhatsAppQueue({ queueId: payload?.queueId }), { concurrency: 2 });
   registerWorker(QUEUE_NAMES.SLA, async () => processSlaBreaches(), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.ARCHIVAL, async (payload) => archiveClosedLeads(payload), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.CLEANUP, async () => cleanupExpiredNotifications(), { concurrency: 1 });

@@ -194,6 +194,7 @@ export async function addQueueJob(name, jobName, payload = {}, options = {}) {
     return { queued: false, fallback: true };
   }
   const job = await queue.add(jobName, payload, {
+    jobId: options.jobId || payload.jobId || undefined,
     priority: priorityMap[options.priority || payload.priority] || priorityMap.medium,
     delay: Number(options.delay || 0),
   });

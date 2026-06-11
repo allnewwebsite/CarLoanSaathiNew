@@ -1,4 +1,4 @@
-import { createRecord, queryRecords, updateRecord } from "./firestore.service.js";
+import { getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { logError, logInfo, logWarn } from "./logger.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
@@ -20,6 +20,7 @@ const whatsappRuntime = {
 };
 
 let missingCredentialWarningLogged = false;
+const processingWhatsAppKeys = new Set();
 
 function nowIso() {
   return new Date().toISOString();
@@ -41,6 +42,105 @@ function normalizeTwilioAddress(value) {
   if (!trimmed) return "";
   if (trimmed.toLowerCase().startsWith("whatsapp:")) return trimmed;
   return `whatsapp:${normalizePhone(trimmed)}`;
+}
+
+function recipientKey(phone = "") {
+  const digits = normalizePhone(phone).replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function canonicalEventType(eventType = "") {
+  const key = String(eventType || "").trim().toUpperCase().replace(/-/g, "_");
+  const aliases = {
+    LEAD_ASSIGNED: "LEAD_ASSIGNED",
+    NEW_LEAD_ASSIGNED: "LEAD_ASSIGNED",
+    EXECUTIVE_ASSIGNED: "LEAD_ASSIGNED",
+    EXECUTIVE_REASSIGNED: "LEAD_REASSIGNED",
+    LEAD_REASSIGNED: "LEAD_REASSIGNED",
+    DOCUMENTS_REQUIRED: "DOCUMENTS_REQUIRED",
+    PENDING_DOCUMENTS: "DOCUMENTS_REQUIRED",
+    DOCUMENT_REQUESTED: "DOCUMENTS_REQUIRED",
+    REQUEST_DOCUMENT: "DOCUMENTS_REQUIRED",
+    STATUS_UPDATE: "STATUS_UPDATED",
+    STATUS_UPDATED: "STATUS_UPDATED",
+    CASE_APPROVED: "CASE_APPROVED",
+    APPROVAL: "CASE_APPROVED",
+    APPROVED: "CASE_APPROVED",
+    CASE_REJECTED: "CASE_REJECTED",
+    REJECTION: "CASE_REJECTED",
+    REJECTED: "CASE_REJECTED",
+    DOCUMENTS_UPLOADED: "DOCUMENTS_UPLOADED",
+  };
+  return aliases[key] || key || "WHATSAPP_MESSAGE";
+}
+
+function notificationIdentity({ leadId, caseId: rawCaseId, eventType, phoneNumber, metadata = {} } = {}) {
+  const resolvedLeadId = leadId || metadata.leadId || null;
+  const resolvedCaseId = rawCaseId || metadata.caseId || resolvedLeadId || "UNKNOWN_LEAD";
+  const recipient = recipientKey(phoneNumber);
+  const canonicalType = canonicalEventType(eventType);
+  const notificationKey = [resolvedCaseId, canonicalType, recipient || "NO_PHONE"]
+    .join("_")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .replace(/_+/g, "_");
+  return {
+    notificationKey,
+    canonicalType,
+    leadId: resolvedLeadId,
+    caseId: resolvedCaseId,
+    recipient,
+  };
+}
+
+function isTerminalNotificationStatus(status = "") {
+  return ["sent", "delivered", "queued", "processing", "provider-accepted", "missing-phone"].includes(String(status || "").toLowerCase());
+}
+
+async function logWhatsAppNotification({
+  notificationKey,
+  type,
+  eventType,
+  recipientRole,
+  recipientId,
+  recipient,
+  phone,
+  message,
+  leadId,
+  caseId,
+  status,
+  retryCount = 0,
+  provider,
+  queueId,
+  messageSid = null,
+  deliveryResult = null,
+  error = null,
+  metadata = {},
+}) {
+  const timestamp = nowIso();
+  return upsertRecord("notificationLogs", notificationKey, {
+    id: notificationKey,
+    notificationKey,
+    type,
+    eventType,
+    recipientRole,
+    recipientId,
+    recipient: recipientId || recipient || null,
+    phoneNumber: phone,
+    phone,
+    message,
+    leadId,
+    caseId,
+    status,
+    retryCount,
+    provider,
+    queueId,
+    messageSid,
+    deliveryResult,
+    error,
+    metadata,
+    timestamp,
+  });
 }
 
 function enabledByEnv() {
@@ -309,6 +409,13 @@ async function sendViaCloudApi({ to, message, eventType, metadata = {} }) {
 
 export async function sendWhatsApp({ to, message, eventType = "WHATSAPP_MESSAGE", metadata = {}, provider = DEFAULT_PROVIDER }) {
   const phone = normalizePhone(to);
+  const identity = notificationIdentity({
+    leadId: metadata.leadId,
+    caseId: metadata.caseId,
+    eventType,
+    phoneNumber: phone,
+    metadata,
+  });
   if (!phone) {
     const result = { ok: false, status: "missing-phone", error: "Recipient phone number is missing", deliveryResult: { eventType, caseId: metadata.caseId || null } };
     recordFailure({ error: result.error, eventType, status: result.status });
@@ -322,30 +429,32 @@ export async function sendWhatsApp({ to, message, eventType = "WHATSAPP_MESSAGE"
     ? await sendViaCloudApi({ to: phone, message, eventType, metadata })
     : await sendViaTwilio({ to: phone, message, eventType, metadata });
 
-  await createRecord("notificationLogs", {
+  await logWhatsAppNotification({
+    notificationKey: identity.notificationKey,
     type: eventType,
-    eventType,
+    eventType: identity.canonicalType,
     recipient: metadata.recipient || metadata.recipientId || null,
     recipientRole: metadata.recipientRole || null,
     recipientId: metadata.recipientId || null,
-    phoneNumber: phone,
     phone,
-    messageSid: result.messageSid || null,
+    message,
+    leadId: identity.leadId,
+    caseId: identity.caseId,
     status: result.status,
-    leadId: metadata.leadId || null,
-    caseId: metadata.caseId || null,
+    provider: result.provider || provider,
+    messageSid: result.messageSid || null,
     deliveryResult: result.deliveryResult || null,
     error: result.error || null,
-    provider: result.provider || provider,
-    timestamp: nowIso(),
+    metadata,
   });
 
   logInfo("WHATSAPP_SEND_RESULT", {
-    eventType,
+    eventType: identity.canonicalType,
     status: result.status,
     provider: result.provider || provider,
     messageSid: result.messageSid || null,
-    caseId: metadata.caseId || null,
+    caseId: identity.caseId || null,
+    notificationKey: identity.notificationKey,
   });
   return result;
 }
@@ -368,23 +477,65 @@ export async function queueWhatsAppNotification({
 
   const phone = normalizePhone(phoneNumber);
   const resolvedEventType = eventType || type || "WHATSAPP_MESSAGE";
+  const identity = notificationIdentity({ leadId, caseId, eventType: resolvedEventType, phoneNumber: phone, metadata });
+  const existingQueueItem = await getRecord("whatsappQueue", identity.notificationKey).catch(() => null);
+  if (existingQueueItem && (isTerminalNotificationStatus(existingQueueItem.status) || existingQueueItem.messageSid)) {
+    pushRuntimeEvent({
+      status: "deduped",
+      eventType: identity.canonicalType,
+      caseId: identity.caseId,
+      notificationKey: identity.notificationKey,
+    });
+    logInfo("WHATSAPP_NOTIFICATION_DEDUPED", {
+      notificationKey: identity.notificationKey,
+      eventType: identity.canonicalType,
+      caseId: identity.caseId,
+      recipient: identity.recipient,
+      status: existingQueueItem.status,
+      messageSid: existingQueueItem.messageSid || null,
+    });
+    return { ...existingQueueItem, deduped: true };
+  }
+
+  const existingLog = await getRecord("notificationLogs", identity.notificationKey).catch(() => null);
+  if (existingLog && (isTerminalNotificationStatus(existingLog.status) || existingLog.messageSid)) {
+    pushRuntimeEvent({
+      status: "deduped",
+      eventType: identity.canonicalType,
+      caseId: identity.caseId,
+      notificationKey: identity.notificationKey,
+    });
+    logInfo("WHATSAPP_NOTIFICATION_DEDUPED", {
+      notificationKey: identity.notificationKey,
+      eventType: identity.canonicalType,
+      caseId: identity.caseId,
+      recipient: identity.recipient,
+      status: existingLog.status,
+      messageSid: existingLog.messageSid || null,
+    });
+    return { ...existingLog, deduped: true };
+  }
+
   const timestamp = nowIso();
-  const record = await createRecord("whatsappQueue", {
+  const record = await upsertRecord("whatsappQueue", identity.notificationKey, {
+    id: identity.notificationKey,
+    notificationKey: identity.notificationKey,
     type: type || resolvedEventType,
-    eventType: resolvedEventType,
+    eventType: identity.canonicalType,
+    originalEventType: resolvedEventType,
     recipientRole,
     recipientId,
-    recipient: recipientId || null,
+    recipient: recipientId || identity.recipient || null,
     phoneNumber: phone,
     phone,
     message,
-    leadId,
-    caseId: caseId || metadata.caseId || null,
+    leadId: identity.leadId,
+    caseId: identity.caseId,
     status: phone ? "queued" : "missing-phone",
-    retryCount: 0,
+    retryCount: Number(existingQueueItem?.retryCount || 0),
     provider,
     priority,
-    metadata,
+    metadata: { ...metadata, notificationKey: identity.notificationKey, originalEventType: resolvedEventType },
     deliveryResult: null,
     queuedAt: timestamp,
     timestamp,
@@ -392,33 +543,34 @@ export async function queueWhatsAppNotification({
 
   whatsappRuntime.queued += 1;
   whatsappRuntime.pending += phone ? 1 : 0;
-  pushRuntimeEvent({ status: record.status, eventType: resolvedEventType, caseId: caseId || metadata.caseId || null });
+  pushRuntimeEvent({ status: record.status, eventType: identity.canonicalType, caseId: identity.caseId, notificationKey: identity.notificationKey });
 
-  await createRecord("notificationLogs", {
+  await logWhatsAppNotification({
+    notificationKey: identity.notificationKey,
     type: type || resolvedEventType,
-    eventType: resolvedEventType,
+    eventType: identity.canonicalType,
     recipientRole,
     recipientId,
-    recipient: recipientId || null,
-    phoneNumber: phone,
+    recipient: identity.recipient,
     phone,
     message,
-    leadId,
-    caseId: caseId || metadata.caseId || null,
+    leadId: identity.leadId,
+    caseId: identity.caseId,
     status: record.status,
     retryCount: 0,
     provider,
     queueId: record.id,
     messageSid: null,
     deliveryResult: { status: record.status, queuedAt: timestamp },
-    timestamp,
+    metadata,
   });
 
   if (phone) {
-    addQueueJob(QUEUE_NAMES.WHATSAPP, "whatsapp-send", { queueId: record.id }, {
+    addQueueJob(QUEUE_NAMES.WHATSAPP, "whatsapp-send", { queueId: record.id, jobId: record.id }, {
+      jobId: record.id,
       priority,
-      fallback: () => processWhatsAppQueue({ limit: 1 }),
-    }).catch((error) => logError("WhatsApp queue job enqueue failed", { error: error.message, eventType: resolvedEventType }));
+      fallback: (payload) => processWhatsAppQueue({ queueId: payload?.queueId, limit: 1 }),
+    }).catch((error) => logError("WhatsApp queue job enqueue failed", { error: error.message, eventType: identity.canonicalType, notificationKey: identity.notificationKey }));
   }
 
   return record;
@@ -426,6 +578,7 @@ export async function queueWhatsAppNotification({
 
 async function sendViaProvider(item) {
   if (item.status === "missing-phone") return { ok: false, status: "missing-phone", error: "Recipient phone number is missing" };
+  if (item.messageSid) return { ok: true, status: item.status || "sent", messageSid: item.messageSid, providerStatus: item.providerStatus || item.status || "sent" };
   return sendWhatsApp({
     to: item.phoneNumber || item.phone,
     message: item.message,
@@ -436,49 +589,66 @@ async function sendViaProvider(item) {
       caseId: item.caseId || item.metadata?.caseId,
       recipientRole: item.recipientRole,
       recipientId: item.recipientId,
+      notificationKey: item.notificationKey,
     },
     provider: item.provider || DEFAULT_PROVIDER,
   });
 }
 
-export async function processWhatsAppQueue({ limit = 25 } = {}) {
+export async function processWhatsAppQueue({ limit = 25, queueId = null } = {}) {
   const settings = await getWorkflowSettings();
   const maxRetries = Number(settings.notificationSettings?.maxRetries || 3);
-  const pages = await Promise.all([
-    queryRecords("whatsappQueue", { where: [{ field: "status", value: "queued" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
-    queryRecords("whatsappQueue", { where: [{ field: "status", value: "failed" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
-  ]);
-  const queue = pages
-    .flatMap((page) => page.data || [])
-    .filter((item) => Number(item.retryCount || 0) < maxRetries)
-    .sort((left, right) => String(left.createdAt || left.queuedAt || "").localeCompare(String(right.createdAt || right.queuedAt || "")))
-    .slice(0, limit);
+  const queue = queueId
+    ? [await getRecord("whatsappQueue", queueId).catch(() => null)].filter(Boolean)
+    : (await Promise.all([
+      queryRecords("whatsappQueue", { where: [{ field: "status", value: "queued" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
+      queryRecords("whatsappQueue", { where: [{ field: "status", value: "failed" }], limit, maxLimit: limit }).catch(() => ({ data: [] })),
+    ]))
+      .flatMap((page) => page.data || [])
+      .sort((left, right) => String(left.createdAt || left.queuedAt || "").localeCompare(String(right.createdAt || right.queuedAt || "")))
+      .slice(0, limit);
 
   const results = [];
-  for (const item of queue) {
+  for (const item of queue
+    .filter((candidate) => ["queued", "failed"].includes(String(candidate.status || "").toLowerCase()))
+    .filter((candidate) => Number(candidate.retryCount || 0) < maxRetries)
+    .filter((candidate) => !candidate.messageSid)) {
+    const lockKey = item.notificationKey || item.id;
+    if (processingWhatsAppKeys.has(lockKey)) {
+      results.push({ id: item.id, status: "skipped-processing" });
+      continue;
+    }
+    processingWhatsAppKeys.add(lockKey);
     try {
+      const notificationKey = lockKey;
+      await updateRecord("whatsappQueue", item.id, {
+        status: "processing",
+        processingStartedAt: nowIso(),
+        lastAttemptAt: nowIso(),
+      });
       const result = await sendViaProvider(item);
       const failed = !result.ok;
-      const nextStatus = failed ? "failed" : "sent";
+      const sidReceived = Boolean(result.messageSid);
+      const nextStatus = failed && !sidReceived ? "failed" : sidReceived ? "sent" : "sent";
       const retryCount = failed ? Number(item.retryCount || 0) + 1 : Number(item.retryCount || 0);
       if (whatsappRuntime.pending > 0) whatsappRuntime.pending -= 1;
       await updateRecord("whatsappQueue", item.id, {
         status: nextStatus,
         providerStatus: result.providerStatus || result.status || null,
         retryCount,
-        deliveredAt: result.ok ? nowIso() : item.deliveredAt || null,
-        failedAt: failed ? nowIso() : item.failedAt || null,
+        deliveredAt: !failed || sidReceived ? nowIso() : item.deliveredAt || null,
+        failedAt: failed && !sidReceived ? nowIso() : item.failedAt || null,
         messageSid: result.messageSid || null,
         deliveryResult: result.deliveryResult || null,
         error: result.error || null,
       });
-      await createRecord("notificationLogs", {
+      await logWhatsAppNotification({
+        notificationKey,
         type: item.type,
         eventType: item.eventType || item.type,
         recipientRole: item.recipientRole,
         recipientId: item.recipientId,
-        recipient: item.recipientId || null,
-        phoneNumber: item.phoneNumber,
+        recipient: item.recipient || item.recipientId || null,
         phone: item.phoneNumber,
         message: item.message,
         leadId: item.leadId,
@@ -490,19 +660,40 @@ export async function processWhatsAppQueue({ limit = 25 } = {}) {
         messageSid: result.messageSid || null,
         deliveryResult: result.deliveryResult || null,
         error: result.error || null,
-        timestamp: nowIso(),
+        metadata: item.metadata || {},
       });
       results.push({ id: item.id, status: nextStatus, messageSid: result.messageSid || null });
     } catch (error) {
       if (whatsappRuntime.pending > 0) whatsappRuntime.pending -= 1;
       recordFailure({ error: error.message, eventType: item.eventType || item.type });
+      const notificationKey = item.notificationKey || item.id;
       await updateRecord("whatsappQueue", item.id, {
         status: "failed",
         retryCount: Number(item.retryCount || 0) + 1,
         failedAt: nowIso(),
         error: safeErrorDetail(error.message),
       });
+      await logWhatsAppNotification({
+        notificationKey,
+        type: item.type,
+        eventType: item.eventType || item.type,
+        recipientRole: item.recipientRole,
+        recipientId: item.recipientId,
+        recipient: item.recipient || item.recipientId || null,
+        phone: item.phoneNumber || item.phone,
+        message: item.message,
+        leadId: item.leadId,
+        caseId: item.caseId || item.metadata?.caseId || null,
+        status: "failed",
+        retryCount: Number(item.retryCount || 0) + 1,
+        provider: item.provider,
+        queueId: item.id,
+        error: safeErrorDetail(error.message),
+        metadata: item.metadata || {},
+      });
       results.push({ id: item.id, status: "failed", error: safeErrorDetail(error.message) });
+    } finally {
+      processingWhatsAppKeys.delete(lockKey);
     }
   }
   return results;
