@@ -104,21 +104,84 @@ function MetricCard({ label, value, subtext }) {
   );
 }
 
-async function performLeadReassignment(lead, reason, onDone) {
-  await api.patch(`/bank/leads/${lead.id}/reassign`, { reason });
+function sameValue(left, right) {
+  const a = String(left || "").trim().toLowerCase();
+  const b = String(right || "").trim().toLowerCase();
+  return Boolean(a && b && a === b);
+}
+
+function branchMatch(lead = {}, executive = {}) {
+  const leadIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
+  const executiveIfsc = executive.bankIfsc || executive.ifsc || executive.ifscCode || executive.branchIfsc || "";
+  if (leadIfsc && executiveIfsc && !sameValue(leadIfsc, executiveIfsc)) return false;
+  const leadBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
+  const executiveBranch = executive.branchId || executive.bankBranchLocation || executive.branchCity || executive.branchLocation || executive.city || "";
+  return !leadBranch || !executiveBranch || sameValue(leadBranch, executiveBranch);
+}
+
+function executiveIdentity(executive = {}) {
+  return [executive.id, executive.sourceId, executive.executiveId, executive.email, executive.officialEmail, executive.mobile]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function currentExecutiveIdentity(lead = {}) {
+  return [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function reassignmentExecutiveId(executive = {}) {
+  return executive.sourceId || executive.executiveId || executive.email || executive.officialEmail || executive.id;
+}
+
+async function performLeadReassignment(lead, reason, newExecutiveId, onDone) {
+  await api.patch(`/bank/leads/${lead.id}/reassign`, { reason, newExecutiveId });
   await onDone?.();
 }
 
 function ReassignLeadDialog({ lead, onCancel, onDone }) {
   const [reason, setReason] = useState("manager-reassignment");
+  const [executives, setExecutives] = useState([]);
+  const [selectedExecutiveId, setSelectedExecutiveId] = useState("");
+  const [loadingExecutives, setLoadingExecutives] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setReason("manager-reassignment");
+    setExecutives([]);
+    setSelectedExecutiveId("");
     setError("");
     setBusy(false);
   }, [lead?.id]);
+
+  useEffect(() => {
+    if (!lead) return undefined;
+    let cancelled = false;
+    setLoadingExecutives(true);
+    api.get("/bank/executives", { params: { limit: 100 } })
+      .then((response) => {
+        if (cancelled) return;
+        const rows = responseRows(response);
+        const currentIds = new Set(currentExecutiveIdentity(lead));
+        const eligible = rows.filter((executive) => {
+          const status = String(executive.status || "").trim().toLowerCase();
+          const active = executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
+          const notCurrent = !executiveIdentity(executive).some((key) => currentIds.has(key));
+          return active && notCurrent && branchMatch(lead, executive);
+        });
+        setExecutives(eligible);
+        setSelectedExecutiveId(reassignmentExecutiveId(eligible[0]) || "");
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.response?.data?.message || err.message || "Unable to load executives");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExecutives(false);
+      });
+    return () => { cancelled = true; };
+  }, [lead]);
 
   if (!lead) return null;
 
@@ -129,10 +192,14 @@ function ReassignLeadDialog({ lead, onCancel, onDone }) {
       setError("Reassignment reason is required.");
       return;
     }
+    if (!selectedExecutiveId) {
+      setError("Select a new executive.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      await performLeadReassignment(lead, cleanReason, onDone);
+      await performLeadReassignment(lead, cleanReason, selectedExecutiveId, onDone);
       onCancel();
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Unable to reassign lead");
@@ -146,15 +213,39 @@ function ReassignLeadDialog({ lead, onCancel, onDone }) {
       <form onSubmit={submit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-950">Reassign Lead?</h2>
-            <p className="mt-1 text-sm text-slate-600">Move {caseId(lead)} to the next same-branch executive.</p>
+            <h2 className="text-base font-semibold text-slate-950">Reassign Case</h2>
+            <p className="mt-1 text-sm text-slate-600">Move {caseId(lead)} to another same-branch executive.</p>
           </div>
           <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-60">Close</button>
         </div>
         <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <p><span className="font-semibold">Case ID:</span> {caseId(lead)}</p>
+          <p className="mt-1"><span className="font-semibold">Customer:</span> {display(lead.fullName || lead.customerName)}</p>
           <p><span className="font-semibold">Current executive:</span> {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}</p>
           {(lead.assignedExecutiveMobile || lead.executiveMobile) ? <p className="mt-1"><span className="font-semibold">Mobile:</span> {lead.assignedExecutiveMobile || lead.executiveMobile}</p> : null}
+          <p className="mt-1"><span className="font-semibold">Status:</span> {leadStatusLabel(lead)}</p>
+          <p className="mt-1"><span className="font-semibold">Branch:</span> {display(lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode)}</p>
         </div>
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Select New Executive
+          <select
+            value={selectedExecutiveId}
+            disabled={loadingExecutives || busy}
+            onChange={(event) => {
+              setSelectedExecutiveId(event.target.value);
+              setError("");
+            }}
+            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1] disabled:bg-slate-50 disabled:text-slate-400"
+          >
+            {loadingExecutives ? <option value="">Loading executives...</option> : null}
+            {!loadingExecutives && !executives.length ? <option value="">No same-branch executives available</option> : null}
+            {!loadingExecutives && executives.map((executive) => (
+              <option key={reassignmentExecutiveId(executive)} value={reassignmentExecutiveId(executive)}>
+                {executive.name || executive.fullName || executive.email || executive.officialEmail} {executive.mobile ? `- ${executive.mobile}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="mt-4 block text-sm font-medium text-slate-700">
           Reason
           <textarea
@@ -170,7 +261,7 @@ function ReassignLeadDialog({ lead, onCancel, onDone }) {
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={busy} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <button type="submit" disabled={busy || loadingExecutives || !selectedExecutiveId} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {busy ? "Reassigning..." : "Reassign"}
           </button>
         </div>

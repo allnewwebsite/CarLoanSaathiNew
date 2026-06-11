@@ -1850,8 +1850,8 @@ export async function rejectBankLead(req, res, next) {
   }
 }
 
-async function performBankLeadReassignment({ lead, reason, actor }) {
-  return reassignLeadToNextBranchExecutive(lead.id, reason, actor);
+async function performBankLeadReassignment({ lead, reason, actor, newExecutiveId }) {
+  return reassignLeadToNextBranchExecutive(lead.id, reason, actor, { newExecutiveId });
 }
 
 export async function reassignBankLead(req, res, next) {
@@ -1861,14 +1861,29 @@ export async function reassignBankLead(req, res, next) {
       return res.status(403).json({ message: "Only bank managers can reassign leads" });
     }
     const reason = String(req.body.reason || "manager-reassignment").trim();
-    const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager" });
+    const newExecutiveId = String(req.body.newExecutiveId || req.body.executiveId || req.body.assignedExecutiveId || "").trim();
+    const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager", newExecutiveId });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
-    await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
+    await writeAuditLog({
+      req,
+      actionType: "BANK_MANAGER_REASSIGN",
+      oldValue: lead.assignedExecutiveId || lead.assignedExecutiveEmail || null,
+      newValue: updated.assignedExecutiveId || updated.assignedExecutiveEmail || null,
+      leadId: lead.id,
+      meta: {
+        caseId: lead.caseId,
+        reason,
+        oldExecutive: lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || null,
+        newExecutive: updated.assignedExecutiveName || updated.assignedExecutiveEmail || updated.assignedExecutiveId || null,
+        bankIfsc: updated.assignedBankIfsc || updated.bankIfsc || updated.ifscCode || null,
+        branch: updated.bankBranchCity || updated.branchCity || updated.branchLocation || null,
+      },
+    });
     Promise.resolve(queueLeadAssignedWhatsApp(updated))
       .catch((error) => logError("Bank reassignment WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
-    res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
+    res.json({ message: "Case reassigned successfully", lead: updated });
   } catch (error) {
     next(error);
   }

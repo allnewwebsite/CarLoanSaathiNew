@@ -1,4 +1,4 @@
-import { getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
+import { deleteRecord, getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo, logWarn } from "./logger.service.js";
@@ -352,6 +352,13 @@ export async function syncLeadProjection(lead = {}) {
 
 export function syncLeadProjectionSoon(lead = {}) {
   Promise.resolve().then(() => syncLeadProjection(lead)).catch(() => {});
+}
+
+export async function removeLeadExecutiveProjection({ leadId, executiveId }) {
+  const cleanLeadId = scopeId(leadId);
+  const cleanExecutiveId = scopeId(executiveId);
+  if (!cleanLeadId || !cleanExecutiveId) return false;
+  return deleteRecord("executiveViews", safeDocId(`lead_${cleanLeadId}_${cleanExecutiveId}`)).catch(() => false);
 }
 
 function notificationTargets(notification = {}) {

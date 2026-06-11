@@ -116,6 +116,38 @@ check("bank executive management exposes only view and permanent delete", () => 
   ], "bank executive delete controller");
 });
 
+check("bank case reassignment uses explicit same-branch executive selection", () => {
+  const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
+  const bankController = read("backend/controllers/bank.controller.js");
+  const assignmentService = read("backend/services/assignment.service.js");
+  const firestoreService = read("backend/services/firestore.service.js");
+  const projectionService = read("backend/services/projection.service.js");
+  includesAll(bankPanel, [
+    "Reassign Case",
+    "Select New Executive",
+    "newExecutiveId",
+    "branchMatch(lead, executive)",
+    "No same-branch executives available",
+  ], "bank reassignment UI");
+  includesAll(bankController, [
+    "req.body.newExecutiveId",
+    "Case reassigned successfully",
+    "BANK_MANAGER_REASSIGN",
+  ], "bank reassignment controller");
+  includesAll(assignmentService, [
+    "runRecordTransaction",
+    "resolveTargetExecutive",
+    "INVALID_REASSIGNMENT_TARGET",
+    "SAME_EXECUTIVE_REASSIGNMENT",
+    "removeLeadExecutiveProjection",
+    "Case Reassigned",
+    "refreshExecutiveSummary",
+    "REALTIME_EVENTS.EXECUTIVE_REASSIGNED",
+  ], "bank reassignment service");
+  includesAll(firestoreService, ["runRecordTransaction"], "firestore transaction helper");
+  includesAll(projectionService, ["removeLeadExecutiveProjection"], "old executive projection cleanup");
+});
+
 check("WhatsApp business notifications are idempotent and backend-only", () => {
   const whatsappService = read("backend/services/whatsapp.service.js");
   const notificationService = read("backend/services/notification.service.js");
