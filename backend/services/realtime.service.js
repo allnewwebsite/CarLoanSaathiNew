@@ -63,7 +63,7 @@ function cleanTickets() {
 }
 
 function redisEnabled() {
-  return Boolean(process.env.REDIS_URL);
+  return process.env.ENABLE_REALTIME_REDIS === "true" && Boolean(process.env.REDIS_URL);
 }
 
 function initRedisPubSub() {
@@ -79,6 +79,12 @@ function initRedisPubSub() {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: true,
+    });
+    redisPublisher.on("error", (error) => {
+      logWarn("Realtime Redis publisher unavailable; local SSE remains active", { error: error.message });
+    });
+    redisSubscriber.on("error", (error) => {
+      logWarn("Realtime Redis subscriber unavailable; local SSE remains active", { error: error.message });
     });
     redisSubscriber.subscribe(REALTIME_REDIS_CHANNEL).catch((error) => {
       logWarn("Realtime Redis subscribe failed; using local SSE only", { error: error.message });

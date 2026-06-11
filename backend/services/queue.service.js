@@ -18,6 +18,7 @@ const priorityMap = { critical: 1, high: 2, medium: 5, low: 9 };
 const queues = new Map();
 const workers = new Map();
 let redisConnection = null;
+let queueDisabledLogged = false;
 const queueCircuitBreakers = new Map();
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -147,7 +148,13 @@ async function waitForQueueCircuit(name) {
 }
 
 export function queueEnabled() {
-  return Boolean(process.env.REDIS_URL);
+  return process.env.ENABLE_REDIS_QUEUE === "true" && Boolean(process.env.REDIS_URL);
+}
+
+function queueDisabledReason() {
+  if (!process.env.REDIS_URL) return "REDIS_URL is not configured";
+  if (process.env.ENABLE_REDIS_QUEUE !== "true") return "ENABLE_REDIS_QUEUE is not true";
+  return "Redis queue disabled";
 }
 
 function connection() {
@@ -157,6 +164,9 @@ function connection() {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: true,
+    });
+    redisConnection.on("error", (error) => {
+      logWarn("Redis queue connection error", { error: error.message });
     });
   }
   return redisConnection;
@@ -252,7 +262,15 @@ export function registerWorker(name, processor, { concurrency = 5 } = {}) {
 }
 
 export async function queueHealth() {
-  if (!queueEnabled()) return { enabled: false, status: "local-fallback" };
+  if (!queueEnabled()) {
+    return {
+      enabled: false,
+      status: "local-fallback",
+      reason: queueDisabledReason(),
+      redisUrlConfigured: Boolean(process.env.REDIS_URL),
+      generatedAt: new Date().toISOString(),
+    };
+  }
   const health = {};
   for (const name of Object.values(QUEUE_NAMES)) {
     const queue = getQueue(name);
@@ -303,5 +321,11 @@ export async function queueHealth() {
 }
 
 export function logQueueDisabled() {
-  if (!queueEnabled()) logWarn("Redis queue disabled; using in-process async fallback", { env: process.env.NODE_ENV });
+  if (queueEnabled() || queueDisabledLogged) return;
+  queueDisabledLogged = true;
+  logWarn("Redis queue disabled; using in-process async fallback", {
+    env: process.env.NODE_ENV,
+    reason: queueDisabledReason(),
+    redisUrlConfigured: Boolean(process.env.REDIS_URL),
+  });
 }

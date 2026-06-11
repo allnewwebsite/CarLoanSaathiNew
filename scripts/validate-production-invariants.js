@@ -189,6 +189,27 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
   assert(!realtimeClient.includes("sendWhatsApp"), "frontend realtime client must not send WhatsApp messages");
 });
 
+check("Redis queues and realtime pubsub are explicit opt-in", () => {
+  const queueService = read("backend/services/queue.service.js");
+  const realtimeService = read("backend/services/realtime.service.js");
+  const envExample = read("backend/.env.example");
+  includesAll(queueService, [
+    "process.env.ENABLE_REDIS_QUEUE === \"true\"",
+    "ENABLE_REDIS_QUEUE is not true",
+    "local-fallback",
+    "queueDisabledLogged",
+  ], "queue Redis opt-in");
+  includesAll(realtimeService, [
+    "process.env.ENABLE_REALTIME_REDIS === \"true\"",
+    "Realtime Redis publisher unavailable; local SSE remains active",
+    "Realtime Redis subscriber unavailable; local SSE remains active",
+  ], "realtime Redis opt-in");
+  includesAll(envExample, [
+    "ENABLE_REDIS_QUEUE=false",
+    "ENABLE_REALTIME_REDIS=false",
+  ], "Redis opt-in env example");
+});
+
 let failed = 0;
 for (const item of checks) {
   try {
