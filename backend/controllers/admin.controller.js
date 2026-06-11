@@ -19,6 +19,7 @@ import { revokeUserSessions } from "./auth.controller.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
+import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -1643,6 +1644,10 @@ async function applyAdminLeadStatusSideEffects({ req, existing, lead, status }) 
     admin: true,
     meta: { caseId: lead.caseId },
   });
+  Promise.resolve(status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS
+    ? queueDocumentsRequiredWhatsApp({ lead, documents: lead.pendingDocuments || [] })
+    : queueStatusUpdatedWhatsApp({ lead, statusLabel }))
+    .catch((error) => logError("Admin WhatsApp status side effect failed", { error: error.message, leadId: lead.id, status }));
   await writeAuditLog({ req, actionType: "STATUS_CHANGE", newValue: status, leadId: req.params.id });
 }
 

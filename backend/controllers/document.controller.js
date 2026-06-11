@@ -7,6 +7,14 @@ import { assertValidDocumentStatusTransition, DOCUMENT_STATUSES, LEAD_STATUSES }
 import { ALERT_SEVERITY, recordOperationalEvent } from "../services/observability.service.js";
 import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { logError } from "../services/logger.service.js";
+import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "../services/whatsapp.service.js";
+
+function runDocumentSideEffect(label, task) {
+  Promise.resolve()
+    .then(task)
+    .catch((error) => logError("Document side effect failed", { label, error: error.message }));
+}
 
 function canUploadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
@@ -97,6 +105,10 @@ export async function uploadDocument(req, res, next) {
       recipientRole: "loan-executive",
       meta: { caseId: lead.caseId, documents: [req.body.type || "Document"] },
     });
+    runDocumentSideEffect("whatsapp-documents-uploaded", () => queueDocumentsUploadedWhatsApp({
+      lead,
+      documents: [req.body.type || "Document"],
+    }));
     publishRealtimeEvent({ eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user });
     res.status(201).json(document);
   } catch (error) {
@@ -158,6 +170,10 @@ export async function updateDocumentStatus(req, res, next) {
         priority: "high",
         meta: { caseId: lead.caseId, customerName: lead.fullName || lead.customerName, documentType: document.type, documentStatus: req.body.status },
       });
+      runDocumentSideEffect("whatsapp-documents-required", () => queueDocumentsRequiredWhatsApp({
+        lead: updatedLead,
+        documents: [document.type || "Document"],
+      }));
     }
     await writeAuditLog({
       req,

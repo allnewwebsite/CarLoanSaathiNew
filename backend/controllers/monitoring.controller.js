@@ -4,6 +4,7 @@ import { monitoringTelemetrySummary } from "../services/monitoringCenter.service
 import { getOperationalDashboard } from "../services/observability.service.js";
 import { realtimeStats } from "../services/realtime.service.js";
 import { cached } from "../services/ttlCache.service.js";
+import { whatsappMonitoringSummary } from "../services/whatsapp.service.js";
 
 function statusLabel(status = "") {
   if (["ok", "healthy"].includes(status)) return "Healthy";
@@ -103,6 +104,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
         getGlobalMetrics(),
       ]);
       const telemetry = monitoringTelemetrySummary({ realtimeStats: currentRealtimeStats });
+      const whatsappMonitoring = whatsappMonitoringSummary();
       const activeUsers = telemetry.realtime.activeSseConnections;
       const queueMonitoring = buildQueueMonitoring(health.checks?.redisQueues);
       const healthCards = {
@@ -165,6 +167,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
           dealerDisabledEvents: telemetry.dealers.dealerDisabledEvents,
         },
         cacheMonitoring: telemetry.cache,
+        whatsappMonitoring,
         queueMonitoring,
         systemAlerts: buildAlerts({ telemetry, operational, queueMonitoring }),
         operationalEvents: (operational.events || []).slice(0, 10),

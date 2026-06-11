@@ -16,7 +16,7 @@ import notificationRoutes from "./routes/notification.routes.js";
 import realtimeRoutes from "./routes/realtime.routes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { processSlaBreaches } from "./services/assignment.service.js";
-import { processWhatsAppQueue } from "./services/whatsapp.service.js";
+import { processWhatsAppQueue, validateWhatsAppEnvironment } from "./services/whatsapp.service.js";
 import { processNotificationEvents } from "./services/notificationWorker.service.js";
 import { sanitizeRequest } from "./middleware/sanitize.js";
 import { corsOptions, globalRateLimit, monitoringRateLimit, requireHttps, securityHeaders } from "./middleware/securityMiddleware.js";
@@ -38,6 +38,7 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 initBackendMonitoring();
+validateWhatsAppEnvironment();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 const portalWarmupPaths = [/^\/api\/(bank|gm|dealer|admin)(\/|$)/i];

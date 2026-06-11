@@ -1,4 +1,4 @@
-import { connectRealtimeClient, consumeRealtimeTicket, createRealtimeTicket, realtimeStats } from "../services/realtime.service.js";
+import { acknowledgeRealtimeEvents, connectRealtimeClient, consumeRealtimeTicket, createRealtimeTicket, realtimeStats } from "../services/realtime.service.js";
 import { logRealtimeTicketStep, logRealtimeTicketSummary } from "../services/realtimeTicketLatency.service.js";
 
 export async function createRealtimeConnectionTicket(req, res, next) {
@@ -31,6 +31,19 @@ export async function streamRealtimeEvents(req, res) {
 export async function getRealtimeStats(_req, res, next) {
   try {
     res.set("Cache-Control", "no-store").json(realtimeStats());
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function acknowledgeRealtimeEventsController(req, res, next) {
+  try {
+    const result = acknowledgeRealtimeEvents({
+      user: req.user,
+      eventIds: req.body?.eventIds,
+      lastEventId: req.body?.lastEventId,
+    });
+    res.set("Cache-Control", "no-store").json(result);
   } catch (error) {
     next(error);
   }

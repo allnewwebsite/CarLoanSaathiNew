@@ -28,6 +28,7 @@ import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
+import { queueDocumentsRequiredWhatsApp, queueLeadAssignedWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
@@ -1657,6 +1658,8 @@ export async function acceptBankLead(req, res, next) {
       leadSnapshot: lead,
     });
     await writeAuditLog({ req, actionType: "BANK_ACCEPT", newValue: nextStatus, leadId: lead.id });
+    Promise.resolve(queueStatusUpdatedWhatsApp({ lead: updated, statusLabel: STATUS_LABELS[nextStatus] || nextStatus }))
+      .catch((error) => logError("Bank accept WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
     res.json({ message: "Lead accepted", lead: updated });
   } catch (error) {
     next(error);
@@ -1699,6 +1702,8 @@ export async function rejectBankLead(req, res, next) {
     });
     await createNotification({ type: "rejection", title: "Lead rejected", message: remarks ? `${reason} - ${remarks}` : reason, leadId: lead.id, partnerId: partner.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, priority: "high", meta: { customerName: lead.fullName, reason, remarks } });
     await writeAuditLog({ req, actionType: "BANK_REJECT", newValue: reason, leadId: lead.id });
+    Promise.resolve(queueStatusUpdatedWhatsApp({ lead: updated, statusLabel: STATUS_LABELS[nextStatus] || nextStatus }))
+      .catch((error) => logError("Bank reject WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
     res.json({ message: "Lead rejected. Manual reassignment can be performed by bank manager if needed", lead: updated });
   } catch (error) {
     next(error);
@@ -1721,6 +1726,8 @@ export async function reassignBankLead(req, res, next) {
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
     await writeAuditLog({ req, actionType: "BANK_MANAGER_REASSIGN", newValue: reason, leadId: lead.id });
+    Promise.resolve(queueLeadAssignedWhatsApp(updated))
+      .catch((error) => logError("Bank reassignment WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
     res.json({ message: "Lead reassigned to next same-branch executive", lead: updated });
   } catch (error) {
     next(error);
@@ -1840,6 +1847,9 @@ function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalize
         leadSnapshot: updated,
       }),
       createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : isPendingDocumentStatus ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: isPendingDocumentStatus && requestedDocuments.length ? `Lead ${lead.caseId || lead.id} needs: ${requestedDocuments.join(", ")}` : `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName, pendingDocuments: requestedDocuments, pendingDocumentReason } }),
+      isPendingDocumentStatus
+        ? queueDocumentsRequiredWhatsApp({ lead: updated, documents: requestedDocuments })
+        : queueStatusUpdatedWhatsApp({ lead: updated, statusLabel }),
       writeAuditLog({
         req,
         actionType: normalizedStatus === LEAD_STATUSES.DISBURSED

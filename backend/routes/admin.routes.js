@@ -44,6 +44,7 @@ import {
   getAnalyticsOverview,
   getAnalyticsSla,
 } from "../controllers/analytics.controller.js";
+import { testWhatsApp } from "../controllers/whatsapp.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { ROLES } from "../utils/constants.js";
@@ -81,6 +82,7 @@ router.patch("/leads/:id/status", updateAdminLeadStatus);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);
 router.get("/monitoring", getAdminMonitoringCenterLazy);
+router.post("/test-whatsapp", testWhatsApp);
 router.get("/analytics/overview", getAnalyticsOverview);
 router.get("/analytics/monthly", getAnalyticsMonthly);
 router.get("/analytics/cities", getAnalyticsCities);

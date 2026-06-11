@@ -14,6 +14,7 @@ import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -122,6 +123,11 @@ async function applyLeadStatusSideEffects({ req, existing, lead, nextStatus }) {
     admin: true,
     meta: { caseId: lead.caseId },
   });
+  runLeadSideEffects("whatsapp-lead-status", [
+    () => nextStatus === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS
+      ? queueDocumentsRequiredWhatsApp({ lead, documents: lead.pendingDocuments || [] })
+      : queueStatusUpdatedWhatsApp({ lead, statusLabel }),
+  ]);
   await writeAuditLog({
     req,
     actionType: nextStatus === LEAD_STATUSES.DISBURSED

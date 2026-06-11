@@ -26,6 +26,7 @@ import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.serv
 import { paginationParams } from "../utils/pagination.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { normalizeBankLocation, normalizeBankState, normalizeDealershipBrand } from "../services/bankLocationMaster.service.js";
+import { queueLeadAssignedWhatsApp } from "../services/whatsapp.service.js";
 
 function dealerEmail(req) {
   return req.user?.email || req.user?.firebase?.identities?.email?.[0] || req.user?.uid;
@@ -1085,6 +1086,7 @@ export async function createDealerLead(req, res, next) {
 
     runDealerLeadSideEffects("dealer-lead-created", [
       () => syncLeadProjectionSoon(responseLead),
+      () => queueLeadAssignedWhatsApp(responseLead),
       () => writeAuditLog({
         req,
         actionType: AUDIT_ACTIONS.LEAD_CREATED,

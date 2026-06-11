@@ -21,6 +21,7 @@ const ROLE_SCOPES = {
   "loan-executive": "loan-executive",
   "super-admin": "admin",
 };
+const KNOWN_SCOPES = Object.values(ROLE_SCOPES);
 
 function browserPath() {
   return typeof window === "undefined" ? "/" : window.location.pathname;
@@ -124,16 +125,15 @@ export function clearAuthStorage() {
   sessionStorage.removeItem(scopedKey(TOKEN_KEY, scope));
   sessionStorage.removeItem(scopedKey(USER_KEY, scope));
   sessionStorage.removeItem(scopedKey(PERSISTENCE_KEY, scope));
-  if (activeScope && activeScope !== scope) {
-    sessionStorage.removeItem(scopedKey(TOKEN_KEY, activeScope));
-    sessionStorage.removeItem(scopedKey(USER_KEY, activeScope));
-    sessionStorage.removeItem(scopedKey(PERSISTENCE_KEY, activeScope));
+  if (activeScope === scope) {
+    const nextScope = KNOWN_SCOPES.find((candidate) => candidate !== scope && sessionStorage.getItem(scopedKey(TOKEN_KEY, candidate)));
+    if (nextScope) sessionStorage.setItem(ACTIVE_SCOPE_KEY, nextScope);
+    else sessionStorage.removeItem(ACTIVE_SCOPE_KEY);
   }
   sessionStorage.removeItem("cls_session_only");
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
   sessionStorage.removeItem(PERSISTENCE_KEY);
-  sessionStorage.removeItem(ACTIVE_SCOPE_KEY);
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(PERSISTENCE_KEY);

@@ -1,10 +1,17 @@
 import { api, apiBaseUrl, invalidateGetCache } from "./api.js";
+import { getStoredUser } from "./authSessionManager.js";
 
 let source = null;
 let connectPromise = null;
 let active = false;
 let reconnectTimer = 0;
 let lastEventId = "";
+let heartbeatTimer = 0;
+let ackTimer = 0;
+const pendingAckIds = new Set();
+
+const HEARTBEAT_TIMEOUT_MS = 45_000;
+const ACK_FLUSH_MS = 2_000;
 
 const PHASE_ONE_EVENTS = new Set([
   "LEAD_CREATED",
@@ -20,6 +27,31 @@ function leadUrlForEvent(event = {}) {
   if (event.kind === "bank") return "/banks";
   if (event.kind === "dealer") return "/dealers";
   return "/lead-mutation";
+}
+
+function realtimeStorageKey() {
+  const user = getStoredUser() || {};
+  const identity = user.uid || user.email || "anonymous";
+  return `cls_realtime_last_event_id:${user.role || "unknown"}:${identity}`;
+}
+
+function loadLastEventId() {
+  try {
+    lastEventId = sessionStorage.getItem(realtimeStorageKey()) || "";
+  } catch {
+    lastEventId = "";
+  }
+}
+
+function persistLastEventId(id = "") {
+  const value = String(id || "");
+  if (!value) return;
+  lastEventId = value;
+  try {
+    sessionStorage.setItem(realtimeStorageKey(), value);
+  } catch {
+    // Last-event persistence is best-effort recovery metadata.
+  }
 }
 
 function mutationPayload(event = {}) {
@@ -101,7 +133,8 @@ function invalidateRealtimeCaches(event = {}) {
 
 function dispatchRealtimeEvent(event = {}) {
   if (typeof window === "undefined") return;
-  lastEventId = String(event.id || lastEventId || "");
+  resetHeartbeatWatch();
+  if (event.id) persistLastEventId(event.id);
   invalidateRealtimeCaches(event);
   if (!event.leadId && !event.caseId && PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
     console.info("SSE_EVENT_IGNORED", { tag: "SSE_EVENT_IGNORED", eventType: event.eventType || event.event, reason: "missing_lead_identity" });
@@ -109,6 +142,7 @@ function dispatchRealtimeEvent(event = {}) {
   }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
   window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
+  queueAck(event.id);
 }
 
 function closeSource() {
@@ -122,8 +156,39 @@ function closeSource() {
   }
 }
 
+function resetHeartbeatWatch() {
+  if (typeof window === "undefined" || !active) return;
+  window.clearTimeout(heartbeatTimer);
+  heartbeatTimer = window.setTimeout(() => {
+    closeSource();
+    if (!active) return;
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = window.setTimeout(() => {
+      connect().catch(() => {});
+    }, 500);
+  }, HEARTBEAT_TIMEOUT_MS);
+}
+
+function flushAcks() {
+  if (!pendingAckIds.size) return;
+  const eventIds = [...pendingAckIds];
+  pendingAckIds.clear();
+  api.post("/realtime/ack", { eventIds, lastEventId }).catch(() => {
+    eventIds.slice(-25).forEach((id) => pendingAckIds.add(id));
+  });
+}
+
+function queueAck(id) {
+  if (!id || typeof window === "undefined") return;
+  pendingAckIds.add(String(id));
+  window.clearTimeout(ackTimer);
+  ackTimer = window.setTimeout(flushAcks, ACK_FLUSH_MS);
+  if (pendingAckIds.size >= 20) flushAcks();
+}
+
 async function connect() {
   if (typeof window === "undefined" || source || connectPromise || !active) return connectPromise;
+  loadLastEventId();
   connectPromise = api.post("/realtime/ticket")
     .then((response) => {
       if (!active) return null;
@@ -133,6 +198,7 @@ async function connect() {
       if (lastEventId) params.set("lastEventId", lastEventId);
       source = new EventSource(`${apiBaseUrl()}/realtime/events?${params.toString()}`);
       source.addEventListener("connected", () => {
+        resetHeartbeatWatch();
         window.__CLS_REALTIME_CONNECTED = true;
         window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: true } }));
         if (lastEventId) {
@@ -156,6 +222,9 @@ async function connect() {
         } catch {
           // Ignore malformed realtime messages.
         }
+      });
+      source.addEventListener("heartbeat", () => {
+        resetHeartbeatWatch();
       });
       source.onerror = () => {
         closeSource();
@@ -181,6 +250,9 @@ export function startRealtimeClient() {
 export function stopRealtimeClient() {
   active = false;
   window.clearTimeout(reconnectTimer);
+  window.clearTimeout(heartbeatTimer);
+  window.clearTimeout(ackTimer);
+  flushAcks();
   closeSource();
   connectPromise = null;
 }

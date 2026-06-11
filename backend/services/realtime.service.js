@@ -14,6 +14,8 @@ const instanceId = crypto.randomUUID();
 let redisPublisher = null;
 let redisSubscriber = null;
 let redisReady = false;
+let acknowledgedEvents = 0;
+let lastAcknowledgedEventAt = null;
 
 export const REALTIME_EVENTS = {
   LEAD_CREATED: "LEAD_CREATED",
@@ -268,7 +270,17 @@ export function connectRealtimeClient({ user, req, res }) {
     "X-Accel-Buffering": "no",
   });
   res.write(`event: connected\ndata: ${JSON.stringify({ clientId, timestamp: new Date().toISOString() })}\n\n`);
-  const client = { id: clientId, user, res };
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
+    } catch {
+      clients.delete(clientId);
+      clearInterval(heartbeat);
+    }
+  }, 25_000);
+  heartbeat.unref?.();
+
+  const client = { id: clientId, user, res, heartbeat };
   clients.set(clientId, client);
   recordRealtimeMetric({ eventType: "SSE_CONNECTED", activeClients: clients.size });
 
@@ -281,6 +293,7 @@ export function connectRealtimeClient({ user, req, res }) {
 
   req.on("close", () => {
     clients.delete(clientId);
+    clearInterval(heartbeat);
     recordRealtimeMetric({ eventType: "SSE_DISCONNECTED", activeClients: clients.size, disconnected: 1 });
   });
 }
@@ -303,6 +316,7 @@ function dispatchLocalEvent(event) {
       delivered += 1;
     } catch {
       errors += 1;
+      if (client.heartbeat) clearInterval(client.heartbeat);
       clients.delete(client.id);
     }
   }
@@ -471,7 +485,26 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
   return event;
 }
 
+export function acknowledgeRealtimeEvents({ user = {}, eventIds = [], lastEventId = "" } = {}) {
+  const ids = Array.isArray(eventIds) ? eventIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+  acknowledgedEvents += ids.length;
+  lastAcknowledgedEventAt = ids.length ? new Date().toISOString() : lastAcknowledgedEventAt;
+  recordRealtimeMetric({
+    eventType: "SSE_EVENT_ACKED",
+    delivered: ids.length,
+    activeClients: clients.size,
+  });
+  logInfo("SSE_EVENT_ACKED", {
+    tag: "SSE_EVENT_ACKED",
+    count: ids.length,
+    lastEventId: String(lastEventId || ""),
+    userId: user.uid || user.email || "",
+    role: user.role || "",
+  });
+  return { acknowledged: ids.length, lastEventId: String(lastEventId || "") };
+}
+
 export function realtimeStats() {
   cleanTickets();
-  return { clients: clients.size, bufferedEvents: eventBuffer.length, pendingTickets: tickets.size, redisEnabled: redisEnabled() };
+  return { clients: clients.size, bufferedEvents: eventBuffer.length, pendingTickets: tickets.size, redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
 }

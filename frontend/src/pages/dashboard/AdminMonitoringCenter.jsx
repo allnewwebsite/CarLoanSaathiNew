@@ -113,6 +113,7 @@ export function AdminMonitoringCenter() {
   const projection = snapshot?.projectionHealth || {};
   const realtime = snapshot?.realtimeMonitoring || {};
   const cache = snapshot?.cacheMonitoring || {};
+  const whatsapp = snapshot?.whatsappMonitoring || {};
   const queue = snapshot?.queueMonitoring || {};
   const branches = snapshot?.branchMonitoring || {};
   const dealers = snapshot?.dealerMonitoring || {};
@@ -382,6 +383,32 @@ export function AdminMonitoringCenter() {
           </div>
         </Section>
       </div>
+
+      <Section title="WhatsApp Monitoring" subtitle="Twilio WhatsApp delivery uses queued jobs; API workflows do not wait for provider delivery.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <MetricTile label="WhatsApp Enabled" value={yesNo(whatsapp.enabled)} />
+          <MetricTile label="Provider" value={whatsapp.provider || "twilio"} />
+          <MetricTile label="Configured" value={yesNo(whatsapp.configured)} />
+          <MetricTile label="Twilio Status" value={whatsapp.twilioConnectionStatus || "not-checked"} />
+          <MetricTile label="Sent Today" value={whatsapp.sentToday || 0} />
+          <MetricTile label="Failed Today" value={whatsapp.failedToday || 0} />
+          <MetricTile label="Pending" value={whatsapp.pending || 0} />
+          <MetricTile label="Queued" value={whatsapp.queued || 0} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricTile label="Last Success" value={dateTime(whatsapp.lastSuccess)} />
+          <MetricTile label="Last Failed" value={dateTime(whatsapp.lastFailed)} />
+          <MetricTile label="Last Message SID" value={whatsapp.lastMessageSid || "None"} />
+          <MetricTile label="Last Error" value={shortText(whatsapp.lastError)} />
+        </div>
+        <OperationalTable
+          title="Latest WhatsApp Events"
+          headers={["Time", "Event", "Status", "Message SID", "Error"]}
+          rows={rows(whatsapp.events || [], (item) => [dateTime(item.timestamp), item.eventType, item.status, item.messageSid || "-", shortText(item.error, 60)])}
+          loading={loading}
+          virtualizeAt={20}
+        />
+      </Section>
 
       <Section title="Queue Monitoring" subtitle="Active health uses failures from the last 24 hours. Retained BullMQ failures are shown separately as historical context.">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
