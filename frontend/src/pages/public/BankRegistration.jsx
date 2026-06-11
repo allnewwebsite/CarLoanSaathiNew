@@ -46,7 +46,7 @@ const banks = [
   "Other",
 ];
 const executiveCounts = ["1", "2", "3", "5", "10", "15", "20", "25+", "50+"];
-const benefits = ["Verified dealership leads", "Branch-wise assignment", "SLA management", "Executive dashboards", "Real-time approvals", "Faster disbursement"];
+const benefits = ["Verified dealership leads", "Branch-wise assignment", "Executive dashboards", "Real-time approvals", "Faster disbursement"];
 const workflow = ["Bank Registration", "Super Admin Verification", "Branch Activation", "Executive Mapping", "Lead Assignment", "Loan Processing", "Disbursement"];
 const documents = [
   { label: "Branch Authorization Letter", type: "authorization", folder: "authorization" },
@@ -435,7 +435,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#0d47a1]" /><div><h2 className="text-base font-semibold text-slate-950">All bank registrations are verified manually by CarLoanSaathi Super Admin before activation.</h2><p className="mt-2 text-sm leading-6 text-slate-600">Secure onboarding, branch verification, document checks, and SLA compliance mapping are completed before bank portal access is enabled.</p></div></div>
+          <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 text-[#0d47a1]" /><div><h2 className="text-base font-semibold text-slate-950">All bank registrations are verified manually by CarLoanSaathi Super Admin before activation.</h2><p className="mt-2 text-sm leading-6 text-slate-600">Secure onboarding, branch verification, document checks, and executive mapping are completed before bank portal access is enabled.</p></div></div>
           <button disabled={loading || !hasEmailAccount} className="mt-6 flex h-11 w-full items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-semibold text-white disabled:opacity-70">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Submit for Super Admin Approval"}</button>
         </section>
       </form>

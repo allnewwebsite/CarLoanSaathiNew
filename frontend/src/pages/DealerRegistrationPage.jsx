@@ -30,7 +30,7 @@ const benefitCards = [
   "Location-based lead routing",
   "Salesperson performance visibility",
   "Secure document workflow",
-  "Bank SLA monitoring",
+  "Bank workflow visibility",
 ];
 const workflow = ["Customer", "Salesperson", "Finance Desk", "CarLoanSaathi", "Bank", "Approval", "Disbursement"];
 

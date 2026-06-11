@@ -8,7 +8,6 @@ let workerState = {
   queueWorkersRegisteredAt: null,
   scheduledOperationsRegisteredAt: null,
   notificationWorkerLastRunAt: null,
-  slaWorkerLastRunAt: null,
   whatsappWorkerLastRunAt: null,
   lastWorkerError: null,
 };

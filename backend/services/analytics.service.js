@@ -12,7 +12,6 @@ export async function overviewAnalytics() {
     bankProcess: metrics.bankProcess,
     approvalRatio: metrics.approvalRatio,
     rejectionRatio: metrics.rejectionRatio,
-    slaBreaches: metrics.slaBreaches,
     averageProcessingTime: metrics.averageProcessingTime,
     commissionPayouts: metrics.commissionPayouts || 0,
   };
@@ -35,16 +34,6 @@ export async function dealerAnalytics() {
 export async function bankAnalytics() {
   const metrics = await getLeaderboardMetrics({ collection: "bankMetrics", limit: 20 });
   return metrics.map((item) => ({ label: item.scopeId, count: item.totalLeads || 0 }));
-}
-
-export async function slaAnalytics() {
-  const metrics = await getGlobalMetrics();
-  return [
-    { label: "SLA Breaches", count: metrics.slaBreaches || 0 },
-    { label: "Average Processing Time", count: metrics.averageProcessingTime || 0 },
-    { label: "Approval Ratio", count: metrics.approvalRatio || 0 },
-    { label: "Rejection Ratio", count: metrics.rejectionRatio || 0 },
-  ];
 }
 
 export async function disbursalAnalytics() {

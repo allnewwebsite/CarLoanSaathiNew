@@ -15,7 +15,6 @@ import timelineRoutes from "./routes/timeline.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import realtimeRoutes from "./routes/realtime.routes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { processSlaBreaches } from "./services/assignment.service.js";
 import { processWhatsAppQueue, validateWhatsAppEnvironment } from "./services/whatsapp.service.js";
 import { processNotificationEvents } from "./services/notificationWorker.service.js";
 import { sanitizeRequest } from "./middleware/sanitize.js";
@@ -192,21 +191,6 @@ function runWorkerTick({ workerName, queueName, jobName, payload = {}, inlineTas
     return;
   }
   inlineTask().catch((error) => logError(errorMessage, { error: error.message }));
-}
-
-if (process.env.DISABLE_SLA_ENGINE !== "true") {
-  const intervalMs = Number(process.env.SLA_ENGINE_INTERVAL_MS || 60_000);
-  setInterval(() => {
-    runWorkerTick({
-      workerName: "sla",
-      queueName: QUEUE_NAMES.SLA,
-      jobName: "sla-breach-sweep",
-      inlineTask: processSlaBreaches,
-      fallback: processSlaBreaches,
-      healthKey: "slaWorkerLastRunAt",
-      errorMessage: "SLA engine failed",
-    });
-  }, intervalMs).unref();
 }
 
 if (process.env.DISABLE_WHATSAPP_QUEUE !== "true") {

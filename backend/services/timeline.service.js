@@ -9,7 +9,6 @@ export const TIMELINE_EVENTS = {
   LEAD_SENT_TO_BANK: "lead-sent-to-bank",
   BRANCH_ASSIGNED: "branch-assigned",
   EXECUTIVE_ASSIGNED: "executive-assigned",
-  SLA_STARTED: "sla-started",
   EXECUTIVE_ACCEPTED: "executive-accepted",
   PENDING_DOCUMENTS_REQUESTED: "pending-documents-requested",
   PENDING_DOCUMENTS_UPLOADED: "pending-documents-uploaded",
@@ -21,7 +20,6 @@ export const TIMELINE_EVENTS = {
   DISBURSEMENT_MARKED: "disbursement-marked",
   CUSTOMER_FOLLOW_UP_ADDED: "customer-follow-up-added",
   INTERNAL_REMARKS_ADDED: "internal-remarks-added",
-  SLA_MISSED: "sla-missed",
   ESCALATION_TRIGGERED: "escalation-triggered",
   STATUS_CHANGED: "status-changed",
 };

@@ -597,9 +597,9 @@ function AnalyticsPage() {
       numberValue(item.assignedLeads),
       numberValue(item.activeLeads),
       numberValue(item.pendingDocuments),
-      numberValue(item.disbursedLeads),
+      numberValue(item.approvedLeads),
       numberValue(item.rejectedLeads),
-      numberValue(item.slaOverdue),
+      numberValue(item.disbursedLeads),
     ],
   })), [data?.branchMetrics]);
   const executiveRows = useMemo(() => (data?.executivePerformance || []).map((item) => ({
@@ -611,9 +611,9 @@ function AnalyticsPage() {
       numberValue(item.assignedLeads),
       numberValue(item.activeLeads),
       numberValue(item.pendingDocuments),
-      numberValue(item.disbursedLeads),
+      numberValue(item.approvedLeads),
       numberValue(item.rejectedLeads),
-      numberValue(item.slaOverdue),
+      moneyValue(item.disbursedAmount || item.disbursedLeads || 0),
     ],
   })), [data?.executivePerformance]);
   const recentRows = useMemo(() => (data?.recentCases || []).map((lead) => ({
@@ -624,7 +624,6 @@ function AnalyticsPage() {
       display(lead.executiveName),
       display(lead.branch),
       leadStatusLabel(lead),
-      display(lead.sla),
       dateTime(lead.updatedAt),
       <button key="view" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>,
     ],
@@ -638,15 +637,14 @@ function AnalyticsPage() {
         <MetricCard label="Assigned Leads" value={emptyLoading ? "-" : numberValue(data?.assignedLeads)} subtext={data?.branch || data?.bankName || "Current branch scope"} />
         <MetricCard label="Active Cases" value={emptyLoading ? "-" : numberValue(data?.pendingLeads)} subtext={`${numberValue(data?.pendingDocuments)} pending document cases`} />
         <MetricCard label="Disbursed Amount" value={emptyLoading ? "-" : moneyValue(data?.disbursedAmount)} subtext={`${numberValue(data?.disbursedLeads)} disbursed cases`} />
-        <MetricCard label="SLA Overdue" value={emptyLoading ? "-" : numberValue(data?.slaOverdue)} subtext={`${numberValue(data?.slaDueToday)} cases generated today`} />
         <MetricCard label="Approved" value={emptyLoading ? "-" : numberValue(data?.approvedLeads)} subtext={`${numberValue(data?.conversionRate)}% conversion`} />
         <MetricCard label="Rejected" value={emptyLoading ? "-" : numberValue(data?.rejectedLeads)} subtext={`${numberValue(data?.rejectionRate)}% rejection`} />
         <MetricCard label="Branches" value={emptyLoading ? "-" : numberValue(data?.branches ?? data?.branchMetrics?.length)} subtext="Branch-level workload" />
         <MetricCard label="Executives" value={emptyLoading ? "-" : numberValue(data?.executives ?? data?.executivePerformance?.length)} subtext="Tracked assignment owners" />
       </div>
-      <Table title="Branch-Level Metrics" headers={["Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={branchRows} loading={emptyLoading} />
-      <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Disbursed", "Rejected", "SLA Overdue"]} rows={executiveRows} loading={emptyLoading} />
-      <Table title="Recent Case Movement" headers={["Case ID", "Customer", LEAD_TABLE_LABELS.assignedExecutive, "Branch", LEAD_TABLE_LABELS.currentStatus, "SLA", "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
+      <Table title="Branch Performance" headers={["Branch", "Assigned", "Active", "Pending Docs", "Approved", "Rejected", "Disbursed"]} rows={branchRows} loading={emptyLoading} />
+      <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Approved", "Rejected", "Disbursed Amount"]} rows={executiveRows} loading={emptyLoading} />
+      <Table title="Recent Case Activity" headers={["Case ID", "Customer", LEAD_TABLE_LABELS.assignedExecutive, "Branch", LEAD_TABLE_LABELS.currentStatus, "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
     </section>
   );
 }

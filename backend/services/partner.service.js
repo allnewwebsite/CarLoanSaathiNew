@@ -40,7 +40,6 @@ export async function getBankPartners() {
     approvalLimit: null,
     status: "active",
     assignedManagers: [],
-    slaScore: 100,
     activeLeadCount: 0,
     maxActiveLeads: null,
   }));
@@ -57,7 +56,6 @@ export async function getEligiblePartners(lead) {
     const brands = normalizeList(partner.supportedBrands);
     const banks = normalizeList(partner.supportedBanks);
     const maxActive = Number(partner.maxActiveLeads || settings.maxActiveLeadsPerPartner);
-    const score = Number(partner.slaScore ?? 100);
     const bank = lead.preferredBank || lead.selectedBank;
     const routingCity = routingCityForLead(lead);
 
@@ -78,7 +76,6 @@ export async function getEligiblePartners(lead) {
       && cityOk
       && brandOk
       && bankOk
-      && score >= Number(settings.minSlaScore)
       && limitOk;
   });
 }

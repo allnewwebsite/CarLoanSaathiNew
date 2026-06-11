@@ -2,7 +2,7 @@ import "dotenv/config";
 import { queryRecords } from "../services/firestore.service.js";
 
 const limit = Math.min(Math.max(Number(process.env.AUDIT_LIMIT || 25), 1), 100);
-const legacySources = ["leadAssignments", "slaLogs", "reassignmentLogs", "payouts", "commissions", "notifications", "settings"];
+const legacySources = ["leadAssignments", "reassignmentLogs", "payouts", "commissions", "notifications", "settings"];
 
 const projectionPage = await queryRecords("workflowLogViews", {
   limit,

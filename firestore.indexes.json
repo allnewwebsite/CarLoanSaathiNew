@@ -563,22 +563,6 @@
       ]
     },
     {
-      "collectionGroup": "slaMetrics",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "dealershipId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "slaMetrics",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "bankId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "dailyMetrics",
       "queryScope": "COLLECTION",
       "fields": [
@@ -773,22 +757,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "commissionId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "slaLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "leadId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "slaLogs",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "assignmentId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },

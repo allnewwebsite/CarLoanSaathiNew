@@ -6,7 +6,6 @@ import { captureBackendError, captureOperationalIncident } from "./monitoring.se
 
 export const QUEUE_NAMES = Object.freeze({
   NOTIFICATIONS: "notifications",
-  SLA: "sla-jobs",
   ARCHIVAL: "archival-jobs",
   METRICS: "metrics-aggregation",
   EMAIL: "email-jobs",

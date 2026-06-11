@@ -2,7 +2,6 @@ import { createRecord, getRecord, updateRecord } from "../services/firestore.ser
 import { leadSchema, publicLeadSchema } from "../validations/lead.validation.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
-import { updateSlaForLead } from "../services/sla.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
@@ -96,7 +95,6 @@ async function applyLeadStatusSideEffects({ req, existing, lead, nextStatus }) {
     nextStatus,
     processingTimeMinutes,
   });
-  await updateSlaForLead(lead, nextStatus);
   await ensureCommissionForLead(lead, nextStatus);
   const statusLabel = STATUS_LABELS[normalizeStatus(nextStatus)] || nextStatus;
   await addTimelineEvent({

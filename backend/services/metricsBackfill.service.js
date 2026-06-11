@@ -11,7 +11,6 @@ const zero = {
   pendingDocuments: 0,
   bankProcess: 0,
   assignedLeads: 0,
-  slaBreaches: 0,
   completedLeads: 0,
   processingTimeTotalMinutes: 0,
   activeDealerships: 0,

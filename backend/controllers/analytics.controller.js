@@ -5,7 +5,6 @@ import {
   disbursalAnalytics,
   monthlyLeadAnalytics,
   overviewAnalytics,
-  slaAnalytics,
 } from "../services/analytics.service.js";
 
 export async function getAnalyticsOverview(_req, res, next) {
@@ -22,9 +21,6 @@ export async function getAnalyticsDealers(_req, res, next) {
 }
 export async function getAnalyticsBanks(_req, res, next) {
   try { res.json(await bankAnalytics()); } catch (error) { next(error); }
-}
-export async function getAnalyticsSla(_req, res, next) {
-  try { res.json(await slaAnalytics()); } catch (error) { next(error); }
 }
 export async function getAnalyticsDisbursals(_req, res, next) {
   try { res.json(await disbursalAnalytics()); } catch (error) { next(error); }

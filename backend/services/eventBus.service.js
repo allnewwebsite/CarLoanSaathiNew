@@ -4,8 +4,6 @@ import { logError, logInfo } from "./logger.service.js";
 export const DOMAIN_EVENTS = Object.freeze({
   NOTIFICATION_REQUESTED: "notification.requested",
   AUDIT_REQUESTED: "audit.requested",
-  SLA_WARNING: "sla.warning",
-  SLA_BREACHED: "sla.breached",
 });
 
 const bus = new EventEmitter();

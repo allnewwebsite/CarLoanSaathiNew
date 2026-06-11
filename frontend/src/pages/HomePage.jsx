@@ -22,7 +22,7 @@ import { Link } from "react-router-dom";
 
 const heroMetrics = [
   ["1,284", "Active cases", "+18% flow"],
-  ["42 min", "Avg. SLA response", "Live tracking"],
+  ["Live", "Realtime updates", "No refresh"],
   ["86", "Bank branches", "Coordinated"],
   ["99.2%", "Visibility", "Audit ready"],
 ];
@@ -173,9 +173,9 @@ function DashboardMockup() {
   return (
     <div className="relative mx-auto w-full max-w-2xl public-fade-in">
       <div className="absolute -left-8 top-12 hidden rounded-2xl bg-white/80 p-4 public-glass public-float lg:block">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">SLA</p>
-        <p className="mt-1 text-2xl font-semibold text-slate-950">42 min</p>
-        <p className="text-xs text-emerald-600">Response tracking live</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Realtime</p>
+        <p className="mt-1 text-2xl font-semibold text-slate-950">Live</p>
+        <p className="text-xs text-emerald-600">Case updates synced</p>
       </div>
       <div className="absolute -right-6 bottom-10 hidden rounded-2xl bg-white/85 p-4 public-glass public-float-delayed lg:block">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Queue</p>

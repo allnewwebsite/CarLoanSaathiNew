@@ -11,8 +11,6 @@ const memoryStore = {
   leads: [],
   documents: [],
   leadAssignments: [],
-  slaLogs: [],
-  slaMetrics: [],
   reassignmentLogs: [],
   dealers: [],
   dealerships: [],
@@ -43,7 +41,6 @@ const memoryStore = {
   documentAuditLogs: [],
   leadTimeline: [],
   bankDocuments: [],
-  slaTracking: [],
   analytics: [],
   metrics: [],
   dailyMetrics: [],
@@ -70,7 +67,6 @@ const PRODUCTION_FULL_SCAN_DENYLIST = new Set([
   "leadTimeline",
   "loginActivity",
   "notifications",
-  "slaLogs",
   "userSessions",
 ]);
 
@@ -374,7 +370,6 @@ function selectFields(record, fields = []) {
 
 const WORKFLOW_LOG_SOURCES = new Set([
   "leadAssignments",
-  "slaLogs",
   "reassignmentLogs",
   "payouts",
   "commissions",

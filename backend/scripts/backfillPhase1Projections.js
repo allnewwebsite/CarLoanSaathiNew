@@ -6,7 +6,6 @@ const batchSize = Math.min(Math.max(Number(process.env.BACKFILL_BATCH_SIZE || 25
 
 const workflowSources = [
   "leadAssignments",
-  "slaLogs",
   "reassignmentLogs",
   "payouts",
   "commissions",

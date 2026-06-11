@@ -17,7 +17,6 @@ import {
   getAdminWorkflowSettings,
   getPendingBankApprovals,
   getPendingDealershipApprovals,
-  processAdminSlaBreaches,
   rejectBankApproval,
   rejectDealershipApproval,
   suspendBankApproval,
@@ -42,7 +41,6 @@ import {
   getAnalyticsDisbursals,
   getAnalyticsMonthly,
   getAnalyticsOverview,
-  getAnalyticsSla,
 } from "../controllers/analytics.controller.js";
 import { testWhatsApp } from "../controllers/whatsapp.controller.js";
 import { authenticate } from "../middleware/auth.js";
@@ -88,14 +86,12 @@ router.get("/analytics/monthly", getAnalyticsMonthly);
 router.get("/analytics/cities", getAnalyticsCities);
 router.get("/analytics/dealers", getAnalyticsDealers);
 router.get("/analytics/banks", getAnalyticsBanks);
-router.get("/analytics/sla", getAnalyticsSla);
 router.get("/analytics/disbursals", getAnalyticsDisbursals);
 router.get("/audit-logs", getAdminAuditLogs);
 router.get("/partners", getAdminPartners);
 router.get("/workflow/settings", getAdminWorkflowSettings);
 router.get("/workflow/logs", getAdminWorkflowLogs);
 router.patch("/workflow/settings", updateAdminWorkflowSettings);
-router.post("/workflow/process-sla", processAdminSlaBreaches);
 router.patch("/partners/:partnerId/freeze", freezeAdminPartner);
 
 // NEW: Bank branch management (dynamic IFSC system)

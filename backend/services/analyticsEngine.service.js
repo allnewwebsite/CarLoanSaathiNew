@@ -8,7 +8,6 @@ export const ANALYTICS_EVENTS = Object.freeze({
   LEAD_CREATED: "analytics.lead-created",
   STATUS_CHANGED: "analytics.status-changed",
   LEAD_ASSIGNED: "analytics.lead-assigned",
-  SLA_BREACHED: "analytics.sla-breached",
 });
 
 const zeroMetrics = {
@@ -19,7 +18,6 @@ const zeroMetrics = {
   pendingDocuments: 0,
   bankProcess: 0,
   assignedLeads: 0,
-  slaBreaches: 0,
   completedLeads: 0,
   processingTimeTotalMinutes: 0,
   activeDealerships: 0,
@@ -73,9 +71,7 @@ export function queueAnalyticsEvent(type, payload = {}) {
     ? "lead-created"
     : type === ANALYTICS_EVENTS.STATUS_CHANGED
       ? "status-changed"
-      : type === ANALYTICS_EVENTS.LEAD_ASSIGNED
-        ? "lead-assigned"
-        : "sla-breached";
+      : "lead-assigned";
   return addQueueJob(QUEUE_NAMES.METRICS, jobType, { ...payload, type: jobType }, {
     priority: "medium",
     fallback: () => emitDomainEvent(type, payload),
@@ -108,18 +104,6 @@ export async function applyStatusChangedMetrics({ lead, previousStatus, nextStat
 
 export async function applyLeadAssignedMetrics(lead) {
   await incrementMetricTargets(lead, { assignedLeads: 1 });
-}
-
-export async function applySlaBreachMetrics(lead) {
-  await incrementMetricTargets(lead, { slaBreaches: 1 });
-  await upsertRecord("slaMetrics", `lead:${lead.id || lead.caseId}:${Date.now()}`, {
-    leadId: lead.id || null,
-    caseId: lead.caseId || null,
-    dealershipId: lead.dealershipId || null,
-    bankId: lead.bankId || null,
-    assignedExecutiveId: lead.assignedExecutiveId || null,
-    breachedAt: new Date().toISOString(),
-  });
 }
 
 export function decorateMetric(record = {}) {
@@ -171,10 +155,6 @@ onDomainEvent(ANALYTICS_EVENTS.STATUS_CHANGED, async ({ payload }) => {
 
 onDomainEvent(ANALYTICS_EVENTS.LEAD_ASSIGNED, async ({ payload }) => {
   await applyLeadAssignedMetrics(payload.lead);
-});
-
-onDomainEvent(ANALYTICS_EVENTS.SLA_BREACHED, async ({ payload }) => {
-  await applySlaBreachMetrics(payload.lead);
 });
 
 export function queueSafeAnalyticsEvent(type, payload = {}) {

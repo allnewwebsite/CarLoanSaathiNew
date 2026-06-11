@@ -1,10 +1,8 @@
 import { countRecords, createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, getRecord, incrementRecord, listRecords, listRecentRecords, queryRecords, updateRecord, upsertRecord } from "../services/firestore.service.js";
-import { processSlaBreaches } from "../services/assignment.service.js";
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { freezePartner } from "../services/partner.service.js";
 import { getWorkflowSettings, updateWorkflowSettings } from "../services/settings.service.js";
-import { updateSlaForLead } from "../services/sla.service.js";
 import { getAuditLogs, writeAuditLog } from "../services/audit.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
@@ -1617,7 +1615,6 @@ export async function updateAdminOnboardingRequest(req, res, next) {
 }
 
 async function applyAdminLeadStatusSideEffects({ req, existing, lead, status }) {
-  await updateSlaForLead(lead, status);
   await ensureCommissionForLead(lead, status);
   const statusLabel = STATUS_LABELS[status] || status;
   await addTimelineEvent({
@@ -1728,9 +1725,8 @@ export async function getAdminWorkflowLogs(req, res, next) {
       let rows = page.data || [];
       if (legacyFallback && !rows.length && !logType && !search && !req.query.cursor) {
         const fallbackLimit = Math.min(limit, 25);
-        const [assignments, slaLogs, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
+        const [assignments, reassignmentLogs, payouts, commissions, notifications, settings] = await Promise.all([
           listRecentRecords("leadAssignments", { limit: fallbackLimit }),
-          listRecentRecords("slaLogs", { limit: fallbackLimit }),
           listRecentRecords("reassignmentLogs", { limit: fallbackLimit }),
           listRecentRecords("payouts", { limit: fallbackLimit }),
           listRecentRecords("commissions", { limit: fallbackLimit }),
@@ -1739,7 +1735,6 @@ export async function getAdminWorkflowLogs(req, res, next) {
         ]);
         rows = [
           ...assignments.map((item) => ({ ...item, logType: "leadAssignments" })),
-          ...slaLogs.map((item) => ({ ...item, logType: "slaLogs" })),
           ...reassignmentLogs.map((item) => ({ ...item, logType: "reassignmentLogs" })),
           ...payouts.map((item) => ({ ...item, logType: "payouts" })),
           ...commissions.map((item) => ({ ...item, logType: "commissions" })),
@@ -1751,7 +1746,6 @@ export async function getAdminWorkflowLogs(req, res, next) {
       }
       const grouped = {
         assignments: rows.filter((item) => item.logType === "leadAssignments"),
-        slaLogs: rows.filter((item) => item.logType === "slaLogs"),
         reassignmentLogs: rows.filter((item) => item.logType === "reassignmentLogs"),
         payouts: rows.filter((item) => item.logType === "payouts"),
         commissions: rows.filter((item) => item.logType === "commissions"),
@@ -1769,15 +1763,6 @@ export async function getAdminWorkflowLogs(req, res, next) {
       };
     });
     res.json(payload);
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function processAdminSlaBreaches(_req, res, next) {
-  try {
-    const processed = await processSlaBreaches();
-    res.json({ message: "SLA processor completed", processed });
   } catch (error) {
     next(error);
   }
@@ -1897,7 +1882,6 @@ async function adminEcosystemPayload(req) {
       branchManagers: bankSummary.branchManagers,
       loanExecutives: bankSummary.loanExecutives,
       assignments: [],
-      slaLogs: [],
       reassignmentLogs: [],
       documents: [],
       bankDocuments: [],

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Building2, ClipboardCheck, Download, FileClock, Landmark, Search, Shield, Users } from "lucide-react";
+import { BarChart3, Building2, ClipboardCheck, Download, Landmark, Search, Shield, Users } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
@@ -76,13 +76,6 @@ function workflowStatus(value) {
   if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
   if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
   return normalized;
-}
-
-function slaState(lead) {
-  const value = lead.slaAcceptDeadlineAt || lead.assignmentTimestamp;
-  if (!value) return "Tracked";
-  const deadline = lead.slaAcceptDeadlineAt ? new Date(value).getTime() : new Date(value).getTime() + 60 * 60 * 1000;
-  return deadline <= Date.now() ? "Overdue" : "Active";
 }
 
 function approvalRatio(leads) {
@@ -162,7 +155,6 @@ function useAdminEcosystem() {
     branchManagers: [],
     loanExecutives: [],
     assignments: [],
-    slaLogs: [],
     reassignmentLogs: [],
     documents: [],
     bankDocuments: [],
@@ -246,7 +238,6 @@ function DashboardView({ data }) {
         <MetricCard label="Active Dealerships" value={activeDealerships} icon={Building2} onClick={() => navigate("/admin/dealerships")} />
         <MetricCard label="Active Branches" value={activeBranches} icon={Landmark} onClick={() => navigate("/admin/branches")} />
         <MetricCard label="Active Executives" value={activeExecutives} icon={Users} onClick={() => navigate("/admin/executives")} />
-        <MetricCard label="Pending SLA" value={data.leads.filter((lead) => slaState(lead) === "Overdue").length} icon={FileClock} onClick={() => navigate("/admin/sla")} />
         <MetricCard label="Approved Cases" value={approved} icon={ClipboardCheck} onClick={() => navigate("/admin/leads?status=APPROVED")} />
         <MetricCard label="Rejected Cases" value={rejected} icon={Shield} onClick={() => navigate("/admin/leads?status=REJECTED")} />
         <MetricCard label="Disbursed Amount" value={`Rs. ${money.format(disbursedAmount)}`} icon={Landmark} onClick={() => navigate("/admin/leads?status=DISBURSED")} />
@@ -537,9 +528,6 @@ function SystemSettings({ data }) {
   return (
     <section className="grid gap-4 lg:grid-cols-3">
       {message && <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 lg:col-span-3">{message}</div>}
-      <SettingCard title="SLA Timings" text="Configure acceptance and processing timers.">
-        <input className="h-9 rounded-md border border-slate-200 px-3 text-sm" type="number" value={settings.slaAcceptMinutes || 60} onChange={(event) => update({ slaAcceptMinutes: Number(event.target.value) })} />
-      </SettingCard>
       <SettingCard title="Routing Logic" text="City match, fallback routing, and assignment engine.">
         <button onClick={() => update({ routingEngineEnabled: !settings.routingEngineEnabled })} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white">{settings.routingEngineEnabled === false ? "Enable Routing" : "Pause Routing"}</button>
       </SettingCard>
@@ -590,7 +578,7 @@ export function SuperAdminLeadDetailPage() {
     <section className="space-y-5">
       <PageTitle mode="lead details" />
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], [LEAD_TABLE_LABELS.currentStatus, statusLabel(leadStatus(lead))], ["SLA", slaState(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], [LEAD_TABLE_LABELS.currentStatus, statusLabel(leadStatus(lead))]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
@@ -605,7 +593,7 @@ export function SuperAdminLeadDetailPage() {
         const url = document.fileUrl || document.url || document.downloadUrl;
         return { key: document.id || document.documentType || document.type, cells: [display(document.label || document.documentType || document.type || "Bank Document"), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
       })} loading={false} />
-      <DataTable title="Audit / SLA History" headers={["Type", "Detail", "Time"]} rows={[...data.slaLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `sla-${item.id}`, cells: ["SLA", display(item.status || item.type), formatDate(item.createdAt)] })), ...data.auditLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `audit-${item.id}`, cells: ["Audit", display(item.actionType), formatDate(item.createdAt || item.timestamp)] }))]} loading={false} />
+      <DataTable title="Audit History" headers={["Type", "Detail", "Time"]} rows={data.auditLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `audit-${item.id}`, cells: ["Audit", display(item.actionType), formatDate(item.createdAt || item.timestamp)] }))} loading={false} />
     </section>
   );
 }
@@ -713,7 +701,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
       ["Branch Details", [["Bank Branch Location", item.bankBranchLocation || item.branchLocation || item.city], ["State", item.state || "Haryana"], ["IFSC", item.ifsc], ["GSTIN", item.gstin]]],
       ["Branch Manager Details", [["Manager", item.managerName || item.contactPerson], ["Email", item.officialEmail || item.email], ["Mobile", item.mobile]]],
       ["Executive List", (item.executives || []).map((exec, index) => [`Executive ${index + 1}`, exec.name || exec.fullName || exec.email])],
-      ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount], ["SLA Score", item.slaScore || 100]]],
+      ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount]]],
     ]
     : [
       ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["GSTIN", item.dealership?.gstin], ["Address", item.dealership?.address]]],

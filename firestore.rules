@@ -450,14 +450,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /slaMetrics/{id} {
-      allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data))
-        || (isBankManager() && sameBank(resource.data) && sameBranch(resource.data))
-        || (isLoanExecutive() && assignedExecutive(resource.data));
-      allow write: if false;
-    }
-
     match /archivedLeads/{id} {
       allow read: if isSuperAdmin();
       allow write: if false;

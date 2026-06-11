@@ -2,7 +2,6 @@ import { createRecord, deleteRecord, deleteRecordsByQuery, findRecordsByField, g
 import { ensureCommissionForLead } from "../services/commission.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { reassignLeadToNextBranchExecutive } from "../services/assignment.service.js";
-import { updateSlaForLead } from "../services/sla.service.js";
 import { addTimelineEvent, getTimelineForLead, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { createShortLivedDocumentUrl, deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
@@ -77,7 +76,6 @@ const BANK_ANALYTICS_LEAD_FIELDS = [
   "updatedAt",
   "statusUpdatedAt",
   "assignmentTimestamp",
-  "slaAcceptDeadlineAt",
   "disbursedAmount",
   "loanAmount",
   "requiredLoanAmount",
@@ -502,11 +500,10 @@ function applyFilters(leads, query) {
     const statusOk = !query.status || normalizeStatus(lead.status) === normalizeStatus(query.status) || lead.assignmentStatus === query.status;
     const dateOk = !query.date || (lead.assignmentTimestamp || lead.createdAt || "").startsWith(query.date);
     const searchOk = !search || leadText(lead).includes(search);
-    const slaOk = !query.sla || (query.sla === "due" ? Boolean(lead.slaDueToday) : true);
     const executiveOk = !executive || String(lead.assignedExecutiveName || lead.assignedExecutiveId || "").toLowerCase() === executive;
     const dealershipOk = !dealership || String(lead.dealershipName || lead.dealerEmail || "").toLowerCase() === dealership;
     const pendingDocsOk = !query.pendingDocs || [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status));
-    return statusOk && dateOk && searchOk && slaOk && executiveOk && dealershipOk && pendingDocsOk;
+    return statusOk && dateOk && searchOk && executiveOk && dealershipOk && pendingDocsOk;
   });
 }
 
@@ -1027,7 +1024,6 @@ export async function registerBankPartner(req, res, next) {
       documents: Array.isArray(req.body.documents) ? req.body.documents : [],
       supportedBrands: ["All"],
       role: "bank-manager",
-      slaScore: 100,
       createdAt: now,
       submittedAt: now,
     });
@@ -1747,7 +1743,6 @@ export async function getBankAnalytics(req, res, next) {
       partner.roleType === "bank-manager" ? queryCanonicalBankExecutives(identity) : Promise.resolve([]),
       partner.roleType === "bank-manager" ? queryCanonicalBankBranches(identity) : Promise.resolve([]),
     ]);
-    const today = new Date().toISOString().slice(0, 10);
     const activeStatuses = [
       LEAD_STATUSES.NEW,
       LEAD_STATUSES.CONTACTED,
@@ -1767,7 +1762,6 @@ export async function getBankAnalytics(req, res, next) {
     const approvedLeads = leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead)));
     const rejectedLeads = leads.filter((lead) => statusOf(lead) === LEAD_STATUSES.REJECTED);
     const pendingDocumentLeads = leads.filter((lead) => [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead)));
-    const overdueLeads = leads.filter((lead) => slaLabelForLead(lead) === "Overdue");
     const disbursedAmount = disbursedLeads.reduce((sum, lead) => sum + Number(lead.disbursedAmount || lead.loanAmount || lead.requiredLoanAmount || 0), 0);
     const branchMap = new Map();
     const executiveMap = new Map();
@@ -1791,7 +1785,6 @@ export async function getBankAnalytics(req, res, next) {
           disbursedLeads: 0,
           rejectedLeads: 0,
           pendingDocuments: 0,
-          slaOverdue: 0,
         });
       }
     }
@@ -1808,9 +1801,9 @@ export async function getBankAnalytics(req, res, next) {
         activeLeads: 0,
         approvedLeads: 0,
         disbursedLeads: 0,
+        disbursedAmount: 0,
         rejectedLeads: 0,
         pendingDocuments: 0,
-        slaOverdue: 0,
       });
     }
 
@@ -1822,9 +1815,9 @@ export async function getBankAnalytics(req, res, next) {
         activeLeads: 0,
         approvedLeads: 0,
         disbursedLeads: 0,
+        disbursedAmount: 0,
         rejectedLeads: 0,
         pendingDocuments: 0,
-        slaOverdue: 0,
       };
       branchRow.assignedLeads += 1;
       if (activeStatuses.includes(statusOf(lead))) branchRow.activeLeads += 1;
@@ -1832,7 +1825,6 @@ export async function getBankAnalytics(req, res, next) {
       if (statusOf(lead) === LEAD_STATUSES.DISBURSED) branchRow.disbursedLeads += 1;
       if (statusOf(lead) === LEAD_STATUSES.REJECTED) branchRow.rejectedLeads += 1;
       if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) branchRow.pendingDocuments += 1;
-      if (slaLabelForLead(lead) === "Overdue") branchRow.slaOverdue += 1;
       branchMap.set(branch, branchRow);
 
       const executiveId = lead.assignedExecutiveId || lead.assignedExecutiveEmail || lead.assignedExecutiveName || "unassigned";
@@ -1848,15 +1840,16 @@ export async function getBankAnalytics(req, res, next) {
         disbursedLeads: 0,
         rejectedLeads: 0,
         pendingDocuments: 0,
-        slaOverdue: 0,
       };
       executiveRow.assignedLeads += 1;
       if (activeStatuses.includes(statusOf(lead))) executiveRow.activeLeads += 1;
       if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) executiveRow.approvedLeads += 1;
-      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) executiveRow.disbursedLeads += 1;
+      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) {
+        executiveRow.disbursedLeads += 1;
+        executiveRow.disbursedAmount += Number(lead.disbursedAmount || lead.loanAmount || lead.requiredLoanAmount || 0);
+      }
       if (statusOf(lead) === LEAD_STATUSES.REJECTED) executiveRow.rejectedLeads += 1;
       if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) executiveRow.pendingDocuments += 1;
-      if (slaLabelForLead(lead) === "Overdue") executiveRow.slaOverdue += 1;
       executiveMap.set(executiveId, executiveRow);
     }
 
@@ -1869,8 +1862,6 @@ export async function getBankAnalytics(req, res, next) {
       disbursedLeads: disbursedLeads.length,
       rejectedLeads: rejectedLeads.length,
       pendingDocuments: pendingDocumentLeads.length,
-      slaDueToday: leads.filter((lead) => (lead.assignmentTimestamp || lead.createdAt || "").startsWith(today)).length,
-      slaOverdue: overdueLeads.length,
       disbursedAmount,
       branches: branchMap.size,
       executives: executiveMap.size,
@@ -1889,7 +1880,6 @@ export async function getBankAnalytics(req, res, next) {
           status: statusOf(lead),
           executiveName: lead.assignedExecutiveName || lead.assignedExecutiveEmail || "",
           branch: leadBranchLabel(lead, identity),
-          sla: slaLabelForLead(lead),
           updatedAt: lead.updatedAt || lead.statusUpdatedAt || lead.assignmentTimestamp || lead.createdAt || null,
         })),
     });
@@ -1908,14 +1898,13 @@ export async function getBankNotifications(req, res, next) {
     const rows = leads
       .filter((lead) => {
         const status = normalizeStatus(lead.status);
-        return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.APPROVED, LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.ASSIGNED].includes(status)
-          || slaLabelForLead(lead) === "Overdue";
+        return [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.APPROVED, LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.ASSIGNED].includes(status);
       })
       .slice(0, 40)
       .map((lead) => ({
         id: lead.id,
         caseId: lead.caseId,
-        title: slaLabelForLead(lead) === "Overdue" ? "SLA alert" : `${STATUS_LABELS[normalizeStatus(lead.status)] || "Lead"} update`,
+        title: `${STATUS_LABELS[normalizeStatus(lead.status)] || "Lead"} update`,
         message: `${lead.fullName || lead.customerName || "Customer"} - ${lead.assignedExecutiveName || "Auto queue"}`,
         status: normalizeStatus(lead.status),
         createdAt: lead.updatedAt || lead.createdAt || lead.assignmentTimestamp,
@@ -1924,13 +1913,6 @@ export async function getBankNotifications(req, res, next) {
   } catch (error) {
     next(error);
   }
-}
-
-function slaLabelForLead(lead) {
-  const value = lead.slaAcceptDeadlineAt || lead.assignmentTimestamp;
-  if (!value) return "Tracked";
-  const deadline = lead.slaAcceptDeadlineAt ? new Date(value).getTime() : new Date(value).getTime() + 60 * 60 * 1000;
-  return deadline <= Date.now() ? "Overdue" : "Active";
 }
 
 export async function acceptBankLead(req, res, next) {
@@ -1951,7 +1933,6 @@ export async function acceptBankLead(req, res, next) {
     }).catch(() => ({ data: [] }));
     const assignment = assignments.data.find((item) => item.partnerId === partner.id || item.partnerId === partner.email);
     if (assignment) await updateRecord("leadAssignments", assignment.id, { status: "accepted", acceptedAt: new Date().toISOString() });
-    await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.EXECUTIVE_ACCEPTED,
@@ -1984,7 +1965,6 @@ export async function rejectBankLead(req, res, next) {
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
     publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead: updated, actor: req.user, data: { status: nextStatus, previousStatus: lead.status } });
-    await updateSlaForLead(updated, nextStatus);
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.REJECTION,
@@ -2146,7 +2126,6 @@ function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalize
   const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
   setImmediate(() => {
     Promise.allSettled([
-      updateSlaForLead(updated, normalizedStatus),
       ensureCommissionForLead(updated, normalizedStatus),
       addTimelineEvent({
         leadId: lead.id,

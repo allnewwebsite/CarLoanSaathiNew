@@ -10,11 +10,9 @@ const iconByType = {
   "lead-sent-to-bank": Send,
   "branch-assigned": Send,
   "executive-assigned": Send,
-  "sla-started": Clock3,
   "executive-accepted": CheckCircle2,
   approval: CheckCircle2,
   rejection: ShieldAlert,
-  "sla-missed": ShieldAlert,
   "escalation-triggered": ShieldAlert,
 };
 
@@ -25,7 +23,7 @@ function formatDate(value) {
 
 function eventTone(type) {
   if (["approval", "executive-accepted", "disbursement-marked"].includes(type)) return "bg-emerald-50 text-emerald-700 border-emerald-100";
-  if (["rejection", "sla-missed", "escalation-triggered"].includes(type)) return "bg-red-50 text-red-700 border-red-100";
+  if (["rejection", "escalation-triggered"].includes(type)) return "bg-red-50 text-red-700 border-red-100";
   return "bg-blue-50 text-[#0d47a1] border-blue-100";
 }
 
@@ -96,7 +94,6 @@ export function LeadTimeline({ leadId, compact = false }) {
               <option value="executive-assigned">Executive assigned</option>
               <option value="approval">Approval</option>
               <option value="rejection">Rejection</option>
-              <option value="sla-missed">SLA missed</option>
             </select>
           </div>
         )}
