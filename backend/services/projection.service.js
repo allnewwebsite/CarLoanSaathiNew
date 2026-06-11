@@ -979,7 +979,7 @@ export async function queryStaffViewProjection({ dealershipId, query = {} } = {}
 
 export async function syncExecutiveSummaryProjection(executive = {}, counts = {}) {
   const bankId = scopeId(executive.bankId || executive.bankPartnerId || executive.partnerId);
-  const executiveId = scopeId(executive.id || executive.jobId || executive.email || executive.mobile);
+  const executiveId = scopeId(executive.id || executive.email || executive.mobile);
   if (!bankId || !executiveId) return null;
   const updatedAt = executive.updatedAt || new Date().toISOString();
   const payload = withProjectionMetadata({

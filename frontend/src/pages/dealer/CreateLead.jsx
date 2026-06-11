@@ -332,15 +332,20 @@ export default function CreateDealerLead() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Mobile Number <span className="text-red-600">*</span>
               </label>
-              <input
-                type="tel"
-                name="mobile"
-                value={formData.mobile}
-                onChange={handleInputChange}
-                placeholder="10-digit number"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+              <div className="flex overflow-hidden rounded-lg border border-gray-300 bg-white focus-within:ring-2 focus-within:ring-blue-500">
+                <span className="inline-flex items-center border-r border-gray-300 bg-gray-50 px-3 text-sm font-semibold text-gray-700">+91</span>
+                <input
+                  type="tel"
+                  name="mobile"
+                  value={formData.mobile}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, mobile: event.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                  placeholder="10-digit number"
+                  maxLength={10}
+                  inputMode="numeric"
+                  className="w-full px-4 py-2 focus:outline-none"
+                  required
+                />
+              </div>
             </div>
 
             {/* Email */}

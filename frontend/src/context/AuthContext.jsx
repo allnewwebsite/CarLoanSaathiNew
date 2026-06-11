@@ -66,12 +66,13 @@ function jwtRole(token) {
 }
 
 function logAuthDecision(label, { session, token, redirectTo } = {}) {
+  if (!import.meta.env.DEV) return;
   console.info("[CLS auth]", label, {
-    email: session?.email || "",
-    backendRole: session?.role || "",
-    jwtRole: jwtRole(token),
-    redirectTo: redirectTo || session?.redirectTo || "",
-    storedRole: getStoredUser()?.role || "",
+    hasSession: Boolean(session),
+    hasToken: Boolean(token),
+    jwtRoleMatchesSession: Boolean(session?.role && jwtRole(token) === session.role),
+    hasRedirect: Boolean(redirectTo || session?.redirectTo),
+    hasStoredUser: Boolean(getStoredUser()),
   });
 }
 

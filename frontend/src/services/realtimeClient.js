@@ -104,6 +104,9 @@ function invalidateRealtimeCaches(event = {}) {
   }
   if (event.kind === "bank") {
     invalidateGetCache({ prefix: "/catalog/banks", purge: true });
+    invalidateGetCache({ prefix: "/bank/executives", purge: true });
+    invalidateGetCache({ prefix: "/bank/analytics", purge: true });
+    invalidateGetCache({ prefix: "/bank/leads", purge: true });
     invalidateGetCache({ prefix: "/dealer/available-banks", purge: true });
     invalidateGetCache({ prefix: "/dealer/bank-tieups", purge: true });
     invalidateGetCache({ prefix: "/admin/approvals/banks", purge: true });

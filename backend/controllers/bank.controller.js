@@ -51,6 +51,21 @@ const bankStatuses = [
   LEAD_STATUSES.DISBURSED,
 ];
 
+const EXECUTIVE_ACTIVE_LEAD_STATUSES = new Set([
+  LEAD_STATUSES.NEW,
+  LEAD_STATUSES.CONTACTED,
+  LEAD_STATUSES.REQUEST_DOCUMENT,
+  LEAD_STATUSES.DOCUMENT_RECEIVED,
+  LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
+  LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+  LEAD_STATUSES.UNDER_BANK_PROCESS,
+  LEAD_STATUSES.ASSIGNED,
+  LEAD_STATUSES.ACCEPTED,
+  LEAD_STATUSES.UNDER_REVIEW,
+  LEAD_STATUSES.DOCS_PENDING,
+  LEAD_STATUSES.APPROVED,
+]);
+
 const BANK_ANALYTICS_LEAD_FIELDS = [
   "id",
   "caseId",
@@ -495,7 +510,7 @@ async function attachExecutiveMobile(partner, leads) {
     if (lead.assignedExecutiveMobile) return lead;
     const executive = executivesPage.data.find((item) =>
       anyMatch(
-        [item.id, item.email, item.officialEmail, item.jobId],
+        [item.id, item.email, item.officialEmail],
         [lead.assignedExecutiveId, lead.assignedExecutiveEmail],
       )
     );
@@ -541,44 +556,68 @@ async function assignedLeadsForPartner(partner, query = {}, fields) {
   return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => partnerCanAccessLead(partner, lead)), query));
 }
 
-async function clearExecutiveLeadAssignments({ identity, uid, email, removedAt, batchSize = 250 }) {
-  const seen = new Set();
-  const specs = [
+function executiveLeadSpecs({ uid, email, mobile } = {}) {
+  return [
     uid ? { field: "assignedExecutiveId", value: uid } : null,
     email ? { field: "assignedExecutiveEmail", value: email } : null,
     email ? { field: "assignedExecutiveId", value: email } : null,
+    mobile ? { field: "assignedExecutiveMobile", value: mobile } : null,
   ].filter(Boolean);
-  let affectedLeadCount = 0;
+}
 
-  for (const spec of specs) {
+async function collectExecutiveLeads({ identity, uid, email, mobile, batchSize = 250 }) {
+  const seen = new Set();
+  const leads = [];
+
+  for (const spec of executiveLeadSpecs({ uid, email, mobile })) {
+    let cursor = null;
     for (;;) {
       const page = await queryRecords("leads", {
         where: [{ field: "bankId", value: identity.bankId }, spec],
         limit: batchSize,
         maxLimit: batchSize,
+        cursor,
       }).catch(() => ({ data: [] }));
       if (!page.data.length) break;
 
-      const uniqueLeads = page.data.filter((lead) => {
+      page.data.forEach((lead) => {
         if (seen.has(lead.id)) return false;
         seen.add(lead.id);
+        leads.push(lead);
         return true;
       });
 
+      if (page.data.length < batchSize) break;
+      cursor = page.nextCursor;
+      if (!cursor) break;
+    }
+  }
+
+  return leads;
+}
+
+async function clearExecutiveLeadAssignments({ identity, uid, email, mobile, removedAt, batchSize = 250 }) {
+  const leads = await collectExecutiveLeads({ identity, uid, email, mobile, batchSize });
+  let affectedLeadCount = 0;
+  for (let index = 0; index < leads.length; index += batchSize) {
+    const uniqueLeads = leads.slice(index, index + batchSize);
       await Promise.all(uniqueLeads.map((lead) => updateRecord("leads", lead.id, {
         assignedExecutiveId: null,
         assignedExecutiveEmail: null,
         assignedExecutiveName: null,
         assignedExecutiveMobile: null,
+        assignedExecutiveJobId: null,
+        executiveMobile: null,
         updatedAt: removedAt,
       })));
       affectedLeadCount += uniqueLeads.length;
-
-      if (page.data.length < batchSize) break;
-    }
   }
 
   return affectedLeadCount;
+}
+
+function activeExecutiveLeads(leads = []) {
+  return leads.filter((lead) => EXECUTIVE_ACTIVE_LEAD_STATUSES.has(normalizeStatus(lead.status || lead.assignmentStatus)));
 }
 
 async function requireAssignedLead(req) {
@@ -640,7 +679,6 @@ async function deleteExecutiveSummaryProjection(identity, executive = {}) {
   const bankId = identity.bankId;
   const candidates = [
     executive.id,
-    executive.jobId,
     executive.email,
     executive.officialEmail,
     executive.mobile,
@@ -648,6 +686,51 @@ async function deleteExecutiveSummaryProjection(identity, executive = {}) {
   await Promise.all(candidates.map((candidate) =>
     deleteRecord("executiveSummaryProjection", safeProjectionDocId(`executive_${bankId}_${candidate}`)).catch(() => false),
   ));
+}
+
+async function cleanupExecutiveLinkedRecords({ executive = {}, uid = "", email = "", mobile = "" }) {
+  const identifiers = {
+    uid,
+    email,
+    mobile,
+    id: executive.id,
+    sourceId: executive.sourceId,
+    executiveId: executive.executiveId,
+  };
+  const deleted = {};
+  const add = async (collection, where) => {
+    const count = await deleteRecordsByQuery(collection, { where }).catch(() => 0);
+    deleted[collection] = Number(deleted[collection] || 0) + count;
+  };
+
+  if (email) {
+    await add("userSessions", [{ field: "email", value: email }]);
+    await add("leadAssignments", [{ field: "executiveEmail", value: email }]);
+    await add("leadAssignments", [{ field: "assignedExecutiveEmail", value: email }]);
+    await add("notifications", [{ field: "recipientId", value: email }]);
+    await add("notifications", [{ field: "assignedExecutiveEmail", value: email }]);
+    await add("notificationEvents", [{ field: "recipientId", value: email }]);
+    await add("notificationLogs", [{ field: "recipientId", value: email }]);
+    await add("whatsappQueue", [{ field: "recipientId", value: email }]);
+    await add("executiveViews", [{ field: "scopeId", value: email }]);
+  }
+  if (uid) {
+    await add("userSessions", [{ field: "uid", value: uid }]);
+    await add("leadAssignments", [{ field: "executiveId", value: uid }]);
+    await add("notifications", [{ field: "assignedExecutiveId", value: uid }]);
+    await add("notificationEvents", [{ field: "assignedExecutiveId", value: uid }]);
+    await add("executiveViews", [{ field: "scopeId", value: uid }]);
+  }
+  if (mobile) {
+    await add("leadAssignments", [{ field: "assignedExecutiveMobile", value: mobile }]);
+    await add("whatsappQueue", [{ field: "phoneNumber", value: mobile }]);
+    await add("whatsappQueue", [{ field: "to", value: mobile }]);
+  }
+  for (const value of [identifiers.id, identifiers.sourceId, identifiers.executiveId].filter(Boolean)) {
+    await add("leadAssignments", [{ field: "executiveId", value }]);
+    await add("notifications", [{ field: "assignedExecutiveId", value }]);
+  }
+  return deleted;
 }
 
 function dealershipIdentityFromLead(lead = {}) {
@@ -1094,11 +1177,10 @@ export async function getBankExecutives(req, res, next) {
     const rows = executives
       .filter((executive) => executiveBelongsToBank(executive, identity))
       .map((executive) => {
-        const executiveId = executive.id || executive.jobId || executive.mobile || executive.email;
+        const executiveId = executive.id || executive.email || executive.mobile;
         const cases = leads.filter((lead) =>
           lead.assignedExecutiveId === executiveId
           || lead.assignedExecutiveId === executive.id
-          || lead.assignedExecutiveId === executive.jobId
           || lead.assignedExecutiveEmail === executive.email
           || lead.assignedExecutiveMobile === executive.mobile
           || lead.assignedExecutiveName === executive.name
@@ -1129,10 +1211,10 @@ export async function createBankExecutive(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can add executives" });
     const name = String(req.body.name || req.body.executiveName || "").trim();
-    const mobile = String(req.body.mobile || "").trim();
-    const jobId = String(req.body.jobId || "").trim();
+    const mobileDigits = String(req.body.mobile || "").replace(/\D/g, "");
+    const mobile = mobileDigits.length === 12 && mobileDigits.startsWith("91") ? mobileDigits.slice(2) : mobileDigits;
     const email = String(req.body.email || req.body.officialEmail || "").trim().toLowerCase();
-    if (!name || !mobile || !jobId || !email) return res.status(400).json({ message: "Executive name, mobile number, job ID, and official email are required" });
+    if (!name || !mobile || !email) return res.status(400).json({ message: "Executive name, mobile number, and official email are required" });
     if (!/^\d{10}$/.test(mobile)) return res.status(400).json({ message: "Mobile number must be 10 digits" });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Valid official email is required" });
 
@@ -1144,9 +1226,8 @@ export async function createBankExecutive(req, res, next) {
       limit: 200,
       maxLimit: 200,
     })).data;
-    const duplicate = executives.find((executive) => executive.active !== false && (executive.mobile === mobile || executive.jobId === jobId || executive.email === email || executive.officialEmail === email || executive.id === email));
+    const duplicate = executives.find((executive) => executive.active !== false && (executive.mobile === mobile || executive.email === email || executive.officialEmail === email || executive.id === email));
     if (duplicate?.mobile === mobile) return res.status(409).json({ message: "Mobile number already exists for this bank" });
-    if (duplicate?.jobId === jobId) return res.status(409).json({ message: "Job ID already exists for this bank" });
     if (duplicate?.email === email || duplicate?.officialEmail === email || duplicate?.id === email) return res.status(409).json({ message: "Official email already exists for an executive" });
     const existingExecutiveByEmail = await getRecord("loanExecutives", email).catch(() => null);
     if (existingExecutiveByEmail?.active !== false && existingExecutiveByEmail?.bankId && existingExecutiveByEmail.bankId !== identity.bankId) {
@@ -1191,7 +1272,6 @@ export async function createBankExecutive(req, res, next) {
       email,
       officialEmail: email,
       mobile,
-      jobId,
       bankPartnerId: identity.bankId,
       bankId: identity.bankId,
       bankName: identity.bankName,
@@ -1244,7 +1324,7 @@ export async function createBankExecutive(req, res, next) {
     const executive = await getRecord("loanExecutives", email);
     await syncExecutiveSummaryProjection(executive, { totalAssignedCases: 0, currentActiveCases: 0 }).catch(() => null);
     clearBankSummaryCaches();
-    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId, reusedExistingAuthUser } });
+    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: email, meta: { executiveId: executive.id, bankId: identity.bankId, reusedExistingAuthUser } });
     res.status(201).json({
       ...executive,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,
@@ -1258,12 +1338,24 @@ export async function createBankExecutive(req, res, next) {
 export async function removeBankExecutive(req, res, next) {
   try {
     const partner = await currentPartner(req);
-    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can remove executives" });
+    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can delete executives" });
     const identity = bankIdentity(partner);
     const executive = await getRecord("loanExecutives", req.params.executiveId);
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
     const email = cleanText(executive.email || executive.officialEmail || executive.id);
     const uid = String(executive.uid || executive.authUid || "").trim();
+    const mobile = String(executive.mobile || "").replace(/\D/g, "").slice(-10);
+    const assignedLeads = await collectExecutiveLeads({ identity, uid, email, mobile });
+    const activeLeads = activeExecutiveLeads(assignedLeads);
+    if (activeLeads.length) {
+      return res.status(409).json({
+        code: "ACTIVE_EXECUTIVE_LEADS",
+        message: "Executive has active cases.",
+        action: "TRANSFER_LEADS_REQUIRED",
+        activeLeadCount: activeLeads.length,
+        transferUrl: `/bank-manager/executives/${encodeURIComponent(executive.id || email)}/cases`,
+      });
+    }
     const deleted = {};
     const removedAt = new Date().toISOString();
     const matchesExecutive = (item = {}) => {
@@ -1284,7 +1376,8 @@ export async function removeBankExecutive(req, res, next) {
       ]);
     }
 
-    const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, removedAt });
+    const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, mobile, removedAt });
+    deleted.linkedRecords = await cleanupExecutiveLinkedRecords({ executive, uid, email, mobile });
     await deleteExecutiveSummaryProjection(identity, executive);
     clearBankSummaryCaches();
 
@@ -1302,70 +1395,42 @@ export async function removeBankExecutive(req, res, next) {
 
     await writeAuditLog({
       req,
-      actionType: "BANK_EXECUTIVE_REMOVED",
+      actionType: "BANK_EXECUTIVE_DELETED",
       oldValue: executive.status,
       newValue: "deleted",
-      meta: { executiveId: executive.id, bankId: identity.bankId, email, uid, deleted, affectedLeadCount, authDeleted },
+      meta: {
+        deletedBy: partner.email || partner.id || req.user?.email,
+        deletedExecutive: executive.name || executive.fullName || email,
+        deletedAt: removedAt,
+        branch: executive.bankBranchLocation || executive.branchCity || identity.bankLocation || null,
+        bankIfsc: executive.bankIfsc || executive.ifsc || identity.bankIfsc || null,
+        reason: req.body?.reason || "bank-manager-delete",
+        executiveId: executive.id,
+        bankId: identity.bankId,
+        email,
+        uid,
+        deleted,
+        affectedLeadCount,
+        authDeleted,
+      },
     });
-    res.json({ message: "Executive permanently removed", deleted, affectedLeadCount, authDeleted });
-  } catch (error) {
-    next(error);
-  }
-}
-
-async function updateExecutiveLinkedRecords(email, patch) {
-  const account = await getRecord("users", email).catch(() => null);
-  if (account) await upsertRecord("users", email, { ...account, ...patch });
-  const executive = await getRecord("loanExecutives", email).catch(() => null);
-  if (executive) await upsertRecord("loanExecutives", email, { ...executive, ...patch });
-}
-
-export async function updateBankExecutiveLifecycle(req, res, next) {
-  try {
-    const partner = await currentPartner(req);
-    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can update executives" });
-    const identity = bankIdentity(partner);
-    const executive = await getRecord("loanExecutives", req.params.executiveId);
-    if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
-    const action = String(req.body.action || "").trim();
-    const now = new Date().toISOString();
-    let patch = {};
-    if (action === "suspend") patch = { active: false, accountActive: false, accountStatus: "suspended", status: "suspended", suspendedAt: now, suspendedBy: partner.email || partner.id };
-    else if (action === "activate") patch = { active: true, accountActive: true, accountStatus: "active", status: "active", activatedAt: now, activatedBy: partner.email || partner.id };
-    else if (action === "disable") patch = { active: false, accountActive: false, accountStatus: "disabled", status: "disabled", disabledAt: now, disabledBy: partner.email || partner.id };
-    else if (action === "remove") patch = { active: false, accountActive: false, accountStatus: "removed", status: "removed", removedAt: now, removedByManagerId: partner.email || partner.id };
-    else if (action === "transfer") {
-      const branch = String(req.body.branch || "").trim();
-      if (!branch) return res.status(400).json({ message: "Branch is required" });
-      patch = { bankBranchLocation: branch, branchCity: req.body.city || branch, city: req.body.city || branch, branchTransferredAt: now, branchTransferredBy: partner.email || partner.id };
-    } else return res.status(400).json({ message: "Invalid executive action" });
-    await updateExecutiveLinkedRecords(executive.email, patch);
-    await syncExecutiveSummaryProjection({ ...executive, ...patch }).catch(() => null);
-    if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(executive.email, `bank-executive-${action}`);
-    clearBankSummaryCaches();
-    await writeAuditLog({ req, actionType: `BANK_EXECUTIVE_${action.toUpperCase()}`, targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId, action } });
-    res.json({ message: "Executive updated", executive: { ...executive, ...patch } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function resetBankExecutivePassword(req, res, next) {
-  try {
-    const partner = await currentPartner(req);
-    if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can reset executive passwords" });
-    const identity = bankIdentity(partner);
-    const executive = await getRecord("loanExecutives", req.params.executiveId);
-    if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
-    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
-    const temporaryPassword = generateTemporaryPassword();
-    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(executive.email);
-    await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: temporaryPassword });
-    await updateExecutiveLinkedRecords(executive.email, { firstLoginRequired: true, passwordChangedAt: null, passwordResetAt: new Date().toISOString(), passwordResetBy: partner.email || partner.id });
-    await revokeUserSessions(executive.email, "bank-executive-password-reset");
-    clearBankSummaryCaches();
-    await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_PASSWORD_RESET", targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId } });
-    res.json({ message: "Temporary password generated", temporaryPassword, portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`, executive });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BANK_EXECUTIVE_DELETED,
+      actor: req.user,
+      data: {
+        bankId: identity.bankId,
+        branchId: executive.branchId || identity.bankLocation,
+        bankIfsc: executive.bankIfsc || executive.ifsc || identity.bankIfsc || null,
+        executiveId: uid || email || executive.id,
+        recipientId: email,
+        bankEvent: {
+          action: "executive-deleted",
+          executiveId: executive.id,
+          email,
+        },
+      },
+    });
+    res.json({ message: "Executive permanently deleted", deleted, affectedLeadCount, authDeleted });
   } catch (error) {
     next(error);
   }
@@ -1379,7 +1444,7 @@ export async function getBankExecutiveCases(req, res, next) {
     const projectedExecutives = await queryExecutiveSummaryProjection({ bankId: identity.bankId, query: { limit: 100 } }).catch(() => null);
     let executive = (projectedExecutives || []).find((item) =>
       anyMatch(
-        [item.sourceId, item.executiveId, item.id, item.email, item.mobile, item.jobId],
+        [item.sourceId, item.executiveId, item.id, item.email, item.mobile],
         [req.params.executiveId],
       )
     );
@@ -1393,7 +1458,7 @@ export async function getBankExecutiveCases(req, res, next) {
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
     const rows = await cached(`bank:executive-cases:${identity.bankId}:${executive.id || executive.email}:${JSON.stringify(req.query || {})}`, 10000, async () => {
       const projected = await queryLeadProjectionForUser({
-        user: { role: "loan-executive", uid: executive.sourceId || executive.executiveId || executive.id || executive.jobId || executive.email, email: executive.email },
+        user: { role: "loan-executive", uid: executive.sourceId || executive.executiveId || executive.id || executive.email, email: executive.email },
         query: { ...req.query, limit: req.query.limit || 100 },
         recordMetrics: false,
       }).catch(() => null);
@@ -1404,8 +1469,7 @@ export async function getBankExecutiveCases(req, res, next) {
       logProjectionRead("PROJECTION-MISS", req, { collection: "executiveViews", reason: "missing_executive_lead_view" });
       logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", executiveId: executive.sourceId || executive.executiveId || executive.id || executive.email });
       const candidates = await Promise.all([
-        queryExecutiveLeads({ executiveId: executive.sourceId || executive.executiveId || executive.id || executive.jobId || executive.email, executiveEmail: executive.email, query: req.query }),
-        executive.jobId && executive.jobId !== executive.id ? queryExecutiveLeads({ executiveId: executive.jobId, executiveEmail: executive.email, query: req.query }) : Promise.resolve({ data: [] }),
+        queryExecutiveLeads({ executiveId: executive.sourceId || executive.executiveId || executive.id || executive.email, executiveEmail: executive.email, query: req.query }),
       ]);
       const byId = new Map();
       candidates.flatMap((page) => page.data || []).forEach((lead) => {
@@ -1413,7 +1477,6 @@ export async function getBankExecutiveCases(req, res, next) {
       });
       return [...byId.values()].filter((lead) =>
         lead.assignedExecutiveId === executive.id
-        || lead.assignedExecutiveId === executive.jobId
         || lead.assignedExecutiveEmail === executive.email
         || lead.assignedExecutiveMobile === executive.mobile
         || lead.assignedExecutiveName === executive.name

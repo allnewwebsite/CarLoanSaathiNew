@@ -31,7 +31,6 @@ function executiveIdentityKeys(executive = {}) {
     executive.executiveId,
     executive.email,
     executive.officialEmail,
-    executive.jobId,
     executive.mobile,
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
 }
@@ -486,7 +485,6 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     assignedExecutiveEmail: executiveEmail,
     assignedExecutiveName: executiveName,
     assignedExecutiveMobile: executiveMobile,
-    assignedExecutiveJobId: executive.jobId || null,
     executiveMobile,
     assignmentStatus: "pending",
     status: LEAD_STATUSES.NEW,
@@ -499,7 +497,6 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       executiveEmail,
       executiveName,
       executiveMobile,
-      executiveJobId: executive.jobId || null,
       branchCity,
       timestamp: now,
       reason,

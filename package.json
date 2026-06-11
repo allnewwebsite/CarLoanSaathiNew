@@ -22,6 +22,7 @@
     "security:production-blockers": "node scripts/audit-production-blockers.js",
     "security:deps": "node scripts/dependency-audit.js",
     "audit:api-efficiency": "node scripts/audit-api-efficiency.js",
+    "validate:regression": "node scripts/validate-production-invariants.js",
     "load:smoke": "k6 run load-tests/k6/api-smoke.js",
     "load:auth": "k6 run load-tests/k6/auth-load.js",
     "load:dashboard": "k6 run load-tests/k6/dashboard-load.js",

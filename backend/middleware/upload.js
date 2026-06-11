@@ -1,11 +1,15 @@
 import multer from "multer";
 import path from "path";
 import crypto from "crypto";
+import fs from "fs";
 
 const allowedExtensions = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
+const uploadDir = path.resolve("uploads");
+
+fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, "uploads/"),
+  destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);

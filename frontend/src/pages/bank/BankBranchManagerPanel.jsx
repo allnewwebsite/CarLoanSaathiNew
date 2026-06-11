@@ -433,13 +433,16 @@ function AnalyticsPage() {
 }
 
 function ManageExecutivePage() {
+  const navigate = useNavigate();
   const { rows, loading, load } = useExecutives();
-  const [form, setForm] = useState({ name: "", mobile: "", jobId: "", email: "" });
+  const [form, setForm] = useState({ name: "", mobile: "", email: "" });
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [credentials, setCredentials] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [activeLeadBlock, setActiveLeadBlock] = useState(null);
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -449,7 +452,6 @@ function ManageExecutivePage() {
     const nextErrors = {};
     if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
     if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
-    if (!cleanText(nextForm.jobId)) nextErrors.jobId = "Field required";
     if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
     return nextErrors;
   };
@@ -458,14 +460,14 @@ function ManageExecutivePage() {
     event.preventDefault();
     setMessage("");
     setError("");
-    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), jobId: cleanText(form.jobId), email: cleanEmail(form.email) };
+    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), email: cleanEmail(form.email) };
     const nextErrors = validate(nextForm);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     setBusy(true);
     try {
       const response = await api.post("/bank/executives", nextForm);
-      setForm({ name: "", mobile: "", jobId: "", email: "" });
+      setForm({ name: "", mobile: "", email: "" });
       setMessage("Executive added successfully.");
       setCredentials({
         name: response.data?.name || response.data?.fullName || nextForm.name,
@@ -481,43 +483,29 @@ function ManageExecutivePage() {
     }
   };
 
-  const remove = async (executive) => {
-    const confirmed = window.confirm(`Remove ${executive.name || executive.fullName || executive.jobId}?`);
-    if (!confirmed) return;
-    await api.delete(`/bank/executives/${executive.id}`);
-    setMessage("Executive removed successfully.");
-    await load();
-  };
-
-  const lifecycle = async (executive, action) => {
-    let payload = { action };
-    if (action === "transfer") {
-      const branch = window.prompt("Enter new branch/location", executive.branchCity || executive.bankBranchLocation || "");
-      if (!branch) return;
-      payload = { action, branch, city: branch };
-    } else if (action !== "activate" && !window.confirm(`${action === "remove" ? "Remove" : action === "suspend" ? "Suspend" : "Disable"} ${executive.name || executive.email}?`)) return;
+  const deleteExecutive = async () => {
+    if (!pendingDelete) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    setActiveLeadBlock(null);
     try {
-      await api.post(`/bank/executives/${executive.id}/lifecycle`, payload);
-      setMessage(`Executive ${action} completed.`);
+      await api.delete(`/bank/executives/${pendingDelete.id}`);
+      setPendingDelete(null);
+      setMessage("Executive deleted successfully.");
       await load();
     } catch (err) {
-      setError(err.response?.data?.message || `Unable to ${action} executive`);
-    }
-  };
-
-  const resetPassword = async (executive) => {
-    if (!window.confirm(`Reset password for ${executive.name || executive.email}? Existing sessions will be revoked.`)) return;
-    try {
-      const response = await api.post(`/bank/executives/${executive.id}/reset-password`);
-      setCredentials({
-        name: response.data?.executive?.name || executive.name || executive.fullName,
-        email: executive.email || executive.officialEmail,
-        temporaryPassword: response.data?.temporaryPassword || "",
-        portalLogin: response.data?.portalLogin || `${window.location.origin}/executive/login`,
-      });
-      setMessage("Temporary password generated.");
-    } catch (err) {
-      setError(err.response?.data?.message || "Unable to reset password");
+      if (err.response?.data?.code === "ACTIVE_EXECUTIVE_LEADS") {
+        setActiveLeadBlock({
+          executive: pendingDelete,
+          activeLeadCount: err.response.data.activeLeadCount || 0,
+          transferUrl: err.response.data.transferUrl || `/bank-manager/executives/${pendingDelete.id}/cases`,
+        });
+      } else {
+        setError(err.response?.data?.message || "Unable to delete executive");
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -527,15 +515,10 @@ function ManageExecutivePage() {
       display(executive.name || executive.fullName),
       display(executive.mobile),
       display(executive.email || executive.officialEmail),
-      display(executive.jobId),
       display(executive.status),
       <div key="actions" className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => window.alert(`${executive.name || executive.fullName}\n${executive.email || executive.officialEmail}\n${executive.mobile}\n${executive.jobId}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
-        <button type="button" onClick={() => lifecycle(executive, "suspend")} className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">Suspend</button>
-        <button type="button" onClick={() => lifecycle(executive, "activate")} className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-medium text-emerald-700">Activate</button>
-        <button type="button" onClick={() => resetPassword(executive)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Reset Password</button>
-        <button type="button" onClick={() => lifecycle(executive, "transfer")} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">Transfer Branch</button>
-        <button type="button" disabled={executive.active === false} onClick={() => remove(executive)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 disabled:opacity-50">Remove</button>
+        <button type="button" onClick={() => window.alert(`${executive.name || executive.fullName}\n${executive.email || executive.officialEmail}\n+91 ${executive.mobile || ""}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => setPendingDelete(executive)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>
       </div>,
     ],
   })), [rows]);
@@ -564,12 +547,39 @@ function ManageExecutivePage() {
           </div>
         </div>
       ) : null}
+      {pendingDelete ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 shadow-sm">
+          <h2 className="text-base font-semibold text-red-900">Delete Executive?</h2>
+          <p className="mt-1 text-sm text-red-800">This action cannot be undone.</p>
+          <p className="mt-2 text-sm text-slate-700">{pendingDelete.name || pendingDelete.fullName || pendingDelete.email}</p>
+          {activeLeadBlock ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p className="font-semibold">Executive has active cases.</p>
+              <p>{activeLeadBlock.activeLeadCount} active case{activeLeadBlock.activeLeadCount === 1 ? "" : "s"} must be transferred before deletion.</p>
+            </div>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {activeLeadBlock ? (
+              <button type="button" onClick={() => navigate(activeLeadBlock.transferUrl)} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-semibold text-white">Transfer Leads</button>
+            ) : (
+              <button type="button" disabled={busy} onClick={deleteExecutive} className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">Delete</button>
+            )}
+            <button type="button" onClick={() => { setPendingDelete(null); setActiveLeadBlock(null); }} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+          </div>
+        </div>
+      ) : null}
       <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm font-medium text-slate-700">Executive Name<input aria-invalid={Boolean(errors.name)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(event) => update("name", event.target.value.replace(/[<>]/g, ""))} /><span className={`validation-slot ${errors.name ? "" : "validation-slot-empty"}`}>{errors.name || "No validation issue"}</span></label>
-          <label className="text-sm font-medium text-slate-700">Mobile Number<input aria-invalid={Boolean(errors.mobile)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} /><span className={`validation-slot ${errors.mobile ? "" : "validation-slot-empty"}`}>{errors.mobile || "No validation issue"}</span></label>
-          <label className="text-sm font-medium text-slate-700">Job ID<input aria-invalid={Boolean(errors.jobId)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("jobId", event.target.value.replace(/[<>]/g, ""))} /><span className={`validation-slot ${errors.jobId ? "" : "validation-slot-empty"}`}>{errors.jobId || "No validation issue"}</span></label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-3">Official Email<input aria-invalid={Boolean(errors.email)} type="email" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", event.target.value.trim().toLowerCase())} /><span className={`validation-slot ${errors.email ? "" : "validation-slot-empty"}`}>{errors.email || "No validation issue"}</span></label>
+          <label className="text-sm font-medium text-slate-700">
+            Mobile Number
+            <div className={`mt-2 flex h-10 overflow-hidden rounded-md border ${errors.mobile ? "border-red-300" : "border-slate-200"} focus-within:border-[#0d47a1]`}>
+              <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
+              <input aria-invalid={Boolean(errors.mobile)} className="h-full w-full px-3 outline-none" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} />
+            </div>
+            <span className={`validation-slot ${errors.mobile ? "" : "validation-slot-empty"}`}>{errors.mobile || "No validation issue"}</span>
+          </label>
+          <label className="text-sm font-medium text-slate-700 md:col-span-2">Official Email<input aria-invalid={Boolean(errors.email)} type="email" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", event.target.value.trim().toLowerCase())} /><span className={`validation-slot ${errors.email ? "" : "validation-slot-empty"}`}>{errors.email || "No validation issue"}</span></label>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
@@ -579,7 +589,7 @@ function ManageExecutivePage() {
           </button>
         </div>
       </form>
-      <Table title="Executive List" headers={["Executive Name", "Mobile Number", "Official Email", "Job ID", "Status", "Actions"]} rows={tableRows} loading={loading} />
+      <Table title="Executive List" headers={["Executive Name", "Mobile Number", "Official Email", "Status", "Actions"]} rows={tableRows} loading={loading} />
     </section>
   );
 }
@@ -593,7 +603,6 @@ function AllExecutivesPage() {
       display(executive.name || executive.fullName),
       display(executive.mobile),
       display(executive.email || executive.officialEmail),
-      display(executive.jobId),
       executive.totalAssignedCases || 0,
       executive.currentActiveCases || 0,
       display(executive.status),
@@ -603,7 +612,7 @@ function AllExecutivesPage() {
   return (
     <section className="space-y-4">
       <PageTitle title="All Executives" />
-      <Table title="Bank Executives" headers={["Executive Name", "Mobile Number", "Official Email", "Job ID", "Total Assigned Cases", "Current Active Cases", "Status", "All Cases"]} rows={tableRows} loading={loading} />
+      <Table title="Bank Executives" headers={["Executive Name", "Mobile Number", "Official Email", "Total Assigned Cases", "Current Active Cases", "Status", "All Cases"]} rows={tableRows} loading={loading} />
     </section>
   );
 }

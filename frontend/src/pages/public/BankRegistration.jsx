@@ -410,7 +410,13 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           <h2 className="text-base font-semibold text-slate-950">Manager Details</h2>
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <label className="text-sm font-medium text-slate-700">Bank Manager Name *<input required className="field mt-2" value={form.managerName} onChange={(event) => update("managerName", event.target.value)} /></label>
-            <label className="text-sm font-medium text-slate-700">Bank Manager Contact Number *<input required inputMode="numeric" className="field mt-2" value={form.managerMobile} onChange={(event) => update("managerMobile", event.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
+            <label className="text-sm font-medium text-slate-700">
+              Bank Manager Contact Number *
+              <div className="mt-2 flex h-10 overflow-hidden rounded-md border border-slate-200 bg-white focus-within:border-[#0d47a1]">
+                <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
+                <input required inputMode="numeric" maxLength={10} className="h-full w-full px-3 outline-none" value={form.managerMobile} onChange={(event) => update("managerMobile", event.target.value.replace(/\D/g, "").slice(0, 10))} />
+              </div>
+            </label>
             <label className="text-sm font-medium text-slate-700">Official Bank Email *<input required readOnly disabled type="email" className="field mt-2 bg-slate-50 text-slate-600" value={bankEmail || form.email} /></label>
           </div>
         </section>

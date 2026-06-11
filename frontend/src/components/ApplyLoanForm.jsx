@@ -278,7 +278,10 @@ export function ApplyLoanForm({ initialSelection }) {
             <ValidationSlot error={errors.fullName} />
           </label>
           <label className={labelClass}>Mobile Number *
-            <input className={fieldClass} inputMode="numeric" maxLength="10" value={form.mobile} onChange={(e) => update("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))} />
+            <div className="mt-1 flex h-11 overflow-hidden rounded-md border border-slate-200 bg-white focus-within:border-[#0d47a1]">
+              <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
+              <input className="h-full w-full px-3 outline-none" inputMode="numeric" maxLength="10" value={form.mobile} onChange={(e) => update("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))} />
+            </div>
             <ValidationSlot error={errors.mobile} />
           </label>
           <label className={`${labelClass} md:col-span-2`}>City *

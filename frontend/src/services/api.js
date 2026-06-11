@@ -4,7 +4,6 @@ import { appCheck } from "./firebase.js";
 import { clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
 import { markApiRequestStart, markApiResponseEnd } from "./frontendLatency.js";
 
-const PRODUCTION_API_BASE_URL = "https://carloansaathi-apkaapnasaathi.onrender.com/api";
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
 const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 const AUTH_REQUEST_TIMEOUT_MS = 60000;
@@ -37,25 +36,26 @@ function isLocalOrPrivateApiUrl(url) {
 }
 
 export function apiBaseUrl() {
-  let configured = import.meta.env.VITE_API_BASE_URL || DEFAULT_LOCAL_API_BASE_URL;
+  const configuredEnv = import.meta.env.VITE_API_BASE_URL;
+  let configured = configuredEnv || (import.meta.env.PROD ? "/api" : DEFAULT_LOCAL_API_BASE_URL);
   if (typeof window === "undefined") return normalizeApiUrl(configured);
 
   configured = normalizeApiUrl(configured);
   const hostname = window.location.hostname.toLowerCase();
   const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
   const isPrivateNetwork = /^10\.|^192\.168\.|^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname);
-  const hasCustomApiBase = Boolean(import.meta.env.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes("api.example.com"));
+  const hasCustomApiBase = Boolean(configuredEnv && !configuredEnv.includes("api.example.com"));
 
-  if (!isLocalHost && !isPrivateNetwork && isLocalOrPrivateApiUrl(configured)) {
-    return PRODUCTION_API_BASE_URL;
+  if (!isLocalHost && !isPrivateNetwork && isLocalOrPrivateApiUrl(configured) && import.meta.env.PROD) {
+    return normalizeApiUrl("/api");
   }
 
   if (hasCustomApiBase) {
     return configured;
   }
 
-  if (!isLocalHost && !isPrivateNetwork) {
-    return PRODUCTION_API_BASE_URL;
+  if (!isLocalHost && !isPrivateNetwork && !hasCustomApiBase) {
+    return normalizeApiUrl("/api");
   }
 
   if ((configured.includes("localhost") || configured.includes("127.0.0.1")) && (isLocalHost || isPrivateNetwork)) {

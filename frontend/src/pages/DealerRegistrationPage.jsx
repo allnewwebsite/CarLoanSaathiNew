@@ -731,7 +731,13 @@ export function DealerRegistrationFormPage() {
               <label className={labelClass}>Authorized Dealer Code *<input required className={fieldClass} value={form.authorizedDealerCode} onChange={(e) => update("authorizedDealerCode", e.target.value)} /></label>
               <label className={labelClass}>GSTIN Number *<input required className={fieldClass} value={form.gstin} onChange={(e) => update("gstin", e.target.value.toUpperCase())} /></label>
               <label className={labelClass}>Official Dealership Email *<input required type="email" className={fieldClass} value={form.officialDealershipEmail} onChange={(e) => update("officialDealershipEmail", e.target.value)} /></label>
-              <label className={labelClass}>Official Dealership Mobile Number *<input required className={fieldClass} value={form.officialDealershipMobile} onChange={(e) => update("officialDealershipMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} /></label>
+              <label className={labelClass}>
+                Official Dealership Mobile Number *
+                <div className="mt-2 flex h-10 overflow-hidden rounded-2xl border border-slate-200 bg-white focus-within:border-[#0d47a1]">
+                  <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
+                  <input required maxLength={10} inputMode="numeric" className="h-full w-full px-3 outline-none" value={form.officialDealershipMobile} onChange={(e) => update("officialDealershipMobile", e.target.value.replace(/\D/g, "").slice(0, 10))} />
+                </div>
+              </label>
             </SectionCard>
 
             <SectionCard number="2" title="Dealership Location">

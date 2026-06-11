@@ -83,6 +83,24 @@ const DIAGNOSTIC_QUERY_COLLECTIONS = new Set([
   "leads",
 ]);
 
+const DIRECT_ID_ONLY_COLLECTIONS = new Set([
+  "auditLogs",
+  "authAuditLogs",
+  "bankDocuments",
+  "documentAuditLogs",
+  "documents",
+  "leadTimeline",
+  "loginActivity",
+  "notificationEvents",
+  "notificationLogs",
+  "notifications",
+  "operationalAlerts",
+  "operationalEvents",
+  "systemCounters",
+  "userSessions",
+  "whatsappQueue",
+]);
+
 let memoryBackfillCounter = 0;
 
 function hashValue(value) {
@@ -737,6 +755,7 @@ export async function getRecord(collection, id) {
     const directDoc = await firestore.collection(collection).doc(id).get();
     recordFirestoreRead({ collection, operation: "get", signature: readSignature(collection, "get", [["id", hashValue(id)]]), documentsReturned: directDoc.exists ? 1 : 0, estimatedReads: 1 });
     if (directDoc.exists) return setRequestReadCache(cacheKey, { ...directDoc.data(), id: directDoc.id });
+    if (DIRECT_ID_ONLY_COLLECTIONS.has(collection)) return setRequestReadCache(cacheKey, null);
 
     const idSnapshot = await firestore.collection(collection).where("id", "==", id).limit(1).get();
     recordFirestoreRead({ collection, operation: "find", signature: readSignature(collection, "find", [["id", "==", hashValue(id)], ["limit", 1]]), documentsReturned: idSnapshot.size, estimatedReads: idSnapshot.size, limit: 1 });

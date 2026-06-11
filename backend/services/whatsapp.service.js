@@ -26,7 +26,14 @@ function nowIso() {
 }
 
 function normalizePhone(phoneNumber) {
-  return String(phoneNumber || "").replace(/[^\d+]/g, "");
+  const raw = String(phoneNumber || "").trim();
+  const hasPlus = raw.startsWith("+");
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (hasPlus) return `+${digits}`;
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  return `+${digits}`;
 }
 
 function normalizeTwilioAddress(value) {
@@ -276,7 +283,7 @@ async function sendViaCloudApi({ to, message, eventType, metadata = {} }) {
     },
     body: JSON.stringify({
       messaging_product: "whatsapp",
-      to: normalizePhone(to),
+      to: normalizePhone(to).replace(/^\+/, ""),
       type: "text",
       text: { preview_url: false, body: message },
     }),

@@ -9,7 +9,9 @@ function hasHoneypotPayload(body = {}) {
 }
 
 async function verifyAppCheck(req) {
-  if (process.env.ENFORCE_APP_CHECK !== "true") return true;
+  const enforceAppCheck = process.env.ENFORCE_APP_CHECK === "true"
+    || (process.env.NODE_ENV === "production" && process.env.ENFORCE_APP_CHECK !== "false");
+  if (!enforceAppCheck) return true;
   const token = String(req.headers["x-firebase-appcheck"] || "").trim();
   if (!token) return false;
   if (!firebaseAdmin?.appCheck) return false;

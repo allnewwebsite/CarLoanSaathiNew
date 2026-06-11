@@ -401,7 +401,7 @@ function StaffManagementScreen() {
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Full Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5 h-10 rounded-md" value={form.fullName} onBlur={() => setErrors(validate(form))} onChange={(event) => update("fullName", event.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Official Email" error={errors.email}><input aria-invalid={Boolean(errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5 h-10 rounded-md" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Role" error={errors.role}><select aria-invalid={Boolean(errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onBlur={() => setErrors(validate(form))} onChange={(event) => update("role", event.target.value)}><option value="finance-head">Finance Head</option><option value="gm">GM</option><option value="sm">SM</option></select></Field>
           <Field label="Branch / Location"><input className="field mt-1.5 h-10 rounded-md" value={form.branch} onChange={(event) => update("branch", event.target.value.replace(/[<>]/g, ""))} /></Field>
@@ -639,7 +639,7 @@ function AddLeadOnlyScreen() {
         {branchesError ? <p className="mb-4 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{branchesError}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Customer Name *" error={errors.fullName}><input required aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number *" error={errors.mobile}><input required aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Mobile Number *" error={errors.mobile}><MobileInput required value={form.mobile} error={errors.mobile} onBlur={() => validateField("mobile")} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Customer City *" error={errors.city}><input required aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Tied-up Bank Branch *" error={errors.branchId}>
             <select required aria-invalid={Boolean(errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
@@ -1019,7 +1019,7 @@ function AddLeadScreen() {
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => validateField("mobile")} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => validateField("mobile")} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Tied-up Bank Branch" error={errors.branchId}>
             <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
@@ -1103,7 +1103,7 @@ function SalespersonManagementScreen() {
         {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="mt-4 grid gap-3">
           <Field label="Salesperson Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => setErrors(validate(form))} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Job ID" error={errors.jobId}><input aria-invalid={Boolean(errors.jobId)} className="field mt-1.5" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Mail ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
           <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Salesperson"}</button>
@@ -1177,7 +1177,7 @@ function FinanceManagerManagementScreen() {
         {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="mt-4 grid gap-3">
           <Field label="Finance Manager Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><input aria-invalid={Boolean(errors.mobile)} className="field mt-1.5" inputMode="numeric" maxLength="10" value={form.mobile} onBlur={() => setErrors(validate(form))} onChange={(e) => update("mobile", digits10(e.target.value))} /></Field>
+          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("employeeId", e.target.value.replace(/[<>]/g, ""))} /></Field>
           <Field label="Email ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
           <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Finance Manager"}</button>
@@ -1284,6 +1284,24 @@ function SectionTitle({ title, subtitle }) {
 
 function Field({ label, children, error }) {
   return <label className="text-sm font-medium text-slate-700">{label}{children}<span className={`validation-slot ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</span></label>;
+}
+
+function MobileInput({ value, onChange, onBlur, error, required = false }) {
+  return (
+    <div className={`mt-1.5 flex h-10 overflow-hidden rounded-md border bg-white ${error ? "border-red-300" : "border-slate-200"} focus-within:border-[#0d47a1]`}>
+      <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
+      <input
+        required={required}
+        aria-invalid={Boolean(error)}
+        className="h-full w-full px-3 outline-none"
+        inputMode="numeric"
+        maxLength={10}
+        value={value}
+        onBlur={onBlur}
+        onChange={(event) => onChange(digits10(event.target.value))}
+      />
+    </div>
+  );
 }
 
 export function FinanceLeadDetailPage() {

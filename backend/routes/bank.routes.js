@@ -15,11 +15,9 @@ import {
   registerBankPartner,
   createBankExecutive,
   removeBankExecutive,
-  resetBankExecutivePassword,
   rejectBankLead,
   reassignBankLead,
   startBankRegistration,
-  updateBankExecutiveLifecycle,
   updateBankLeadRemarks,
   updateBankLeadStatus,
   uploadBankLeadDocument,
@@ -42,8 +40,6 @@ router.get("/dealerships", requireRole(ROLES.BANK_MANAGER), getBankDealerships);
 router.get("/dealerships/:dealershipId/disbursed", requireRole(ROLES.BANK_MANAGER), getBankDealershipDisbursedCases);
 router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);
 router.post("/executives", requireRole(ROLES.BANK_MANAGER), createBankExecutive);
-router.post("/executives/:executiveId/lifecycle", requireRole(ROLES.BANK_MANAGER), updateBankExecutiveLifecycle);
-router.post("/executives/:executiveId/reset-password", requireRole(ROLES.BANK_MANAGER), resetBankExecutivePassword);
 router.delete("/executives/:executiveId", requireRole(ROLES.BANK_MANAGER), removeBankExecutive);
 router.get("/executives/:executiveId/cases", requireRole(ROLES.BANK_MANAGER), getBankExecutiveCases);
 router.get("/analytics", getBankAnalytics);
