@@ -90,7 +90,8 @@ check("bank executive management exposes only view and permanent delete", () => 
   includesAll(bankPanel, [
     ">View</button>",
     ">Delete</button>",
-    "api.delete(`/bank/executives/${pendingDelete.id}`)",
+    "executiveDeleteId",
+    "api.delete(`/bank/executives/${encodeURIComponent(executiveDeleteId(pendingDelete))}`)",
     "Delete Executive?",
     "This action cannot be undone.",
   ], "bank executive UI");
@@ -101,6 +102,8 @@ check("bank executive management exposes only view and permanent delete", () => 
     "ACTIVE_EXECUTIVE_LEADS",
     "Executive has active cases.",
     "BANK_EXECUTIVE_DELETED",
+    "resolveBankExecutiveForMutation",
+    "queryExecutiveSummaryProjection",
     "cleanupExecutiveLinkedRecords",
   ], "bank executive delete controller");
 });

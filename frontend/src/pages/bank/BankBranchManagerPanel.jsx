@@ -49,6 +49,10 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
 }
 
+function executiveDeleteId(executive = {}) {
+  return executive.sourceId || executive.executiveId || executive.email || executive.officialEmail || executive.id;
+}
+
 function caseId(lead) {
   return lead.caseId || lead.id;
 }
@@ -490,7 +494,7 @@ function ManageExecutivePage() {
     setMessage("");
     setActiveLeadBlock(null);
     try {
-      await api.delete(`/bank/executives/${pendingDelete.id}`);
+      await api.delete(`/bank/executives/${encodeURIComponent(executiveDeleteId(pendingDelete))}`);
       setPendingDelete(null);
       setMessage("Executive deleted successfully.");
       await load();
@@ -499,7 +503,7 @@ function ManageExecutivePage() {
         setActiveLeadBlock({
           executive: pendingDelete,
           activeLeadCount: err.response.data.activeLeadCount || 0,
-          transferUrl: err.response.data.transferUrl || `/bank-manager/executives/${pendingDelete.id}/cases`,
+          transferUrl: err.response.data.transferUrl || `/bank-manager/executives/${encodeURIComponent(executiveDeleteId(pendingDelete))}/cases`,
         });
       } else {
         setError(err.response?.data?.message || "Unable to delete executive");

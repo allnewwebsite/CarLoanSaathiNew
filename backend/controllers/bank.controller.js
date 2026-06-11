@@ -688,6 +688,39 @@ async function deleteExecutiveSummaryProjection(identity, executive = {}) {
   ));
 }
 
+async function resolveBankExecutiveForMutation(identity, executiveId = "") {
+  const requested = String(executiveId || "").trim();
+  if (!requested) return null;
+  const direct = await getRecord("loanExecutives", requested).catch(() => null);
+  if (direct && executiveBelongsToBank(direct, identity)) return direct;
+
+  const projectedExecutives = await queryExecutiveSummaryProjection({ bankId: identity.bankId, query: { limit: 100 } }).catch(() => null);
+  const projected = (projectedExecutives || []).find((item) =>
+    anyMatch(
+      [item.id, item.sourceId, item.executiveId, item.email, item.officialEmail, item.mobile],
+      [requested],
+    )
+  );
+  if (!projected) return direct;
+
+  const canonicalId = projected.sourceId || projected.email || projected.officialEmail || projected.executiveId;
+  const canonical = canonicalId ? await getRecord("loanExecutives", canonicalId).catch(() => null) : null;
+  if (canonical && executiveBelongsToBank(canonical, identity)) return canonical;
+
+  const email = cleanText(projected.email || projected.officialEmail || "");
+  if (email) {
+    const byEmail = await findRecordsByField("loanExecutives", "email", email, 1).catch(() => []);
+    if (byEmail[0] && executiveBelongsToBank(byEmail[0], identity)) return byEmail[0];
+  }
+  const mobile = String(projected.mobile || "").replace(/\D/g, "").slice(-10);
+  if (mobile) {
+    const byMobile = await findRecordsByField("loanExecutives", "mobile", mobile, 3).catch(() => []);
+    const match = byMobile.find((item) => executiveBelongsToBank(item, identity));
+    if (match) return match;
+  }
+  return projected && executiveBelongsToBank(projected, identity) ? projected : null;
+}
+
 async function cleanupExecutiveLinkedRecords({ executive = {}, uid = "", email = "", mobile = "" }) {
   const identifiers = {
     uid,
@@ -1340,7 +1373,7 @@ export async function removeBankExecutive(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can delete executives" });
     const identity = bankIdentity(partner);
-    const executive = await getRecord("loanExecutives", req.params.executiveId);
+    const executive = await resolveBankExecutiveForMutation(identity, req.params.executiveId);
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
     const email = cleanText(executive.email || executive.officialEmail || executive.id);
     const uid = String(executive.uid || executive.authUid || "").trim();
