@@ -115,6 +115,8 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
   const queueWorkers = read("backend/services/queueWorkers.service.js");
   const realtimeService = read("backend/services/realtime.service.js");
   const realtimeClient = read("frontend/src/services/realtimeClient.js");
+  const firestoreRules = read("firestore.rules");
+  const firestoreIndexes = read("firestore.indexes.json");
   includesAll(whatsappService, [
     "notificationIdentity",
     "canonicalEventType",
@@ -129,6 +131,15 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
   includesAll(notificationService, ["queueWhatsAppNotification", "publishRealtimeEvent"], "notification service");
   includesAll(queueService, ["jobId: options.jobId || payload.jobId || undefined"], "queue stable job ids");
   includesAll(queueWorkers, ["processWhatsAppQueue({ queueId: payload?.queueId })"], "WhatsApp queue worker");
+  includesAll(firestoreRules, ["match /whatsappQueue/{queueId}", "match /notificationLogs/{logId}"], "Firestore WhatsApp rules");
+  includesAll(firestoreIndexes, [
+    "\"collectionGroup\": \"whatsappQueue\"",
+    "\"fieldPath\": \"status\", \"order\": \"ASCENDING\"",
+    "\"fieldPath\": \"createdAt\", \"order\": \"DESCENDING\"",
+    "\"fieldPath\": \"recipientId\", \"order\": \"ASCENDING\"",
+    "\"fieldPath\": \"phoneNumber\", \"order\": \"ASCENDING\"",
+    "\"collectionGroup\": \"notificationLogs\"",
+  ], "Firestore WhatsApp indexes");
   assert(!realtimeService.includes("queueWhatsAppNotification"), "SSE service must not queue WhatsApp sends");
   assert(!realtimeService.includes("sendWhatsApp"), "SSE service must not send WhatsApp messages");
   assert(!realtimeClient.includes("queueWhatsAppNotification"), "frontend realtime client must not queue WhatsApp sends");

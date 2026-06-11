@@ -274,6 +274,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /whatsappQueue/{queueId} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
     match /notificationEvents/{eventId} {
       allow read: if isSuperAdmin();
       allow write: if false;

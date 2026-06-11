@@ -104,11 +104,79 @@ function MetricCard({ label, value, subtext }) {
   );
 }
 
-async function reassignLead(lead, onDone) {
-  const reason = window.prompt(`Reassign ${caseId(lead)} to next same-branch executive`, "manager-reassignment");
-  if (!reason) return;
+async function performLeadReassignment(lead, reason, onDone) {
   await api.patch(`/bank/leads/${lead.id}/reassign`, { reason });
   await onDone?.();
+}
+
+function ReassignLeadDialog({ lead, onCancel, onDone }) {
+  const [reason, setReason] = useState("manager-reassignment");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setReason("manager-reassignment");
+    setError("");
+    setBusy(false);
+  }, [lead?.id]);
+
+  if (!lead) return null;
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const cleanReason = cleanText(reason);
+    if (!cleanReason) {
+      setError("Reassignment reason is required.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await performLeadReassignment(lead, cleanReason, onDone);
+      onCancel();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Unable to reassign lead");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
+      <form onSubmit={submit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950">Reassign Lead?</h2>
+            <p className="mt-1 text-sm text-slate-600">Move {caseId(lead)} to the next same-branch executive.</p>
+          </div>
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-60">Close</button>
+        </div>
+        <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          <p><span className="font-semibold">Current executive:</span> {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}</p>
+          {(lead.assignedExecutiveMobile || lead.executiveMobile) ? <p className="mt-1"><span className="font-semibold">Mobile:</span> {lead.assignedExecutiveMobile || lead.executiveMobile}</p> : null}
+        </div>
+        <label className="mt-4 block text-sm font-medium text-slate-700">
+          Reason
+          <textarea
+            value={reason}
+            onChange={(event) => {
+              setReason(event.target.value.replace(/[<>]/g, ""));
+              setError("");
+            }}
+            rows={3}
+            className="mt-2 w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#0d47a1]"
+          />
+        </label>
+        {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">Cancel</button>
+          <button type="submit" disabled={busy} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {busy ? "Reassigning..." : "Reassign"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function DetailState({ title, message, requestId, onRetry, tone = "slate" }) {
@@ -271,6 +339,7 @@ function TotalLeadsPage() {
   const debouncedSearch = useDebouncedValue(search, 180);
   const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads(debouncedSearch);
   const [actionError, setActionError] = useState("");
+  const [pendingReassign, setPendingReassign] = useState(null);
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
@@ -289,7 +358,10 @@ function TotalLeadsPage() {
       <div key="actions" className="flex flex-wrap gap-2">
         <button onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>
         <button
-          onClick={() => reassignLead(lead, () => load(page, { silent: true })).catch((error) => setActionError(error.response?.data?.message || error.message || "Unable to reassign lead"))}
+          onClick={() => {
+            setActionError("");
+            setPendingReassign(lead);
+          }}
           className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-[#0d47a1]"
         >
           {lead.assignedExecutiveId || lead.assignedExecutiveEmail ? "Reassign" : "Assign"}
@@ -302,6 +374,7 @@ function TotalLeadsPage() {
       <PageTitle title="Total Leads" />
       <SearchBar value={search} onChange={setSearch} />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
+      <ReassignLeadDialog lead={pendingReassign} onCancel={() => setPendingReassign(null)} onDone={() => load(page, { silent: true })} />
       <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
@@ -751,6 +824,7 @@ export function BankManagerLeadDetailPage() {
   const [lead, setLead] = useState(() => cachedLead);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState("");
+  const [pendingReassign, setPendingReassign] = useState(null);
   const [loading, setLoading] = useState(() => !cachedLead);
 
   const loadLead = useCallback(async ({ silent = false } = {}) => {
@@ -802,6 +876,7 @@ export function BankManagerLeadDetailPage() {
     <section className="space-y-4">
       <PageTitle title="Customer Documents" />
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
+      <ReassignLeadDialog lead={pendingReassign} onCancel={() => setPendingReassign(null)} onDone={() => loadLead({ silent: true })} />
       <div className="grid gap-3 md:grid-cols-4">
         {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
@@ -817,7 +892,10 @@ export function BankManagerLeadDetailPage() {
             <p className="mt-1 text-sm text-slate-500">Current executive: {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}{lead.assignedExecutiveMobile || lead.executiveMobile ? ` - ${lead.assignedExecutiveMobile || lead.executiveMobile}` : ""}</p>
           </div>
           <button
-            onClick={() => reassignLead(lead, () => loadLead({ silent: true })).catch((err) => setActionError(err.response?.data?.message || err.message || "Unable to reassign lead"))}
+            onClick={() => {
+              setActionError("");
+              setPendingReassign(lead);
+            }}
             className="w-full rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-[#0d47a1] sm:w-auto"
           >
             {lead.assignedExecutiveId || lead.assignedExecutiveEmail ? "Reassign to Next Executive" : "Assign to Executive"}
