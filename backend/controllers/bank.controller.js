@@ -86,6 +86,17 @@ const BANK_ANALYTICS_LEAD_FIELDS = [
   "assignedPartnerId",
   "bankPartner",
   "preferredBank",
+  "bankName",
+  "assignedBankName",
+  "selectedBankName",
+  "assignedBankIfsc",
+  "bankIfsc",
+  "ifscCode",
+  "branchId",
+  "bankBranchId",
+  "selectedBankBranchId",
+  "branchLocation",
+  "bankBranchLocation",
   "bankBranchCity",
   "branchCity",
   "routingCity",
@@ -470,7 +481,10 @@ function executiveBelongsToBank(executive, identity) {
   return executive.bankPartnerId === identity.bankId
     || executive.bankId === identity.bankId
     || executive.partnerId === identity.bankId
-    || executive.bankName === identity.bankName;
+    || sameText(executive.bankIfsc, identity.bankIfsc)
+    || sameText(executive.ifsc, identity.bankIfsc)
+    || sameText(executive.ifscCode, identity.bankIfsc)
+    || sameText(executive.bankName, identity.bankName);
 }
 
 function leadText(lead) {
@@ -673,6 +687,94 @@ async function countCanonicalBankExecutives(identity) {
     fields: ["id", "bankId", "bankPartnerId", "active"],
   });
   return page.data.filter((executive) => executiveBelongsToBank(executive, identity) && executive.active !== false).length;
+}
+
+function uniqueCleanValues(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function activeExecutive(executive = {}) {
+  const status = cleanText(executive.status);
+  return executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
+}
+
+async function queryCanonicalBankExecutives(identity) {
+  const values = uniqueCleanValues([identity.bankId, identity.bankIfsc, identity.bankName]);
+  const fields = ["bankId", "bankPartnerId", "partnerId", "bankIfsc", "ifsc", "ifscCode", "bankName"];
+  const byId = new Map();
+  await Promise.all(values.flatMap((value) => fields.map(async (field) => {
+    const page = await queryRecords("loanExecutives", {
+      where: [{ field, value }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+    }).catch(() => ({ data: [] }));
+    page.data.forEach((executive) => {
+      if (executiveBelongsToBank(executive, identity) && activeExecutive(executive)) {
+        byId.set(executive.id || executive.email || executive.mobile, executive);
+      }
+    });
+  })));
+  return [...byId.values()];
+}
+
+async function queryCanonicalBankBranches(identity) {
+  const values = uniqueCleanValues([identity.bankId, identity.bankIfsc, identity.bankName]);
+  const fields = ["bankId", "bankPartnerId", "partnerId", "ifscCode", "bankIfsc", "ifsc", "bankName"];
+  const byId = new Map();
+  await Promise.all(values.flatMap((value) => fields.map(async (field) => {
+    const page = await queryRecords("branches", {
+      where: [{ field, value }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+    }).catch(() => ({ data: [] }));
+    page.data.forEach((branch) => {
+      const status = cleanText(branch.status);
+      if (branch.active === false || ["inactive", "deleted", "removed", "disabled"].includes(status)) return;
+      byId.set(branch.id || branch.ifscCode || branch.bankIfsc || branch.branchLocation || branch.city, branch);
+    });
+  })));
+  return [...byId.values()];
+}
+
+function leadBranchLabel(lead = {}, identity = {}) {
+  return lead.bankBranchCity
+    || lead.branchCity
+    || lead.branchLocation
+    || lead.bankBranchLocation
+    || lead.routingCity
+    || lead.dealershipCity
+    || lead.assignedBankIfsc
+    || lead.bankIfsc
+    || lead.ifscCode
+    || identity.bankLocation
+    || "Unassigned Branch";
+}
+
+async function collectLiveBankAnalyticsLeads(partner, identity, fields = BANK_ANALYTICS_LEAD_FIELDS) {
+  if (partner.roleType === "loan-executive") {
+    return assignedLeadsForPartner(partner, { limit: 250 }, fields);
+  }
+  const values = uniqueCleanValues([...partnerBankValues(partner), identity.bankId, identity.bankIfsc, identity.bankName]);
+  const bankFields = ["bankId", "assignedBankId", "assignedPartnerId", "bankPartner", "preferredBank", "bankName", "assignedBankName", "selectedBankName", "assignedBankIfsc", "bankIfsc", "ifscCode"];
+  const byId = new Map();
+  await Promise.all(values.flatMap((value) => bankFields.map(async (field) => {
+    const page = await queryRecords("leads", {
+      where: [{ field, value }],
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 250,
+      maxLimit: 250,
+      fields,
+    }).catch(() => ({ data: [] }));
+    page.data.forEach((lead) => {
+      if (partnerCanAccessLead(partner, lead)) byId.set(lead.id, lead);
+    });
+  })));
+  return attachExecutiveMobile(partner, [...byId.values()]);
 }
 
 async function deleteExecutiveSummaryProjection(identity, executive = {}) {
@@ -1601,30 +1703,50 @@ export async function getBankAnalytics(req, res, next) {
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const identity = bankIdentity(partner);
     logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/bank/analytics", estimatedReads: 200 });
-    const analyticsCacheKey = `bank:analytics:${partner.roleType}:${partner.bankId || partner.bankPartnerId || partner.id || ""}:${partner.email || ""}`;
-    let analyticsCacheHit = true;
-    const leads = await cached(analyticsCacheKey, 30000, async () => {
-      analyticsCacheHit = false;
-      const projected = await queryLeadProjectionForUser({
-        user: partner.roleType === "loan-executive"
-          ? { role: "loan-executive", uid: partner.id, email: partner.email }
-          : { role: "bank-manager", bankId: identity.bankId },
-        query: { limit: 100 },
-        fields: BANK_ANALYTICS_LEAD_FIELDS,
-        recordMetrics: false,
-      }).catch(() => null);
-      if (projected?.data) {
-        logProjectionRead("PROJECTION-HIT", req, { collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews", resultCount: projected.data.length });
-        const scoped = partner.roleType === "loan-executive"
-          ? projected.data
-          : projected.data.filter((lead) => partnerCanAccessLead(partner, lead));
-        return scoped;
-      }
-      logProjectionRead("PROJECTION-MISS", req, { collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews", reason: "missing_analytics_projection" });
-      return assignedLeadsForPartner(partner, { limit: 100 }, BANK_ANALYTICS_LEAD_FIELDS);
+    const projected = await queryLeadProjectionForUser({
+      user: partner.roleType === "loan-executive"
+        ? { role: "loan-executive", uid: partner.id, email: partner.email }
+        : { role: "bank-manager", bankId: identity.bankId },
+      query: { limit: 250 },
+      fields: BANK_ANALYTICS_LEAD_FIELDS,
+      recordMetrics: false,
+    }).catch((error) => {
+      logProjectionRead("PROJECTION-MISS", req, {
+        collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews",
+        reason: "analytics_projection_error",
+        error: error.message,
+      });
+      return null;
     });
-    if (analyticsCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/analytics", cacheKey: analyticsCacheKey });
-    logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/analytics", estimatedReads: analyticsCacheHit ? 0 : Math.min(100, leads.length || 100), cacheHit: analyticsCacheHit });
+    const projectedScoped = projected?.data
+      ? (partner.roleType === "loan-executive" ? projected.data : projected.data.filter((lead) => partnerCanAccessLead(partner, lead)))
+      : [];
+    if (projected?.data?.length && projectedScoped.length) {
+      logProjectionRead("PROJECTION-HIT", req, {
+        collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews",
+        resultCount: projectedScoped.length,
+      });
+    } else {
+      logProjectionRead("CANONICAL-FALLBACK", req, {
+        collection: "leads",
+        reason: projected?.data?.length ? "analytics_projection_outside_scope_or_missing_scope_fields" : "missing_or_empty_analytics_projection",
+        projectedCount: projected?.data?.length || 0,
+        scopedProjectionCount: projectedScoped.length,
+      });
+    }
+    const liveLeads = await collectLiveBankAnalyticsLeads(partner, identity, BANK_ANALYTICS_LEAD_FIELDS);
+    const leads = liveLeads.length ? liveLeads : projectedScoped;
+    logReadMetric("READS-AFTER", req, {
+      endpoint: "GET /api/bank/analytics",
+      estimatedReads: Math.min(250, leads.length || 250),
+      cacheHit: false,
+      source: liveLeads.length ? "canonical-leads" : "projection",
+      resultCount: leads.length,
+    });
+    const [canonicalExecutives, canonicalBranches] = await Promise.all([
+      partner.roleType === "bank-manager" ? queryCanonicalBankExecutives(identity) : Promise.resolve([]),
+      partner.roleType === "bank-manager" ? queryCanonicalBankBranches(identity) : Promise.resolve([]),
+    ]);
     const today = new Date().toISOString().slice(0, 10);
     const activeStatuses = [
       LEAD_STATUSES.NEW,
@@ -1650,8 +1772,50 @@ export async function getBankAnalytics(req, res, next) {
     const branchMap = new Map();
     const executiveMap = new Map();
 
+    for (const branchRecord of canonicalBranches) {
+      const branch = branchRecord.branchName
+        || branchRecord.name
+        || branchRecord.bankBranchLocation
+        || branchRecord.branchLocation
+        || branchRecord.city
+        || branchRecord.ifscCode
+        || branchRecord.bankIfsc
+        || branchRecord.id
+        || "Unassigned Branch";
+      if (!branchMap.has(branch)) {
+        branchMap.set(branch, {
+          branch,
+          assignedLeads: 0,
+          activeLeads: 0,
+          approvedLeads: 0,
+          disbursedLeads: 0,
+          rejectedLeads: 0,
+          pendingDocuments: 0,
+          slaOverdue: 0,
+        });
+      }
+    }
+
+    for (const executive of canonicalExecutives) {
+      const executiveId = executive.id || executive.email || executive.officialEmail || executive.mobile;
+      if (!executiveId || executiveMap.has(executiveId)) continue;
+      executiveMap.set(executiveId, {
+        executiveId,
+        executiveName: executive.name || executive.fullName || executive.email || executive.officialEmail || "Executive",
+        mobile: executive.mobile || "",
+        branch: executive.branchName || executive.bankBranchLocation || executive.branchLocation || executive.branchCity || executive.city || executive.ifscCode || executive.bankIfsc || identity.bankLocation || "",
+        assignedLeads: 0,
+        activeLeads: 0,
+        approvedLeads: 0,
+        disbursedLeads: 0,
+        rejectedLeads: 0,
+        pendingDocuments: 0,
+        slaOverdue: 0,
+      });
+    }
+
     for (const lead of leads) {
-      const branch = lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || identity.bankLocation || "Unassigned Branch";
+      const branch = leadBranchLabel(lead, identity);
       const branchRow = branchMap.get(branch) || {
         branch,
         assignedLeads: 0,
@@ -1708,6 +1872,8 @@ export async function getBankAnalytics(req, res, next) {
       slaDueToday: leads.filter((lead) => (lead.assignmentTimestamp || lead.createdAt || "").startsWith(today)).length,
       slaOverdue: overdueLeads.length,
       disbursedAmount,
+      branches: branchMap.size,
+      executives: executiveMap.size,
       conversionRate: leads.length ? Math.round((approvedLeads.length / leads.length) * 100) : 0,
       rejectionRate: leads.length ? Math.round((rejectedLeads.length / leads.length) * 100) : 0,
       branchMetrics: [...branchMap.values()].sort((left, right) => right.assignedLeads - left.assignedLeads),
@@ -1722,7 +1888,7 @@ export async function getBankAnalytics(req, res, next) {
           customerName: lead.fullName || lead.customerName || "",
           status: statusOf(lead),
           executiveName: lead.assignedExecutiveName || lead.assignedExecutiveEmail || "",
-          branch: lead.bankBranchCity || lead.branchCity || lead.routingCity || lead.dealershipCity || identity.bankLocation || "",
+          branch: leadBranchLabel(lead, identity),
           sla: slaLabelForLead(lead),
           updatedAt: lead.updatedAt || lead.statusUpdatedAt || lead.assignmentTimestamp || lead.createdAt || null,
         })),

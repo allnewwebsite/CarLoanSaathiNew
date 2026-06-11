@@ -284,6 +284,7 @@ function invalidateLeadCaches() {
   [
     "/admin/leads",
     "/bank/leads",
+    "/bank/analytics",
     "/dealer/leads",
     "/gm/leads",
     "/timeline",

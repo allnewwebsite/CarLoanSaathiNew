@@ -100,8 +100,11 @@ check("bank executive management exposes only view and permanent delete", () => 
     ">Delete</button>",
     "executiveDeleteId",
     "api.delete(`/bank/executives/${encodeURIComponent(executiveDeleteId(pendingDelete))}`)",
-    "Delete Executive?",
+    "DeleteExecutiveModal",
+    "Delete Executive",
+    "You are about to permanently delete this executive.",
     "This action cannot be undone.",
+    "fixed inset-0 z-50",
   ], "bank executive UI");
   ["Suspend", "Activate", "Reset Password", "Transfer Branch", "Job ID"].forEach((text) => {
     assert(!bankPanel.includes(text), `bank executive UI must not include ${text}`);
@@ -149,6 +152,31 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
   ], "bank reassignment service");
   includesAll(firestoreService, ["runRecordTransaction"], "firestore transaction helper");
   includesAll(projectionService, ["removeLeadExecutiveProjection"], "old executive projection cleanup");
+});
+
+check("bank analytics uses live scoped lead data", () => {
+  const bankController = read("backend/controllers/bank.controller.js");
+  const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
+  const apiService = read("frontend/src/services/api.js");
+  const realtimeClient = read("frontend/src/services/realtimeClient.js");
+  includesAll(bankController, [
+    "\"assignedBankIfsc\"",
+    "\"bankIfsc\"",
+    "\"ifscCode\"",
+    "collectLiveBankAnalyticsLeads",
+    "analytics_projection_outside_scope_or_missing_scope_fields",
+    "missing_or_empty_analytics_projection",
+    "source: liveLeads.length ? \"canonical-leads\" : \"projection\"",
+    "branches: branchMap.size",
+    "executives: executiveMap.size",
+  ], "bank analytics backend");
+  includesAll(bankPanel, [
+    "bankAnalyticsMutationFilter",
+    "data?.branches ?? data?.branchMetrics?.length",
+    "data?.executives ?? data?.executivePerformance?.length",
+  ], "bank analytics frontend");
+  includesAll(apiService, ["\"/bank/analytics\""], "api lead cache invalidation");
+  includesAll(realtimeClient, ["\"/bank/analytics\""], "SSE lead cache invalidation");
 });
 
 check("WhatsApp business notifications are idempotent and backend-only", () => {
