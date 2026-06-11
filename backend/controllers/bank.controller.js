@@ -18,6 +18,7 @@ import {
   queryLeadProjectionForUser,
   queryNotificationProjectionForUser,
   queryTimelineProjection,
+  syncExecutiveSummaryProjection,
   syncExecutiveSummaryProjectionSoon,
   syncLeadDetailProjection,
   syncLeadProjection,
@@ -619,6 +620,36 @@ function clearBankSummaryCaches() {
   clearCachedValue("lead-query:");
 }
 
+function safeProjectionDocId(value) {
+  return String(value || "").trim().replace(/[^\w.@-]/g, "_").slice(0, 420);
+}
+
+async function countCanonicalBankExecutives(identity) {
+  const page = await queryRecords("loanExecutives", {
+    where: [{ field: "bankId", value: identity.bankId }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 100,
+    maxLimit: 100,
+    fields: ["id", "bankId", "bankPartnerId", "active"],
+  });
+  return page.data.filter((executive) => executiveBelongsToBank(executive, identity) && executive.active !== false).length;
+}
+
+async function deleteExecutiveSummaryProjection(identity, executive = {}) {
+  const bankId = identity.bankId;
+  const candidates = [
+    executive.id,
+    executive.jobId,
+    executive.email,
+    executive.officialEmail,
+    executive.mobile,
+  ].filter(Boolean);
+  await Promise.all(candidates.map((candidate) =>
+    deleteRecord("executiveSummaryProjection", safeProjectionDocId(`executive_${bankId}_${candidate}`)).catch(() => false),
+  ));
+}
+
 function dealershipIdentityFromLead(lead = {}) {
   const dealershipId = String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").trim();
   if (!dealershipId) return null;
@@ -1034,9 +1065,19 @@ export async function getBankExecutives(req, res, next) {
     });
     if (projectionCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/executives", cacheKey: projectionCacheKey });
     if (projected?.length) {
+      const canonicalActiveCount = await countCanonicalBankExecutives(identity).catch(() => projected.length);
+      if (canonicalActiveCount > projected.length) {
+        logProjectionRead("CANONICAL-FALLBACK", req, {
+          collection: "loanExecutives",
+          reason: "executive_summary_projection_incomplete",
+          projectedCount: projected.length,
+          canonicalActiveCount,
+        });
+      } else {
       logProjectionRead("PROJECTION-HIT", req, { collection: "executiveSummaryProjection", resultCount: projected.length });
       logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/executives", estimatedReads: projectionCacheHit ? 0 : Math.min(limit, projected.length), limit });
       return res.json({ data: projected });
+      }
     }
     logProjectionRead("PROJECTION-MISS", req, { collection: "executiveSummaryProjection", reason: "missing_projection_page" });
     const [executivesPage, leads] = await cached(`bank:executives:${identity.bankId}:${partner.email || partner.id}`, 15000, () => Promise.all([
@@ -1201,6 +1242,7 @@ export async function createBankExecutive(req, res, next) {
       branchId: identity.bankLocation || null,
     });
     const executive = await getRecord("loanExecutives", email);
+    await syncExecutiveSummaryProjection(executive, { totalAssignedCases: 0, currentActiveCases: 0 }).catch(() => null);
     clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: jobId, meta: { executiveId: executive.id, bankId: identity.bankId, reusedExistingAuthUser } });
     res.status(201).json({
@@ -1243,6 +1285,7 @@ export async function removeBankExecutive(req, res, next) {
     }
 
     const affectedLeadCount = await clearExecutiveLeadAssignments({ identity, uid, email, removedAt });
+    await deleteExecutiveSummaryProjection(identity, executive);
     clearBankSummaryCaches();
 
     await revokeUserSessions(email, "bank-executive-permanent-delete").catch(() => {});
@@ -1297,6 +1340,7 @@ export async function updateBankExecutiveLifecycle(req, res, next) {
       patch = { bankBranchLocation: branch, branchCity: req.body.city || branch, city: req.body.city || branch, branchTransferredAt: now, branchTransferredBy: partner.email || partner.id };
     } else return res.status(400).json({ message: "Invalid executive action" });
     await updateExecutiveLinkedRecords(executive.email, patch);
+    await syncExecutiveSummaryProjection({ ...executive, ...patch }).catch(() => null);
     if (["suspend", "disable", "remove", "transfer"].includes(action)) await revokeUserSessions(executive.email, `bank-executive-${action}`);
     clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: `BANK_EXECUTIVE_${action.toUpperCase()}`, targetEntity: "loanExecutives", targetId: executive.email, meta: { bankId: identity.bankId, action } });
