@@ -127,7 +127,8 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
     "Select New Executive",
     "newExecutiveId",
     "branchMatch(lead, executive)",
-    "No same-branch executives available",
+    "No eligible executives found.",
+    "CASE_REASSIGNMENT_EXECUTIVE_FILTER",
   ], "bank reassignment UI");
   includesAll(bankController, [
     "req.body.newExecutiveId",
@@ -137,6 +138,8 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
   includesAll(assignmentService, [
     "runRecordTransaction",
     "resolveTargetExecutive",
+    "queryBankExecutiveCandidates",
+    "CASE_REASSIGNMENT_EXECUTIVE_FILTER",
     "INVALID_REASSIGNMENT_TARGET",
     "SAME_EXECUTIVE_REASSIGNMENT",
     "removeLeadExecutiveProjection",

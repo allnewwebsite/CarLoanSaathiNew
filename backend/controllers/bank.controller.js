@@ -1850,8 +1850,8 @@ export async function rejectBankLead(req, res, next) {
   }
 }
 
-async function performBankLeadReassignment({ lead, reason, actor, newExecutiveId }) {
-  return reassignLeadToNextBranchExecutive(lead.id, reason, actor, { newExecutiveId });
+async function performBankLeadReassignment({ lead, reason, actor, newExecutiveId, identity }) {
+  return reassignLeadToNextBranchExecutive(lead.id, reason, actor, { newExecutiveId, bankId: identity?.bankId, bankIfsc: identity?.bankIfsc });
 }
 
 export async function reassignBankLead(req, res, next) {
@@ -1862,7 +1862,7 @@ export async function reassignBankLead(req, res, next) {
     }
     const reason = String(req.body.reason || "manager-reassignment").trim();
     const newExecutiveId = String(req.body.newExecutiveId || req.body.executiveId || req.body.assignedExecutiveId || "").trim();
-    const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager", newExecutiveId });
+    const updated = await performBankLeadReassignment({ lead, reason, actor: partner.email || partner.id || "bank-manager", newExecutiveId, identity: bankIdentity(partner) });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);

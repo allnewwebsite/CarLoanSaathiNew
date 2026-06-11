@@ -9,6 +9,7 @@ import { countOpenExecutiveLeads } from "./leadQuery.service.js";
 import { queryExecutiveSummaryProjection, removeLeadExecutiveProjection, syncExecutiveSummaryProjectionSoon, syncLeadProjectionSoon } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
+import { logInfo } from "./logger.service.js";
 
 function queueIdForLead(lead) {
   return `${routingCityForLead(lead) || "all"}:${lead.selectedBrand || "all"}:${lead.preferredBank || "all"}`.toLowerCase();
@@ -22,6 +23,21 @@ function sameText(left, right) {
   const a = String(left || "").trim().toLowerCase();
   const b = String(right || "").trim().toLowerCase();
   return Boolean(a && b && a === b);
+}
+
+function normalizedBranch(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b(branch|br|city|district)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function fuzzySameBranch(left, right) {
+  const a = normalizedBranch(left);
+  const b = normalizedBranch(right);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 function executiveIdentityKeys(executive = {}) {
@@ -55,37 +71,25 @@ function activeExecutive(executive = {}) {
 }
 
 function branchValue(record = {}) {
-  return record.bankIfsc || record.ifsc || record.ifscCode || record.branchIfsc || record.branchId || record.bankBranchCity || record.branchCity || record.branchLocation || record.city || "";
+  return record.bankBranchLocation || record.branchLocation || record.branchCity || record.branch || record.bankLocation || record.city || record.operatingCity || record.bankBranchCity || record.branchId || "";
 }
 
 function sameBranchExecutive(lead = {}, executive = {}) {
   const leadIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
   const executiveIfsc = executive.bankIfsc || executive.ifsc || executive.ifscCode || executive.branchIfsc || "";
-  if (leadIfsc && executiveIfsc && !sameText(leadIfsc, executiveIfsc)) return false;
-  const leadBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.routingCity || lead.city || "";
   const executiveBranch = branchValue(executive);
-  return !leadBranch || !executiveBranch || sameText(leadBranch, executiveBranch);
+  const executiveBankAliases = [executive.bankId, executive.bankPartnerId, executive.partnerId, executive.branchId].filter(Boolean);
+  if (leadIfsc && executiveIfsc) return sameText(leadIfsc, executiveIfsc);
+  if (leadIfsc && executiveBankAliases.some((value) => sameText(value, leadIfsc))) return true;
+  if (leadIfsc && sameText(executiveBranch, leadIfsc)) return true;
+  const leadBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.routingCity || lead.city || "";
+  if (executiveIfsc && sameText(leadBranch, executiveIfsc)) return true;
+  return fuzzySameBranch(leadBranch, executiveBranch);
 }
 
 function sameExecutive(left = {}, right = {}) {
   const rightKeys = new Set(executiveIdentityKeys(right));
   return executiveIdentityKeys(left).some((key) => rightKeys.has(key));
-}
-
-async function resolveTargetExecutive({ lead, targetExecutiveId }) {
-  const requested = String(targetExecutiveId || "").trim();
-  if (!requested) return null;
-  const direct = await getRecord("loanExecutives", requested).catch(() => null);
-  if (direct) return direct;
-  const lower = requested.toLowerCase();
-  const executives = (await queryRecords("loanExecutives", {
-    where: lead.bankId ? [{ field: "bankId", value: lead.bankId }] : [],
-    orderBy: "createdAt",
-    direction: "desc",
-    limit: 100,
-    maxLimit: 100,
-  })).data;
-  return executives.find((executive) => executiveIdentityKeys(executive).includes(lower)) || null;
 }
 
 async function refreshExecutiveSummary(executive = {}) {
@@ -98,14 +102,72 @@ async function refreshExecutiveSummary(executive = {}) {
   return syncExecutiveSummaryProjectionSoon(executive, { totalAssignedCases, currentActiveCases });
 }
 
-function bankMatchesExecutive(lead, executive) {
+function uniqueByIdentity(records = []) {
+  const seen = new Set();
+  return records.filter((record) => {
+    const key = executiveIdentityKeys(record)[0] || record.id || JSON.stringify(record);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function queryBankExecutiveCandidates(lead = {}, options = {}) {
+  const bankValues = [
+    options.bankId,
+    options.bankIfsc,
+    lead.bankId,
+    lead.assignedPartnerId,
+    lead.assignedBankIfsc,
+    lead.bankIfsc,
+    lead.ifscCode,
+    lead.assignedBankName,
+    lead.bankName,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const values = [...new Set(bankValues)];
+  const fields = ["bankId", "bankPartnerId", "partnerId", "bankIfsc", "ifsc", "ifscCode", "bankName"];
+  const queries = values.flatMap((value) => fields.map((field) => queryRecords("loanExecutives", {
+    where: [{ field, value }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 100,
+    maxLimit: 100,
+  }).catch(() => ({ data: [] }))));
+  if (!queries.length) {
+    queries.push(queryRecords("loanExecutives", {
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: 100,
+      maxLimit: 100,
+    }).catch(() => ({ data: [] })));
+  }
+  const pages = await Promise.all(queries);
+  return uniqueByIdentity(pages.flatMap((page) => page.data || []));
+}
+
+async function resolveTargetExecutive({ lead, targetExecutiveId, bankId = "", bankIfsc = "" }) {
+  const requested = String(targetExecutiveId || "").trim();
+  if (!requested) return null;
+  const direct = await getRecord("loanExecutives", requested).catch(() => null);
+  if (direct) return direct;
+  const lower = requested.toLowerCase();
+  const executives = await queryBankExecutiveCandidates(lead, { bankId, bankIfsc });
+  return executives.find((executive) => executiveIdentityKeys(executive).includes(lower)) || null;
+}
+
+function bankMatchesExecutive(lead, executive, options = {}) {
   return sameText(executive.bankId, lead.bankId)
+    || sameText(executive.bankId, options.bankId)
+    || sameText(executive.bankId, options.bankIfsc)
     || sameText(executive.bankPartnerId, lead.bankId)
+    || sameText(executive.bankPartnerId, options.bankId)
     || sameText(executive.bankPartnerId, lead.assignedPartnerId)
     || sameText(executive.bankIfsc, lead.assignedBankIfsc)
     || sameText(executive.bankIfsc, lead.bankIfsc)
+    || sameText(executive.bankIfsc, options.bankIfsc)
     || sameText(executive.ifsc, lead.assignedBankIfsc)
     || sameText(executive.ifsc, lead.ifscCode)
+    || sameText(executive.ifsc, options.bankIfsc)
     || sameText(executive.bankName, lead.assignedBankName)
     || sameText(executive.bankName, lead.selectedBankName)
     || sameText(executive.bankName, lead.bankName)
@@ -513,21 +575,44 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     name: lead.assignedExecutiveName || null,
     mobile: lead.assignedExecutiveMobile || lead.executiveMobile || null,
   };
-  const executivesPage = await queryRecords("loanExecutives", {
-    where: lead.bankId ? [{ field: "bankId", value: lead.bankId }] : [],
-    orderBy: "createdAt",
-    direction: "desc",
-    limit: 100,
-    maxLimit: 100,
-  });
-  const executives = executivesPage.data;
+  const executives = await queryBankExecutiveCandidates(lead, { bankId: options.bankId, bankIfsc: options.bankIfsc });
   const previousExecutive = executives.find((item) => sameExecutive(currentExecutive, item)) || {
     ...currentExecutive,
     bankId: lead.bankId || lead.assignedPartnerId || "",
   };
+  const reassignmentDiagnostics = executives.map((executive) => {
+    const sameBank = bankMatchesExecutive(lead, executive, options);
+    const sameBranch = sameBranchExecutive(lead, executive);
+    const active = activeExecutive(executive);
+    const current = sameExecutive(currentExecutive, executive);
+    const reasons = [];
+    if (!sameBank) reasons.push("bank mismatch");
+    if (!sameBranch) reasons.push(`branch/IFSC mismatch (${branchValue(executive) || "missing branch"} / ${executive.bankIfsc || executive.ifsc || executive.ifscCode || "missing IFSC"})`);
+    if (!active) reasons.push("inactive/deleted/suspended");
+    if (current) reasons.push("current owner");
+    return {
+      id: executive.id || executive.email || executive.officialEmail || "",
+      name: executive.name || executive.fullName || executive.email || executive.officialEmail || "",
+      mobile: executive.mobile || "",
+      branch: branchValue(executive) || "",
+      ifsc: executive.bankIfsc || executive.ifsc || executive.ifscCode || "",
+      eligible: sameBank && sameBranch && active && !current,
+      reason: reasons.join(", ") || "eligible",
+    };
+  });
   const eligible = executives.filter((executive) => {
-    const sameBank = bankMatchesExecutive(lead, executive);
+    const sameBank = bankMatchesExecutive(lead, executive, options);
     return sameBank && sameBranchExecutive(lead, executive) && activeExecutive(executive) && !sameExecutive(currentExecutive, executive);
+  });
+  logInfo("CASE_REASSIGNMENT_EXECUTIVE_FILTER", {
+    leadId,
+    caseId: lead.caseId || leadId,
+    caseBranch: lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.routingCity || lead.city || "",
+    caseIfsc: lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "",
+    currentExecutive: currentExecutive.name || currentExecutive.email || currentExecutive.id || "",
+    foundExecutives: executives.length,
+    filteredExecutives: reassignmentDiagnostics,
+    eligibleExecutives: reassignmentDiagnostics.filter((item) => item.eligible).map((item) => item.name || item.id),
   });
 
   if (!eligible.length) {
@@ -538,7 +623,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
 
   let executive = null;
   if (options.newExecutiveId) {
-    const requestedExecutive = await resolveTargetExecutive({ lead, targetExecutiveId: options.newExecutiveId });
+    const requestedExecutive = await resolveTargetExecutive({ lead, targetExecutiveId: options.newExecutiveId, bankId: options.bankId, bankIfsc: options.bankIfsc });
     if (!requestedExecutive || !eligible.some((item) => sameExecutive(item, requestedExecutive))) {
       const error = new Error("Select an active same-branch executive");
       error.status = 400;

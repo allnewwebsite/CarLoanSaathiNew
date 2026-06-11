@@ -110,13 +110,30 @@ function sameValue(left, right) {
   return Boolean(a && b && a === b);
 }
 
+function normalizedBranch(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b(branch|br|city|district)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function branchValue(record = {}) {
+  return record.branchId || record.bankBranchLocation || record.branchCity || record.branchLocation || record.bankLocation || record.branch || record.city || "";
+}
+
 function branchMatch(lead = {}, executive = {}) {
   const leadIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
-  const executiveIfsc = executive.bankIfsc || executive.ifsc || executive.ifscCode || executive.branchIfsc || "";
-  if (leadIfsc && executiveIfsc && !sameValue(leadIfsc, executiveIfsc)) return false;
+  const executiveIfsc = executive.bankIfsc || executive.ifsc || executive.ifscCode || executive.branchIfsc || executive.assignedBankIfsc || "";
+  if (leadIfsc && executiveIfsc) return sameValue(leadIfsc, executiveIfsc);
   const leadBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
-  const executiveBranch = executive.branchId || executive.bankBranchLocation || executive.branchCity || executive.branchLocation || executive.city || "";
-  return !leadBranch || !executiveBranch || sameValue(leadBranch, executiveBranch);
+  const executiveBranch = branchValue(executive);
+  const leadNormalized = normalizedBranch(leadBranch);
+  const executiveNormalized = normalizedBranch(executiveBranch);
+  if (!leadNormalized || !executiveNormalized) return true;
+  return leadNormalized === executiveNormalized
+    || leadNormalized.includes(executiveNormalized)
+    || executiveNormalized.includes(leadNormalized);
 }
 
 function executiveIdentity(executive = {}) {
@@ -133,6 +150,42 @@ function currentExecutiveIdentity(lead = {}) {
 
 function reassignmentExecutiveId(executive = {}) {
   return executive.sourceId || executive.executiveId || executive.email || executive.officialEmail || executive.id;
+}
+
+function reassignmentDiagnostics(lead = {}, rows = []) {
+  const currentIds = new Set(currentExecutiveIdentity(lead));
+  const caseBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
+  const caseIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
+  const diagnostics = rows.map((executive) => {
+    const status = String(executive.status || "").trim().toLowerCase();
+    const active = executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
+    const current = executiveIdentity(executive).some((key) => currentIds.has(key));
+    const sameBranch = branchMatch(lead, executive);
+    const reasons = [];
+    if (!active) reasons.push("inactive/deleted/suspended");
+    if (current) reasons.push("current owner");
+    if (!sameBranch) reasons.push(`branch mismatch (${branchValue(executive) || "missing branch"} / ${executive.bankIfsc || executive.ifsc || executive.ifscCode || "missing IFSC"})`);
+    return {
+      name: executive.name || executive.fullName || executive.email || executive.officialEmail || executive.id,
+      active,
+      current,
+      sameBranch,
+      eligibleStrict: active && !current && sameBranch,
+      eligibleFallback: active && !current,
+      reason: reasons.join(", ") || "eligible",
+    };
+  });
+  console.info("CASE_REASSIGNMENT_EXECUTIVE_FILTER", {
+    caseId: caseId(lead),
+    caseBranch,
+    caseIfsc,
+    currentExecutive: lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || "",
+    foundExecutives: rows.length,
+    filteredExecutives: diagnostics,
+    eligibleStrict: diagnostics.filter((item) => item.eligibleStrict).map((item) => item.name),
+    eligibleFallback: diagnostics.filter((item) => item.eligibleFallback).map((item) => item.name),
+  });
+  return diagnostics;
 }
 
 async function performLeadReassignment(lead, reason, newExecutiveId, onDone) {
@@ -164,13 +217,10 @@ function ReassignLeadDialog({ lead, onCancel, onDone }) {
       .then((response) => {
         if (cancelled) return;
         const rows = responseRows(response);
-        const currentIds = new Set(currentExecutiveIdentity(lead));
-        const eligible = rows.filter((executive) => {
-          const status = String(executive.status || "").trim().toLowerCase();
-          const active = executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
-          const notCurrent = !executiveIdentity(executive).some((key) => currentIds.has(key));
-          return active && notCurrent && branchMatch(lead, executive);
-        });
+        const diagnostics = reassignmentDiagnostics(lead, rows);
+        const strictEligible = rows.filter((_executive, index) => diagnostics[index]?.eligibleStrict);
+        const fallbackEligible = rows.filter((_executive, index) => diagnostics[index]?.eligibleFallback);
+        const eligible = strictEligible.length ? strictEligible : fallbackEligible;
         setExecutives(eligible);
         setSelectedExecutiveId(reassignmentExecutiveId(eligible[0]) || "");
       })
@@ -238,7 +288,7 @@ function ReassignLeadDialog({ lead, onCancel, onDone }) {
             className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1] disabled:bg-slate-50 disabled:text-slate-400"
           >
             {loadingExecutives ? <option value="">Loading executives...</option> : null}
-            {!loadingExecutives && !executives.length ? <option value="">No same-branch executives available</option> : null}
+            {!loadingExecutives && !executives.length ? <option value="">No eligible executives found.</option> : null}
             {!loadingExecutives && executives.map((executive) => (
               <option key={reassignmentExecutiveId(executive)} value={reassignmentExecutiveId(executive)}>
                 {executive.name || executive.fullName || executive.email || executive.officialEmail} {executive.mobile ? `- ${executive.mobile}` : ""}
