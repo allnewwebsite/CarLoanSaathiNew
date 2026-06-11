@@ -86,6 +86,9 @@ export function AdminMonitoringCenter() {
   const [snapshot, setSnapshot] = useState(cached);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
+  const [whatsappTestPhone, setWhatsappTestPhone] = useState("");
+  const [whatsappTestLoading, setWhatsappTestLoading] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState(null);
 
   const load = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -105,6 +108,35 @@ export function AdminMonitoringCenter() {
     const timer = window.setInterval(() => load({ silent: true }), 30000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const sendWhatsappTest = async () => {
+    const phone = whatsappTestPhone.trim();
+    setWhatsappTestResult(null);
+    if (!phone) {
+      setWhatsappTestResult({ success: false, message: "Enter a WhatsApp number with country code, for example +919876543210." });
+      return;
+    }
+
+    setWhatsappTestLoading(true);
+    try {
+      const response = await api.post("/admin/test-whatsapp", { phone });
+      const payload = response.data || {};
+      setWhatsappTestResult({
+        success: Boolean(payload.success),
+        message: payload.success
+          ? `Test WhatsApp sent${payload.messageSid ? ` (${payload.messageSid})` : ""}.`
+          : payload.error || payload.deliveryStatus || "WhatsApp test failed.",
+      });
+      await load({ silent: true });
+    } catch (err) {
+      setWhatsappTestResult({
+        success: false,
+        message: err.response?.data?.message || err.response?.data?.error || err.message || "WhatsApp test failed.",
+      });
+    } finally {
+      setWhatsappTestLoading(false);
+    }
+  };
 
   const cards = snapshot?.healthCards || {};
   const overview = snapshot?.platformOverview || {};
@@ -385,6 +417,33 @@ export function AdminMonitoringCenter() {
       </div>
 
       <Section title="WhatsApp Monitoring" subtitle="Twilio WhatsApp delivery uses queued jobs; API workflows do not wait for provider delivery.">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <label className="flex-1">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Send Test WhatsApp</span>
+              <input
+                type="tel"
+                value={whatsappTestPhone}
+                onChange={(event) => setWhatsappTestPhone(event.target.value)}
+                placeholder="+919876543210"
+                className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={sendWhatsappTest}
+              disabled={whatsappTestLoading || !whatsapp.enabled || !whatsapp.configured}
+              className="inline-flex justify-center rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {whatsappTestLoading ? "Sending..." : "Send Test"}
+            </button>
+          </div>
+          {whatsappTestResult ? (
+            <p className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${whatsappTestResult.success ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+              {whatsappTestResult.message}
+            </p>
+          ) : null}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <MetricTile label="WhatsApp Enabled" value={yesNo(whatsapp.enabled)} />
           <MetricTile label="Provider" value={whatsapp.provider || "twilio"} />
