@@ -17,6 +17,8 @@ const ROLE_PORTALS = {
   "loan-executive": "bank",
   "super-admin": "admin",
 };
+const REALTIME_TICKET_PATH = "/api/realtime/ticket";
+const TOKEN_DENY_STATUSES = new Set(["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed", "locked"]);
 
 function portalForRole(role) {
   return ROLE_PORTALS[String(role || "").trim().toLowerCase()] || "";
@@ -33,6 +35,65 @@ function requestedPortal(req) {
   if (path.startsWith("/api/bank")) return "bank";
   if (path.startsWith("/api/dealer") || path.startsWith("/api/gm")) return "finance";
   return "";
+}
+
+function realtimeTicketFastAuthEnabled() {
+  return process.env.REALTIME_TICKET_FAST_AUTH !== "false";
+}
+
+function realtimeTicketFastAuthMaxAgeMs() {
+  return Math.max(60_000, Number(process.env.REALTIME_TICKET_FAST_AUTH_MAX_AGE_MS || 30 * 60 * 1000));
+}
+
+function isRealtimeTicketRequest(req) {
+  return req.method === "POST" && String(req.originalUrl || req.path || "").split("?")[0] === REALTIME_TICKET_PATH;
+}
+
+function tokenClaimsLookActive(tokenUser = {}) {
+  const status = String(tokenUser.accountStatus || tokenUser.status || "").trim().toLowerCase();
+  return Boolean(
+    tokenUser.email
+    && tokenUser.role
+    && tokenUser.portal
+    && tokenUser.portal === portalForRole(tokenUser.role)
+    && tokenUser.approved === true
+    && tokenUser.active !== false
+    && tokenUser.accountApproved !== false
+    && tokenUser.accountActive !== false
+    && tokenUser.emailVerified !== false
+    && !TOKEN_DENY_STATUSES.has(status)
+  );
+}
+
+function tokenFreshEnoughForRealtime(tokenUser = {}) {
+  const issuedAtMs = Number(tokenUser.iat || 0) * 1000;
+  if (!issuedAtMs) return false;
+  return Date.now() - issuedAtMs <= realtimeTicketFastAuthMaxAgeMs();
+}
+
+function realtimeUserFromToken(tokenUser = {}, email = "") {
+  return {
+    uid: tokenUser.uid || email,
+    email,
+    role: tokenUser.role,
+    dealershipId: tokenUser.dealershipId || null,
+    bankId: tokenUser.bankId || null,
+    branchId: tokenUser.branchId || null,
+    branchIfsc: tokenUser.branchIfsc || tokenUser.bankIfsc || tokenUser.ifscCode || tokenUser.branchId || null,
+    bankIfsc: tokenUser.bankIfsc || tokenUser.branchIfsc || tokenUser.ifscCode || tokenUser.branchId || null,
+    ifscCode: tokenUser.ifscCode || tokenUser.branchIfsc || tokenUser.bankIfsc || tokenUser.branchId || null,
+    branchCity: tokenUser.branchCity || tokenUser.branchLocation || tokenUser.bankBranchLocation || tokenUser.bankBranchCity || null,
+    branchLocation: tokenUser.branchLocation || tokenUser.bankBranchLocation || tokenUser.branchCity || tokenUser.bankBranchCity || null,
+    bankName: tokenUser.bankName || tokenUser.companyName || null,
+    approved: true,
+    active: true,
+    accountApproved: tokenUser.accountApproved !== false,
+    accountActive: tokenUser.accountActive !== false,
+    emailVerified: true,
+    sessionId: tokenUser.sessionId || null,
+    portal: tokenUser.portal,
+    scope: tokenUser.scope || tokenUser.portal,
+  };
 }
 
 async function tracedCached(step, key, ttlMs, loader, meta = {}) {
@@ -214,6 +275,39 @@ export async function authenticate(req, res, next) {
     if (!email) {
       observeAuthFailure(req, "invalid_session_email");
       return res.status(401).json({ message: "Invalid session" });
+    }
+    if (isRealtimeTicketRequest(req) && realtimeTicketFastAuthEnabled()) {
+      const accountPortal = portalForRole(tokenUser.role);
+      const requestPortal = requestedPortal(req);
+      const passwordBlocked = tokenUser.firstLoginRequired === true || tokenUser.passwordExpired === true;
+      if (
+        tokenClaimsLookActive(tokenUser)
+        && tokenFreshEnoughForRealtime(tokenUser)
+        && (!requestPortal || requestPortal === accountPortal)
+        && tokenUser.portal === accountPortal
+        && !passwordBlocked
+      ) {
+        req.user = realtimeUserFromToken(tokenUser, email);
+        setRequestScopeUser(req.user);
+        logRealtimeTicketStep("realtime_ticket_fast_auth", Date.now() - authStartedAt, {
+          cacheStatus: "trusted-jwt",
+          summaryField: "authDurationMs",
+        });
+        if (realtimeTicketTimingEnabled()) {
+          logInfo("REALTIME-AUTH-FAST-PATH", {
+            tag: "REALTIME-AUTH-FAST-PATH",
+            requestId: req.requestId,
+            path: req.originalUrl,
+            role: req.user.role,
+            tokenAgeMs: Date.now() - Number(tokenUser.iat || 0) * 1000,
+          });
+        }
+        return next();
+      }
+      logRealtimeTicketStep("realtime_ticket_fast_auth_skipped", Date.now() - authStartedAt, {
+        cacheStatus: "full-auth-required",
+        summaryField: "authDurationMs",
+      });
     }
     let account;
     try {

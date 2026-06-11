@@ -75,9 +75,17 @@ check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
   const realtimeClient = read("frontend/src/services/realtimeClient.js");
   const authContext = read("frontend/src/context/AuthContext.jsx");
+  const authMiddleware = read("backend/middleware/auth.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
   includesAll(authContext, ["stopRealtimeClient();", "teardownRealtimeSubscriptions();"], "auth cleanup");
+  includesAll(authMiddleware, [
+    "REALTIME_TICKET_PATH = \"/api/realtime/ticket\"",
+    "realtimeTicketFastAuthEnabled",
+    "tokenFreshEnoughForRealtime",
+    "REALTIME-AUTH-FAST-PATH",
+    "realtime_ticket_fast_auth_skipped",
+  ], "realtime ticket auth");
 });
 
 check("bank executive management exposes only view and permanent delete", () => {
