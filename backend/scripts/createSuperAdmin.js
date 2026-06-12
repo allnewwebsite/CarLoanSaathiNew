@@ -78,11 +78,8 @@ async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
     const legacyRef = firestore.collection("users").doc(email);
     const legacy = await legacyRef.get();
     if (legacy.exists) {
-      await legacyRef.set({
-        ...record,
-        canonical: false,
-        canonicalUid: authUser.uid,
-      }, { merge: true });
+      await legacyRef.delete();
+      console.log(`Removed duplicate legacy Super Admin identity: ${email}`);
     }
   }
   await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
