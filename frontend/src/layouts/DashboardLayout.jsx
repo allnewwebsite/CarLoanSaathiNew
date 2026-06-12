@@ -8,7 +8,7 @@ import { prefetchGet } from "../services/api.js";
 import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const navByRole = {
-  "gm-sm": [
+  "gm": [
     { label: "Total Leads", to: "/gm/total-leads", icon: ClipboardList },
     { label: "All Salespersons", to: "/gm/salespersons", icon: Users },
     { label: "Status", to: "/gm/status", icon: FileClock },
@@ -17,7 +17,7 @@ const navByRole = {
   "finance-desk": [
     { label: "Total Leads", to: "/finance/total-leads", icon: ClipboardList },
     { label: "Add Lead", to: "/finance/add-lead", icon: ClipboardCheck },
-    { label: "Add GM or SM", to: "/finance/manage-staff", icon: Users },
+    { label: "Add GM", to: "/finance/manage-staff", icon: Users },
     { label: "Add Finance Manager", to: "/finance/finance-managers", icon: Users },
     { label: "Add / Remove Salesperson", to: "/finance/salespersons", icon: Users },
     { label: "Active Salespersons", to: "/finance/active-salespersons", icon: Users },
@@ -182,16 +182,16 @@ export function DashboardLayout() {
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const headerEyebrow = user?.role === "bank-manager"
     ? `${user.bankName || "Bank Branch"} — ${user.bankIfsc || "IFSC Pending"}`
-    : ["finance-desk", "gm-sm"].includes(user?.role)
-      ? `${user.dealershipName || "Dealership"} ${user.role === "finance-desk" ? "Finance Desk" : "GM / SM"}`.toUpperCase()
+    : ["finance-desk", "gm"].includes(user?.role)
+      ? `${user.dealershipName || "Dealership"} ${user.role === "finance-desk" ? "Finance Desk" : "GM"}`.toUpperCase()
       : user?.roleLabel || "Workspace";
 
   const dashboardTitle = user?.role === "bank-manager"
     ? "BANK MANAGER DASHBOARD"
     : user?.role === "finance-desk"
       ? "FINANCE DESK DASHBOARD"
-      : user?.role === "gm-sm"
-        ? "GM / SM DASHBOARD"
+      : user?.role === "gm"
+        ? "GM DASHBOARD"
         : user?.role === "loan-executive"
           ? "LOAN EXECUTIVE DASHBOARD"
           : user?.role === "super-admin"
@@ -209,7 +209,7 @@ export function DashboardLayout() {
         ["Bank Name", user.bankName || "Bank Branch"],
         ["IFSC Code", user.bankIfsc || "IFSC Pending"],
       ]
-    : ["finance-desk", "gm-sm"].includes(user?.role)
+    : ["finance-desk", "gm"].includes(user?.role)
       ? [["Dealership", user.dealershipName || "Dealership"]]
       : [];
 

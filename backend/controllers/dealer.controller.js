@@ -165,14 +165,13 @@ function generateTemporaryPassword() {
 function normalizeStaffRole(value) {
   const role = String(value || "").trim().toLowerCase();
   if (["finance-head", "finance head", "finance-desk", "finance desk"].includes(role)) return "finance-desk";
-  if (["gm", "sm", "gm-sm", "general manager", "sales manager"].includes(role)) return "gm-sm";
+  if (["gm", "general manager"].includes(role)) return "gm";
   return "";
 }
 
-function staffRoleLabel(role, original) {
+function staffRoleLabel(role) {
   if (role === "finance-desk") return "Finance Head";
-  const clean = String(original || "").trim().toUpperCase();
-  return clean === "SM" ? "SM" : clean === "GM" ? "GM" : "GM / SM";
+  return role === "gm" ? "GM" : "";
 }
 
 function staffListRow(item) {
@@ -183,7 +182,7 @@ function staffListRow(item) {
     mobile: item.mobile || item.headMobile || item.officialMobile || "",
     employeeId: item.employeeId || item.jobId || item.employeeCode || "",
     role: item.role,
-    roleLabel: item.roleLabel || staffRoleLabel(item.role, item.role),
+    roleLabel: staffRoleLabel(item.role),
     branch: item.branch || item.city || item.location || item.dealershipCity || "",
     city: item.city || item.branch || "",
     status: item.active === false || item.accountActive === false ? "inactive" : item.status || item.accountStatus || "active",
@@ -286,9 +285,69 @@ async function buildDealerStaffRows(dealershipEmail, dealership = {}, currentEma
   financeDesk.forEach((item) => add(item, "financeDesk"));
   dealershipManagers.forEach((item) => add(item, "dealershipManagers"));
   users
-    .filter((item) => ["finance-desk", "gm-sm"].includes(normalizeStaffRole(item.role)))
+    .filter((item) => ["finance-desk", "gm"].includes(normalizeStaffRole(item.role)))
     .forEach((item) => add(item, "users"));
   return [...rows.values()].sort((left, right) => String(left.fullName || "").localeCompare(String(right.fullName || "")));
+}
+
+function staffIdentifierMatches(item = {}, identifier = "") {
+  const requested = staffEmail(identifier);
+  if (!requested) return false;
+  return [
+    item.id,
+    item.sourceId,
+    item.email,
+    item.officialEmail,
+    item.uid,
+    item.authAccountId,
+    item.uniqueEmployeeId,
+    item.employeeId,
+  ].some((value) => staffEmail(value) === requested);
+}
+
+async function findDealerStaffEmployee({ dealershipEmail, dealership, currentEmail, identifier }) {
+  const [projected, sourceRows] = await Promise.all([
+    queryStaffViewProjection({ dealershipId: dealershipEmail, query: { limit: 100 } }).catch(() => null),
+    buildDealerStaffRows(dealershipEmail, dealership, currentEmail),
+  ]);
+  const rows = [...(projected || []), ...sourceRows];
+  const employee = rows.find((item) => staffIdentifierMatches(item, identifier));
+  if (!employee) return null;
+  const email = staffEmail(employee.email || employee.officialEmail || employee.sourceId);
+  return {
+    ...employee,
+    email,
+    protected: employee.protected === true || email === staffEmail(dealershipEmail) || email === staffEmail(currentEmail),
+  };
+}
+
+async function deleteDealerStaffCollectionRecords(collection, { employee, dealershipEmail, email }) {
+  const belongsToDealer = (item) => item.dealershipId === dealershipEmail || item.dealershipEmail === dealershipEmail;
+  const emailMatches = (item) => staffEmail(item.email || item.officialEmail || item.id) === email;
+  const indexedDeleted = await deleteMatchingRecords(collection, (item) => belongsToDealer(item) && emailMatches(item), [
+    [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
+    [{ field: "dealershipEmail", value: dealershipEmail }, { field: "email", value: email }],
+    [{ field: "dealershipId", value: dealershipEmail }, { field: "officialEmail", value: email }],
+    [{ field: "dealershipEmail", value: dealershipEmail }, { field: "officialEmail", value: email }],
+  ]);
+  const candidateIds = [...new Set([
+    email,
+    employee.sourceId,
+    employee.uid,
+    employee.authAccountId,
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const directRecords = await Promise.all(candidateIds.map((id) => getRecord(collection, id).catch(() => null)));
+  const linkedRecords = await Promise.all([
+    findRecordsByField(collection, "email", email, 20).catch(() => []),
+    findRecordsByField(collection, "officialEmail", email, 20).catch(() => []),
+  ]);
+  const records = uniqueRecords([...directRecords, ...linkedRecords.flat()]);
+  const verified = records.filter((item) =>
+    emailMatches(item)
+    && (belongsToDealer(item) || candidateIds.includes(String(item.id || "").trim()))
+  );
+  await Promise.all(verified.map((item) => deleteRecord(collection, item.id).catch(() => null)));
+  return indexedDeleted + verified.length;
 }
 
 function runDealerLeadSideEffects(label, tasks = []) {
@@ -1436,9 +1495,12 @@ export async function getDealerStaffDetail(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
     const staffId = decodeURIComponent(req.params.id || "");
-    const staff = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { limit: 100 } }).catch(() => null)
-      || await buildDealerStaffRows(dealershipEmail, dealership, email);
-    const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
+    const employee = await findDealerStaffEmployee({
+      dealershipEmail,
+      dealership,
+      currentEmail: email,
+      identifier: staffId,
+    });
     if (!employee) return res.status(404).json({ message: "Employee not found" });
     res.json(employee);
   } catch (error) {
@@ -1531,7 +1593,7 @@ export async function createDealerStaff(req, res, next) {
     const mobile = required(req.body.mobile, "Mobile number");
     const employeeId = required(req.body.employeeId || req.body.jobId, "Employee ID");
     const role = normalizeStaffRole(req.body.role);
-    if (!role) return res.status(400).json({ message: "Select Finance Head, GM, or SM role" });
+    if (role !== "gm") return res.status(400).json({ message: "Only the GM role can be created." });
     if (!/^[6-9]\d{9}$/.test(mobile)) return res.status(400).json({ message: "Enter a valid 10-digit mobile number" });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid official email" });
 
@@ -1546,7 +1608,7 @@ export async function createDealerStaff(req, res, next) {
     if (existingUserActive && !sameDealershipUser) {
       return res.status(409).json({ message: "This email belongs to another active account" });
     }
-    if (existingUserActive && sameDealershipUser && !["finance-desk", "gm-sm"].includes(normalizeStaffRole(existingUser.role))) {
+    if (existingUserActive && sameDealershipUser && !["finance-desk", "gm"].includes(normalizeStaffRole(existingUser.role))) {
       return res.status(409).json({ message: "This email belongs to another active role" });
     }
 
@@ -1580,7 +1642,7 @@ export async function createDealerStaff(req, res, next) {
     }
     await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role, excludeIds: [] });
 
-    const roleLabel = staffRoleLabel(role, req.body.role);
+    const roleLabel = staffRoleLabel(role);
     const portalType = "finance";
     const accountType = role === "finance-desk" ? "finance-head" : "dealership-management";
     const staffPayload = {
@@ -1668,7 +1730,7 @@ export async function createDealerStaff(req, res, next) {
     syncStaffViewProjectionSoon(staffPayload);
     res.status(201).json({
       ...staffPayload,
-      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/finance/login`,
+      portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/gm/login`,
       temporaryPassword,
     });
   } catch (error) {
@@ -1681,25 +1743,28 @@ export async function deleteDealerStaff(req, res, next) {
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     const { email: actorEmail, dealershipEmail, dealership } = await financeDeskContext(req);
     const staffId = decodeURIComponent(req.params.id || "");
-    const staff = await buildDealerStaffRows(dealershipEmail, dealership, actorEmail);
-    const employee = staff.find((item) => item.id === staffId || staffEmail(item.email) === staffEmail(staffId));
+    const employee = await findDealerStaffEmployee({
+      dealershipEmail,
+      dealership,
+      currentEmail: actorEmail,
+      identifier: staffId,
+    });
     if (!employee) return res.status(404).json({ message: "Employee not found" });
 
     const email = staffEmail(employee.email);
+    if (!email) return res.status(409).json({ message: "Employee email mapping is missing. Repair the staff record before deletion." });
     if (email === staffEmail(dealershipEmail) || email === staffEmail(actorEmail) || employee.protected === true) {
       return res.status(400).json({ message: "Primary Finance Desk account cannot be removed from Manage Staff." });
     }
-    const belongsToDealer = (item) => item.dealershipId === dealershipEmail || item.dealershipEmail === dealershipEmail;
     const emailMatches = (item) => staffEmail(item.email || item.officialEmail || item.id) === email;
     const deleted = {};
 
     for (const collection of ["dealerStaff", "financeDesks", "financeDesk", "dealershipManagers", "users"]) {
-      deleted[collection] = await deleteMatchingRecords(collection, (item) => belongsToDealer(item) && emailMatches(item), [
-        [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
-        [{ field: "dealershipEmail", value: dealershipEmail }, { field: "email", value: email }],
-        [{ field: "dealershipId", value: dealershipEmail }, { field: "officialEmail", value: email }],
-        [{ field: "dealershipEmail", value: dealershipEmail }, { field: "officialEmail", value: email }],
-      ]);
+      deleted[collection] = await deleteDealerStaffCollectionRecords(collection, {
+        employee,
+        dealershipEmail,
+        email,
+      });
     }
     for (const collection of ["loginActivity", "authAuditLogs", "notifications"]) {
       deleted[collection] = await deleteMatchingRecords(collection, (item) =>
@@ -1717,6 +1782,7 @@ export async function deleteDealerStaff(req, res, next) {
     deleted.staffViewProjection = await deleteRecordsByQuery("staffViewProjection", {
       where: [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
     }).catch(() => 0);
+    clearCachedValue(`dealer:staff:${dealershipEmail}:`);
 
     await revokeUserSessions(email, "dealer-staff-permanent-delete").catch(() => {});
     let authDeleted = false;

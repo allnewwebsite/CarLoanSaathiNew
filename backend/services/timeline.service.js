@@ -146,7 +146,7 @@ function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
 
   if (role === "super-admin") return true;
 
-  if (["finance-desk", "gm-sm"].includes(role)) {
+  if (["finance-desk", "gm"].includes(role)) {
     return valuesMatch(eventDealershipValues(event), [actorDealershipId, actorEmail])
       || valuesMatch(leadDealershipValues(lead), [actorDealershipId, actorEmail]);
   }
@@ -263,7 +263,7 @@ export async function addTimelineEvent({
     assignedExecutiveId: lead?.assignedExecutiveId || metaPayload.assignedExecutiveId || null,
     assignedExecutiveEmail: lead?.assignedExecutiveEmail || metaPayload.assignedExecutiveEmail || null,
     metadata: metaPayload,
-    visibility: visibility || ["finance-desk", "gm-sm", "bank-manager", "loan-executive", "super-admin"],
+    visibility: visibility || ["finance-desk", "gm", "bank-manager", "loan-executive", "super-admin"],
   });
   syncTimelineProjectionSoon(event);
   return event;

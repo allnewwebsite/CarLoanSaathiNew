@@ -19,6 +19,8 @@ const catalogRoutes = read("backend/routes/catalog.routes.js");
 const catalogService = read("backend/services/catalog.service.js");
 const adminController = read("backend/controllers/admin.controller.js");
 const bankController = read("backend/controllers/bank.controller.js");
+const dealerController = read("backend/controllers/dealer.controller.js");
+const financeDeskPanel = read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx");
 const rootPackage = JSON.parse(read("package.json"));
 const backendPackage = JSON.parse(read("backend/package.json"));
 
@@ -55,6 +57,27 @@ checks.push(assertCheck(
 checks.push(assertCheck(
   "bank executive deletion no longer relies on a single 100-row affected lead page",
   !bankController.includes("const affectedPages = await Promise.all") && !bankController.includes("affectedLeads.length"),
+));
+
+checks.push(assertCheck(
+  "dealer staff deletion resolves projection and source identifiers",
+  dealerController.includes("async function findDealerStaffEmployee")
+    && dealerController.includes("item.sourceId")
+    && dealerController.includes("queryStaffViewProjection")
+    && dealerController.includes("buildDealerStaffRows"),
+));
+
+checks.push(assertCheck(
+  "dealer staff permanent deletion cleans legacy identity records",
+  dealerController.includes("async function deleteDealerStaffCollectionRecords")
+    && dealerController.includes("employee.authAccountId")
+    && dealerController.includes('clearCachedValue(`dealer:staff:${dealershipEmail}:`)'),
+));
+
+checks.push(assertCheck(
+  "finance staff actions use canonical email before projection id",
+  financeDeskPanel.includes("encodeURIComponent(staff.email || staff.id)")
+    && financeDeskPanel.includes("encodeURIComponent(employee.email || employee.id)"),
 ));
 
 checks.push(assertCheck(

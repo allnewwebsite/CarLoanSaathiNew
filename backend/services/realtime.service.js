@@ -229,11 +229,11 @@ export function consumeRealtimeTicket(ticket = "") {
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
   if (user.role === "super-admin") return true;
-  if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm-sm"].includes(user.role)) return true;
-  if (event.kind === "dealer" && event.publicDealerCatalog === true && ["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(user.role)) return true;
+  if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm"].includes(user.role)) return true;
+  if (event.kind === "dealer" && event.publicDealerCatalog === true && ["finance-desk", "gm", "bank-manager", "loan-executive"].includes(user.role)) return true;
   const scopes = event.scopes || {};
   const userEmail = scope(user.email || user.uid);
-  if (["finance-desk", "gm-sm"].includes(user.role)) {
+  if (["finance-desk", "gm"].includes(user.role)) {
     const dealershipId = scope(user.dealershipId || user.email || user.uid);
     return dealershipId && scopes.dealershipIds?.includes(dealershipId);
   }

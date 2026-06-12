@@ -4,7 +4,7 @@ CarLoanSaathi is a closed dealership-to-bank automotive finance ecosystem.
 
 ## Panels
 
-- `GM / SM Tracking Panel`: view-only showroom, salesperson, finance desk, bank, conversion, aging, and business analytics.
+- `GM Tracking Panel`: view-only showroom, salesperson, finance desk, bank, conversion, aging, and business analytics.
 - `Finance Desk Panel`: main operational workspace for lead creation, document upload, salesperson management, bank submission, follow-ups, EMI, sanction, and disbursement tracking.
 - `Bank Branch Manager Panel`: branch queue monitoring, executive performance, workload balancing, manual reassignment, and escalation control.
 - `Loan Executive Panel`: assigned-case processing, document verification, approvals, rejections, sanction upload, remarks, and disbursement updates.
@@ -94,7 +94,7 @@ Supported filters:
 Visibility:
 
 - Finance Desk sees its complete lead timeline.
-- GM/SM sees read-only dealership timeline.
+- GM sees the read-only dealership timeline.
 - Loan Executive sees assigned lead timeline.
 - Bank Manager sees branch timelines.
 - Super Admin sees everything.

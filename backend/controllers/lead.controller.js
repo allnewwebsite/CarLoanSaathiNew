@@ -60,7 +60,7 @@ function authenticatedDealershipId(req, fallbackEmail) {
 async function canAccessLead(req, lead) {
   if (req.user?.role === "super-admin") return true;
   const email = req.user?.email || req.user?.uid;
-  if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
+  if (["finance-desk", "gm"].includes(req.user?.role)) {
     return lead.dealershipId === req.user?.dealershipId
       || lead.dealerEmail === email
       || lead.dealershipEmail === email
@@ -264,7 +264,7 @@ export async function createPublicLeadIntake(req, res, next) {
         actorRole: "public",
         dealershipId: lead.dealershipId || null,
         metadata: { caseId, source: "public-apply-loan", riskFlags: riskReasons },
-        visibility: ["finance-desk", "gm-sm", "super-admin"],
+        visibility: ["finance-desk", "gm", "super-admin"],
       }),
       () => writeAuditLog({
         req,
@@ -321,7 +321,7 @@ export async function getLeads(req, res, next) {
     const projected = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null);
     if (projected) payload = projected;
     else if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
-    else if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
+    else if (["finance-desk", "gm"].includes(req.user?.role)) {
       const dealershipId = req.user?.dealershipId || req.user?.email || req.user?.uid;
       payload = await queryDealershipLeads({ dealershipId, query: req.query });
     } else if (req.user?.role === "bank-manager") {

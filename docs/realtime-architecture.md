@@ -6,7 +6,7 @@ CarLoanSaathi uses scoped Firestore listeners as invalidation signals and keeps 
 
 - Never subscribe to a full `leads` collection.
 - Lead table listeners are limited to the visible working set, capped at 50 rows.
-- Finance Desk and GM/SM listen only to `leads` for their `dealershipId`.
+- Finance Desk and GM listen only to `leads` for their `dealershipId`.
 - Loan Executives listen only to `assignedExecutiveId` and `assignedExecutiveEmail` scoped leads.
 - Bank Managers use bank-scoped notification signals, then refresh through `/bank/leads` so backend branch/city governance remains authoritative.
 - Super Admin listens to limited `operationalEvents` signals, then refreshes admin APIs.

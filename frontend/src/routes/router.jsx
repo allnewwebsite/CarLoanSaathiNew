@@ -119,7 +119,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/gm",
-    element: <ProtectedRoute roles={[ROLES.GM_SM]} loginPath="/finance/login" />,
+    element: <ProtectedRoute roles={[ROLES.GM]} loginPath="/gm/login" />,
     children: [
       { path: "dashboard", element: <DashboardLayout />, children: [{ index: true, element: <Navigate to="/gm/total-leads" replace /> }] },
       { path: "change-password", element: <ExecutiveChangePasswordPage /> },
@@ -174,14 +174,14 @@ export const router = createBrowserRouter([
   },
   {
     path: "/change-password",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
     children: [
       { index: true, element: <ExecutiveChangePasswordPage /> },
     ],
   },
   {
     path: "/security",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/finance/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/finance/login" />,
     children: [
       { path: "login-activity", element: <DashboardLayout />, children: [{ index: true, element: <LoginActivityPage /> }] },
     ],
@@ -258,7 +258,7 @@ export const router = createBrowserRouter([
           { path: "approvals/banks", element: <SuperAdminDashboard mode="approval-banks" /> },
           { path: "approvals/banks/:id", element: <SuperAdminApprovalDetailPage type="banks" /> },
           { path: "finance-desks", element: <Navigate to="/admin/dealerships" replace /> },
-          { path: "gm-sm", element: <Navigate to="/admin/dealerships" replace /> },
+          { path: "gm", element: <Navigate to="/admin/dealerships" replace /> },
           { path: "branches", element: <Navigate to="/admin/banks" replace /> },
           { path: "executives", element: <Navigate to="/admin/banks" replace /> },
           { path: "approvals/approved", element: <Navigate to="/admin/dealerships" replace /> },

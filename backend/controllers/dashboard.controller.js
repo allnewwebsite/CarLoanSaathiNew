@@ -6,7 +6,7 @@ import { ROLES } from "../utils/constants.js";
 
 function analyticsScopeForUser(user = {}) {
   if (user.role === ROLES.SUPER_ADMIN) return {};
-  if ([ROLES.FINANCE_DESK, ROLES.GM_SM].includes(user.role)) return { dealershipId: user.dealershipId };
+  if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role)) return { dealershipId: user.dealershipId };
   if (user.role === ROLES.BANK_MANAGER) return { bankId: user.bankId };
   if (user.role === ROLES.LOAN_EXECUTIVE) return { assignedExecutiveId: user.uid };
   const error = new Error("Dashboard role is not allowed");
@@ -57,7 +57,7 @@ async function recentLeadsForUser(user = {}) {
   const projected = await queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null);
   if (projected?.data?.length) return { ...projected, source: "projection" };
   if (user.role === ROLES.SUPER_ADMIN) return queryAllLeads({ query, fields: RECENT_LEAD_FIELDS });
-  if ([ROLES.FINANCE_DESK, ROLES.GM_SM].includes(user.role)) {
+  if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role)) {
     return queryDealershipLeads({ dealershipId: user.dealershipId, query, fields: RECENT_LEAD_FIELDS });
   }
   if (user.role === ROLES.BANK_MANAGER) {

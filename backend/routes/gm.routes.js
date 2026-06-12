@@ -6,7 +6,7 @@ import { ROLES } from "../utils/constants.js";
 
 const router = Router();
 
-router.use(authenticate, requireRole(ROLES.GM_SM));
+router.use(authenticate, requireRole(ROLES.GM));
 router.get("/leads", getGmLeads);
 router.get("/salespersons", getGmSalespersons);
 router.get("/leads/:id", getGmLead);

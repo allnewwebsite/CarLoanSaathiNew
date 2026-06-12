@@ -16,27 +16,27 @@ import {
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
-  "gm-sm": "/gm/dashboard",
+  "gm": "/gm/dashboard",
   "bank-manager": "/bank-manager/dashboard",
   "loan-executive": "/loan-executive/leads",
   "super-admin": "/admin/dashboard",
 };
 const PORTAL_ROLES = {
-  finance: ["finance-desk", "gm-sm"],
-  dealer: ["finance-desk", "gm-sm"],
+  finance: ["finance-desk", "gm"],
+  dealer: ["finance-desk", "gm"],
   bank: ["bank-manager", "loan-executive"],
   admin: ["super-admin"],
 };
 const LOGIN_PORTAL_ROLES = {
   finance: ["finance-desk"],
-  gm: ["gm-sm"],
+  gm: ["gm"],
   "bank-manager": ["bank-manager"],
   "loan-executive": ["loan-executive"],
   admin: ["super-admin"],
 };
 const ROLE_LOGIN_PORTALS = {
   "finance-desk": "finance",
-  "gm-sm": "gm",
+  "gm": "gm",
   "bank-manager": "bank-manager",
   "loan-executive": "loan-executive",
   "super-admin": "admin",
@@ -48,11 +48,11 @@ const ROLE_GUIDANCE = {
     redirectTo: "/finance/login",
     actionLabel: "Go to Finance Login",
   },
-  "gm-sm": {
-    roleLabel: "GM / SM",
-    portalLabel: "Finance Head Portal",
-    redirectTo: "/finance/login",
-    actionLabel: "Go to Finance Login",
+  "gm": {
+    roleLabel: "General Manager",
+    portalLabel: "GM Portal",
+    redirectTo: "/gm/login",
+    actionLabel: "Go to GM Login",
   },
   "bank-manager": {
     roleLabel: "Bank Manager",
@@ -118,7 +118,7 @@ function wrongLoginPortalPayload() {
 
 function passwordChangeRouteForRole(role) {
   if (role === "loan-executive") return "/loan-executive/change-password";
-  if (role === "gm-sm") return "/gm/change-password";
+  if (role === "gm") return "/gm/change-password";
   if (role === "finance-desk") return "/finance/change-password";
   return "/change-password";
 }
@@ -528,7 +528,7 @@ function portalAllowsRole(portal, role) {
 }
 
 function portalForRole(role) {
-  if (["finance-desk", "gm-sm"].includes(role)) return "finance";
+  if (["finance-desk", "gm"].includes(role)) return "finance";
   return Object.entries(PORTAL_ROLES).find(([, roles]) => roles.includes(role))?.[0] || null;
 }
 
@@ -615,7 +615,7 @@ function registrationProfile(account = {}) {
 async function accountPresentation(email, account = {}) {
   const result = {};
   try {
-    if (["finance-desk", "gm-sm"].includes(account.role)) {
+    if (["finance-desk", "gm"].includes(account.role)) {
       const dealershipId = account.dealershipId || email;
       const dealership = await getRecord("dealerships", dealershipId).catch(() => null)
         || await getRecord("approvedDealerships", dealershipId).catch(() => null);
@@ -1027,7 +1027,7 @@ export async function login(req, res, next) {
         await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "finance-staff-not-found", req });
         return res.status(403).json({
           code: "NO_ACCOUNT",
-          message: "No active Finance Head, GM, or SM account found for this email.",
+          message: "No active Finance Head or GM account found for this email.",
         });
       }
       if (portal === "bank") {
@@ -1224,7 +1224,7 @@ export async function restoreSession(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: `restore-${inactive.code.toLowerCase()}`, req });
       return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
     }
-    if (["finance-desk", "gm-sm"].includes(account.role) && !(await approvedDealerAccess(normalizedEmail, account))) {
+    if (["finance-desk", "gm"].includes(account.role) && !(await approvedDealerAccess(normalizedEmail, account))) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-dealer-approval-pending", req });
       return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
     }
@@ -1493,7 +1493,7 @@ export async function session(req, res, next) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
 
-    if (["finance-desk", "gm-sm"].includes(account.role)) {
+    if (["finance-desk", "gm"].includes(account.role)) {
       const dealershipId = account.dealershipId || email;
       const dealership = await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId);
       const active = account.approved === true
@@ -1556,7 +1556,7 @@ export async function completeForcedPasswordChange(req, res, next) {
     const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
     const account = await resolveCanonicalIdentity({ uid, email });
-    if (!account || !["loan-executive", "finance-desk", "gm-sm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
+    if (!account || !["loan-executive", "finance-desk", "gm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
     const lifecyclePatch = {

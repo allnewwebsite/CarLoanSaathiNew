@@ -145,7 +145,7 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
   const unreadOnly = query.unread === "true";
   const where = [];
   if (role !== "super-admin") {
-    if (["finance-desk", "gm-sm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
+    if (["finance-desk", "gm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
     else if (role === "bank-manager" && actor.bankId) where.push({ field: "bankId", value: actor.bankId });
     else where.push({ field: "recipientId", value: id });
   }
@@ -174,7 +174,7 @@ function canAccessNotification(item, actor = {}) {
   const actorId = actor.email || actor.uid;
   if (actor.role === "super-admin") return true;
   if (item.recipientId === actorId || item.userId === actorId || item.dealerEmail === actorId || item.partnerId === actorId) return true;
-  if (["finance-desk", "gm-sm"].includes(actor.role)) {
+  if (["finance-desk", "gm"].includes(actor.role)) {
     return Boolean(actor.dealershipId && item.dealershipId === actor.dealershipId);
   }
   if (actor.role === "bank-manager") {

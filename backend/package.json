@@ -20,6 +20,7 @@
     "verify:backup": "node scripts/verifyBackup.js",
     "migrate:lead-branches": "node scripts/migrateLegacyLeadBranches.js",
     "migrate:ifsc-branch-identity": "node scripts/backfillIfscBranchIdentity.js",
+    "migrate:sm-to-gm": "node scripts/migrateSmUsersToGm.js",
     "verify:read-reduction": "node scripts/verify-read-reduction.js",
     "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "verify:status-sync": "node scripts/verifyStatusSyncWorkflow.js",

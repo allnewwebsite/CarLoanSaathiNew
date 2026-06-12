@@ -60,7 +60,7 @@ export function ExecutiveChangePasswordPage() {
   const checks = useMemo(() => passwordChecks(form.newPassword), [form.newPassword]);
   const score = Object.values(checks).filter(Boolean).length;
   const isExecutive = user?.role === "loan-executive";
-  const destination = user?.role === "gm-sm" ? "/gm/dashboard" : isExecutive ? "/loan-executive/leads" : "/finance/dashboard";
+  const destination = user?.role === "gm" ? "/gm/dashboard" : isExecutive ? "/loan-executive/leads" : "/finance/dashboard";
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));

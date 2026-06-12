@@ -49,7 +49,7 @@ Authenticated finance-desk creation remains on `/api/leads/create` and remains p
 `firestore.rules` is deny-by-default. Access is scoped by:
 
 - `super-admin`: full access.
-- `finance-desk` / `gm-sm`: own `dealershipId`.
+- `finance-desk` / `gm`: own `dealershipId`.
 - `bank-manager`: own `bankId`.
 - `loan-executive`: assigned leads only.
 

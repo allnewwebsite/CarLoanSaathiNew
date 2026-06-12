@@ -421,7 +421,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
   if (role === "finance-desk") {
     collection = "financeViews";
     where.push({ field: "scopeId", value: scopeId(user.dealershipId || user.email || user.uid) });
-  } else if (role === "gm-sm") {
+  } else if (role === "gm") {
     collection = "gmViews";
     where.push({ field: "scopeId", value: scopeId(user.dealershipId || user.email || user.uid) });
   } else if (role === "bank-manager") {
@@ -725,7 +725,7 @@ export async function queryNotificationProjectionForUser({ user = {}, query = {}
   if (role === "finance-desk") {
     collection = "financeViews";
     where.push({ field: "scopeId", value: scopeId(user.dealershipId || user.email || user.uid) });
-  } else if (role === "gm-sm") {
+  } else if (role === "gm") {
     collection = "gmViews";
     where.push({ field: "scopeId", value: scopeId(user.dealershipId || user.email || user.uid) });
   } else if (role === "bank-manager") {
@@ -890,7 +890,7 @@ export async function queryTimelineProjection({ leadId = "", query = {}, actor =
   const where = [{ field: "viewType", value: "timeline" }];
   if (leadId) where.push({ field: "leadId", value: leadId });
   if (query.eventType) where.push({ field: "eventType", value: String(query.eventType).trim() });
-  if (actor.role === "finance-desk" || actor.role === "gm-sm") {
+  if (actor.role === "finance-desk" || actor.role === "gm") {
     where.push({ field: "dealershipId", value: scopeId(actor.dealershipId || actor.email || actor.uid) });
   } else if (actor.role === "bank-manager") {
     where.push({ field: "bankId", value: scopeId(actor.bankId || actor.bankName || actor.email || actor.uid) });

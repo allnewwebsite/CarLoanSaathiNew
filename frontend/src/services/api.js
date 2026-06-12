@@ -423,7 +423,8 @@ function loginPathForRole(role, fallback = "/finance/login") {
   if (normalized === "loan-executive") return "/executive/login";
   if (normalized === "bank-manager") return "/bank/login";
   if (normalized === "super-admin") return "/admin/login";
-  if (normalized === "finance-desk" || normalized === "gm-sm") return "/finance/login";
+  if (normalized === "finance-desk") return "/finance/login";
+  if (normalized === "gm") return "/gm/login";
   return fallback;
 }
 
@@ -516,7 +517,7 @@ function portalWarmupPath(role) {
   const normalized = String(role || "").trim().toLowerCase();
   if (normalized === "super-admin") return "/admin/leads";
   if (normalized === "bank-manager" || normalized === "loan-executive") return "/bank/leads";
-  if (normalized === "gm-sm") return "/gm/leads";
+  if (normalized === "gm") return "/gm/leads";
   if (normalized === "finance-desk" || normalized === "dealer") return "/dealer/leads";
   return null;
 }

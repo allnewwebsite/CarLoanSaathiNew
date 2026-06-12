@@ -34,8 +34,8 @@ service cloud.firestore {
       return role() == "finance-desk";
     }
 
-    function isGmSm() {
-      return role() == "gm-sm";
+    function isGm() {
+      return role() == "gm";
     }
 
     function isBankManager() {
@@ -87,7 +87,7 @@ service cloud.firestore {
 
     function canReadLead(data) {
       return isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(data))
+        || ((isFinanceDesk() || isGm()) && sameDealership(data))
         || (isBankManager() && sameBank(data) && sameBranch(data))
         || (isLoanExecutive() && assignedExecutive(data));
     }
@@ -112,7 +112,7 @@ service cloud.firestore {
       return isSuperAdmin()
         || (approved() && data.userId == request.auth.uid)
         || (approved() && data.recipientId == email())
-        || ((isFinanceDesk() || isGmSm()) && data.dealershipId == dealershipId())
+        || ((isFinanceDesk() || isGm()) && data.dealershipId == dealershipId())
         || (isBankManager() && data.bankId == bankId() && sameBranch(data))
         || (isLoanExecutive()
           && (
@@ -125,7 +125,7 @@ service cloud.firestore {
 
     function canReadPortalProjection(data) {
       return isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm())
+        || ((isFinanceDesk() || isGm())
           && data.scopeType == "dealership"
           && dealershipId() != null
           && data.scopeId == dealershipId())
@@ -245,7 +245,7 @@ service cloud.firestore {
 
     match /gmViews/{viewId} {
       allow read: if isSuperAdmin()
-        || (isGmSm() && canReadPortalProjection(resource.data));
+        || (isGm() && canReadPortalProjection(resource.data));
       allow write: if false;
     }
 
@@ -301,7 +301,7 @@ service cloud.firestore {
 
     match /salespersons/{salespersonId} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+        || ((isFinanceDesk() || isGm()) && sameDealership(resource.data));
       allow create, update: if isFinanceDesk()
         && approved()
         && request.resource.data.dealershipId == dealershipId();
@@ -311,7 +311,7 @@ service cloud.firestore {
 
     match /financeManagers/{managerId} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+        || ((isFinanceDesk() || isGm()) && sameDealership(resource.data));
       allow create, update: if isFinanceDesk()
         && approved()
         && request.resource.data.dealershipId == dealershipId();
@@ -336,21 +336,21 @@ service cloud.firestore {
 
     match /dealerships/{dealerId} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+        || ((isFinanceDesk() || isGm()) && sameDealership(resource.data));
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
     }
 
     match /dealershipBankTieUps/{tieUpId} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+        || ((isFinanceDesk() || isGm()) && sameDealership(resource.data));
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
     }
 
     match /approvedDealerships/{dealerId} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && sameDealership(resource.data));
+        || ((isFinanceDesk() || isGm()) && sameDealership(resource.data));
       allow create, update, delete: if false;
       allow read, write: if isSuperAdmin();
     }
@@ -401,7 +401,7 @@ service cloud.firestore {
 
     match /metrics/{id} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && resource.data.scopeType == "dealership" && resource.data.scopeId == dealershipId())
+        || ((isFinanceDesk() || isGm()) && resource.data.scopeType == "dealership" && resource.data.scopeId == dealershipId())
         || (isBankManager() && resource.data.scopeType == "bank" && resource.data.scopeId == bankId())
         || (isLoanExecutive() && resource.data.scopeType == "executive" && resource.data.scopeId == request.auth.uid);
       allow write: if false;
@@ -419,7 +419,7 @@ service cloud.firestore {
 
     match /dealershipMetrics/{id} {
       allow read: if isSuperAdmin()
-        || ((isFinanceDesk() || isGmSm()) && id == dealershipId());
+        || ((isFinanceDesk() || isGm()) && id == dealershipId());
       allow write: if false;
     }
 

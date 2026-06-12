@@ -43,7 +43,7 @@ assertCheck(
   "Super Admin must use /admin routes, not bank/finance/gm portals.",
 );
 assertCheck("finance route allows only finance-desk", router.includes('path: "/finance"') && router.includes("roles={[ROLES.FINANCE_DESK]}"));
-assertCheck("gm route allows only gm-sm", router.includes('path: "/gm"') && router.includes("roles={[ROLES.GM_SM]}"));
+assertCheck("gm route allows only gm", router.includes('path: "/gm"') && router.includes("roles={[ROLES.GM]}"));
 assertCheck("bank manager route allows only bank-manager", router.includes('path: "/bank-manager"') && router.includes("roles={[ROLES.BANK_MANAGER]}"));
 assertCheck("loan executive route allows only loan-executive", router.includes('path: "/loan-executive"') && router.includes("roles={[ROLES.LOAN_EXECUTIVE]}"));
 assertCheck("admin route allows only super-admin", router.includes('path: "/admin"') && router.includes("roles={[ROLES.SUPER_ADMIN]}"));

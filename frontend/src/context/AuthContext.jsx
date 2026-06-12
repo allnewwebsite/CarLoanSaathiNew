@@ -25,7 +25,7 @@ const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
 const LOGIN_PORTAL_ROLES = {
   dealer: ["finance-desk"],
   finance: ["finance-desk"],
-  gm: ["gm-sm"],
+  gm: ["gm"],
   bank: ["bank-manager"],
   "bank-manager": ["bank-manager"],
   executive: ["loan-executive"],
@@ -35,7 +35,7 @@ const LOGIN_PORTAL_ROLES = {
 };
 const ROLE_LOGIN_PORTALS = {
   "finance-desk": "finance",
-  "gm-sm": "gm",
+  "gm": "gm",
   "bank-manager": "bank-manager",
   "loan-executive": "loan-executive",
   "super-admin": "admin",
@@ -334,7 +334,7 @@ export function AuthProvider({ children }) {
     if (!recentlyValidated) validateSession({ showLoading: false });
     const interval = window.setInterval(() => {
       const current = getStoredUser();
-      if (["finance-desk", "gm-sm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
+      if (["finance-desk", "gm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
     }, SESSION_VALIDATE_INTERVAL_MS);
     return () => {
       window.clearInterval(interval);

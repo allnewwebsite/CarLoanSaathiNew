@@ -25,7 +25,7 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   }
   if (!user) return <Navigate to={fallbackLogin || "/dealer/login"} replace state={{ from: location }} />;
   if (!isKnownRole(user.role)) return <Navigate to={loginPathForRole(user.role)} replace />;
-  if ([ROLES.FINANCE_DESK, ROLES.GM_SM].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
+  if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
     return <Navigate to="/dealer-registration/pending" replace />;
   }
   if ([ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {

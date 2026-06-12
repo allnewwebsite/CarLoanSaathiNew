@@ -180,7 +180,7 @@ Defined in `backend/config/governance.js`.
 
 - `super-admin`: all permissions.
 - `finance-desk`: own dealership lead creation, document upload, salesperson management.
-- `gm-sm`: own dealership read-only monitoring.
+- `gm`: own dealership read-only monitoring.
 - `bank-manager`: own bank monitoring and executive management.
 - `loan-executive`: assigned lead/document/status access.
 

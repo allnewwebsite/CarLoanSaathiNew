@@ -20,6 +20,7 @@ uploads/
 *.log
 load-tests/results/*
 !load-tests/results/.gitkeep
+backend/migration-reports/
 
 # Firebase service account keys
 *-firebase-adminsdk-*.json

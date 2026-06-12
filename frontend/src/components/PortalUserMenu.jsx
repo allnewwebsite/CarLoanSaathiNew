@@ -4,7 +4,7 @@ import { LogOut, MoreVertical, UserRound, X } from "lucide-react";
 const ROLE_LABELS = {
   "super-admin": "Super Admin",
   "finance-desk": "Finance Desk",
-  "gm-sm": "GM / SM",
+  "gm": "General Manager",
   "bank-manager": "Bank Manager",
   "loan-executive": "Loan Executive",
 };
@@ -49,7 +49,7 @@ function profileRows(user) {
     ];
   }
 
-  if (["finance-desk", "gm-sm"].includes(user?.role)) {
+  if (["finance-desk", "gm"].includes(user?.role)) {
     return [
       ["Dealership Name", displayValue(valueFrom(user, "dealershipName", "dealerName"))],
       ["Owner Name", displayValue(valueFrom(user, "ownerName", "ownerFullName", "fullName", "name"))],

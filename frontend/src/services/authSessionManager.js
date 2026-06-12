@@ -16,7 +16,7 @@ const ACTIVE_SCOPE_KEY = "cls_active_auth_scope";
 
 const ROLE_SCOPES = {
   "finance-desk": "finance",
-  "gm-sm": "gm",
+  "gm": "gm",
   "bank-manager": "bank-manager",
   "loan-executive": "loan-executive",
   "super-admin": "admin",

@@ -66,7 +66,7 @@ function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) 
 }
 
 function SectionTitle({ title, subtitle }) {
-  return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">GM / SM Head</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1>{subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}</div>;
+  return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">General Manager</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1>{subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}</div>;
 }
 
 function DocumentsButton({ lead }) {

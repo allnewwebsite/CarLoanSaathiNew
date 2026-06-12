@@ -116,9 +116,9 @@ assert(getStoredToken() === "finance-token", "Finance token was not stored in fi
 assert(getStoredUser()?.role === "finance-desk", "Finance user was not restored from finance scope.");
 
 setPath("/gm/total-leads");
-storeAuthSession(session("gm@example.com", "gm-sm"), "gm-token");
+storeAuthSession(session("gm@example.com", "gm"), "gm-token");
 assert(getStoredToken() === "gm-token", "GM token was not stored in GM scope.");
-assert(getStoredUser()?.role === "gm-sm", "GM user was not restored from GM scope.");
+assert(getStoredUser()?.role === "gm", "GM user was not restored from GM scope.");
 
 setPath("/finance/total-leads");
 assert(getStoredToken() === "finance-token", "GM login overwrote finance token.");
@@ -174,7 +174,7 @@ assertFailedAttemptLeavesSessionUntouched({
 
 assertFailedAttemptLeavesSessionUntouched({
   activePath: "/gm/total-leads",
-  activeUser: session("gm-active@example.com", "gm-sm"),
+  activeUser: session("gm-active@example.com", "gm"),
   activeToken: "gm-active-token",
   attemptedPath: "/finance/login",
   label: "GM active + Finance wrong password",

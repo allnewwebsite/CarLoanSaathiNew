@@ -51,7 +51,7 @@ const lead = {
 
 const clients = {
   finance: mockConnection({ role: "finance-desk", email: "finance@dealer-rt.example.com", dealershipId: "dealer-rt@example.com" }),
-  gm: mockConnection({ role: "gm-sm", email: "gm@dealer-rt.example.com", dealershipId: "dealer-rt@example.com" }),
+  gm: mockConnection({ role: "gm", email: "gm@dealer-rt.example.com", dealershipId: "dealer-rt@example.com" }),
   bank: mockConnection({ role: "bank-manager", email: "bank@example.com", bankId: "BANK-RT-1" }),
   executive: mockConnection({ role: "loan-executive", email: "exec-rt@example.com", uid: "exec-rt-1" }),
   admin: mockConnection({ role: "super-admin", email: "admin@example.com", uid: "admin@example.com" }),

@@ -1,6 +1,6 @@
 # Firestore Read Budget
 
-Targets are for the normal operating profile: 1 dealership, 1 bank branch, 1 GM/SM, 1 finance desk, 1 bank manager, and 1-3 loan executives.
+Targets are for the normal operating profile: 1 dealership, 1 bank branch, 1 GM, 1 finance desk, 1 bank manager, and 1-3 loan executives.
 
 | API / Action | Target Reads | Primary Source | Notes |
 | --- | ---: | --- | --- |

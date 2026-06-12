@@ -35,7 +35,7 @@ const emptyLead = {
 
 const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
 const emptyFinanceManager = { name: "", mobile: "", employeeId: "", email: "" };
-const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "finance-head", branch: "", city: "" };
+const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "gm", branch: "", city: "" };
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
 function display(value) {
@@ -327,7 +327,7 @@ function StaffManagementScreen() {
       setMessage("Employee created successfully.");
       setCredentials({
         name: response.data?.fullName || nextForm.fullName,
-        role: response.data?.roleLabel || (nextForm.role === "finance-head" ? "Finance Head" : "GM / SM"),
+        role: response.data?.roleLabel || "GM",
         email: response.data?.email || nextForm.email,
         temporaryPassword: response.data?.temporaryPassword || "",
         portalLogin: response.data?.portalLogin || `${window.location.origin}/dealer/login`,
@@ -346,7 +346,7 @@ function StaffManagementScreen() {
     setMessage("");
     setError("");
     try {
-      await api.delete(`/dealer/staff/${encodeURIComponent(staff.id || staff.email)}`);
+      await api.delete(`/dealer/staff/${encodeURIComponent(staff.email || staff.id)}`);
       setMessage("Employee permanently removed.");
       await loadStaff();
     } catch (err) {
@@ -366,7 +366,7 @@ function StaffManagementScreen() {
       display(staff.status),
       dateValue(staff.createdAt),
       <div key="actions" className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => navigate(`/finance/staff/${encodeURIComponent(staff.id || staff.email)}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => navigate(`/finance/staff/${encodeURIComponent(staff.email || staff.id)}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
         {staff.protected ? null : <button type="button" onClick={() => removeStaff(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>}
       </div>,
     ],
@@ -374,7 +374,7 @@ function StaffManagementScreen() {
 
   return (
     <section className="space-y-4">
-      <SectionTitle title="Add GM or SM" subtitle="Create dealership GM and SM accounts with temporary password security." />
+      <SectionTitle title="Add GM" subtitle="Create dealership General Manager accounts with temporary password security." />
       {credentials ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -403,7 +403,7 @@ function StaffManagementScreen() {
           <Field label="Official Email" error={errors.email}><input aria-invalid={Boolean(errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
           <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Role" error={errors.role}><select aria-invalid={Boolean(errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onBlur={() => setErrors(validate(form))} onChange={(event) => update("role", event.target.value)}><option value="finance-head">Finance Head</option><option value="gm">GM</option><option value="sm">SM</option></select></Field>
+          <Field label="Role" error={errors.role}><select aria-invalid={Boolean(errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onBlur={() => setErrors(validate(form))} onChange={(event) => update("role", event.target.value)}><option value="gm">GM</option></select></Field>
           <Field label="Branch / Location"><input className="field mt-1.5 h-10 rounded-md" value={form.branch} onChange={(event) => update("branch", event.target.value.replace(/[<>]/g, ""))} /></Field>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
@@ -445,7 +445,7 @@ export function FinanceStaffDetailPage() {
     const confirmed = window.confirm("Are you sure you want to permanently remove this employee?");
     if (!confirmed) return;
     try {
-      await api.delete(`/dealer/staff/${encodeURIComponent(employee.id || employee.email)}`);
+      await api.delete(`/dealer/staff/${encodeURIComponent(employee.email || employee.id)}`);
       navigate("/finance/manage-staff");
     } catch (err) {
       setError(err.response?.data?.message || "Unable to remove employee");

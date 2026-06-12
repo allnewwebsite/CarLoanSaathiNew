@@ -32,8 +32,8 @@ function roleLeadQueries(user, rowLimit) {
       factory: () => query(collection(db, "adminViews"), where("viewType", "==", "lead"), orderBy("updatedAt", "desc"), limit(rowLimit)),
     }];
   }
-  if (["finance-desk", "gm-sm"].includes(user.role)) {
-    const collectionName = user.role === "gm-sm" ? "gmViews" : "financeViews";
+  if (["finance-desk", "gm"].includes(user.role)) {
+    const collectionName = user.role === "gm" ? "gmViews" : "financeViews";
     return uniqueScopes([user.dealershipId, user.email, user.uid]).map((scope) => ({
       key: `${collectionName}:lead:${scope}:${rowLimit}`,
       factory: () => query(
@@ -350,7 +350,7 @@ export function notificationQueryForUser(user, unreadOnly = false) {
   const constraints = [];
   if (user.role === "super-admin") {
     constraints.push(orderBy("createdAt", "desc"));
-  } else if (["finance-desk", "gm-sm"].includes(user.role) && user.dealershipId) {
+  } else if (["finance-desk", "gm"].includes(user.role) && user.dealershipId) {
     constraints.push(where("dealershipId", "==", user.dealershipId), orderBy("createdAt", "desc"));
   } else if (user.role === "bank-manager" && user.bankId) {
     constraints.push(where("bankId", "==", user.bankId), orderBy("createdAt", "desc"));

@@ -407,7 +407,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     const gmEmail = normalizeEmail(request.generalManager.email);
     const gmUid = await firebaseUidForEmail(gmEmail);
     const gmCanonicalId = gmUid || gmEmail;
-    await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
+    await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm", excludeIds: [gmCanonicalId, gmEmail] });
     await upsertCanonicalUser(gmCanonicalId, {
       ...dealerIdentityProfile(dealerFields, request),
       uid: gmCanonicalId,
@@ -418,7 +418,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
       mobile: request.generalManager?.mobile || "",
       ownerName: request.owner?.fullName || "",
       ownerMobile: request.owner?.mobile || "",
-      role: "gm-sm",
+      role: "gm",
       approved: true,
       active: true,
       accountApproved: true,
@@ -747,7 +747,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
 
   const gmEmail = normalizeEmail(request.generalManager?.email);
   if (gmEmail) {
-    await assertNoActiveIdentityCollision({ uid: gmEmail, email: gmEmail, role: "gm-sm", excludeIds: [gmEmail] });
+    await assertNoActiveIdentityCollision({ uid: gmEmail, email: gmEmail, role: "gm", excludeIds: [gmEmail] });
     await upsertCanonicalUser(gmEmail, {
       ...dealerIdentityProfile(dealership, request),
       uid: gmEmail,
@@ -758,7 +758,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
       mobile: request.generalManager?.mobile || "",
       ownerName: request.owner?.fullName || "",
       ownerMobile: request.owner?.mobile || "",
-      role: "gm-sm",
+      role: "gm",
       approved: true,
       active: true,
       accountApproved: true,
@@ -1268,7 +1268,7 @@ export async function suspendDealershipApproval(req, res, next) {
       await upsertRecord("users", loginEmail, { uid: loginEmail, email: loginEmail, role: "finance-desk", approved: true, active: false, accountActive: false, dealershipId: loginEmail, status: "suspended" });
     }
     if (request.generalManager?.email) {
-      await upsertRecord("users", request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm-sm", approved: true, active: false, accountActive: false, dealershipId: loginEmail, status: "suspended" });
+      await upsertRecord("users", request.generalManager.email, { uid: request.generalManager.email, email: request.generalManager.email, role: "gm", approved: true, active: false, accountActive: false, dealershipId: loginEmail, status: "suspended" });
     }
     if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Suspended", active: false, accountActive: false, suspensionReason: reason });
     const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;

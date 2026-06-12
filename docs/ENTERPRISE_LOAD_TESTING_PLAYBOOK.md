@@ -10,7 +10,7 @@ CarLoanSaathi capacity claims must be proven with staged, repeatable, production
 - Staging Vercel frontend.
 - Staging Firebase project with separate Auth, Firestore, and Storage.
 - Staging Redis instance when queue benchmarks are enabled.
-- Synthetic users for `finance-desk`, `gm-sm`, `bank-manager`, `loan-executive`, and `super-admin`.
+- Synthetic users for `finance-desk`, `gm`, `bank-manager`, `loan-executive`, and `super-admin`.
 - Synthetic leads tagged with `loadTest: true`.
 
 Do not run write or heavy tests against production. Production is limited to smoke checks only.

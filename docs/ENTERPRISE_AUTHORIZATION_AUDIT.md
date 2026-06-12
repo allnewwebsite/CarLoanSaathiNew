@@ -15,7 +15,7 @@ CarLoanSaathi uses zero-trust authorization:
 | Portal | Route | Allowed Role |
 | --- | --- | --- |
 | Finance Desk | `/finance/*` | `finance-desk` |
-| GM/SM | `/gm/*` | `gm-sm` |
+| GM | `/gm/*` | `gm` |
 | Bank Manager | `/bank-manager/*` | `bank-manager` |
 | Loan Executive | `/loan-executive/*` | `loan-executive` |
 | Super Admin | `/admin/*` | `super-admin` |
@@ -27,7 +27,7 @@ Super Admin no longer bypasses every protected frontend route. Super Admin uses 
 | API Group | Middleware |
 | --- | --- |
 | `/api/dealer/*` | `authenticate` + `requireRole(finance-desk)` |
-| `/api/gm/*` | `authenticate` + `requireRole(gm-sm)` |
+| `/api/gm/*` | `authenticate` + `requireRole(gm)` |
 | `/api/bank/*` | `authenticate` + `requireRole(bank-manager, loan-executive)` plus action-level role checks |
 | `/api/admin/*` | `authenticate` + `requireRole(super-admin)` |
 | `/api/documents/upload` | `authenticate` + `requireRole(finance-desk)` plus lead ownership check |
@@ -41,7 +41,7 @@ The backend role guard no longer has a wildcard Super Admin bypass. Admin access
 | Role | Data Scope |
 | --- | --- |
 | `finance-desk` | `lead.dealershipId == user.dealershipId` |
-| `gm-sm` | `lead.dealershipId == user.dealershipId` |
+| `gm` | `lead.dealershipId == user.dealershipId` |
 | `bank-manager` | `lead.bankId == user.bankId` |
 | `loan-executive` | `lead.assignedExecutiveId == user.uid/email` |
 | `super-admin` | Admin APIs and admin Firestore rules |
@@ -70,11 +70,11 @@ Hardened:
 
 ## Attack Scenarios Covered
 
-- Manual `/finance/*` URL access by GM/SM: redirected by frontend, blocked by backend.
+- Manual `/finance/*` URL access by GM: redirected by frontend, blocked by backend.
 - Manual `/gm/*` URL access by Finance Desk: redirected by frontend, blocked by backend.
 - Super Admin trying `/bank-manager/*`: redirected to `/admin/dashboard`, blocked by bank APIs.
 - Direct bank API call by Finance Desk: `403 ROLE_FORBIDDEN`.
-- Direct finance API call by GM/SM: `403 ROLE_FORBIDDEN`.
+- Direct finance API call by GM: `403 ROLE_FORBIDDEN`.
 - Cross-dealership lead query: blocked by scoped backend query and Firestore rules.
 - Cross-bank lead query: blocked by scoped backend query and Firestore rules.
 - Notification enumeration: blocked by recipient/tenant checks.

@@ -1,6 +1,6 @@
 export const roles = [
   { id: "super-admin", label: "Super Admin", path: "/admin/dashboard" },
-  { id: "gm-sm", label: "GM / SM Tracking", path: "/gm/dashboard" },
+  { id: "gm", label: "GM Tracking", path: "/gm/dashboard" },
   { id: "finance-desk", label: "Finance Desk", path: "/finance/dashboard" },
   { id: "bank-manager", label: "Bank Branch Manager", path: "/bank-manager/dashboard" },
   { id: "loan-executive", label: "Loan Executive", path: "/loan-executive/dashboard" },

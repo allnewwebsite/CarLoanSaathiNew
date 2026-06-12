@@ -9,14 +9,14 @@ const router = Router();
 router.get(
   "/fast",
   authenticate,
-  requireRole(ROLES.SUPER_ADMIN, ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE),
+  requireRole(ROLES.SUPER_ADMIN, ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE),
   getFastDashboard,
 );
 
 router.get(
   "/overview",
   authenticate,
-  requireRole(ROLES.SUPER_ADMIN, ROLES.FINANCE_DESK, ROLES.GM_SM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE),
+  requireRole(ROLES.SUPER_ADMIN, ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE),
   getOverview,
 );
 

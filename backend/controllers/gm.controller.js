@@ -151,14 +151,14 @@ export async function getGmLeads(req, res, next) {
       const identitySet = salespersonIdentitySet(salesperson || {}, req.query.salespersonId);
       const { salespersonId: _salespersonId, page: _page, cursor: _cursor, limit: _limit, ...queryWithoutSalesperson } = req.query;
       const projectionPage = salesperson ? await queryLeadProjectionForUser({
-        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: { ...queryWithoutSalesperson, salespersonId: salesperson.id || salesperson.sourceId || salesperson.jobId || salesperson.email, limit, page: requestedPage },
       }).catch(() => null) : null;
       if (projectionPage?.data?.length) {
         page = projectionPage;
       } else {
         const fullPage = await queryLeadProjectionForUser({
-        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: { ...queryWithoutSalesperson, limit: 100 },
         }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: { ...queryWithoutSalesperson, limit: 100 } });
         const matched = fullPage.data.filter((lead) => leadMatchesSalesperson(lead, identitySet));
@@ -174,7 +174,7 @@ export async function getGmLeads(req, res, next) {
       }
     } else {
       page = await queryLeadProjectionForUser({
-        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: req.query,
       }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
     }
@@ -207,7 +207,7 @@ export async function getGmSalespersons(req, res, next) {
     if (projected?.length) return res.json(projected);
     const leads = await cached(`gm:salespersons:leads:${dealershipEmail}`, 15000, async () => {
       const leadsPage = await queryLeadProjectionForUser({
-        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: { limit: 100 },
       }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: { limit: 100 } });
       return leadsPage.data;
@@ -286,13 +286,13 @@ export async function getGmNotifications(req, res, next) {
     const dealershipEmail = await dealershipEmailForGm(req);
     if (!dealershipEmail) return res.json([]);
     const projected = await queryNotificationProjectionForUser({
-      user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+      user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
       query: { ...req.query, limit: req.query.limit || 30 },
     }).catch(() => null);
     if (projected) return res.json(projected.data || []);
     const leads = await cached(`gm:notifications:${dealershipEmail}`, 15000, async () => {
       const page = await queryLeadProjectionForUser({
-        user: { ...req.user, role: "gm-sm", dealershipId: dealershipEmail },
+        user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: { limit: 30 },
       }).catch(() => null);
       return page?.data || [];

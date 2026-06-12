@@ -26,7 +26,7 @@ function canUploadCustomerDocument(req, lead) {
 async function canReadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
   const email = req.user?.email || req.user?.uid;
-  if (["finance-desk", "gm-sm"].includes(req.user?.role)) {
+  if (["finance-desk", "gm"].includes(req.user?.role)) {
     return lead?.dealershipId === req.user?.dealershipId || lead?.dealerEmail === email || lead?.dealershipEmail === email || lead?.createdBy === email;
   }
   if (req.user?.role === "bank-manager") {

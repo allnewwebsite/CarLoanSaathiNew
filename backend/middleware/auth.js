@@ -12,14 +12,14 @@ import { recordMonitoringSignal } from "../services/monitoringCenter.service.js"
 
 const ROLE_PORTALS = {
   "finance-desk": "finance",
-  "gm-sm": "finance",
+  "gm": "finance",
   "bank-manager": "bank",
   "loan-executive": "bank",
   "super-admin": "admin",
 };
 const ROLE_LOGIN_PORTALS = {
   "finance-desk": "finance",
-  "gm-sm": "gm",
+  "gm": "gm",
   "bank-manager": "bank-manager",
   "loan-executive": "loan-executive",
   "super-admin": "admin",
@@ -162,7 +162,7 @@ async function tracedCached(step, key, ttlMs, loader, meta = {}) {
 }
 
 async function dealerAccountIsActive(user, resolvedAccount = null) {
-  if (!["finance-desk", "gm-sm"].includes(user?.role)) return true;
+  if (!["finance-desk", "gm"].includes(user?.role)) return true;
   const email = String(user.email || user.uid || "").trim().toLowerCase();
   const dealershipId = String(user.dealershipId || email).trim().toLowerCase();
   const account = resolvedAccount || await tracedCached(
@@ -236,7 +236,7 @@ async function verifiedAccountFromTokenUser(tokenUser = {}) {
 }
 
 function passwordChangeRequired(account = {}) {
-  if (!["finance-desk", "gm-sm", "loan-executive"].includes(account.role)) return false;
+  if (!["finance-desk", "gm", "loan-executive"].includes(account.role)) return false;
   if (account.firstLoginRequired === true && !account.passwordChangedAt) return true;
   if (!account.passwordExpiresAt) return false;
   return new Date(account.passwordExpiresAt).getTime() <= Date.now();
@@ -253,7 +253,7 @@ function authUrlAllowedDuringPasswordChange(req) {
 
 function passwordChangePathForRole(role) {
   if (role === "loan-executive") return "/loan-executive/change-password";
-  if (role === "gm-sm") return "/gm/change-password";
+  if (role === "gm") return "/gm/change-password";
   if (role === "finance-desk") return "/finance/change-password";
   return "/change-password";
 }

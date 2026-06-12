@@ -32,7 +32,7 @@ export const ROLE_PERMISSIONS = Object.freeze({
     "salesperson:manage:dealership",
     "notification:read:tenant",
   ],
-  "gm-sm": [
+  "gm": [
     "lead:read:dealership",
     "salesperson:read:dealership",
     "notification:read:tenant",
