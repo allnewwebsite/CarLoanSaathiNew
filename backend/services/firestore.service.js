@@ -101,6 +101,7 @@ const DIRECT_ID_ONLY_COLLECTIONS = new Set([
   "operationalAlerts",
   "operationalEvents",
   "systemCounters",
+  "users",
   "userSessions",
   "whatsappQueue",
 ]);

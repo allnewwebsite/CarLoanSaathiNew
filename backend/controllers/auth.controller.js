@@ -176,14 +176,6 @@ async function createUserSession({ req, user }) {
   const now = new Date().toISOString();
   const sessionId = crypto.randomUUID();
   const userAgent = req.headers["user-agent"] || "";
-  const activeSessions = (await findRecordsByField("userSessions", "email", user.email, 25)).filter((session) => session.revoked !== true);
-  const sorted = activeSessions.sort((left, right) => String(right.loginAt || "").localeCompare(String(left.loginAt || "")));
-  const revoke = sorted.slice(Math.max(MAX_CONCURRENT_SESSIONS - 1, 0));
-  await Promise.all(revoke.map((session) => updateRecord("userSessions", session.id, {
-    revoked: true,
-    revokedAt: now,
-    revokedReason: "concurrent-session-limit",
-  }).catch(() => null)));
   await createRecord("userSessions", {
     id: sessionId,
     sessionId,
@@ -203,7 +195,48 @@ async function createUserSession({ req, user }) {
     expiresAt: new Date(Date.now() + SESSION_TIMEOUT_HOURS * 60 * 60 * 1000).toISOString(),
     revoked: false,
   });
+  setImmediate(() => {
+    enforceConcurrentSessionLimit(user.email).catch((error) => {
+      logWarn("Concurrent session cleanup failed", { message: error.message });
+    });
+  });
   return sessionId;
+}
+
+async function enforceConcurrentSessionLimit(email) {
+  const now = new Date().toISOString();
+  const page = await queryRecords("userSessions", {
+    where: [
+      { field: "email", value: email },
+      { field: "revoked", value: false },
+    ],
+    orderBy: "loginAt",
+    direction: "desc",
+    limit: Math.max(MAX_CONCURRENT_SESSIONS + 1, 1),
+    maxLimit: Math.max(MAX_CONCURRENT_SESSIONS + 1, 1),
+  });
+  const activeSessions = page.data || [];
+  const revoke = activeSessions.slice(Math.max(MAX_CONCURRENT_SESSIONS, 0));
+  await Promise.all(revoke.map((session) => updateRecord("userSessions", session.id, {
+    revoked: true,
+    revokedAt: now,
+    revokedReason: "concurrent-session-limit",
+  }).catch(() => null)));
+}
+
+function scheduleLoginMaintenance(requestId, tasks = []) {
+  setImmediate(async () => {
+    const results = await Promise.allSettled(tasks.map(({ run }) => run()));
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logWarn("Deferred login maintenance failed", {
+          requestId,
+          task: tasks[index]?.name || "unknown",
+          message: result.reason?.message || "Unknown error",
+        });
+      }
+    });
+  });
 }
 
 function lockUntilDate() {
@@ -252,6 +285,11 @@ async function incrementFailedLogin(email, req, reason = "firebase-auth-failed")
 async function clearFailedLogin(email) {
   const account = (await findIdentityCandidates({ email })).find((item) => item.role);
   if (!account) return;
+  await clearFailedLoginForAccount(email, account);
+}
+
+async function clearFailedLoginForAccount(email, account) {
+  if (!account?.role) return;
   await upsertCanonicalUser(account.uid || account.id || email, {
     ...account,
     failedLoginAttempts: 0,
@@ -263,7 +301,6 @@ async function clearFailedLogin(email) {
 async function clearTransientLoginLock(email, account = {}) {
   if (!account?.role) return account;
   if (!account.lockedUntil && !account.failedLoginAttempts && account.accountStatus !== "locked") return account;
-  await clearFailedLogin(email);
   return {
     ...account,
     failedLoginAttempts: 0,
@@ -647,19 +684,24 @@ function bankLoginGate(registration) {
 
 async function approvedDealerAccess(email, account) {
   const dealershipEmail = account?.dealershipId || email;
-  const registration = await firstLookup([
-    () => getRecord("pendingDealerAccounts", dealershipEmail),
-    () => findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 5),
-    () => findRecordsByField("pendingDealerAccounts", "email", email, 5),
-  ]).catch((error) => {
-    logWarn("Auth pending dealer account lookup failed", { error: error.message });
-    return null;
-  });
-  const dealership = await getRecord("dealerships", dealershipEmail).catch(() => null) || await getRecord("approvedDealerships", dealershipEmail).catch(() => null);
   const activeApprovedAccount = account?.approved === true
     && account?.active === true
     && account?.accountApproved === true
     && account?.accountActive === true;
+  const [dealership, registration] = await Promise.all([
+    getRecord("dealerships", dealershipEmail).catch(() => null)
+      .then((record) => record || getRecord("approvedDealerships", dealershipEmail).catch(() => null)),
+    activeApprovedAccount
+      ? Promise.resolve(null)
+      : firstLookup([
+        () => getRecord("pendingDealerAccounts", dealershipEmail),
+        () => findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 5),
+        () => findRecordsByField("pendingDealerAccounts", "email", email, 5),
+      ]).catch((error) => {
+        logWarn("Auth pending dealer account lookup failed", { error: error.message });
+        return null;
+      }),
+  ]);
   const activeDealership = dealership
     && dealership.accountActive !== false
     && dealership.active !== false
@@ -682,11 +724,27 @@ function accountActive(account) {
     && !["pending", "rejected", "suspended", "inactive", "paused", "disabled", "removed"].includes(String(account?.status || "").toLowerCase());
 }
 
-async function setFirebaseClaims(email, user) {
+function firebaseClaimsMatch(decoded = {}, user = {}) {
+  const same = (left, right) => (left ?? null) === (right ?? null);
+  return same(decoded.role, user.role)
+    && same(decoded.approved, user.approved === true)
+    && same(decoded.active, user.active === true)
+    && same(decoded.dealershipId, user.dealershipId || null)
+    && same(decoded.portalType, user.portalType || null)
+    && same(decoded.accountType, user.accountType || null)
+    && same(decoded.bankId, user.bankId || null)
+    && same(decoded.branchId, user.branchId || null);
+}
+
+async function setFirebaseClaims(identifier, user, { decoded = null } = {}) {
   if (!firebaseAdmin) return;
+  if (decoded && firebaseClaimsMatch(decoded, user)) return;
   try {
-    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
-    await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
+    const uid = String(identifier || "").includes("@")
+      ? (await firebaseAdmin.auth().getUserByEmail(identifier)).uid
+      : String(identifier || "").trim();
+    if (!uid) return;
+    await firebaseAdmin.auth().setCustomUserClaims(uid, {
       role: user.role,
       approved: user.approved === true,
       active: user.active === true,
@@ -790,6 +848,8 @@ async function signInWithFirebasePassword(email, password) {
 }
 
 export async function login(req, res, next) {
+  const loginStartedAt = Date.now();
+  const timings = {};
   let authPhase = "start";
   let normalizedEmail = "";
   try {
@@ -803,7 +863,9 @@ export async function login(req, res, next) {
         return res.status(400).json({ message: "Email and password are required" });
       }
       try {
+        const startedAt = Date.now();
         idToken = await signInWithFirebasePassword(normalizedEmail, password);
+        timings.firebasePasswordMs = Date.now() - startedAt;
       } catch (error) {
         if (error.status === 401) {
           const result = await incrementFailedLogin(normalizedEmail, req, error.code || "firebase-auth-failed");
@@ -822,7 +884,9 @@ export async function login(req, res, next) {
     }
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     authPhase = "verify-firebase-token";
+    const verifyStartedAt = Date.now();
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+    timings.firebaseVerifyMs = Date.now() - verifyStartedAt;
     normalizedEmail = String(decoded.email || "").trim().toLowerCase();
     const firebaseUid = String(decoded.uid || "").trim();
     logInfo("Auth login token verified", { requestId: req.requestId, portal });
@@ -833,9 +897,12 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: "Please verify your email address before logging in.", code: "EMAIL_NOT_VERIFIED" });
     }
     authPhase = "resolve-account";
+    const identityStartedAt = Date.now();
     const identityContext = await identityContextFor(normalizedEmail, firebaseUid);
     let account = await accountForEmail(normalizedEmail, portal, firebaseUid, identityContext);
+    const resetFailedLogin = Boolean(account?.lockedUntil || account?.failedLoginAttempts || account?.accountStatus === "locked");
     account = await clearTransientLoginLock(normalizedEmail, account);
+    timings.identityMs = Date.now() - identityStartedAt;
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
       const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid, { identityContext, skipPortals: [portal] });
@@ -937,7 +1004,6 @@ export async function login(req, res, next) {
     }
     authPhase = "password-lifecycle";
     const lifecycle = passwordLifecyclePatch(account);
-    await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
     authPhase = "persist-user-session";
     const user = {
       uid: firebaseUid || account.uid || normalizedEmail,
@@ -965,19 +1031,19 @@ export async function login(req, res, next) {
       passwordExpired: lifecycle.passwordExpired,
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
+      dealershipName: account.dealershipName || null,
+      dealerCity: account.dealerCity || account.city || null,
+      bankName: account.bankName || account.companyName || null,
+      bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || null,
+      bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
     };
-    await upsertCanonicalUser(user.uid, user);
-    await clearFailedLogin(normalizedEmail);
-    await setFirebaseClaims(normalizedEmail, user);
     authPhase = "create-user-session";
+    const sessionStartedAt = Date.now();
     const sessionId = await createUserSession({ req, user });
+    timings.sessionWriteMs = Date.now() - sessionStartedAt;
     user.sessionId = sessionId;
-    authPhase = "account-presentation";
-    const presentation = await accountPresentation(normalizedEmail, user);
-    Object.assign(user, presentation);
     authPhase = "sign-jwt";
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
-    await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req });
     setAuthCookie(res, token);
     const forcedPasswordPath = passwordChangeRouteForRole(user.role);
     const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
@@ -986,12 +1052,32 @@ export async function login(req, res, next) {
       jwtRole: user.role,
       accountSource: user.accountSource,
       redirectTo,
+      durationMs: Date.now() - loginStartedAt,
+      timings,
     });
     res.json({
       token,
       user,
       redirectTo,
     });
+    scheduleLoginMaintenance(req.requestId, [
+      {
+        name: "login-activity",
+        run: () => writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req }),
+      },
+      {
+        name: "firebase-claims",
+        run: () => setFirebaseClaims(firebaseUid || normalizedEmail, user, { decoded }),
+      },
+      {
+        name: "password-lifecycle",
+        run: () => persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle),
+      },
+      ...(resetFailedLogin ? [{
+        name: "failed-login-reset",
+        run: () => clearFailedLoginForAccount(normalizedEmail, account),
+      }] : []),
+    ]);
   } catch (error) {
     logError("Auth login failed", {
       requestId: req.requestId,

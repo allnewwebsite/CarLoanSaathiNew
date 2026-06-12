@@ -6,7 +6,7 @@ export const options = {
   thresholds: {
     http_req_failed: ["rate<0.02"],
     "http_req_duration{area:firebase-auth}": ["p(95)<2500", "p(99)<5000"],
-    "http_req_duration{area:backend-auth}": ["p(95)<2000", "p(99)<4000"],
+    "http_req_duration{area:backend-auth}": ["p(95)<500", "p(99)<1000"],
     "http_req_duration{area:session-validation}": ["p(95)<1500", "p(99)<3000"],
   },
 };

@@ -714,6 +714,15 @@
       ]
     },
     {
+      "collectionGroup": "userSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "email", "order": "ASCENDING" },
+        { "fieldPath": "revoked", "order": "ASCENDING" },
+        { "fieldPath": "loginAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "pendingDealershipApprovals",
       "queryScope": "COLLECTION",
       "fields": [
