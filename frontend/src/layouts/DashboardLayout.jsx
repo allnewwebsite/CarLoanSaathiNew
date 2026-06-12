@@ -1,7 +1,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Settings, Shield, Users, X } from "lucide-react";
+import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, Menu, PanelLeftClose, PanelLeftOpen, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
+import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { prefetchGet } from "../services/api.js";
 import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
@@ -271,9 +272,7 @@ export function DashboardLayout() {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <NotificationCenter />
-              <button onClick={handleLogout} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:px-3">
-                <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
-              </button>
+              <PortalUserMenu user={user} onLogout={handleLogout} />
             </div>
           </div>
         </header>

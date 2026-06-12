@@ -54,6 +54,9 @@ async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
   const record = {
     uid: authUser.uid,
     email,
+    name: String(process.env.SUPER_ADMIN_NAME || authUser.displayName || "Super Admin").trim(),
+    fullName: String(process.env.SUPER_ADMIN_NAME || authUser.displayName || "Super Admin").trim(),
+    mobile: String(process.env.SUPER_ADMIN_MOBILE || "").trim(),
     role: "super-admin",
     approved: true,
     active: true,

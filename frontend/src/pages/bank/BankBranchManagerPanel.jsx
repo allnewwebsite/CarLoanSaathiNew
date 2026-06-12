@@ -358,22 +358,22 @@ function SearchBar({ value, onChange }) {
   );
 }
 
-function useBankLeads(search, status = "") {
+function useBankLeads(search, status = "", dealershipId = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status });
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, dealershipId });
   const cachedRows = responseRows({ data: cached });
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || "", dealershipId || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, ...cursorParamsForPage(targetPage) } });
+      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, dealershipId, ...cursorParamsForPage(targetPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -382,7 +382,7 @@ function useBankLeads(search, status = "") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
+  }, [page, search, status, dealershipId, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
@@ -392,22 +392,22 @@ function useBankLeads(search, status = "") {
   return { rows, total, hasMore, loading, page, onPage, load };
 }
 
-function useBankDealerships(search) {
+function useBankDealerships() {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/dealerships", { page, limit: pageSize, search });
+  const cached = getCachedGetData("/bank/dealerships", { page, limit: pageSize });
   const cachedRows = responseRows({ data: cached });
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || ""]);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/dealerships", { params: { page: targetPage, limit: pageSize, search, ...cursorParamsForPage(targetPage) } });
+      const response = await api.get("/bank/dealerships", { params: { page: targetPage, limit: pageSize, ...cursorParamsForPage(targetPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -416,7 +416,7 @@ function useBankDealerships(search) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, cursorParamsForPage, rememberNextCursor]);
+  }, [page, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
@@ -477,11 +477,33 @@ function useExecutives() {
 
 function TotalLeadsPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 180);
-  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads(debouncedSearch);
+  const [params, setParams] = useSearchParams();
+  const dealershipId = params.get("dealershipId") || "";
+  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads("", "", dealershipId);
+  const [knownDealerships, setKnownDealerships] = useState([]);
   const [actionError, setActionError] = useState("");
   const [pendingReassign, setPendingReassign] = useState(null);
+  useEffect(() => {
+    setKnownDealerships((current) => {
+      const byId = new Map(current.map((item) => [item.id, item]));
+      rows.forEach((lead) => {
+        const id = String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").trim();
+        if (!id) return;
+        byId.set(id, {
+          id,
+          name: lead.dealershipName || lead.dealerName || lead.dealerBusinessName || lead.dealershipEmail || lead.dealerEmail || id,
+        });
+      });
+      return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+    });
+  }, [rows]);
+  const selectDealership = (value) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set("dealershipId", value);
+    else next.delete("dealershipId");
+    next.set("page", "1");
+    setParams(next);
+  };
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
@@ -514,7 +536,13 @@ function TotalLeadsPage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Total Leads" />
-      <SearchBar value={search} onChange={setSearch} />
+      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:max-w-sm">
+        <label htmlFor="bank-lead-dealership-filter" className="text-xs font-semibold uppercase text-slate-500">Dealership Filter</label>
+        <select id="bank-lead-dealership-filter" value={dealershipId} onChange={(event) => selectDealership(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100">
+          <option value="">All Dealerships</option>
+          {knownDealerships.map((dealership) => <option key={dealership.id} value={dealership.id}>{dealership.name}</option>)}
+        </select>
+      </div>
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <ReassignLeadDialog lead={pendingReassign} onCancel={() => setPendingReassign(null)} onDone={() => load(page, { silent: true })} />
       <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
@@ -912,9 +940,7 @@ function ExecutiveCasesPage() {
 
 function BankDealershipsPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 180);
-  const { rows, total, hasMore, loading, page, onPage } = useBankDealerships(debouncedSearch);
+  const { rows, total, hasMore, loading, page, onPage } = useBankDealerships();
   const tableRows = useMemo(() => rows.map((dealership) => ({
     key: dealership.id || dealership.dealershipId,
     cells: [
@@ -939,7 +965,6 @@ function BankDealershipsPage() {
     <section className="space-y-4">
       <PageTitle title="All Dealerships" />
       <p className="text-sm text-slate-500">Dealerships actively sending business to this bank.</p>
-      <SearchBar value={search} onChange={setSearch} />
       <Table title="Dealership Business Activity" headers={["Dealership", "Email", "City", "Mobile", "Total Cases", "Active Cases", "Total Disbursed Cases", "Last Activity"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );

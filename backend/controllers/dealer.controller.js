@@ -1627,8 +1627,13 @@ export async function createDealerStaff(req, res, next) {
       });
     }
     await upsertCanonicalUser(firebaseUser.uid, {
+      name: fullName,
+      fullName,
       uid: firebaseUser.uid,
       email,
+      officialEmail: email,
+      mobile,
+      employeeId,
       role,
       portalType,
       accountType,
@@ -1641,6 +1646,10 @@ export async function createDealerStaff(req, res, next) {
       branch,
       branchId: branch,
       city,
+      state: dealership.state || dealership.dealerState || "",
+      address: dealership.address || "",
+      gstin: dealership.gstin || "",
+      createdAt: now,
       firstLoginRequired: true,
       passwordChangedAt: null,
       createdByDealerAdmin: true,

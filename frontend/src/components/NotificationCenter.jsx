@@ -149,7 +149,7 @@ export function NotificationCenter() {
   return (
     <div className="relative">
       {toast ? <div className="fixed right-4 top-20 z-[60] rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-[#0d47a1] shadow-sm">{toast}</div> : null}
-      <button onClick={() => setOpen((value) => !value)} className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-[#0d47a1] hover:bg-slate-50">
+      <button type="button" aria-label="Open notifications" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-[#0d47a1] hover:bg-slate-50">
         <Bell className="h-5 w-5" />
         {unread > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 scale-100 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white transition-transform duration-200 ease-out">{unread}</span>}
       </button>

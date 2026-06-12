@@ -51,6 +51,7 @@ function sessionFromResponse(response) {
     passwordExpiresAt: sessionUser.passwordExpiresAt || null,
     passwordDaysRemaining: Number.isFinite(Number(sessionUser.passwordDaysRemaining)) ? Number(sessionUser.passwordDaysRemaining) : null,
     passwordExpired: sessionUser.passwordExpired === true,
+    profile: sessionUser.profile && typeof sessionUser.profile === "object" ? sessionUser.profile : {},
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };
 }

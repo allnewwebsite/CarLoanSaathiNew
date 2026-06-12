@@ -1032,6 +1032,16 @@
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]

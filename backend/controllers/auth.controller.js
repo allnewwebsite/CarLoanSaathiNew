@@ -539,6 +539,34 @@ function wrongPortalPayload(account = {}) {
   };
 }
 
+function registrationProfile(account = {}) {
+  return {
+    name: account.name || account.fullName || account.displayName || "",
+    fullName: account.fullName || account.name || "",
+    managerName: account.managerName || account.contactPerson || account.name || "",
+    executiveName: account.executiveName || account.name || account.fullName || "",
+    employeeId: account.employeeId || account.employeeCode || "",
+    email: account.email || account.officialEmail || "",
+    officialEmail: account.officialEmail || account.email || "",
+    mobile: account.mobile || account.phone || account.officialMobile || account.officialDealershipMobile || "",
+    officialMobile: account.officialMobile || account.officialDealershipMobile || account.mobile || account.phone || "",
+    dealershipName: account.dealershipName || account.dealerName || "",
+    dealerName: account.dealerName || account.dealershipName || "",
+    ownerName: account.ownerName || account.ownerFullName || account.owner?.fullName || "",
+    ownerMobile: account.ownerMobile || account.owner?.mobile || "",
+    gstin: account.gstin || account.gstNumber || "",
+    bankName: account.bankName || account.companyName || "",
+    branchName: account.branchName || account.bankBranchLocation || account.branchLocation || account.branch || "",
+    bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || "",
+    bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || account.branchIfsc || "",
+    address: account.address || account.fullAddress || "",
+    city: account.city || account.dealerCity || account.branchCity || account.bankBranchLocation || "",
+    state: account.state || "",
+    status: account.status || account.accountStatus || (account.active === false ? "inactive" : "active"),
+    createdAt: account.createdAt || account.registeredAt || account.approvedAt || "",
+  };
+}
+
 async function accountPresentation(email, account = {}) {
   const result = {};
   try {
@@ -548,6 +576,12 @@ async function accountPresentation(email, account = {}) {
         || await getRecord("approvedDealerships", dealershipId).catch(() => null);
       result.dealershipName = dealership?.dealershipName || dealership?.name || dealership?.dealershipBrand || account.dealershipName || "";
       result.dealerCity = dealership?.city || dealership?.dealershipCity || account.dealerCity || "";
+      result.profile = registrationProfile({
+        ...account,
+        ...dealership,
+        dealershipName: result.dealershipName,
+        city: result.dealerCity,
+      });
     }
     if (["bank-manager", "loan-executive"].includes(account.role)) {
       const bankId = account.bankId || email;
@@ -561,6 +595,15 @@ async function accountPresentation(email, account = {}) {
       result.bankName = profile.bankName || profile.companyName || bankPartner?.bankName || bankPartner?.companyName || account.bankName || "";
       result.bankIfsc = profile.ifsc || profile.bankIfsc || profile.ifscCode || bankPartner?.ifsc || account.bankIfsc || "";
       result.bankBranchLocation = profile.bankBranchLocation || profile.branchLocation || profile.branchCity || profile.city || account.branchId || "";
+      result.profile = registrationProfile({
+        ...account,
+        ...bankApproval,
+        ...bankPartner,
+        ...profile,
+        bankName: result.bankName,
+        bankIfsc: result.bankIfsc,
+        bankBranchLocation: result.bankBranchLocation,
+      });
     }
   } catch (error) {
     logWarn("Account presentation lookup skipped", {
@@ -1036,6 +1079,7 @@ export async function login(req, res, next) {
       bankName: account.bankName || account.companyName || null,
       bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || null,
       bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
+      profile: registrationProfile(account),
     };
     authPhase = "create-user-session";
     const sessionStartedAt = Date.now();
@@ -1155,6 +1199,7 @@ export async function restoreSession(req, res, next) {
       passwordExpired: lifecycle.passwordExpired,
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
+      profile: registrationProfile(account),
     };
     await upsertCanonicalUser(user.uid, user);
     await clearFailedLogin(normalizedEmail);
@@ -1223,6 +1268,7 @@ export async function refreshSession(req, res, next) {
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       sessionId: req.user.sessionId || null,
       lastLoginAt: account.lastLoginAt || null,
+      profile: registrationProfile(account),
     };
     Object.assign(user, await accountPresentation(email, user));
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
@@ -1422,6 +1468,7 @@ export async function session(req, res, next) {
         passwordExpired: lifecycle.passwordExpired,
         passwordDaysRemaining: lifecycle.passwordDaysRemaining,
         emailVerified: true,
+        profile: presentation.profile || registrationProfile(account),
         ...presentation,
       },
     });

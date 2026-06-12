@@ -456,14 +456,16 @@ function applyFilters(leads, query) {
   const search = String(query.search || "").trim().toLowerCase();
   const executive = String(query.executive || "").trim().toLowerCase();
   const dealership = String(query.dealership || "").trim().toLowerCase();
+  const dealershipId = String(query.dealershipId || "").trim().toLowerCase();
   return leads.filter((lead) => {
     const statusOk = !query.status || normalizeStatus(lead.status) === normalizeStatus(query.status) || lead.assignmentStatus === query.status;
     const dateOk = !query.date || (lead.assignmentTimestamp || lead.createdAt || "").startsWith(query.date);
     const searchOk = !search || leadText(lead).includes(search);
     const executiveOk = !executive || String(lead.assignedExecutiveName || lead.assignedExecutiveId || "").toLowerCase() === executive;
     const dealershipOk = !dealership || String(lead.dealershipName || lead.dealerEmail || "").toLowerCase() === dealership;
+    const dealershipIdOk = !dealershipId || String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").toLowerCase() === dealershipId;
     const pendingDocsOk = !query.pendingDocs || [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status));
-    return statusOk && dateOk && searchOk && executiveOk && dealershipOk && pendingDocsOk;
+    return statusOk && dateOk && searchOk && executiveOk && dealershipOk && dealershipIdOk && pendingDocsOk;
   });
 }
 
@@ -1298,8 +1300,12 @@ export async function createBankExecutive(req, res, next) {
     };
     await upsertRecord("loanExecutives", email, payload);
     await upsertCanonicalUser(firebaseUser.uid, {
+      name,
+      fullName: name,
       uid: firebaseUser.uid,
       email,
+      officialEmail: email,
+      mobile,
       role: "loan-executive",
       approved: true,
       active: true,
@@ -1310,7 +1316,10 @@ export async function createBankExecutive(req, res, next) {
       bankIfsc: identity.bankIfsc,
       branchId: identity.bankLocation,
       branch: identity.bankLocation,
+      bankBranchLocation: identity.bankLocation,
       city: identity.bankLocation,
+      employeeId: req.body.employeeId || req.body.employeeCode || "",
+      createdAt: now,
       firstLoginRequired: true,
       passwordChangedAt: null,
       createdByManager: true,

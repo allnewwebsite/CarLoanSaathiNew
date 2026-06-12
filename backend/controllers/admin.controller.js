@@ -352,6 +352,22 @@ async function updateRecordIfExists(collection, id, payload) {
   }
 }
 
+function dealerIdentityProfile(dealership = {}, request = {}) {
+  return {
+    dealershipName: dealership.dealershipName || dealership.name || request.dealershipName || "",
+    dealerName: dealership.dealerName || dealership.dealershipName || request.dealershipName || "",
+    officialDealershipEmail: dealership.officialDealershipEmail || request.loginEmail || "",
+    officialDealershipMobile: dealership.officialDealershipMobile || request.owner?.mobile || "",
+    ownerName: request.owner?.fullName || dealership.ownerName || "",
+    ownerMobile: request.owner?.mobile || dealership.ownerMobile || "",
+    gstin: dealership.gstin || request.gstin || "",
+    address: dealership.address || dealership.fullAddress || "",
+    city: dealership.city || dealership.location || request.city || "",
+    state: dealership.state || request.state || "",
+    createdAt: dealership.createdAt || request.createdAt || request.submittedAt || new Date().toISOString(),
+  };
+}
+
 async function materializeApprovedDealership({ request, loginEmail, dealership }) {
   const dealerLocation = dealership.dealerLocation || dealership.location || dealership.city || request.city || "";
   const dealerFields = {
@@ -370,13 +386,47 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
   const financeUid = await firebaseUidForEmail(loginEmail);
   const financeCanonicalId = financeUid || loginEmail;
   await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
-  await upsertCanonicalUser(financeCanonicalId, { uid: financeCanonicalId, email: loginEmail, role: "finance-desk", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active", accountStatus: "active" });
+  await upsertCanonicalUser(financeCanonicalId, {
+    ...dealerIdentityProfile(dealerFields, request),
+    uid: financeCanonicalId,
+    email: loginEmail,
+    officialEmail: dealerFields.officialDealershipEmail || loginEmail,
+    mobile: dealerFields.officialDealershipMobile || request.owner?.mobile || "",
+    ownerName: request.owner?.fullName || "",
+    ownerMobile: request.owner?.mobile || "",
+    role: "finance-desk",
+    approved: true,
+    active: true,
+    accountApproved: true,
+    accountActive: true,
+    dealershipId: loginEmail,
+    status: "active",
+    accountStatus: "active",
+  });
   if (request.generalManager?.email) {
     const gmEmail = normalizeEmail(request.generalManager.email);
     const gmUid = await firebaseUidForEmail(gmEmail);
     const gmCanonicalId = gmUid || gmEmail;
     await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm-sm", excludeIds: [gmCanonicalId, gmEmail] });
-    await upsertCanonicalUser(gmCanonicalId, { uid: gmCanonicalId, email: gmEmail, role: "gm-sm", approved: true, active: true, accountApproved: true, accountActive: true, dealershipId: loginEmail, status: "active", accountStatus: "active" });
+    await upsertCanonicalUser(gmCanonicalId, {
+      ...dealerIdentityProfile(dealerFields, request),
+      uid: gmCanonicalId,
+      email: gmEmail,
+      officialEmail: gmEmail,
+      name: request.generalManager?.name || "",
+      fullName: request.generalManager?.name || "",
+      mobile: request.generalManager?.mobile || "",
+      ownerName: request.owner?.fullName || "",
+      ownerMobile: request.owner?.mobile || "",
+      role: "gm-sm",
+      approved: true,
+      active: true,
+      accountApproved: true,
+      accountActive: true,
+      dealershipId: loginEmail,
+      status: "active",
+      accountStatus: "active",
+    });
   }
   await upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true });
   await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
@@ -461,7 +511,34 @@ async function activateApprovedBankUsers({ request, bankEmail, bankName, branchL
   const bankUid = await firebaseUidForEmail(bankEmail);
   const bankCanonicalId = bankUid || bankEmail;
   await assertNoActiveIdentityCollision({ uid: bankCanonicalId, email: bankEmail, role: "bank-manager", excludeIds: [bankCanonicalId, bankEmail] });
-  await upsertCanonicalUser(bankCanonicalId, { uid: bankCanonicalId, email: bankEmail, role: "bank-manager", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, branchIfsc: ifsc, ifscCode: ifsc, bankIfsc: ifsc, branchLocation, bankBranchLocation: branchLocation, state, status: "active" });
+  await upsertCanonicalUser(bankCanonicalId, {
+    uid: bankCanonicalId,
+    email: bankEmail,
+    officialEmail: request.officialEmail || bankEmail,
+    role: "bank-manager",
+    name: request.managerName || request.contactPerson || "",
+    managerName: request.managerName || request.contactPerson || "",
+    mobile: request.mobile || "",
+    bankName,
+    companyName: request.companyName || bankName,
+    address: request.address || request.fullAddress || "",
+    city: branchLocation,
+    approved: true,
+    active: true,
+    accountStatus: "active",
+    accountApproved: true,
+    accountActive: true,
+    bankId: partnerId,
+    branchId: partnerId,
+    branchIfsc: ifsc,
+    ifscCode: ifsc,
+    bankIfsc: ifsc,
+    branchLocation,
+    bankBranchLocation: branchLocation,
+    state,
+    createdAt: request.createdAt || request.submittedAt || new Date().toISOString(),
+    status: "active",
+  });
   if (firebaseAdmin) {
     try {
       const firebaseUser = await firebaseAdmin.auth().getUserByEmail(bankEmail);
@@ -483,7 +560,32 @@ async function activateApprovedBankUsers({ request, bankEmail, bankName, branchL
     if (executiveEmail) {
       await upsertRecord("loanExecutives", executiveEmail, { ...executive, email: executiveEmail, officialEmail: executiveEmail, bankPartnerId: partnerId, bankId: partnerId, bankName, ifsc, ifscCode: ifsc, branchIfsc: ifsc, bankIfsc: ifsc, branchCity: branchLocation, branchLocation, bankBranchLocation: branchLocation, state, serviceArea: branchLocation, branchId: partnerId, status: "active", active: true, approved: true, accountStatus: "active", accountApproved: true, accountActive: true });
       await assertNoActiveIdentityCollision({ uid: executiveEmail, email: executiveEmail, role: "loan-executive", excludeIds: [executiveEmail] });
-      await upsertCanonicalUser(executiveEmail, { uid: executiveEmail, email: executiveEmail, role: "loan-executive", approved: true, active: true, accountStatus: "active", accountApproved: true, accountActive: true, bankId: partnerId, branchId: partnerId, branchIfsc: ifsc, ifscCode: ifsc, bankIfsc: ifsc, branchLocation, bankBranchLocation: branchLocation, state, status: "active" });
+      await upsertCanonicalUser(executiveEmail, {
+        uid: executiveEmail,
+        email: executiveEmail,
+        officialEmail: executiveEmail,
+        name: executive.name || executive.fullName || "",
+        fullName: executive.fullName || executive.name || "",
+        mobile: executive.mobile || executive.phone || "",
+        employeeId: executive.employeeId || executive.employeeCode || "",
+        role: "loan-executive",
+        approved: true,
+        active: true,
+        accountStatus: "active",
+        accountApproved: true,
+        accountActive: true,
+        bankId: partnerId,
+        bankName,
+        branchId: partnerId,
+        branchIfsc: ifsc,
+        ifscCode: ifsc,
+        bankIfsc: ifsc,
+        branchLocation,
+        bankBranchLocation: branchLocation,
+        state,
+        createdAt: executive.createdAt || request.createdAt || request.submittedAt || new Date().toISOString(),
+        status: "active",
+      });
     }
   }
 }
@@ -626,8 +728,13 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
   await upsertRecord("dealers", loginEmail, { ...dealership, role: "finance-desk" });
   await assertNoActiveIdentityCollision({ uid: loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [loginEmail] });
   await upsertCanonicalUser(loginEmail, {
+    ...dealerIdentityProfile(dealership, request),
     uid: loginEmail,
     email: loginEmail,
+    officialEmail: dealership.officialDealershipEmail || loginEmail,
+    mobile: dealership.officialDealershipMobile || request.owner?.mobile || "",
+    ownerName: request.owner?.fullName || "",
+    ownerMobile: request.owner?.mobile || "",
     role: "finance-desk",
     approved: true,
     active: true,
@@ -642,8 +749,15 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
   if (gmEmail) {
     await assertNoActiveIdentityCollision({ uid: gmEmail, email: gmEmail, role: "gm-sm", excludeIds: [gmEmail] });
     await upsertCanonicalUser(gmEmail, {
+      ...dealerIdentityProfile(dealership, request),
       uid: gmEmail,
       email: gmEmail,
+      officialEmail: gmEmail,
+      name: request.generalManager?.name || "",
+      fullName: request.generalManager?.name || "",
+      mobile: request.generalManager?.mobile || "",
+      ownerName: request.owner?.fullName || "",
+      ownerMobile: request.owner?.mobile || "",
       role: "gm-sm",
       approved: true,
       active: true,
