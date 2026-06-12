@@ -27,6 +27,20 @@ const PORTAL_ROLES = {
   bank: ["bank-manager", "loan-executive"],
   admin: ["super-admin"],
 };
+const LOGIN_PORTAL_ROLES = {
+  finance: ["finance-desk"],
+  gm: ["gm-sm"],
+  "bank-manager": ["bank-manager"],
+  "loan-executive": ["loan-executive"],
+  admin: ["super-admin"],
+};
+const ROLE_LOGIN_PORTALS = {
+  "finance-desk": "finance",
+  "gm-sm": "gm",
+  "bank-manager": "bank-manager",
+  "loan-executive": "loan-executive",
+  "super-admin": "admin",
+};
 const ROLE_GUIDANCE = {
   "finance-desk": {
     roleLabel: "Finance Desk",
@@ -68,9 +82,38 @@ const SESSION_COOKIE_NAME = "cls_session";
 
 function normalizePortal(portal = "dealer") {
   if (portal === "gm") return "finance";
-  if (portal === "executive") return "bank";
+  if (["bank-manager", "loan-executive", "executive"].includes(portal)) return "bank";
   if (portal === "super-admin") return "admin";
   return PORTAL_ROLES[portal] ? portal : "dealer";
+}
+
+function normalizeLoginPortal(portal = "") {
+  const normalized = String(portal || "").trim().toLowerCase();
+  if (normalized === "dealer") return "finance";
+  if (normalized === "bank") return "bank-manager";
+  if (normalized === "executive") return "loan-executive";
+  if (normalized === "super-admin") return "admin";
+  return LOGIN_PORTAL_ROLES[normalized] ? normalized : "";
+}
+
+function loginPortalForRole(role) {
+  return ROLE_LOGIN_PORTALS[String(role || "").trim().toLowerCase()] || "";
+}
+
+function loginPortalAllowsRole(portal, role) {
+  return Boolean((LOGIN_PORTAL_ROLES[portal] || []).includes(role));
+}
+
+function organizationIdForAccount(account = {}) {
+  if (account.role === "super-admin") return account.uid || account.id || account.email || "platform";
+  return account.dealershipId || account.bankId || null;
+}
+
+function wrongLoginPortalPayload() {
+  return {
+    code: "WRONG_PORTAL",
+    message: "You are not authorized to access this portal.",
+  };
 }
 
 function passwordChangeRouteForRole(role) {
@@ -183,6 +226,8 @@ async function createUserSession({ req, user }) {
     role: user.role,
     portal: user.portal || portalForRole(user.role),
     scope: user.scope || user.portal || portalForRole(user.role),
+    loginPortal: user.loginPortal || loginPortalForRole(user.role),
+    organizationId: user.organizationId || null,
     dealershipId: user.dealershipId || null,
     bankId: user.bankId || null,
     branchId: user.branchId || null,
@@ -897,7 +942,11 @@ export async function login(req, res, next) {
   let normalizedEmail = "";
   try {
     let { idToken } = req.body;
-    const portal = normalizePortal(req.body.portal);
+    const requestedLoginPortal = normalizeLoginPortal(req.body.targetPortal || req.body.portal);
+    if (!requestedLoginPortal) {
+      return res.status(400).json({ code: "INVALID_PORTAL", message: "Select a valid login portal." });
+    }
+    const portal = normalizePortal(requestedLoginPortal);
     authPhase = "validate-request";
     if (!idToken) {
       normalizedEmail = String(req.body.email || "").trim().toLowerCase();
@@ -946,12 +995,16 @@ export async function login(req, res, next) {
     const resetFailedLogin = Boolean(account?.lockedUntil || account?.failedLoginAttempts || account?.accountStatus === "locked");
     account = await clearTransientLoginLock(normalizedEmail, account);
     timings.identityMs = Date.now() - identityStartedAt;
+    if (account?.role && !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
+      await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "wrong-login-portal", req });
+      return res.status(403).json(wrongLoginPortalPayload());
+    }
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
       const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid, { identityContext, skipPortals: [portal] });
-      if (knownAccount?.role && !portalAllowsRole(portal, knownAccount.role)) {
+      if (knownAccount?.role && (!portalAllowsRole(portal, knownAccount.role) || !loginPortalAllowsRole(requestedLoginPortal, knownAccount.role))) {
         await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: "wrong-portal", req });
-        return res.status(403).json(wrongPortalPayload(knownAccount));
+        return res.status(403).json(wrongLoginPortalPayload());
       }
       if (knownAccount?.role && portalAllowsRole(portal, knownAccount.role) && !accountActive(knownAccount)) {
         const inactive = inactiveAccountMessage(knownAccount);
@@ -1054,6 +1107,9 @@ export async function login(req, res, next) {
       role: account.role,
       portal: portalForRole(account.role),
       scope: portalForRole(account.role),
+      loginPortal: loginPortalForRole(account.role),
+      organizationId: organizationIdForAccount(account),
+      createdAt: new Date().toISOString(),
       approved: true,
       active: true,
       accountStatus: "active",
@@ -1137,7 +1193,11 @@ export async function login(req, res, next) {
 export async function restoreSession(req, res, next) {
   try {
     const { idToken } = req.body;
-    const requestedPortal = normalizePortal(req.body.portal);
+    const requestedLoginPortal = normalizeLoginPortal(req.body.targetPortal || req.body.portal);
+    if (!requestedLoginPortal) {
+      return res.status(400).json({ code: "INVALID_PORTAL", message: "Select a valid login portal." });
+    }
+    const requestedPortal = normalizePortal(requestedLoginPortal);
     if (!idToken) return res.status(400).json({ message: "Firebase authentication token is required" });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
@@ -1155,9 +1215,9 @@ export async function restoreSession(req, res, next) {
       await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: "restore-account-not-approved", req });
       return res.status(403).json({ message: "Your account is awaiting approval.", code: "APPROVAL_PENDING" });
     }
-    if (!portalAllowsRole(requestedPortal, account.role)) {
+    if (!portalAllowsRole(requestedPortal, account.role) || !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-wrong-portal", req });
-      return res.status(403).json(wrongPortalPayload(account));
+      return res.status(403).json(wrongLoginPortalPayload());
     }
     if (!accountActive(account)) {
       const inactive = inactiveAccountMessage(account);
@@ -1181,6 +1241,9 @@ export async function restoreSession(req, res, next) {
       role: account.role,
       portal: portalForRole(account.role),
       scope: portalForRole(account.role),
+      loginPortal: loginPortalForRole(account.role),
+      organizationId: organizationIdForAccount(account),
+      createdAt: new Date().toISOString(),
       approved: true,
       active: true,
       accountStatus: "active",
@@ -1237,7 +1300,8 @@ export async function refreshSession(req, res, next) {
     if (req.user.sessionId) {
       const sessionRecord = await getRecord("userSessions", req.user.sessionId).catch(() => null);
       const accountPortal = portalForRole(account.role);
-      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role || (sessionRecord.portal && sessionRecord.portal !== accountPortal)) {
+      const accountLoginPortal = loginPortalForRole(account.role);
+      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role || (sessionRecord.portal && sessionRecord.portal !== accountPortal) || (sessionRecord.loginPortal && sessionRecord.loginPortal !== accountLoginPortal)) {
         return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
       }
     }
@@ -1249,6 +1313,9 @@ export async function refreshSession(req, res, next) {
       role: account.role,
       portal: portalForRole(account.role),
       scope: portalForRole(account.role),
+      loginPortal: loginPortalForRole(account.role),
+      organizationId: organizationIdForAccount(account),
+      createdAt: new Date().toISOString(),
       approved: account.approved === true,
       active: account.active !== false,
       accountStatus: account.accountStatus || account.status || "active",
@@ -1305,7 +1372,11 @@ export async function recordLoginFailure(req, res, next) {
 export async function lookupAccountForLogin(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
-    const portal = normalizePortal(req.body.portal);
+    const requestedLoginPortal = normalizeLoginPortal(req.body.targetPortal || req.body.portal);
+    if (!requestedLoginPortal) {
+      return res.status(400).json({ code: "INVALID_PORTAL", message: "Select a valid login portal." });
+    }
+    const portal = normalizePortal(requestedLoginPortal);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
 
@@ -1322,7 +1393,9 @@ export async function lookupAccountForLogin(req, res, next) {
 
     if (account?.role) {
       const accountPortal = portalForRole(account.role);
-      if (!portalAllowsRole(portal, account.role)) return res.json({ exists: true, ...wrongPortalPayload(account) });
+      if (!portalAllowsRole(portal, account.role) || !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
+        return res.json({ exists: true, ...wrongLoginPortalPayload() });
+      }
       if (!firebaseUser) {
         return res.json({
           exists: true,

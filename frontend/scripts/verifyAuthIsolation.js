@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const sourceRoot = resolve(__dirname, "../src");
+const projectRoot = resolve(__dirname, "../..");
 
 class MemoryStorage {
   constructor() {
@@ -54,6 +55,10 @@ function sourceFile(relativePath) {
   return readFileSync(resolve(sourceRoot, relativePath), "utf8");
 }
 
+function projectFile(relativePath) {
+  return readFileSync(resolve(projectRoot, relativePath), "utf8");
+}
+
 function assertNoFailedLoginMutation() {
   const source = sourceFile("context/AuthContext.jsx");
   const loginStart = source.indexOf("const loginWithEmailPassword");
@@ -65,6 +70,19 @@ function assertNoFailedLoginMutation() {
   assert(!/clearAuthStorage\s*\(/.test(loginSource), "Login failure path must not clear auth storage.");
   assert(!/publishAuthEvent\s*\(/.test(loginSource), "Login failure path must not broadcast logout.");
   assert(!/signOut\s*\(/.test(loginSource), "Login failure path must not sign out Firebase.");
+  const validationIndex = loginSource.indexOf("allowedRoles.includes(session.role)");
+  const applyIndex = loginSource.indexOf("applySession(session");
+  assert(validationIndex >= 0, "Login response must validate the exact target portal role.");
+  assert(applyIndex > validationIndex, "Portal role validation must happen before session state is applied.");
+}
+
+function assertBackendExactPortalValidation() {
+  const source = projectFile("backend/controllers/auth.controller.js");
+  assert(source.includes("const LOGIN_PORTAL_ROLES"), "Backend must define exact login portal role contracts.");
+  assert(source.includes("loginPortalAllowsRole(requestedLoginPortal, account.role)"), "Backend login must validate the exact login portal.");
+  assert(source.includes("wrongLoginPortalPayload()"), "Wrong-portal login must return a non-mutating authorization error.");
+  assert(source.includes('message: "You are not authorized to access this portal."'), "Wrong-portal response must use the required safe message.");
+  assert(source.includes("loginPortal: loginPortalForRole(account.role)"), "JWT session payload must include the exact login portal claim.");
 }
 
 function assertNoRouteMismatchMutation() {
@@ -90,6 +108,7 @@ function assertFailedAttemptLeavesSessionUntouched({ activePath, activeUser, act
 
 assertNoFailedLoginMutation();
 assertNoRouteMismatchMutation();
+assertBackendExactPortalValidation();
 
 setPath("/finance/total-leads");
 storeAuthSession(session("finance@example.com", "finance-desk"), "finance-token");

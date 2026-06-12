@@ -82,6 +82,15 @@ assertCheck(
     && !authContext.includes("idToken = await credential.user.getIdToken(true)"),
 );
 assertCheck(
+  "login enforces exact portal role before session mutation",
+  authController.includes("const LOGIN_PORTAL_ROLES")
+    && authController.includes("loginPortalAllowsRole(requestedLoginPortal, account.role)")
+    && authController.includes('message: "You are not authorized to access this portal."')
+    && authContext.indexOf("allowedRoles.includes(session.role)") >= 0
+    && authContext.indexOf("applySession(session, response.data.token)") > authContext.indexOf("allowedRoles.includes(session.role)"),
+  "A grouped finance/bank portal match must not authorize GM or executive credentials on another login screen.",
+);
+assertCheck(
   "cross-tab logout is portal scoped",
   authSessionManager.includes('payload: type === "logout" ? { scope: scopeFromPath(), ...payload } : payload')
     && authContext.includes("eventScope !== currentScope"),

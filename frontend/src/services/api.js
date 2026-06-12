@@ -653,6 +653,7 @@ api.interceptors.response.use(
       "JWT_REQUIRED",
       "PORTAL_FORBIDDEN",
       "SESSION_ROLE_CHANGED",
+      "SESSION_ORGANIZATION_CHANGED",
       "SESSION_EXPIRED",
       "SESSION_PORTAL_CHANGED",
       "SESSION_UID_CHANGED",

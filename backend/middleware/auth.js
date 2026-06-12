@@ -17,11 +17,37 @@ const ROLE_PORTALS = {
   "loan-executive": "bank",
   "super-admin": "admin",
 };
+const ROLE_LOGIN_PORTALS = {
+  "finance-desk": "finance",
+  "gm-sm": "gm",
+  "bank-manager": "bank-manager",
+  "loan-executive": "loan-executive",
+  "super-admin": "admin",
+};
 const REALTIME_TICKET_PATH = "/api/realtime/ticket";
 const TOKEN_DENY_STATUSES = new Set(["pending", "rejected", "suspended", "deleted", "inactive", "disabled", "removed", "locked"]);
 
 function portalForRole(role) {
   return ROLE_PORTALS[String(role || "").trim().toLowerCase()] || "";
+}
+
+function loginPortalForRole(role) {
+  return ROLE_LOGIN_PORTALS[String(role || "").trim().toLowerCase()] || "";
+}
+
+function organizationIdForAccount(account = {}) {
+  if (account.role === "super-admin") return account.uid || account.id || account.email || "platform";
+  return account.dealershipId || account.bankId || null;
+}
+
+function requestedLoginPortal(req) {
+  const headerPortal = String(req.headers["x-cls-portal"] || "").trim().toLowerCase();
+  if (headerPortal === "dealer" || headerPortal === "finance") return "finance";
+  if (headerPortal === "gm") return "gm";
+  if (headerPortal === "bank" || headerPortal === "bank-manager") return "bank-manager";
+  if (headerPortal === "executive" || headerPortal === "loan-executive") return "loan-executive";
+  if (headerPortal === "admin" || headerPortal === "super-admin") return "admin";
+  return "";
 }
 
 function requestedPortal(req) {
@@ -93,6 +119,8 @@ function realtimeUserFromToken(tokenUser = {}, email = "") {
     sessionId: tokenUser.sessionId || null,
     portal: tokenUser.portal,
     scope: tokenUser.scope || tokenUser.portal,
+    loginPortal: tokenUser.loginPortal || loginPortalForRole(tokenUser.role),
+    organizationId: tokenUser.organizationId || tokenUser.dealershipId || tokenUser.bankId || null,
   };
 }
 
@@ -278,13 +306,17 @@ export async function authenticate(req, res, next) {
     }
     if (isRealtimeTicketRequest(req) && realtimeTicketFastAuthEnabled()) {
       const accountPortal = portalForRole(tokenUser.role);
+      const accountLoginPortal = loginPortalForRole(tokenUser.role);
       const requestPortal = requestedPortal(req);
+      const requestLoginPortal = requestedLoginPortal(req);
       const passwordBlocked = tokenUser.firstLoginRequired === true || tokenUser.passwordExpired === true;
       if (
         tokenClaimsLookActive(tokenUser)
         && tokenFreshEnoughForRealtime(tokenUser)
         && (!requestPortal || requestPortal === accountPortal)
+        && (!requestLoginPortal || requestLoginPortal === accountLoginPortal)
         && tokenUser.portal === accountPortal
+        && (!tokenUser.loginPortal || tokenUser.loginPortal === accountLoginPortal)
         && !passwordBlocked
       ) {
         req.user = realtimeUserFromToken(tokenUser, email);
@@ -334,10 +366,25 @@ export async function authenticate(req, res, next) {
       observeAuthFailure(req, "session_portal_changed");
       return res.status(401).json({ message: "Session portal changed. Please login again.", code: "SESSION_PORTAL_CHANGED" });
     }
+    const accountLoginPortal = loginPortalForRole(account.role);
+    if (tokenUser.loginPortal && tokenUser.loginPortal !== accountLoginPortal) {
+      observeAuthFailure(req, "session_login_portal_changed");
+      return res.status(401).json({ message: "Session portal changed. Please login again.", code: "SESSION_PORTAL_CHANGED" });
+    }
+    const accountOrganizationId = organizationIdForAccount(account);
+    if (tokenUser.organizationId && tokenUser.organizationId !== accountOrganizationId) {
+      observeAuthFailure(req, "session_organization_changed");
+      return res.status(401).json({ message: "Session organization changed. Please login again.", code: "SESSION_ORGANIZATION_CHANGED" });
+    }
     const requestPortal = requestedPortal(req);
     if (requestPortal && requestPortal !== accountPortal) {
       observeAuthFailure(req, "session_portal_forbidden");
       return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN", redirectToPortal: accountPortal });
+    }
+    const requestLoginPortal = requestedLoginPortal(req);
+    if (requestLoginPortal && requestLoginPortal !== accountLoginPortal) {
+      observeAuthFailure(req, "session_login_portal_forbidden");
+      return res.status(403).json({ message: "This session cannot access the requested portal.", code: "PORTAL_FORBIDDEN" });
     }
     logRealtimeTicketStep("permission_lookup", Date.now() - permissionStartedAt, { summaryField: "permissionDurationMs" });
     const sessionValidationPromise = tokenUser.sessionId ? tracedCached(
@@ -352,7 +399,9 @@ export async function authenticate(req, res, next) {
       const wrongOwner = session && String(session.email || "").toLowerCase() !== email;
       const roleChanged = session && session.role && session.role !== account.role;
       const portalChanged = session && session.portal && session.portal !== accountPortal;
-      if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged || portalChanged) {
+      const loginPortalChanged = session && session.loginPortal && session.loginPortal !== accountLoginPortal;
+      const organizationChanged = session && session.organizationId && session.organizationId !== accountOrganizationId;
+      if (!session || session.revoked === true || expired || inactive || wrongOwner || roleChanged || portalChanged || loginPortalChanged || organizationChanged) {
         return { valid: false };
       }
       const lastSeenAgeMs = session.lastSeenAt ? Date.now() - new Date(session.lastSeenAt).getTime() : Infinity;
@@ -407,6 +456,8 @@ export async function authenticate(req, res, next) {
       sessionId: tokenUser.sessionId || null,
       portal: accountPortal,
       scope: accountPortal,
+      loginPortal: accountLoginPortal,
+      organizationId: accountOrganizationId,
     };
     setRequestScopeUser(req.user);
     if (passwordChangeRequired(account) && !authUrlAllowedDuringPasswordChange(req)) {

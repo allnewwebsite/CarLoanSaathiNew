@@ -22,6 +22,24 @@ import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 const AuthContext = createContext(null);
 const SESSION_VALIDATE_INTERVAL_MS = 5 * 60 * 1000;
 const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
+const LOGIN_PORTAL_ROLES = {
+  dealer: ["finance-desk"],
+  finance: ["finance-desk"],
+  gm: ["gm-sm"],
+  bank: ["bank-manager"],
+  "bank-manager": ["bank-manager"],
+  executive: ["loan-executive"],
+  "loan-executive": ["loan-executive"],
+  admin: ["super-admin"],
+  "super-admin": ["super-admin"],
+};
+const ROLE_LOGIN_PORTALS = {
+  "finance-desk": "finance",
+  "gm-sm": "gm",
+  "bank-manager": "bank-manager",
+  "loan-executive": "loan-executive",
+  "super-admin": "admin",
+};
 
 function actionCodeSettings() {
   const url = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL || `${window.location.origin}/dealer/login`;
@@ -34,6 +52,10 @@ function sessionFromResponse(response) {
     uid: sessionUser.uid || sessionUser.email,
     email: sessionUser.email,
     role: sessionUser.role,
+    portal: sessionUser.portal || null,
+    loginPortal: sessionUser.loginPortal || ROLE_LOGIN_PORTALS[sessionUser.role] || null,
+    organizationId: sessionUser.organizationId || sessionUser.dealershipId || sessionUser.bankId || null,
+    createdAt: sessionUser.createdAt || null,
     roleLabel: ROLE_LABELS[sessionUser.role] || sessionUser.role,
     approved: sessionUser.approved === true,
     accountApproved: sessionUser.accountApproved === true,
@@ -83,6 +105,19 @@ function registrationAccountError(message, code) {
   return error;
 }
 
+function wrongPortalError() {
+  const error = new Error("You are not authorized to access this portal.");
+  error.code = "WRONG_PORTAL";
+  error.response = {
+    status: 403,
+    data: {
+      code: "WRONG_PORTAL",
+      message: error.message,
+    },
+  };
+  return error;
+}
+
 function shouldClearSessionForError(error) {
   const status = error?.response?.status;
   const code = error?.response?.data?.code;
@@ -103,6 +138,7 @@ function shouldClearSessionForError(error) {
     "PORTAL_FORBIDDEN",
     "SESSION_EXPIRED",
     "SESSION_PORTAL_CHANGED",
+    "SESSION_ORGANIZATION_CHANGED",
     "SESSION_REVOKED",
     "SESSION_ROLE_CHANGED",
     "SESSION_UID_CHANGED",
@@ -188,6 +224,11 @@ export function AuthProvider({ children }) {
       throw error;
     }
     const session = sessionFromResponse(response);
+    const allowedRoles = LOGIN_PORTAL_ROLES[String(targetPortal || portal || "").trim().toLowerCase()] || [];
+    const expectedLoginPortal = ROLE_LOGIN_PORTALS[session.role] || "";
+    if (!allowedRoles.includes(session.role) || (session.loginPortal && session.loginPortal !== expectedLoginPortal)) {
+      throw wrongPortalError();
+    }
     logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token);
     detachFirebaseCredentialSession();
