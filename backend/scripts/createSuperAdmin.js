@@ -50,6 +50,7 @@ async function sendVerificationEmail(email, password) {
 }
 
 async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
+  const now = firebaseAdmin.firestore.FieldValue.serverTimestamp();
   const record = {
     uid: authUser.uid,
     email,
@@ -62,13 +63,28 @@ async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
     emailVerified,
     dealershipId: null,
     bankId: null,
-    updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+    archivedAt: firebaseAdmin.firestore.FieldValue.delete(),
+    deletedAt: firebaseAdmin.firestore.FieldValue.delete(),
+    disabledAt: firebaseAdmin.firestore.FieldValue.delete(),
+    removedAt: firebaseAdmin.firestore.FieldValue.delete(),
+    updatedAt: now,
   };
   await firestore.collection("users").doc(authUser.uid).set({
     ...record,
     canonical: true,
-    createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+    createdAt: now,
   }, { merge: true });
+  if (authUser.uid !== email) {
+    const legacyRef = firestore.collection("users").doc(email);
+    const legacy = await legacyRef.get();
+    if (legacy.exists) {
+      await legacyRef.set({
+        ...record,
+        canonical: false,
+        canonicalUid: authUser.uid,
+      }, { merge: true });
+    }
+  }
   await firebaseAdmin.auth().setCustomUserClaims(authUser.uid, {
     role: "super-admin",
     approved: true,
@@ -87,8 +103,11 @@ async function main() {
 
   try {
     const existingUser = await firebaseAdmin.auth().getUserByEmail(email);
-    await upsertSuperAdminRecord(existingUser, email, existingUser.emailVerified === true);
-    if (existingUser.emailVerified === true) {
+    const repairedUser = await firebaseAdmin.auth().updateUser(existingUser.uid, {
+      disabled: false,
+    });
+    await upsertSuperAdminRecord(repairedUser, email, repairedUser.emailVerified === true);
+    if (repairedUser.emailVerified === true) {
       console.log(`Super admin already exists and is verified: ${email}`);
       return;
     }
