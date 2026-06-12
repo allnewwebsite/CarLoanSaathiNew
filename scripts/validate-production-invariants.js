@@ -158,22 +158,32 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
   includesAll(projectionService, ["removeLeadExecutiveProjection"], "old executive projection cleanup");
 });
 
-check("bank analytics uses live scoped lead data", () => {
+check("bank analytics uses maintained aggregate data", () => {
   const bankController = read("backend/controllers/bank.controller.js");
+  const aggregateService = read("backend/services/bankAnalyticsAggregate.service.js");
+  const firestoreService = read("backend/services/firestore.service.js");
   const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
   const apiService = read("frontend/src/services/api.js");
   const realtimeClient = read("frontend/src/services/realtimeClient.js");
   includesAll(bankController, [
-    "\"assignedBankIfsc\"",
-    "\"bankIfsc\"",
-    "\"ifscCode\"",
-    "collectLiveBankAnalyticsLeads",
-    "analytics_projection_outside_scope_or_missing_scope_fields",
-    "missing_or_empty_analytics_projection",
-    "source: liveLeads.length ? \"canonical-leads\" : \"projection\"",
-    "branches: branchMap.size",
-    "executives: executiveMap.size",
+    "getBankAnalyticsAggregate",
+    "source: \"bank-analytics-aggregates\"",
+    "aggregateReady: Boolean(aggregate)",
+    "executivePagination",
   ], "bank analytics backend");
+  includesAll(aggregateService, [
+    "bankAnalyticsSummaries",
+    "bankAnalyticsLeadStates",
+    "bankExecutiveAnalytics",
+    "bankRecentCases",
+    "rebuildBankAnalyticsAggregates",
+  ], "bank analytics aggregate service");
+  includesAll(firestoreService, [
+    "syncBankAnalyticsAggregate(record)",
+    "bulkUpsertRecords",
+  ], "bank analytics write synchronization");
+  assert(!bankController.includes("collectLiveBankAnalyticsLeads"), "bank analytics must not scan live leads");
+  assert(!bankController.includes("getBankAnalyticsFromLeadScan"), "legacy bank analytics lead scan must be removed");
   includesAll(bankPanel, [
     "bankAnalyticsMutationFilter",
     "data?.branches ?? data?.branchMetrics?.length",

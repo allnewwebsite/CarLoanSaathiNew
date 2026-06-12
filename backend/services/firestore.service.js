@@ -48,6 +48,10 @@ const memoryStore = {
   dealershipMetrics: [],
   bankMetrics: [],
   executiveMetrics: [],
+  bankAnalyticsSummaries: [],
+  bankAnalyticsLeadStates: [],
+  bankExecutiveAnalytics: [],
+  bankRecentCases: [],
   operationalMetrics: [],
   operationalEvents: [],
   operationalAlerts: [],
@@ -82,6 +86,10 @@ const DIAGNOSTIC_QUERY_COLLECTIONS = new Set([
 const DIRECT_ID_ONLY_COLLECTIONS = new Set([
   "auditLogs",
   "authAuditLogs",
+  "bankAnalyticsLeadStates",
+  "bankAnalyticsSummaries",
+  "bankExecutiveAnalytics",
+  "bankRecentCases",
   "bankDocuments",
   "documentAuditLogs",
   "documents",
@@ -348,7 +356,9 @@ function applyMemoryWhere(records, whereClauses = []) {
   return records.filter((record) => whereClauses.every(({ field, op = "==", value }) => {
     if (op === "==") return record[field] === value;
     if (op === "in") return Array.isArray(value) && value.includes(record[field]);
+    if (op === ">") return record[field] > value;
     if (op === ">=") return record[field] >= value;
+    if (op === "<") return record[field] < value;
     if (op === "<=") return record[field] <= value;
     return true;
   }));
@@ -469,6 +479,10 @@ export async function syncWriteProjections(collection, record = {}) {
   if (BANK_CATALOG_SOURCES.has(collection)) {
     const projection = bankBranchCatalogProjection(collection, record);
     if (projection) await writeProjectionRecord("bankBranchCatalog", projection.id, projection);
+  }
+  if (collection === "leads" && record?.id) {
+    const { syncBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
+    await syncBankAnalyticsAggregate(record);
   }
 }
 
@@ -806,6 +820,7 @@ export async function runRecordTransaction(handler) {
     set: upsertRecord,
     update: updateRecord,
     create: createRecord,
+    delete: deleteRecord,
   });
   const { FieldValue } = await import("firebase-admin/firestore");
   return firestore.runTransaction(async (transaction) => {
@@ -822,10 +837,15 @@ export async function runRecordTransaction(handler) {
       const ref = firestore.collection(collection).doc(id);
       transaction.update(ref, assertNonEmptyFirestoreData(payload));
     };
+    const remove = (collection, id) => {
+      const ref = firestore.collection(collection).doc(id);
+      transaction.delete(ref);
+    };
     return handler({
       get: read,
       set: write,
       update: patch,
+      delete: remove,
       serverTimestamp: FieldValue.serverTimestamp,
     });
   });
@@ -883,13 +903,48 @@ export async function incrementRecord(collection, id, increments = {}, base = {}
   return { id: doc.id, ...doc.data() };
 }
 
+export async function bulkUpsertRecords(collection, records = []) {
+  const rows = records.filter((record) => record?.id);
+  if (!rows.length) return 0;
+  clearCollectionReadCache(collection);
+  if (!firestore) {
+    memoryStore[collection] = memoryStore[collection] || [];
+    const byId = new Map(memoryStore[collection].map((record) => [record.id, record]));
+    for (const record of rows) {
+      byId.set(record.id, {
+        ...(byId.get(record.id) || {}),
+        ...record,
+        updatedAt: record.updatedAt || new Date().toISOString(),
+      });
+    }
+    memoryStore[collection] = [...byId.values()];
+    return rows.length;
+  }
+  const writer = firestore.bulkWriter();
+  for (const record of rows) {
+    const { id, ...payload } = assertNonEmptyFirestoreData(record);
+    writer.set(firestore.collection(collection).doc(id), payload, { merge: true });
+  }
+  await writer.close();
+  return rows.length;
+}
+
 export async function deleteRecord(collection, id) {
+  const deletedLead = collection === "leads" ? await getRecord(collection, id).catch(() => null) : null;
   if (!firestore) {
     memoryStore[collection] = (memoryStore[collection] || []).filter((item) => item.id !== id);
+    if (deletedLead) {
+      const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
+      await removeBankAnalyticsAggregate(deletedLead);
+    }
     return true;
   }
   const ref = await resolveDocumentRef(collection, id);
   await ref.delete();
+  if (deletedLead) {
+    const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
+    await removeBankAnalyticsAggregate(deletedLead);
+  }
   return true;
 }
 

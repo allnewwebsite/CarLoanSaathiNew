@@ -6,6 +6,7 @@
     "create-super-admin": "npm --prefix backend run create-super-admin",
     "maintenance": "npm --prefix backend run maintenance",
     "backfill:metrics": "npm --prefix backend run backfill:metrics",
+    "backfill:bank-analytics": "npm --prefix backend run backfill:bank-analytics",
     "backfill:phase1-projections": "npm --prefix backend run backfill:phase1-projections",
     "backfill:executive-assignments": "npm --prefix backend run backfill:executive-assignments",
     "audit:workflow-performance": "npm --prefix backend run audit:workflow-performance",

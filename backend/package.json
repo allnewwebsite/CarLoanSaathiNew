@@ -9,6 +9,7 @@
     "create-super-admin": "node scripts/createSuperAdmin.js",
     "maintenance": "node scripts/runMaintenance.js",
     "backfill:metrics": "node scripts/backfillMetrics.js",
+    "backfill:bank-analytics": "node scripts/backfillBankAnalytics.js",
     "backfill:phase1-projections": "node scripts/backfillPhase1Projections.js",
     "backfill:executive-assignments": "node scripts/backfillExecutiveAssignments.js",
     "audit:workflow-performance": "node scripts/audit-workflow-performance.js",

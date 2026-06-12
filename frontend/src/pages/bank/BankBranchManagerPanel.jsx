@@ -571,18 +571,30 @@ function AnalyticsPage() {
   const cachedAnalytics = getCachedGetData("/bank/analytics");
   const [data, setData] = useState(() => cachedAnalytics);
   const [loading, setLoading] = useState(() => !cachedAnalytics);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async ({ silent = false } = {}) => {
+  const load = useCallback(async ({ silent = false, executiveCursor = null } = {}) => {
     if (!silent) setLoading(true);
+    if (executiveCursor) setLoadingMore(true);
     setError("");
     try {
-      const response = await api.get("/bank/analytics");
-      setData(response.data || {});
+      const response = await api.get("/bank/analytics", {
+        params: { executiveLimit: 100, ...(executiveCursor ? { executiveCursor } : {}) },
+      });
+      const payload = response.data || {};
+      setData((current) => executiveCursor ? {
+        ...payload,
+        executivePerformance: [
+          ...(current?.executivePerformance || []),
+          ...(payload.executivePerformance || []),
+        ],
+      } : payload);
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Unable to load bank analytics");
     } finally {
       if (!silent) setLoading(false);
+      if (executiveCursor) setLoadingMore(false);
     }
   }, []);
 
@@ -644,6 +656,18 @@ function AnalyticsPage() {
       </div>
       <Table title="Branch Performance" headers={["Branch", "Assigned", "Active", "Pending Docs", "Approved", "Rejected", "Disbursed"]} rows={branchRows} loading={emptyLoading} />
       <Table title="Executive Performance" headers={["Executive", "Mobile", "Branch", "Assigned", "Active", "Pending Docs", "Approved", "Rejected", "Disbursed Amount"]} rows={executiveRows} loading={emptyLoading} />
+      {data?.executivePagination?.hasMore ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={() => load({ silent: true, executiveCursor: data.executivePagination.nextCursor })}
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loadingMore ? "Loading..." : "Load more executives"}
+          </button>
+        </div>
+      ) : null}
       <Table title="Recent Case Activity" headers={["Case ID", "Customer", LEAD_TABLE_LABELS.assignedExecutive, "Branch", LEAD_TABLE_LABELS.currentStatus, "Updated", "Action"]} rows={recentRows} loading={emptyLoading} />
     </section>
   );

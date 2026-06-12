@@ -9,6 +9,7 @@ import { queryExecutiveSummaryProjection, removeLeadExecutiveProjection, syncExe
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
+import { syncBankAnalyticsAggregate } from "./bankAnalyticsAggregate.service.js";
 
 function queueIdForLead(lead) {
   return `${routingCityForLead(lead) || "all"}:${lead.selectedBrand || "all"}:${lead.preferredBank || "all"}`.toLowerCase();
@@ -551,6 +552,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     });
     return { ...latestLead, ...leadPatch, updatedAt: now };
   });
+  await syncBankAnalyticsAggregate(updated);
   syncLeadProjectionSoon(updated);
   await Promise.all(previousExecutiveKeys.map((key) => removeLeadExecutiveProjection({ leadId, executiveId: key })));
   await Promise.all([

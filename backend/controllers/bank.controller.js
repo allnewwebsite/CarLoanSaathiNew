@@ -32,6 +32,7 @@ import { queueDocumentsRequiredWhatsApp, queueLeadAssignedWhatsApp, queueStatusU
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
+import { getBankAnalyticsAggregate } from "../services/bankAnalyticsAggregate.service.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -64,48 +65,6 @@ const EXECUTIVE_ACTIVE_LEAD_STATUSES = new Set([
   LEAD_STATUSES.DOCS_PENDING,
   LEAD_STATUSES.APPROVED,
 ]);
-
-const BANK_ANALYTICS_LEAD_FIELDS = [
-  "id",
-  "caseId",
-  "fullName",
-  "customerName",
-  "status",
-  "assignmentStatus",
-  "createdAt",
-  "updatedAt",
-  "statusUpdatedAt",
-  "assignmentTimestamp",
-  "disbursedAmount",
-  "loanAmount",
-  "requiredLoanAmount",
-  "bankId",
-  "assignedBankId",
-  "assignedPartnerId",
-  "bankPartner",
-  "preferredBank",
-  "bankName",
-  "assignedBankName",
-  "selectedBankName",
-  "assignedBankIfsc",
-  "bankIfsc",
-  "ifscCode",
-  "branchId",
-  "bankBranchId",
-  "selectedBankBranchId",
-  "branchLocation",
-  "bankBranchLocation",
-  "bankBranchCity",
-  "branchCity",
-  "routingCity",
-  "dealershipCity",
-  "city",
-  "assignedExecutiveId",
-  "assignedExecutiveEmail",
-  "assignedExecutiveName",
-  "assignedExecutiveMobile",
-  "executiveMobile",
-];
 
 const LEAD_DOCUMENT_FIELDS = [
   "id",
@@ -465,6 +424,7 @@ function bankIdentity(partner) {
     bankId,
     bankName: partner.bankName || partner.companyName || partner.name || bankId,
     bankIfsc: partner.ifsc || partner.bankIfsc || partner.ifscCode || null,
+    branchId: partner.branchId || partner.bankBranchId || null,
     bankLocation: partner.bankBranchLocation || partner.branchLocation || partner.branchCity || partner.city || partner.operatingCity,
   };
 }
@@ -684,94 +644,6 @@ async function countCanonicalBankExecutives(identity) {
     fields: ["id", "bankId", "bankPartnerId", "active"],
   });
   return page.data.filter((executive) => executiveBelongsToBank(executive, identity) && executive.active !== false).length;
-}
-
-function uniqueCleanValues(values = []) {
-  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
-}
-
-function activeExecutive(executive = {}) {
-  const status = cleanText(executive.status);
-  return executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
-}
-
-async function queryCanonicalBankExecutives(identity) {
-  const values = uniqueCleanValues([identity.bankId, identity.bankIfsc, identity.bankName]);
-  const fields = ["bankId", "bankPartnerId", "partnerId", "bankIfsc", "ifsc", "ifscCode", "bankName"];
-  const byId = new Map();
-  await Promise.all(values.flatMap((value) => fields.map(async (field) => {
-    const page = await queryRecords("loanExecutives", {
-      where: [{ field, value }],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 100,
-      maxLimit: 100,
-    }).catch(() => ({ data: [] }));
-    page.data.forEach((executive) => {
-      if (executiveBelongsToBank(executive, identity) && activeExecutive(executive)) {
-        byId.set(executive.id || executive.email || executive.mobile, executive);
-      }
-    });
-  })));
-  return [...byId.values()];
-}
-
-async function queryCanonicalBankBranches(identity) {
-  const values = uniqueCleanValues([identity.bankId, identity.bankIfsc, identity.bankName]);
-  const fields = ["bankId", "bankPartnerId", "partnerId", "ifscCode", "bankIfsc", "ifsc", "bankName"];
-  const byId = new Map();
-  await Promise.all(values.flatMap((value) => fields.map(async (field) => {
-    const page = await queryRecords("branches", {
-      where: [{ field, value }],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 100,
-      maxLimit: 100,
-    }).catch(() => ({ data: [] }));
-    page.data.forEach((branch) => {
-      const status = cleanText(branch.status);
-      if (branch.active === false || ["inactive", "deleted", "removed", "disabled"].includes(status)) return;
-      byId.set(branch.id || branch.ifscCode || branch.bankIfsc || branch.branchLocation || branch.city, branch);
-    });
-  })));
-  return [...byId.values()];
-}
-
-function leadBranchLabel(lead = {}, identity = {}) {
-  return lead.bankBranchCity
-    || lead.branchCity
-    || lead.branchLocation
-    || lead.bankBranchLocation
-    || lead.routingCity
-    || lead.dealershipCity
-    || lead.assignedBankIfsc
-    || lead.bankIfsc
-    || lead.ifscCode
-    || identity.bankLocation
-    || "Unassigned Branch";
-}
-
-async function collectLiveBankAnalyticsLeads(partner, identity, fields = BANK_ANALYTICS_LEAD_FIELDS) {
-  if (partner.roleType === "loan-executive") {
-    return assignedLeadsForPartner(partner, { limit: 250 }, fields);
-  }
-  const values = uniqueCleanValues([...partnerBankValues(partner), identity.bankId, identity.bankIfsc, identity.bankName]);
-  const bankFields = ["bankId", "assignedBankId", "assignedPartnerId", "bankPartner", "preferredBank", "bankName", "assignedBankName", "selectedBankName", "assignedBankIfsc", "bankIfsc", "ifscCode"];
-  const byId = new Map();
-  await Promise.all(values.flatMap((value) => bankFields.map(async (field) => {
-    const page = await queryRecords("leads", {
-      where: [{ field, value }],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 250,
-      maxLimit: 250,
-      fields,
-    }).catch(() => ({ data: [] }));
-    page.data.forEach((lead) => {
-      if (partnerCanAccessLead(partner, lead)) byId.set(lead.id, lead);
-    });
-  })));
-  return attachExecutiveMobile(partner, [...byId.values()]);
 }
 
 async function deleteExecutiveSummaryProjection(identity, executive = {}) {
@@ -1698,190 +1570,86 @@ export async function getBankAnalytics(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const identity = bankIdentity(partner);
-    logReadMetric("READS-BEFORE", req, { endpoint: "GET /api/bank/analytics", estimatedReads: 200 });
-    const projected = await queryLeadProjectionForUser({
-      user: partner.roleType === "loan-executive"
-        ? { role: "loan-executive", uid: partner.id, email: partner.email }
-        : { role: "bank-manager", bankId: identity.bankId },
-      query: { limit: 250 },
-      fields: BANK_ANALYTICS_LEAD_FIELDS,
-      recordMetrics: false,
-    }).catch((error) => {
-      logProjectionRead("PROJECTION-MISS", req, {
-        collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews",
-        reason: "analytics_projection_error",
-        error: error.message,
-      });
-      return null;
+    const executiveId = partner.roleType === "loan-executive"
+      ? String(partner.id || partner.email || "").trim()
+      : "";
+    const aggregate = await getBankAnalyticsAggregate(identity, {
+      executiveId,
+      executiveLimit: req.query.executiveLimit || 100,
+      executiveCursor: req.query.executiveCursor || null,
     });
-    const projectedScoped = projected?.data
-      ? (partner.roleType === "loan-executive" ? projected.data : projected.data.filter((lead) => partnerCanAccessLead(partner, lead)))
-      : [];
-    if (projected?.data?.length && projectedScoped.length) {
-      logProjectionRead("PROJECTION-HIT", req, {
-        collection: partner.roleType === "loan-executive" ? "executiveViews" : "bankViews",
-        resultCount: projectedScoped.length,
-      });
-    } else {
-      logProjectionRead("CANONICAL-FALLBACK", req, {
-        collection: "leads",
-        reason: projected?.data?.length ? "analytics_projection_outside_scope_or_missing_scope_fields" : "missing_or_empty_analytics_projection",
-        projectedCount: projected?.data?.length || 0,
-        scopedProjectionCount: projectedScoped.length,
-      });
-    }
-    const liveLeads = await collectLiveBankAnalyticsLeads(partner, identity, BANK_ANALYTICS_LEAD_FIELDS);
-    const leads = liveLeads.length ? liveLeads : projectedScoped;
+    const summary = aggregate?.summary || {};
+    const executivePerformance = aggregate?.executivePerformance || [];
+    const assignedLeads = Number(executiveId
+      ? executivePerformance[0]?.assignedLeads
+      : summary.assignedLeads || 0);
+    const activeLeads = Number(executiveId
+      ? executivePerformance[0]?.activeLeads
+      : summary.activeLeads || 0);
+    const approvedLeads = Number(executiveId
+      ? executivePerformance[0]?.approvedLeads
+      : summary.approvedLeads || 0);
+    const disbursedLeads = Number(executiveId
+      ? executivePerformance[0]?.disbursedLeads
+      : summary.disbursedLeads || 0);
+    const rejectedLeads = Number(executiveId
+      ? executivePerformance[0]?.rejectedLeads
+      : summary.rejectedLeads || 0);
+    const pendingDocuments = Number(executiveId
+      ? executivePerformance[0]?.pendingDocuments
+      : summary.pendingDocuments || 0);
+    const disbursedAmount = Number(executiveId
+      ? executivePerformance[0]?.disbursedAmount
+      : summary.disbursedAmount || 0);
+
     logReadMetric("READS-AFTER", req, {
       endpoint: "GET /api/bank/analytics",
-      estimatedReads: Math.min(250, leads.length || 250),
+      estimatedReads: aggregate ? 3 + executivePerformance.length + (aggregate.recentCases?.length || 0) : 1,
       cacheHit: false,
-      source: liveLeads.length ? "canonical-leads" : "projection",
-      resultCount: leads.length,
+      source: "bank-analytics-aggregates",
+      resultCount: assignedLeads,
     });
-    const [canonicalExecutives, canonicalBranches] = await Promise.all([
-      partner.roleType === "bank-manager" ? queryCanonicalBankExecutives(identity) : Promise.resolve([]),
-      partner.roleType === "bank-manager" ? queryCanonicalBankBranches(identity) : Promise.resolve([]),
-    ]);
-    const activeStatuses = [
-      LEAD_STATUSES.NEW,
-      LEAD_STATUSES.CONTACTED,
-      LEAD_STATUSES.REQUEST_DOCUMENT,
-      LEAD_STATUSES.DOCUMENT_RECEIVED,
-      LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
-      LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
-      LEAD_STATUSES.UNDER_BANK_PROCESS,
-      LEAD_STATUSES.ASSIGNED,
-      LEAD_STATUSES.ACCEPTED,
-      LEAD_STATUSES.UNDER_REVIEW,
-      LEAD_STATUSES.DOCS_PENDING,
-    ];
-    const statusOf = (lead) => normalizeStatus(lead.status || lead.assignmentStatus);
-    const activeLeads = leads.filter((lead) => activeStatuses.includes(statusOf(lead)));
-    const disbursedLeads = leads.filter((lead) => statusOf(lead) === LEAD_STATUSES.DISBURSED);
-    const approvedLeads = leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead)));
-    const rejectedLeads = leads.filter((lead) => statusOf(lead) === LEAD_STATUSES.REJECTED);
-    const pendingDocumentLeads = leads.filter((lead) => [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead)));
-    const disbursedAmount = disbursedLeads.reduce((sum, lead) => sum + Number(lead.disbursedAmount || lead.loanAmount || lead.requiredLoanAmount || 0), 0);
-    const branchMap = new Map();
-    const executiveMap = new Map();
-
-    for (const branchRecord of canonicalBranches) {
-      const branch = branchRecord.branchName
-        || branchRecord.name
-        || branchRecord.bankBranchLocation
-        || branchRecord.branchLocation
-        || branchRecord.city
-        || branchRecord.ifscCode
-        || branchRecord.bankIfsc
-        || branchRecord.id
-        || "Unassigned Branch";
-      if (!branchMap.has(branch)) {
-        branchMap.set(branch, {
-          branch,
-          assignedLeads: 0,
-          activeLeads: 0,
-          approvedLeads: 0,
-          disbursedLeads: 0,
-          rejectedLeads: 0,
-          pendingDocuments: 0,
-        });
-      }
-    }
-
-    for (const executive of canonicalExecutives) {
-      const executiveId = executive.id || executive.email || executive.officialEmail || executive.mobile;
-      if (!executiveId || executiveMap.has(executiveId)) continue;
-      executiveMap.set(executiveId, {
-        executiveId,
-        executiveName: executive.name || executive.fullName || executive.email || executive.officialEmail || "Executive",
-        mobile: executive.mobile || "",
-        branch: executive.branchName || executive.bankBranchLocation || executive.branchLocation || executive.branchCity || executive.city || executive.ifscCode || executive.bankIfsc || identity.bankLocation || "",
-        assignedLeads: 0,
-        activeLeads: 0,
-        approvedLeads: 0,
-        disbursedLeads: 0,
-        disbursedAmount: 0,
-        rejectedLeads: 0,
-        pendingDocuments: 0,
-      });
-    }
-
-    for (const lead of leads) {
-      const branch = leadBranchLabel(lead, identity);
-      const branchRow = branchMap.get(branch) || {
-        branch,
-        assignedLeads: 0,
-        activeLeads: 0,
-        approvedLeads: 0,
-        disbursedLeads: 0,
-        disbursedAmount: 0,
-        rejectedLeads: 0,
-        pendingDocuments: 0,
-      };
-      branchRow.assignedLeads += 1;
-      if (activeStatuses.includes(statusOf(lead))) branchRow.activeLeads += 1;
-      if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) branchRow.approvedLeads += 1;
-      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) branchRow.disbursedLeads += 1;
-      if (statusOf(lead) === LEAD_STATUSES.REJECTED) branchRow.rejectedLeads += 1;
-      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) branchRow.pendingDocuments += 1;
-      branchMap.set(branch, branchRow);
-
-      const executiveId = lead.assignedExecutiveId || lead.assignedExecutiveEmail || lead.assignedExecutiveName || "unassigned";
-      const executiveName = lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || "Unassigned";
-      const executiveRow = executiveMap.get(executiveId) || {
-        executiveId,
-        executiveName,
-        mobile: lead.assignedExecutiveMobile || lead.executiveMobile || "",
-        branch,
-        assignedLeads: 0,
-        activeLeads: 0,
-        approvedLeads: 0,
-        disbursedLeads: 0,
-        rejectedLeads: 0,
-        pendingDocuments: 0,
-      };
-      executiveRow.assignedLeads += 1;
-      if (activeStatuses.includes(statusOf(lead))) executiveRow.activeLeads += 1;
-      if ([LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(statusOf(lead))) executiveRow.approvedLeads += 1;
-      if (statusOf(lead) === LEAD_STATUSES.DISBURSED) {
-        executiveRow.disbursedLeads += 1;
-        executiveRow.disbursedAmount += Number(lead.disbursedAmount || lead.loanAmount || lead.requiredLoanAmount || 0);
-      }
-      if (statusOf(lead) === LEAD_STATUSES.REJECTED) executiveRow.rejectedLeads += 1;
-      if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(statusOf(lead))) executiveRow.pendingDocuments += 1;
-      executiveMap.set(executiveId, executiveRow);
-    }
 
     res.json({
       bankName: identity.bankName,
-      branch: identity.bankLocation || null,
-      assignedLeads: leads.length,
-      pendingLeads: activeLeads.length,
-      approvedLeads: approvedLeads.length,
-      disbursedLeads: disbursedLeads.length,
-      rejectedLeads: rejectedLeads.length,
-      pendingDocuments: pendingDocumentLeads.length,
+      branch: summary.branch || identity.bankLocation || null,
+      assignedLeads,
+      pendingLeads: activeLeads,
+      approvedLeads,
+      disbursedLeads,
+      rejectedLeads,
+      pendingDocuments,
       disbursedAmount,
-      branches: branchMap.size,
-      executives: executiveMap.size,
-      conversionRate: leads.length ? Math.round((approvedLeads.length / leads.length) * 100) : 0,
-      rejectionRate: leads.length ? Math.round((rejectedLeads.length / leads.length) * 100) : 0,
-      branchMetrics: [...branchMap.values()].sort((left, right) => right.assignedLeads - left.assignedLeads),
-      executivePerformance: [...executiveMap.values()].sort((left, right) => right.activeLeads - left.activeLeads),
-      recentCases: leads
-        .slice()
-        .sort((left, right) => String(right.updatedAt || right.assignmentTimestamp || right.createdAt || "").localeCompare(String(left.updatedAt || left.assignmentTimestamp || left.createdAt || "")))
-        .slice(0, 10)
-        .map((lead) => ({
-          id: lead.id,
-          caseId: lead.caseId || lead.id,
-          customerName: lead.fullName || lead.customerName || "",
-          status: statusOf(lead),
-          executiveName: lead.assignedExecutiveName || lead.assignedExecutiveEmail || "",
-          branch: leadBranchLabel(lead, identity),
-          updatedAt: lead.updatedAt || lead.statusUpdatedAt || lead.assignmentTimestamp || lead.createdAt || null,
-        })),
+      branches: assignedLeads || summary.branch ? 1 : 0,
+      executives: executiveId ? (executivePerformance.length ? 1 : 0) : Number(summary.executives || 0),
+      conversionRate: assignedLeads ? Math.round((approvedLeads / assignedLeads) * 100) : 0,
+      rejectionRate: assignedLeads ? Math.round((rejectedLeads / assignedLeads) * 100) : 0,
+      branchMetrics: summary.scopeId ? [{
+        branch: summary.branch || identity.bankLocation || "Unassigned Branch",
+        assignedLeads,
+        activeLeads,
+        approvedLeads,
+        disbursedLeads,
+        disbursedAmount,
+        rejectedLeads,
+        pendingDocuments,
+      }] : [],
+      executivePerformance,
+      executivePagination: {
+        nextCursor: aggregate?.executiveNextCursor || null,
+        hasMore: Boolean(aggregate?.executiveNextCursor),
+        limit: Math.min(Math.max(Number(req.query.executiveLimit) || 100, 1), 100),
+      },
+      recentCases: (aggregate?.recentCases || []).map((lead) => ({
+        id: lead.leadId,
+        caseId: lead.caseId || lead.leadId,
+        customerName: lead.customerName || "",
+        status: lead.status,
+        executiveName: lead.executiveName || "",
+        branch: lead.branch || summary.branch || identity.bankLocation || "",
+        updatedAt: lead.activityAt || lead.updatedAt || null,
+      })),
+      aggregateReady: Boolean(aggregate),
     });
   } catch (error) {
     next(error);
