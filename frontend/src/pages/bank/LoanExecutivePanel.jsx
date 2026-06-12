@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search, UploadCloud, X } from "lucide-react";
+import { ChevronRight, FileText, MapPin, Search, UploadCloud, X } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
@@ -71,7 +71,7 @@ function responseRows(response) {
 }
 
 function PageTitle({ title }) {
-  return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Loan Executive</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1></div>;
+  return <h1 className="text-lg font-semibold text-slate-950 lg:text-xl">{title}</h1>;
 }
 
 function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
@@ -214,8 +214,127 @@ function StatusUpdateModal({ lead, onClose, onSaved }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"><section className="w-full max-w-xl rounded-lg bg-white p-5 shadow-lg"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-semibold text-slate-900">{title}</h2><button onClick={onClose}><X className="h-5 w-5" /></button></div><div className="mt-4">{children}</div></section></div>;
+function Modal({ title, children, onClose, sheet = false }) {
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed inset-0 z-[70] flex bg-slate-950/45 p-0 sm:items-center sm:justify-center sm:p-4 ${sheet ? "items-end" : "items-center justify-center px-3"}`} onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className={`w-full overflow-hidden bg-white shadow-xl ${sheet ? "max-h-[82vh] rounded-t-lg sm:max-w-xl sm:rounded-lg" : "max-h-[88vh] max-w-xl rounded-lg"}`}>
+        <header className="flex min-h-14 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4">
+          <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+          <button type="button" onClick={onClose} aria-label={`Close ${title}`} className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-200/70"><X className="h-5 w-5" /></button>
+        </header>
+        <div className="max-h-[calc(88vh-3.5rem)] overflow-y-auto p-4">{children}</div>
+      </section>
+    </div>
+  );
+}
+
+function LeadDetailsModal({ lead, onClose }) {
+  const details = [
+    ["Customer Mobile", lead.mobile],
+    ["Car On-Road Price", moneyValue(lead.onRoadPrice || lead.carOnRoadPrice)],
+    ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager],
+    ["Finance Manager Mobile", lead.financeManagerMobile],
+    ["Generated", generatedAt(lead)],
+    ["Last Updated", dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt)],
+    ["Executive Remark", loanExecutiveRemark(lead)],
+  ];
+  return (
+    <Modal title={caseId(lead)} onClose={onClose}>
+      <div className="grid grid-cols-2 gap-3">
+        {details.map(([label, value]) => (
+          <div key={label} className={label === "Executive Remark" ? "col-span-2 rounded-md bg-slate-50 p-3" : "rounded-md bg-slate-50 p-3"}>
+            <p className="text-[11px] font-semibold uppercase text-slate-500">{label}</p>
+            <p className="mt-1 break-words text-sm font-medium text-slate-900">{display(value)}</p>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function DocumentsSheet({ lead, onClose, onRequest }) {
+  const uploadedDocuments = Array.isArray(lead.documents) ? lead.documents : [];
+  const [showUploads, setShowUploads] = useState(false);
+  const firstDocumentUrl = uploadedDocuments
+    .map((document) => document.url || document.fileUrl || document.downloadUrl)
+    .find(Boolean);
+  return (
+    <Modal title={`Documents · ${caseId(lead)}`} onClose={onClose} sheet>
+      <div className="grid grid-cols-3 gap-2">
+        <button type="button" onClick={onRequest} className="inline-flex min-h-11 items-center justify-center rounded-md bg-[#0d47a1] px-2 text-center text-xs font-semibold text-white">Request</button>
+        {firstDocumentUrl ? (
+          <a href={firstDocumentUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-700">View Docs</a>
+        ) : (
+          <button type="button" disabled className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-2 text-center text-xs font-semibold text-slate-400">View Docs</button>
+        )}
+        <button type="button" onClick={() => setShowUploads((current) => !current)} className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-700">Upload Review</button>
+      </div>
+      <div className={`mt-4 space-y-2 ${showUploads ? "" : "hidden sm:block"}`}>
+        <p className="text-xs font-semibold uppercase text-slate-500">Customer Documents</p>
+        {!uploadedDocuments.length ? <p className="rounded-md bg-slate-50 px-3 py-4 text-sm text-slate-500">No documents uploaded yet.</p> : null}
+        {uploadedDocuments.map((document, index) => {
+          const url = document.url || document.fileUrl || document.downloadUrl;
+          return (
+            <div key={document.id || `${document.type || document.documentType}-${index}`} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{document.type || document.documentType || "Document"}</p>
+                <p className="text-xs text-slate-500">{dateTime(document.createdAt || document.uploadedAt)}</p>
+              </div>
+              {url ? <a href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0d47a1]">View</a> : <span className="text-xs text-slate-400">Pending</span>}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+function LeadCard({ lead, onUpdate, onDocs, onDetails }) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-[#0d47a1]">{caseId(lead)}</p>
+          <h2 className="mt-1 truncate text-base font-semibold text-slate-950">{display(lead.fullName || lead.customerName)}</h2>
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500"><MapPin className="h-3.5 w-3.5" /> {display(lead.city || lead.dealershipCity)}</p>
+        </div>
+        <StatusBadge lead={lead} />
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3 border-t border-slate-100 pt-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase text-slate-500">Loan Amount</p>
+          <p className="mt-0.5 text-sm font-semibold text-slate-900">{moneyValue(lead.loanAmount || lead.requiredLoanAmount)}</p>
+        </div>
+        <p className="max-w-[45%] truncate text-right text-xs font-medium text-slate-600">{executiveStatusLabel(lead)}</p>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <button type="button" onClick={onUpdate} className="h-9 rounded-md bg-[#0d47a1] px-2 text-xs font-semibold text-white">Update</button>
+        <button type="button" onClick={onDocs} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700"><FileText className="h-3.5 w-3.5" /> Docs</button>
+        <button type="button" onClick={onDetails} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700">Details <ChevronRight className="h-3.5 w-3.5" /></button>
+      </div>
+    </article>
+  );
+}
+
+function CompactPagination({ page, total, hasMore, onPage }) {
+  const pageCount = Math.max(1, Math.ceil(Number(total || 0) / pageSize));
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+      <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className="h-8 rounded-md border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40">Prev</button>
+      <span className="font-medium text-slate-500">{page} / {pageCount}</span>
+      <button type="button" disabled={!hasMore} onClick={() => onPage(page + 1)} className="h-8 rounded-md border border-slate-200 px-3 font-semibold text-slate-700 disabled:opacity-40">Next</button>
+    </div>
+  );
 }
 
 function TotalLeadsPage({ mode }) {
@@ -282,20 +401,36 @@ function TotalLeadsPage({ mode }) {
     : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Documents"];
 
   return (
-    <section className="space-y-4">
-      <PageTitle title={mode === "status" ? "Status" : "Total Leads"} />
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Search cases" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </div>
+    <section className="space-y-3 lg:space-y-4">
+      <div className="hidden lg:block"><PageTitle title={mode === "status" ? "Status" : "Total Leads"} /></div>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input className="h-10 w-full rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 lg:max-w-md" placeholder="Search leads" value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
-      {mode === "status" ? <div className="flex flex-wrap gap-2">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
+      {mode === "status" ? <div className="flex gap-2 overflow-x-auto pb-1">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium sm:text-sm ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
-      <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Document Request", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      <div className="hidden lg:block">
+        <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Document Request", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+      </div>
+      <div className="space-y-2 lg:hidden">
+        {loading && !rows.length ? Array.from({ length: 3 }, (_, index) => <div key={index} className="h-48 animate-pulse rounded-lg border border-slate-200 bg-white" />) : null}
+        {!loading && !rows.length ? <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No assigned leads found.</div> : null}
+        {rows.map((lead) => (
+          <LeadCard
+            key={lead.id}
+            lead={lead}
+            onUpdate={() => updateStatus(lead, "STATUS_UPDATE")}
+            onDocs={() => setModal({ type: "document-actions", lead })}
+            onDetails={() => setModal({ type: "details", lead })}
+          />
+        ))}
+        {rows.length || page > 1 ? <CompactPagination page={page} total={total} hasMore={hasMore} onPage={onPage} /> : null}
+      </div>
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
+      {modal?.type === "details" ? <LeadDetailsModal lead={modal.lead} onClose={() => setModal(null)} /> : null}
+      {modal?.type === "document-actions" ? <DocumentsSheet lead={modal.lead} onClose={() => setModal(null)} onRequest={() => setModal({ type: "docs", lead: modal.lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} /> : null}
     </section>
   );
 }
@@ -363,18 +498,42 @@ export function LoanExecutiveLeadDetailPage() {
     const url = doc?.url || doc?.fileUrl || doc?.downloadUrl;
     return { key: type, cells: [type, url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", url ? <a key="zoom" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Zoom</a> : "-", url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-", dateTime(doc?.createdAt || doc?.uploadedAt)] };
   });
+  const mobileDocuments = docs.map((type) => {
+    const document = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
+    return {
+      type,
+      url: document?.url || document?.fileUrl || document?.downloadUrl,
+      uploadedAt: document?.createdAt || document?.uploadedAt,
+    };
+  });
   return (
-    <section className="space-y-4">
-      <PageTitle title="Customer Documents" />
-      <div className="grid gap-3 md:grid-cols-4">{[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], [LEAD_TABLE_LABELS.currentStatus, executiveStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}</div>
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <section className="space-y-3 lg:space-y-4">
+      <div className="hidden lg:block"><PageTitle title="Customer Documents" /></div>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], [LEAD_TABLE_LABELS.currentStatus, executiveStatusLabel(lead)]].map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 lg:p-4"><p className="text-[10px] font-semibold uppercase text-slate-500 lg:text-xs">{label}</p><p className="mt-1 truncate text-sm font-medium text-slate-900 lg:text-base">{display(value)}</p></div>)}</div>
+      <section className="rounded-lg border border-slate-200 bg-white p-3 lg:p-4">
         <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
+        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-5 text-slate-700 lg:leading-6">{loanExecutiveRemark(lead)}</p>
       </section>
       <PendingDocumentsPanel lead={lead} />
-      <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Zoom", "Download", "Uploaded Timestamp"]} rows={rows} loading={false} />
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white lg:hidden">
+        <h2 className="border-b border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-950">Customer Documents</h2>
+        <div className="divide-y divide-slate-100">
+          {mobileDocuments.map((document) => (
+            <div key={document.type} className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-900">{document.type}</p>
+                <p className="text-[11px] text-slate-500">{document.url ? dateTime(document.uploadedAt) : "Not uploaded"}</p>
+              </div>
+              {document.url ? <a href={document.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#0d47a1]">View</a> : <span className="text-xs text-slate-400">Pending</span>}
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="hidden lg:block">
+        <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Zoom", "Download", "Uploaded Timestamp"]} rows={rows} loading={false} />
+      </div>
       {canShowSanction ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <section className="rounded-lg border border-slate-200 bg-white p-3 lg:p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Sanction Letter</h2>
