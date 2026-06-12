@@ -3,6 +3,7 @@ import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
+import { DashboardDetailsModal } from "../../components/PortalUserMenu.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
@@ -358,22 +359,22 @@ function SearchBar({ value, onChange }) {
   );
 }
 
-function useBankLeads(search, status = "", dealershipId = "") {
+function useBankLeads(search, status = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, dealershipId });
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status });
   const cachedRows = responseRows({ data: cached });
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || "", dealershipId || ""]);
+  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, dealershipId, ...cursorParamsForPage(targetPage) } });
+      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, ...cursorParamsForPage(targetPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -382,7 +383,7 @@ function useBankLeads(search, status = "", dealershipId = "") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status, dealershipId, cursorParamsForPage, rememberNextCursor]);
+  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
@@ -477,34 +478,34 @@ function useExecutives() {
 
 function TotalLeadsPage() {
   const navigate = useNavigate();
-  const [params, setParams] = useSearchParams();
-  const dealershipId = params.get("dealershipId") || "";
-  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads("", "", dealershipId);
-  const [knownDealerships, setKnownDealerships] = useState([]);
+  const { rows, total, hasMore, loading, page, onPage, load } = useBankLeads("");
+  const [executiveFilter, setExecutiveFilter] = useState("");
+  const [knownExecutives, setKnownExecutives] = useState([]);
   const [actionError, setActionError] = useState("");
   const [pendingReassign, setPendingReassign] = useState(null);
   useEffect(() => {
-    setKnownDealerships((current) => {
+    setKnownExecutives((current) => {
       const byId = new Map(current.map((item) => [item.id, item]));
       rows.forEach((lead) => {
-        const id = String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").trim();
+        const id = String(lead.assignedExecutiveId || lead.assignedExecutiveEmail || lead.assignedExecutiveName || "").trim();
         if (!id) return;
         byId.set(id, {
           id,
-          name: lead.dealershipName || lead.dealerName || lead.dealerBusinessName || lead.dealershipEmail || lead.dealerEmail || id,
+          name: lead.assignedExecutiveName || lead.assignedExecutiveEmail || id,
         });
       });
       return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
     });
   }, [rows]);
-  const selectDealership = (value) => {
-    const next = new URLSearchParams(params);
-    if (value) next.set("dealershipId", value);
-    else next.delete("dealershipId");
-    next.set("page", "1");
-    setParams(next);
-  };
-  const tableRows = useMemo(() => rows.map((lead) => ({
+  const visibleRows = useMemo(() => rows.filter((lead) => {
+    if (!executiveFilter) return true;
+    return [
+      lead.assignedExecutiveId,
+      lead.assignedExecutiveEmail,
+      lead.assignedExecutiveName,
+    ].some((value) => String(value || "").trim() === executiveFilter);
+  }), [executiveFilter, rows]);
+  const tableRows = useMemo(() => visibleRows.map((lead) => ({
     key: lead.id,
     cells: [
       caseId(lead),
@@ -532,19 +533,19 @@ function TotalLeadsPage() {
         </button>
       </div>,
     ],
-  })), [load, navigate, page, rows]);
+  })), [load, navigate, page, visibleRows]);
   return (
     <section className="space-y-4">
       <PageTitle title="Total Leads" />
-      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:max-w-sm">
-        <label htmlFor="bank-lead-dealership-filter" className="text-xs font-semibold uppercase text-slate-500">Dealership Filter</label>
-        <select id="bank-lead-dealership-filter" value={dealershipId} onChange={(event) => selectDealership(event.target.value)} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100">
-          <option value="">All Dealerships</option>
-          {knownDealerships.map((dealership) => <option key={dealership.id} value={dealership.id}>{dealership.name}</option>)}
-        </select>
-      </div>
       {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
       <ReassignLeadDialog lead={pendingReassign} onCancel={() => setPendingReassign(null)} onDone={() => load(page, { silent: true })} />
+      <div className="flex justify-end">
+        <label htmlFor="bank-lead-executive-filter" className="sr-only">Filter leads by executive</label>
+        <select id="bank-lead-executive-filter" value={executiveFilter} onChange={(event) => setExecutiveFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-64">
+          <option value="">All Executives</option>
+          {knownExecutives.map((executive) => <option key={executive.id} value={executive.id}>{executive.name}</option>)}
+        </select>
+      </div>
       <Table title="Assigned Bank Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, "Actions"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
@@ -713,6 +714,7 @@ function ManageExecutivePage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [activeLeadBlock, setActiveLeadBlock] = useState(null);
   const [toast, setToast] = useState({ message: "", type: "success" });
+  const [viewExecutive, setViewExecutive] = useState(null);
 
   const closeDeleteModal = useCallback(() => {
     setPendingDelete(null);
@@ -806,7 +808,7 @@ function ManageExecutivePage() {
       display(executive.email || executive.officialEmail),
       display(executive.status),
       <div key="actions" className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => window.alert(`${executive.name || executive.fullName}\n${executive.email || executive.officialEmail}\n+91 ${executive.mobile || ""}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
+        <button type="button" onClick={() => setViewExecutive(executive)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
         <button type="button" onClick={() => openDeleteModal(executive)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>
       </div>,
     ],
@@ -815,6 +817,22 @@ function ManageExecutivePage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Manage Executive" />
+      <DashboardDetailsModal
+        open={Boolean(viewExecutive)}
+        onClose={() => setViewExecutive(null)}
+        title="Executive Profile"
+        subtitle="Loan Executive account information"
+        rows={[
+          ["Name", display(viewExecutive?.name || viewExecutive?.fullName)],
+          ["Email", display(viewExecutive?.email || viewExecutive?.officialEmail)],
+          ["Mobile", viewExecutive?.mobile ? `+91 ${viewExecutive.mobile}` : "-"],
+          ["Role", "Loan Executive"],
+          ["Bank", display(viewExecutive?.bankName)],
+          ["Branch", display(viewExecutive?.bankBranchLocation || viewExecutive?.branch || viewExecutive?.branchCity)],
+          ["IFSC", display(viewExecutive?.bankIfsc || viewExecutive?.ifsc || viewExecutive?.ifscCode)],
+          ["Status", display(viewExecutive?.status)],
+        ]}
+      />
       {toast.message ? (
         <div className={`fixed right-4 top-20 z-[60] rounded-lg border px-4 py-3 text-sm font-semibold shadow-lg ${toast.type === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
           {toast.message}
@@ -941,7 +959,16 @@ function ExecutiveCasesPage() {
 function BankDealershipsPage() {
   const navigate = useNavigate();
   const { rows, total, hasMore, loading, page, onPage } = useBankDealerships();
-  const tableRows = useMemo(() => rows.map((dealership) => ({
+  const [dealershipFilter, setDealershipFilter] = useState("");
+  const dealershipOptions = useMemo(() => rows.map((dealership) => ({
+    id: String(dealership.dealershipId || dealership.id || "").trim(),
+    name: dealership.dealershipName || dealership.dealerName || dealership.dealershipEmail || dealership.id,
+  })).filter((dealership) => dealership.id).sort((left, right) => left.name.localeCompare(right.name)), [rows]);
+  const visibleDealerships = useMemo(() => rows.filter((dealership) => {
+    if (!dealershipFilter) return true;
+    return String(dealership.dealershipId || dealership.id || "").trim() === dealershipFilter;
+  }), [dealershipFilter, rows]);
+  const tableRows = useMemo(() => visibleDealerships.map((dealership) => ({
     key: dealership.id || dealership.dealershipId,
     cells: [
       display(dealership.dealershipName || dealership.dealerName),
@@ -960,11 +987,18 @@ function BankDealershipsPage() {
       </button>,
       dateTime(dealership.lastLeadAt || dealership.updatedAt),
     ],
-  })), [navigate, rows]);
+  })), [navigate, visibleDealerships]);
   return (
     <section className="space-y-4">
       <PageTitle title="All Dealerships" />
       <p className="text-sm text-slate-500">Dealerships actively sending business to this bank.</p>
+      <div className="flex justify-end">
+        <label htmlFor="bank-dealership-filter" className="sr-only">Filter dealership activity</label>
+        <select id="bank-dealership-filter" value={dealershipFilter} onChange={(event) => setDealershipFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-64">
+          <option value="">All Dealerships</option>
+          {dealershipOptions.map((dealership) => <option key={dealership.id} value={dealership.id}>{dealership.name}</option>)}
+        </select>
+      </div>
       <Table title="Dealership Business Activity" headers={["Dealership", "Email", "City", "Mobile", "Total Cases", "Active Cases", "Total Disbursed Cases", "Last Activity"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );

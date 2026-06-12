@@ -100,11 +100,10 @@ function profileRows(user) {
   ];
 }
 
-function ProfileModal({ open, onClose, user }) {
+export function DashboardDetailsModal({ open, onClose, title = "Profile Information", subtitle = "", rows = [] }) {
   const titleId = useId();
   const modalRef = useRef(null);
   const closeRef = useRef(null);
-  const rows = useMemo(() => profileRows(user), [user]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -140,10 +139,15 @@ function ProfileModal({ open, onClose, user }) {
       if (event.target === event.currentTarget) onClose();
     }}>
       <section ref={modalRef} role="dialog" aria-modal="true" aria-labelledby={titleId} className="max-h-[min(88vh,760px)] w-full max-w-2xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
-        <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-          <div className="min-w-0">
-            <h2 id={titleId} className="text-lg font-semibold text-slate-950">Profile Information</h2>
-            <p className="mt-1 text-sm text-slate-500">{ROLE_LABELS[user?.role] || "Account"} registration details</p>
+        <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#0d47a1] text-white">
+              <UserRound className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 id={titleId} className="text-lg font-semibold text-slate-950">{title}</h2>
+              {subtitle ? <p className="mt-0.5 text-sm text-slate-500">{subtitle}</p> : null}
+            </div>
           </div>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Close profile" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
             <X className="h-4 w-4" />
@@ -151,9 +155,9 @@ function ProfileModal({ open, onClose, user }) {
         </header>
 
         <div className="max-h-[calc(min(88vh,760px)-9rem)] overflow-y-auto px-5 py-5 sm:px-6">
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {rows.map(([label, value]) => (
-              <div key={label} className="min-w-0 border-b border-slate-100 pb-3">
+              <div key={label} className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
                 <dt className="text-xs font-medium uppercase text-slate-500">{label}</dt>
                 <dd className="mt-1 break-words text-sm font-semibold leading-6 text-slate-900">{value}</dd>
               </div>
@@ -177,6 +181,7 @@ export function PortalUserMenu({ user, onLogout }) {
   const firstItemRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const rows = useMemo(() => profileRows(user), [user]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -241,7 +246,13 @@ export function PortalUserMenu({ user, onLogout }) {
           </div>
         ) : null}
       </div>
-      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} user={user} />
+      <DashboardDetailsModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        title="Profile Information"
+        subtitle={`${ROLE_LABELS[user?.role] || "Account"} registration details`}
+        rows={rows}
+      />
     </>
   );
 }
