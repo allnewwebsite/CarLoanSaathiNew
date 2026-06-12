@@ -46,7 +46,6 @@
 - Audit collections are immutable from frontend clients; only backend Admin SDK writes them.
 - Notifications are persisted first, then delivery work runs asynchronously.
 - Queue migration targets: BullMQ/Redis, Firebase Functions, or Cloud Tasks.
-- SLA/TAT thresholds live in `backend/config/governance.js` and can later move into Firestore settings.
 
 ## Enterprise Scale Phase
 

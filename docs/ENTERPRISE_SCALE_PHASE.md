@@ -12,7 +12,6 @@ The analytics layer now reads from precomputed metrics documents instead of scan
 - `dealershipMetrics`: dealership scorecards.
 - `bankMetrics`: bank scorecards.
 - `executiveMetrics`: executive scorecards.
-- `slaMetrics`: SLA breach and TAT records.
 - `operationalMetrics`: queue and system telemetry.
 
 ### Update Events
@@ -22,7 +21,6 @@ Metrics update when domain events occur:
 - lead created
 - lead assigned
 - status changed
-- SLA breached
 
 The active implementation uses `analyticsEngine.service.js`. When Redis is enabled, events can be processed through the `metrics-aggregation` queue. Without Redis, the same logic runs through safe in-process fallback.
 
@@ -45,7 +43,6 @@ If `REDIS_URL` is not present, the app falls back to local async processing and 
 ### Queues
 
 - `notifications`
-- `sla-jobs`
 - `archival-jobs`
 - `metrics-aggregation`
 - `email-jobs`
@@ -140,7 +137,7 @@ Expired notifications are marked cleanup-ready first. Physical deletion should b
 - Archive search APIs.
 - App Check enforcement.
 - Firestore TTL policies for low-risk notification cleanup.
-- Alerting for queue failures, slow API calls, and SLA breaches.
+- Alerting for queue failures, slow API calls, and realtime delivery failures.
 
 ## 8. Operational Validation
 

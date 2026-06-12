@@ -527,7 +527,6 @@ async function accountPresentation(email, account = {}) {
     }
   } catch (error) {
     logWarn("Account presentation lookup skipped", {
-      email,
       role: account.role,
       code: error.code,
       message: error.message,
@@ -812,7 +811,6 @@ export async function login(req, res, next) {
         } else {
           logWarn("Firebase password sign-in failed", {
             requestId: req.requestId,
-            email: normalizedEmail,
             code: error.code || "firebase-auth-failed",
             firebaseCode: error.firebaseCode || "",
             firebaseReferer: error.firebaseReferer || "",
@@ -827,7 +825,7 @@ export async function login(req, res, next) {
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     normalizedEmail = String(decoded.email || "").trim().toLowerCase();
     const firebaseUid = String(decoded.uid || "").trim();
-    logInfo("Auth login token verified", { requestId: req.requestId, email: normalizedEmail, portal });
+    logInfo("Auth login token verified", { requestId: req.requestId, portal });
     authPhase = "validate-firebase-email";
     if (!normalizedEmail) return res.status(400).json({ message: "Account email is required" });
     if (decoded.email_verified !== true) {
@@ -905,20 +903,18 @@ export async function login(req, res, next) {
     }
     logInfo("Auth account resolved", {
       requestId: req.requestId,
-      email: normalizedEmail,
       portal,
       resolvedRole: account.role,
       accountSource: account.accountSource || "unknown",
-      accountSourceId: account.accountSourceId || null,
       redirectTo: ROLE_ROUTES[account.role],
     });
     if (["dealer", "finance"].includes(portal) && !account.dealershipId && account.role !== "super-admin") {
-      logWarn("Auth login denied: missing dealership id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
+      logWarn("Auth login denied: missing dealership id", { requestId: req.requestId, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "dealership-id-missing", req });
       return res.status(403).json({ message: "Your dealership account is pending Super Admin approval." });
     }
     if (portal === "bank" && !account.bankId) {
-      logWarn("Auth login denied: missing bank id", { requestId: req.requestId, email: normalizedEmail, role: account.role, portal });
+      logWarn("Auth login denied: missing bank id", { requestId: req.requestId, role: account.role, portal });
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "bank-id-missing", req });
       return res.status(403).json({ message: "Your bank account is pending Super Admin approval." });
     }
@@ -987,11 +983,9 @@ export async function login(req, res, next) {
     const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
     logInfo("Auth login success", {
       requestId: req.requestId,
-      email: normalizedEmail,
       jwtRole: user.role,
       accountSource: user.accountSource,
       redirectTo,
-      sessionId,
     });
     res.json({
       token,
@@ -1002,7 +996,6 @@ export async function login(req, res, next) {
     logError("Auth login failed", {
       requestId: req.requestId,
       phase: authPhase,
-      email: normalizedEmail,
       message: error.message,
       code: error.code,
       status: error.status || 500,

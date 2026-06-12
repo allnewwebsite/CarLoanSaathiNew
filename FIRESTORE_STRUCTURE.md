@@ -40,20 +40,6 @@ Stores each partner assignment attempt.
 - `assignmentTimestamp`
 - `expiredAt`
 
-### `slaLogs`
-
-Tracks SLA status and timings.
-
-- `leadId`
-- `assignmentId`
-- `partnerId`
-- `status`
-- `assignedAt`
-- `expiresAt`
-- `responseTimeMinutes`
-- `processingTimeMinutes`
-- `slaScore`
-
 ### `reassignmentLogs`
 
 Append-only lead retrieval/reassignment audit trail.
@@ -84,7 +70,6 @@ Bank partner configuration and eligibility fields.
 - `supportedCities`
 - `supportedBrands`
 - `supportedBanks`
-- `slaScore`
 - `maxActiveLeads`
 
 ### `payouts`
@@ -115,9 +100,7 @@ Workflow configuration. Main document id:
 
 Fields:
 
-- `slaAcceptMinutes`
 - `idleReassignMinutes`
-- `minSlaScore`
 - `maxActiveLeadsPerPartner`
 - `defaultCommissionPercent`
 - `assignmentRules`

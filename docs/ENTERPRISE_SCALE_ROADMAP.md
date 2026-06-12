@@ -31,17 +31,6 @@ Notification APIs now have three layers:
 
 The current Render process can run the worker loop. At larger scale, move the same event schema to BullMQ/Redis, Cloud Tasks, or Firebase Functions.
 
-## SLA/TAT Engine
-
-SLA stages are defined in `backend/config/governance.js`.
-
-SLA records:
-
-- `slaLogs`: assignment lifecycle.
-- `slaMetrics`: stage-level TAT metrics.
-
-Future dashboard widgets should read `slaMetrics` by `dealershipId`, `bankId`, or `assignedExecutiveId`.
-
 ## Metrics Engine
 
 Metrics services use Firestore count aggregation where available. Dashboard count cards should move to:

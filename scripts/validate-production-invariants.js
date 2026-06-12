@@ -33,11 +33,15 @@ check("uploads directory is created before Multer writes", () => {
 
 check("production auth logging does not expose token or session details", () => {
   const authContext = read("frontend/src/context/AuthContext.jsx");
+  const authController = read("backend/controllers/auth.controller.js");
   assert(/if \(!import\.meta\.env\.DEV\) return;/.test(authContext), "auth logging must be development-only");
   const logStatement = authContext.match(/console\.info\("\[CLS auth\]"[\s\S]*?\n  \}\);/)?.[0] || "";
   assert(logStatement, "auth decision log statement must remain detectable");
   assert(!/\bemail\s*:/.test(logStatement), "auth logging must not print email");
   assert(!/\btoken\s*:/.test(logStatement), "auth logging must not print token");
+  const backendLogStatements = [...authController.matchAll(/log(?:Info|Warn|Error)\([^;]+?\);/gs)].map((match) => match[0]).join("\n");
+  assert(!/\bemail\s*:/.test(backendLogStatements), "backend auth telemetry must not print email");
+  assert(!/\bsessionId\s*:/.test(backendLogStatements), "backend auth telemetry must not print session id");
 });
 
 check("production App Check is not accidentally bypassed", () => {
@@ -190,6 +194,7 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
   const firestoreIndexes = read("firestore.indexes.json");
   includesAll(whatsappService, [
     "notificationIdentity",
+    "metadata.eventVersion",
     "canonicalEventType",
     "WHATSAPP_NOTIFICATION_DEDUPED",
     "processingWhatsAppKeys",
@@ -198,6 +203,7 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
     ".filter((candidate) => !candidate.messageSid)",
     "status: \"processing\"",
     "processWhatsAppQueue({ queueId: payload?.queueId, limit: 1 })",
+    "const eventVersion = lead.statusUpdatedAt",
   ], "WhatsApp idempotency");
   includesAll(notificationService, ["queueWhatsAppNotification", "publishRealtimeEvent"], "notification service");
   includesAll(queueService, ["jobId: options.jobId || payload.jobId || undefined"], "queue stable job ids");

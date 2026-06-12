@@ -44,7 +44,7 @@ Use `/health` for Render uptime checks and `/health/deep` for internal operation
 
 - `critical`: Full outage, data loss risk, auth down, Firestore unavailable.
 - `high`: Repeated API failures, queue failures above threshold, worker crash, Redis outage with large backlog.
-- `medium`: Slow APIs, rising queue backlog, scheduler degradation, SLA worker delay.
+- `medium`: Slow APIs, rising queue backlog, scheduler degradation, or delayed notification processing.
 - `low`: Informational degradation, maintenance events, local fallback mode.
 
 ## Alert Routing Readiness
@@ -81,9 +81,8 @@ Recommended production dashboards:
 
 - API health: request count, status codes, slow endpoint count, p95 latency.
 - Queue health: waiting, active, delayed, failed jobs by queue.
-- Worker health: last run timestamps for SLA, notifications, WhatsApp, scheduler.
+- Worker health: last run timestamps for notifications, WhatsApp, archival, metrics, and scheduler.
 - Firestore health: deep health latency and failure count.
-- SLA health: breach count, overdue cases, escalation queue.
 - Notification health: failed notification events and delivery status.
 - Frontend health: crash count, route-level errors, browser performance traces.
 
@@ -125,7 +124,7 @@ Actions:
 
 ### SEV-3
 
-Examples: slow dashboards, slow APIs, delayed notifications, SLA warnings.
+Examples: slow dashboards, slow APIs, delayed notifications, or elevated queue latency.
 
 Actions:
 

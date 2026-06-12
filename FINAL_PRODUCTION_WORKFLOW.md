@@ -6,7 +6,7 @@ CarLoanSaathi is a closed dealership-to-bank automotive finance ecosystem.
 
 - `GM / SM Tracking Panel`: view-only showroom, salesperson, finance desk, bank, conversion, aging, and business analytics.
 - `Finance Desk Panel`: main operational workspace for lead creation, document upload, salesperson management, bank submission, follow-ups, EMI, sanction, and disbursement tracking.
-- `Bank Branch Manager Panel`: branch queue monitoring, executive performance, SLA tracking, workload balancing, manual reassignment, and escalation control.
+- `Bank Branch Manager Panel`: branch queue monitoring, executive performance, workload balancing, manual reassignment, and escalation control.
 - `Loan Executive Panel`: assigned-case processing, document verification, approvals, rejections, sanction upload, remarks, and disbursement updates.
 - `Super Admin Panel`: hidden `/super-admin` login for the configured `SUPER_ADMIN_EMAIL`, with global controls for dealers, banks, branches, executives, routing, analytics, fraud, settings, and overrides.
 
@@ -39,10 +39,10 @@ Finance Desk sends lead
   -> dealership registered city
   -> matching bank branch city
   -> available branch executive
-  -> 1 hour acceptance SLA starts
+  -> assignment is visible to the selected executive
 ```
 
-SLA reassignment stays inside the same bank branch. Only the Super Admin can override city routing manually.
+Reassignment stays inside the same bank branch. Only the Super Admin can override city routing manually.
 
 ## Firestore Collections
 
@@ -59,7 +59,6 @@ SLA reassignment stays inside the same bank branch. Only the Super Admin can ove
 - `notifications`
 - `notificationLogs`
 - `whatsappQueue`
-- `slaTracking`
 - `leadTimeline`
 - `analytics`
 

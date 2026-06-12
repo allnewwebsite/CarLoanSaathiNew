@@ -80,7 +80,14 @@ function notificationIdentity({ leadId, caseId: rawCaseId, eventType, phoneNumbe
   const resolvedCaseId = rawCaseId || metadata.caseId || resolvedLeadId || "UNKNOWN_LEAD";
   const recipient = recipientKey(phoneNumber);
   const canonicalType = canonicalEventType(eventType);
-  const notificationKey = [resolvedCaseId, canonicalType, recipient || "NO_PHONE"]
+  const eventVersion = String(
+    metadata.eventVersion
+      || metadata.notificationEventId
+      || metadata.eventId
+      || "",
+  ).trim();
+  const notificationKey = [resolvedCaseId, canonicalType, recipient || "NO_PHONE", eventVersion]
+    .filter(Boolean)
     .join("_")
     .replace(/[^a-zA-Z0-9_-]/g, "_")
     .replace(/_+/g, "_");
@@ -700,6 +707,12 @@ export async function processWhatsAppQueue({ limit = 25, queueId = null } = {}) 
 
 export function queueLeadAssignedWhatsApp(lead = {}) {
   if (!lead.assignedExecutiveId && !lead.assignedExecutiveEmail && !assignedExecutivePhone(lead)) return null;
+  const eventVersion = lead.reassignedAt
+    || lead.assignmentTimestamp
+    || lead.assignedAt
+    || lead.updatedAt
+    || lead.createdAt
+    || "";
   return queueWhatsAppNotification({
     type: "lead-assigned",
     eventType: "LEAD_ASSIGNED",
@@ -717,11 +730,21 @@ export function queueLeadAssignedWhatsApp(lead = {}) {
       bankName: lead.assignedBankName || lead.bankName,
       branchLocation: lead.branchLocation || lead.bankBranchLocation,
     }),
-    metadata: { leadId: lead.id, caseId: caseId(lead), recipient: lead.assignedExecutiveName || lead.assignedExecutiveEmail || null },
+    metadata: {
+      leadId: lead.id,
+      caseId: caseId(lead),
+      eventVersion,
+      recipient: lead.assignedExecutiveName || lead.assignedExecutiveEmail || null,
+    },
   });
 }
 
 export function queueDocumentsRequiredWhatsApp({ lead = {}, documents = [] } = {}) {
+  const documentKey = [...documents].map((document) => String(document || "").trim()).filter(Boolean).sort().join("-");
+  const eventVersion = lead.documentsRequestedAt
+    || lead.pendingDocumentsRequestedAt
+    || lead.updatedAt
+    || `${lead.status || ""}-${documentKey}`;
   return queueWhatsAppNotification({
     type: "documents-required",
     eventType: "DOCUMENTS_REQUIRED",
@@ -737,11 +760,20 @@ export function queueDocumentsRequiredWhatsApp({ lead = {}, documents = [] } = {
       caseId: caseId(lead),
       documents,
     }),
-    metadata: { leadId: lead.id, caseId: caseId(lead), documents, recipient: lead.financeManagerName || lead.assignedFinanceManager || null },
+    metadata: {
+      leadId: lead.id,
+      caseId: caseId(lead),
+      documents,
+      eventVersion,
+      recipient: lead.financeManagerName || lead.assignedFinanceManager || null,
+    },
   });
 }
 
 export function queueStatusUpdatedWhatsApp({ lead = {}, statusLabel = "" } = {}) {
+  const eventVersion = lead.statusUpdatedAt
+    || lead.updatedAt
+    || `${lead.status || statusLabel}`;
   return queueWhatsAppNotification({
     type: "status-updated",
     eventType: "STATUS_UPDATED",
@@ -757,11 +789,21 @@ export function queueStatusUpdatedWhatsApp({ lead = {}, statusLabel = "" } = {})
       caseId: caseId(lead),
       statusLabel,
     }),
-    metadata: { leadId: lead.id, caseId: caseId(lead), status: statusLabel, recipient: lead.financeManagerName || lead.assignedFinanceManager || null },
+    metadata: {
+      leadId: lead.id,
+      caseId: caseId(lead),
+      status: statusLabel,
+      eventVersion,
+      recipient: lead.financeManagerName || lead.assignedFinanceManager || null,
+    },
   });
 }
 
 export function queueDocumentsUploadedWhatsApp({ lead = {}, documents = [] } = {}) {
+  const documentKey = [...documents].map((document) => String(document || "").trim()).filter(Boolean).sort().join("-");
+  const eventVersion = lead.documentsUploadedAt
+    || lead.updatedAt
+    || `${lead.status || ""}-${documentKey}`;
   return queueWhatsAppNotification({
     type: "documents-uploaded",
     eventType: "DOCUMENTS_UPLOADED",
@@ -777,7 +819,13 @@ export function queueDocumentsUploadedWhatsApp({ lead = {}, documents = [] } = {
       caseId: caseId(lead),
       documents,
     }),
-    metadata: { leadId: lead.id, caseId: caseId(lead), documents, recipient: lead.assignedExecutiveName || lead.assignedExecutiveEmail || null },
+    metadata: {
+      leadId: lead.id,
+      caseId: caseId(lead),
+      documents,
+      eventVersion,
+      recipient: lead.assignedExecutiveName || lead.assignedExecutiveEmail || null,
+    },
   });
 }
 

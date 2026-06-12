@@ -510,7 +510,6 @@ User Sees Updates
 
 ### Phase 10: Bank Manager Dashboard
 - [ ] View cases assigned to their branch
-- [ ] Track SLA metrics
 - [ ] Assign to loan executives
 - [ ] Dashboard visualizations
 
@@ -523,7 +522,6 @@ User Sees Updates
 ### Phase 12: Notifications & Webhooks
 - [ ] Lead creation notifications
 - [ ] Assignment notifications
-- [ ] SLA breach alerts
 - [ ] Status change notifications
 
 ### Phase 13: Analytics & Reporting

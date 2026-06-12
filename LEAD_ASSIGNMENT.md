@@ -13,8 +13,7 @@ The frontend never queries Firestore directly.
 3. `assignLeadRoundRobin` evaluates eligible bank partners.
 4. Lead assignment is stored in `leadAssignments`.
 5. Queue rotation is stored in `partnerQueues`.
-6. SLA tracking begins in `slaLogs`.
-7. Notifications are written to `notifications`.
+6. Notifications are written to `notifications`.
 
 ## Eligibility Engine
 
@@ -26,7 +25,6 @@ A bank partner can receive a lead only when:
 - customer city is supported
 - selected car brand is supported
 - selected/preferred bank is supported
-- SLA score is above threshold
 - active lead limit is not exceeded
 
 Fallback local partners are derived from available bank logos for development. Production should store real partner records in `bankPartners`.
@@ -52,7 +50,6 @@ Each new eligible lead moves to the next partner in sequence, keeping distributi
 Leads are retrieved and reassigned when:
 
 - partner is inactive or frozen
-- SLA acceptance window expires
 - lead is idle too long
 - partner rejects the lead
 - admin manually triggers reassignment
@@ -69,7 +66,6 @@ Reassignment writes:
 Super Admin APIs support:
 
 - manual reassignment
-- SLA settings
 - partner freeze/unfreeze
 - assignment rules
 - partner lead limits

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document defines the production operating model for CarLoanSaathi across notification delivery, audit/compliance, API standards, security governance, operational limits, and SLA/TAT tracking. It is designed for the existing React/Vite, Express, Firebase Auth, Firestore, Firebase Storage, Vercel, and Render architecture.
+This document defines the production operating model for CarLoanSaathi across notification delivery, audit/compliance, API standards, security governance, operational limits, and monitoring. It is designed for the existing React/Vite, Express, Firebase Auth, Firestore, Firebase Storage, Vercel, and Render architecture.
 
 ## 1. Notification Architecture
 
@@ -224,32 +224,7 @@ Defined in `backend/config/governance.js`.
 - Notification TTL: `90 days`.
 - Audit online retention: `365 days`.
 
-## 6. SLA/TAT Architecture
-
-### Lifecycle Stages
-
-- Lead assignment: 15 minutes.
-- First executive response: 30 minutes.
-- Pending documents: 240 minutes.
-- Bank processing: 480 minutes.
-- Approval/rejection: 720 minutes.
-- Disbursal: 1440 minutes.
-
-### SLA States
-
-- `healthy`
-- `warning`
-- `breached`
-
-### Future Readiness
-
-- Business-hours calculations.
-- Holiday calendar.
-- Escalation notifications.
-- SLA reports by executive, bank, dealership, and status.
-- Delay prediction models using historical TAT.
-
-## 7. Monitoring Integration Points
+## 6. Monitoring Integration Points
 
 - `requestId` appears in API responses and logs.
 - Slow requests emit structured warnings.
@@ -257,7 +232,7 @@ Defined in `backend/config/governance.js`.
 - Audit logs track critical actions.
 - `/health` reports uptime and memory.
 
-## 8. Migration-Safe Rollout Plan
+## 7. Migration-Safe Rollout Plan
 
 1. Keep existing controller responses.
 2. Adopt `res.success()` in new/modified controllers.

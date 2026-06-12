@@ -54,8 +54,8 @@ Required index groups are maintained in `firestore.indexes.json`:
 - documents by lead
 - notifications by recipient/dealership/bank/read
 - audit logs by actor/action/role/tenant/lead/case
-- lead assignments by lead/status and status/SLA time
-- metrics, SLA metrics, operational metrics, alerts, events
+- lead assignments by lead, status, bank, branch, and executive
+- business metrics, operational metrics, alerts, and events
 
 ## Hotspot Prevention
 
