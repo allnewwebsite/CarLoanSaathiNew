@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { LogOut, MoreVertical, UserRound, X } from "lucide-react";
+import { CreditCard, LogOut, MoreVertical, UserRound, X } from "lucide-react";
+import { PlanBillingModal } from "./PlanBillingModal.jsx";
 
 const ROLE_LABELS = {
   "super-admin": "Super Admin",
@@ -181,6 +182,7 @@ export function PortalUserMenu({ user, onLogout }) {
   const firstItemRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [billingOpen, setBillingOpen] = useState(false);
   const rows = useMemo(() => profileRows(user), [user]);
 
   useEffect(() => {
@@ -230,6 +232,20 @@ export function PortalUserMenu({ user, onLogout }) {
               <UserRound className="h-4 w-4 text-slate-500" />
               Profile
             </button>
+            {user?.role === "finance-desk" ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setBillingOpen(true);
+                }}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <CreditCard className="h-4 w-4 text-slate-500" />
+                Plan & Billing
+              </button>
+            ) : null}
             <div className="my-1 border-t border-slate-100" />
             <button
               type="button"
@@ -253,6 +269,7 @@ export function PortalUserMenu({ user, onLogout }) {
         subtitle={`${ROLE_LABELS[user?.role] || "Account"} registration details`}
         rows={rows}
       />
+      {user?.role === "finance-desk" ? <PlanBillingModal open={billingOpen} onClose={() => setBillingOpen(false)} user={user} /> : null}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileCloc
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
+import { SubscriptionBanner } from "../components/PlanBillingModal.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { prefetchGet } from "../services/api.js";
 import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
@@ -297,6 +298,7 @@ export function DashboardLayout() {
           </div>
         </div>
         <div className={`w-full max-w-full overflow-x-hidden sm:px-6 lg:px-6 ${loanExecutiveMobile ? "px-3 py-3 sm:py-4 lg:py-5" : "px-4 py-5"}`}>
+          <SubscriptionBanner user={user} />
           <Suspense fallback={<DashboardContentFallback />}>
             <Outlet />
           </Suspense>

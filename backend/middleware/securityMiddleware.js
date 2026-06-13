@@ -113,6 +113,14 @@ export const uploadRateLimit = rateLimit({
   message: { message: "Too many upload attempts. Try again later." },
 });
 
+export const billingRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: numberEnv("BILLING_RATE_LIMIT_MAX", 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many billing attempts. Try again later." },
+});
+
 export function requireHttps(req, res, next) {
   if (process.env.NODE_ENV !== "production") return next();
   const proto = req.headers["x-forwarded-proto"];

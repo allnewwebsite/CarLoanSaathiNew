@@ -12,6 +12,7 @@
     "backfill:bank-analytics": "node scripts/backfillBankAnalytics.js",
     "backfill:phase1-projections": "node scripts/backfillPhase1Projections.js",
     "backfill:executive-assignments": "node scripts/backfillExecutiveAssignments.js",
+    "backfill:subscriptions": "node scripts/backfillDealershipSubscriptions.js",
     "audit:workflow-performance": "node scripts/audit-workflow-performance.js",
     "audit:timeline-performance": "node scripts/audit-timeline-performance.js",
     "audit:bank-analytics-performance": "node scripts/audit-bank-analytics-performance.js",
@@ -25,6 +26,7 @@
     "verify:bank-tieups": "node scripts/verifyBankTieUpWorkflow.js",
     "verify:status-sync": "node scripts/verifyStatusSyncWorkflow.js",
     "verify:realtime": "node scripts/verifyRealtimeArchitecture.js",
+    "verify:subscriptions": "node scripts/verifySubscriptionBilling.js",
     "report:read-meter": "node scripts/reportReadMeter.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },

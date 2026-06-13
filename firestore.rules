@@ -395,6 +395,35 @@ service cloud.firestore {
       allow read, write: if isSuperAdmin();
     }
 
+    match /dealershipSubscriptions/{id} {
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && approved() && id == dealershipId());
+      allow create, update, delete: if false;
+    }
+
+    match /subscriptionPayments/{id} {
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && approved() && resource.data.dealershipId == dealershipId());
+      allow create, update, delete: if false;
+    }
+
+    match /subscriptionInvoices/{id} {
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && approved() && resource.data.dealershipId == dealershipId());
+      allow create, update, delete: if false;
+    }
+
+    match /subscriptionOrders/{id} {
+      allow read: if isSuperAdmin()
+        || (isFinanceDesk() && approved() && resource.data.dealershipId == dealershipId());
+      allow create, update, delete: if false;
+    }
+
+    match /subscriptionWarnings/{id} {
+      allow read: if isSuperAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /systemCounters/{id} {
       allow read, write: if false;
     }

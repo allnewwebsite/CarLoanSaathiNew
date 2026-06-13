@@ -46,6 +46,11 @@ export const REALTIME_EVENTS = {
   NOTIFICATION_CREATED: "NOTIFICATION_CREATED",
   FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
   SALESPERSON_CHANGED: "SALESPERSON_CHANGED",
+  SUBSCRIPTION_TRIAL_STARTED: "SUBSCRIPTION_TRIAL_STARTED",
+  SUBSCRIPTION_UPDATED: "SUBSCRIPTION_UPDATED",
+  SUBSCRIPTION_RENEWED: "SUBSCRIPTION_RENEWED",
+  SUBSCRIPTION_EXTENDED: "SUBSCRIPTION_EXTENDED",
+  SUBSCRIPTION_EXPIRED: "SUBSCRIPTION_EXPIRED",
 };
 
 const PHASE_ONE_EVENTS = new Set([
@@ -189,6 +194,7 @@ function lightweightLeadPatch(lead = {}, data = {}) {
 }
 
 function eventKind(eventType = "") {
+  if (eventType.includes("SUBSCRIPTION")) return "subscription";
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
   if (eventType.includes("BANK") || eventType.includes("BRANCH")) return "bank";

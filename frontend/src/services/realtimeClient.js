@@ -9,6 +9,7 @@ let lastEventId = "";
 let heartbeatTimer = 0;
 let ackTimer = 0;
 const pendingAckIds = new Set();
+const MUTATION_KINDS = new Set(["document", "notification", "staff", "bank", "dealer", "subscription"]);
 
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const ACK_FLUSH_MS = 2_000;
@@ -26,6 +27,7 @@ function leadUrlForEvent(event = {}) {
   if (event.kind === "staff") return "/dealer/staff";
   if (event.kind === "bank") return "/banks";
   if (event.kind === "dealer") return "/dealers";
+  if (event.kind === "subscription") return "/dealer/billing";
   return "/lead-mutation";
 }
 
@@ -56,15 +58,7 @@ function persistLastEventId(id = "") {
 
 function mutationPayload(event = {}) {
   const url = leadUrlForEvent(event);
-  const kind = event.kind === "notification"
-    ? "notification"
-    : event.kind === "staff"
-      ? "staff"
-      : event.kind === "bank"
-        ? "bank"
-        : event.kind === "dealer"
-          ? "dealer"
-          : "lead";
+  const kind = MUTATION_KINDS.has(event.kind) ? event.kind : "lead";
   return {
     realtime: true,
     url,
@@ -121,6 +115,10 @@ function invalidateRealtimeCaches(event = {}) {
     invalidateGetCache({ prefix: "/dashboard", purge: true });
     invalidateGetCache({ prefix: "/bank/dealerships", purge: true });
     invalidateGetCache({ prefix: "/executive/dealerships", purge: true });
+    return;
+  }
+  if (event.kind === "subscription") {
+    invalidateGetCache({ prefix: "/dealer/billing", purge: true });
     return;
   }
   [

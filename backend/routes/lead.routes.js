@@ -5,14 +5,15 @@ import { registrationSecurity } from "../middleware/registrationSecurity.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { publicLeadRateLimit } from "../middleware/securityMiddleware.js";
 import { ROLES } from "../utils/constants.js";
+import { requireLeadCreationSubscription } from "../middleware/subscription.js";
 
 const router = Router();
 
 router.post("/public", publicLeadRateLimit, registrationSecurity, createPublicLeadIntake);
-router.post("/create", authenticate, requireRole(ROLES.FINANCE_DESK), createPublicLead);
+router.post("/create", authenticate, requireRole(ROLES.FINANCE_DESK), requireLeadCreationSubscription, createPublicLead);
 router.use(authenticate);
 router.get("/", getLeads);
-router.post("/", requireRole(ROLES.FINANCE_DESK), createLead);
+router.post("/", requireRole(ROLES.FINANCE_DESK), requireLeadCreationSubscription, createLead);
 router.patch("/:id/status", requireRole(ROLES.LOAN_EXECUTIVE), updateLeadStatus);
 
 export default router;

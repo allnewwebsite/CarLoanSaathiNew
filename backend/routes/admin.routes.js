@@ -46,6 +46,12 @@ import { testWhatsApp } from "../controllers/whatsapp.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { ROLES } from "../utils/constants.js";
+import {
+  activateAdminTrial,
+  extendAdminSubscription,
+  getAdminSubscription,
+  suspendAdminSubscription,
+} from "../controllers/subscription.controller.js";
 
 const router = Router();
 
@@ -93,6 +99,10 @@ router.get("/workflow/settings", getAdminWorkflowSettings);
 router.get("/workflow/logs", getAdminWorkflowLogs);
 router.patch("/workflow/settings", updateAdminWorkflowSettings);
 router.patch("/partners/:partnerId/freeze", freezeAdminPartner);
+router.get("/subscriptions/:dealershipId", getAdminSubscription);
+router.post("/subscriptions/:dealershipId/extend", extendAdminSubscription);
+router.post("/subscriptions/:dealershipId/trial", activateAdminTrial);
+router.post("/subscriptions/:dealershipId/suspend", suspendAdminSubscription);
 
 // NEW: Bank branch management (dynamic IFSC system)
 router.post("/bank-branches", registerBankBranchAdmin);

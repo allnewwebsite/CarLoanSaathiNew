@@ -18,6 +18,7 @@ import { recordMonitoringSignal } from "../services/monitoringCenter.service.js"
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
+import { initializeDealershipTrial } from "../services/subscription.service.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -1205,6 +1206,12 @@ export async function approveDealershipApproval(req, res, next) {
     };
     const approvedBy = req.user?.email || "super-admin";
     await materializeApprovedDealership({ request, loginEmail, dealership });
+    const subscription = await initializeDealershipTrial({
+      dealershipId: loginEmail,
+      dealership,
+      approvedAt: now,
+      actor: req.user,
+    });
     const updated = await approveDealershipBackrefs({ request, loginEmail, now, approvedBy });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await incrementPlatformCounters({ activeDealerships: 1, approvedDealerships: 1, pendingDealerships: -1 });
@@ -1214,7 +1221,11 @@ export async function approveDealershipApproval(req, res, next) {
     await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
     clearAdminApprovalCaches();
-    res.json({ message: "Dealership approved", request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now } });
+    res.json({
+      message: "Dealership approved",
+      subscription,
+      request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now },
+    });
   } catch (error) {
     next(error);
   }
@@ -1690,6 +1701,14 @@ export async function updateAdminOnboardingRequest(req, res, next) {
 
     if (active) {
       await activateDealerAccessFromRequest({ request, req, now });
+      if (loginEmail) {
+        await initializeDealershipTrial({
+          dealershipId: loginEmail,
+          dealership: { ...(request.dealership || {}), loginEmail, dealershipName: request.dealershipName },
+          approvedAt: now,
+          actor: req.user,
+        });
+      }
     } else if (status === "Rejected") {
       const pendingAccount = await firstAdminLookup([
         () => loginEmail ? getRecord("pendingDealerAccounts", loginEmail) : null,

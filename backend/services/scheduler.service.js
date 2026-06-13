@@ -4,6 +4,7 @@ import { validateMetricsIntegrity } from "./metricsBackfill.service.js";
 import { validateProjectionFreshness } from "./projection.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { markWorkerHealth } from "./health.service.js";
+import { processSubscriptionLifecycle } from "./subscription.service.js";
 
 const scheduled = [];
 
@@ -41,6 +42,8 @@ export function registerScheduledOperations() {
   schedule("metrics-integrity", Number(process.env.METRICS_INTEGRITY_INTERVAL_MS || 60 * 60 * 1000), validateMetricsIntegrity);
 
   schedule("projection-freshness", Number(process.env.PROJECTION_FRESHNESS_INTERVAL_MS || 10 * 60 * 1000), validateProjectionFreshness);
+
+  schedule("subscription-lifecycle", Number(process.env.SUBSCRIPTION_LIFECYCLE_INTERVAL_MS || 6 * 60 * 60 * 1000), processSubscriptionLifecycle);
 
   return scheduled;
 }

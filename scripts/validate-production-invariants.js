@@ -75,6 +75,66 @@ check("lead creation and lead status APIs remain registered", () => {
   includesAll(dealerRoutes, ["router.post(\"/leads\"", "createDealerLead"], "dealer lead routes");
 });
 
+check("subscription billing is server-verified and blocks only lead creation", () => {
+  const subscriptionService = read("backend/services/subscription.service.js");
+  const subscriptionMiddleware = read("backend/middleware/subscription.js");
+  const dealerRoutes = read("backend/routes/dealer.routes.js");
+  const leadRoutes = read("backend/routes/lead.routes.js");
+  const adminRoutes = read("backend/routes/admin.routes.js");
+  const billingUi = read("frontend/src/components/PlanBillingModal.jsx");
+  const portalMenu = read("frontend/src/components/PortalUserMenu.jsx");
+  const firestoreRules = read("firestore.rules");
+  includesAll(subscriptionService, [
+    "monthlyAmount: 15_000",
+    "trialDays: 60",
+    "billingCycleDays: 30",
+    "validRazorpaySignature",
+    "verifiedRazorpayPayment",
+    "payment.status === \"captured\"",
+    "transaction.set(\"subscriptionPayments\"",
+    "transaction.set(\"subscriptionInvoices\"",
+    "REALTIME_EVENTS.SUBSCRIPTION_RENEWED",
+  ], "subscription service");
+  includesAll(subscriptionMiddleware, [
+    "assertLeadCreationAllowed",
+    "SUBSCRIPTION_EXPIRED",
+  ], "subscription middleware");
+  includesAll(dealerRoutes, [
+    "router.post(\"/leads\", requireLeadCreationSubscription",
+    "router.get(\"/billing\"",
+    "router.post(\"/billing/order\"",
+    "router.post(\"/billing/verify\"",
+  ], "Finance Desk subscription routes");
+  includesAll(leadRoutes, [
+    "router.post(\"/create\", authenticate, requireRole(ROLES.FINANCE_DESK), requireLeadCreationSubscription",
+    "router.post(\"/\", requireRole(ROLES.FINANCE_DESK), requireLeadCreationSubscription",
+  ], "lead subscription guards");
+  includesAll(adminRoutes, [
+    "router.get(\"/subscriptions/:dealershipId\"",
+    "router.post(\"/subscriptions/:dealershipId/extend\"",
+    "router.post(\"/subscriptions/:dealershipId/trial\"",
+    "router.post(\"/subscriptions/:dealershipId/suspend\"",
+  ], "admin subscription routes");
+  includesAll(billingUi, [
+    "Plan & Billing",
+    "Renew Subscription",
+    "Payment History",
+    "Invoice History",
+    "cls:data-mutated",
+  ], "billing UI");
+  assert(!billingUi.includes("setInterval("), "billing UI must not poll");
+  includesAll(portalMenu, [
+    "user?.role === \"finance-desk\"",
+    "<PlanBillingModal",
+  ], "Finance Desk-only billing menu");
+  includesAll(firestoreRules, [
+    "match /dealershipSubscriptions/{id}",
+    "match /subscriptionPayments/{id}",
+    "match /subscriptionInvoices/{id}",
+    "allow create, update, delete: if false;",
+  ], "subscription Firestore rules");
+});
+
 check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
   const realtimeClient = read("frontend/src/services/realtimeClient.js");
