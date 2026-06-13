@@ -4,10 +4,9 @@ import { Link, Outlet } from "react-router-dom";
 
 const customerNav = [
   { label: "Home", to: "/#home" },
-  { label: "Product", to: "/#showcase" },
-  { label: "Dealerships", to: "/#dealerships" },
-  { label: "Banks", to: "/#banks" },
-  { label: "Workflow", to: "/#workflow" },
+  { label: "Features", to: "/#showcase" },
+  { label: "Plans & Billing", to: "/plans-and-billing" },
+  { label: "About", to: "/#about" },
   { label: "Contact", to: "/#contact" },
 ];
 
@@ -153,7 +152,7 @@ export function PublicLayout() {
           <Link to="/#home" className="flex min-w-0 items-center gap-3">
             <img src="/assets/favicon.png" alt="CarLoanSaathi logo" className="h-9 w-9 shrink-0 object-contain" />
             <span className="truncate text-base font-semibold leading-none sm:text-lg">
-              <span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span>
+              <span className="text-[#08736d]">CarLoan</span><span className="text-[#b45309]">Saathi</span>
             </span>
           </Link>
 
@@ -191,7 +190,7 @@ export function PublicLayout() {
           <button className="absolute inset-0 bg-[#071426]/55 transition-opacity" onClick={() => setMobileOpen(false)} aria-label="Close menu overlay" />
           <aside className="absolute right-0 top-0 h-full w-[86vw] max-w-sm overflow-y-auto border-l border-slate-200 bg-white p-5 shadow-xl transition-transform">
             <div className="flex items-center justify-between">
-              <p className="min-w-0 truncate text-lg font-semibold"><span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span></p>
+              <p className="min-w-0 truncate text-lg font-semibold"><span className="text-[#08736d]">CarLoan</span><span className="text-[#b45309]">Saathi</span></p>
               <button className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-900" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X className="h-5 w-5" /></button>
             </div>
             <div className="mt-6">
