@@ -81,14 +81,14 @@ Recommended production thresholds:
 - Firestore slow query threshold 1200 ms
 - page size 20 to 50 for dashboards
 - maximum backend page size 100
-- archive closed leads after 180 days
+- archive rejected leads after 90 days and disbursed leads after 180 days
 
 ## Future Growth Path
 
 At 1M+ leads:
 
-- keep active `leads` collection limited to open/recent cases
-- move closed old cases to `archivedLeads`
+- keep archived cases in `leads` with immutable archive metadata
+- use active projections for normal portal lists and indexed archive queries for Finance/Admin history
 - export historical analytics to BigQuery
 - add Algolia/Meilisearch/Elastic for fuzzy search
 - shard global metrics writes if Sentry shows contention

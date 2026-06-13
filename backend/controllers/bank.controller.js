@@ -33,6 +33,7 @@ import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.serv
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
 import { getBankAnalyticsAggregate } from "../services/bankAnalyticsAggregate.service.js";
+import { assertLeadMutable } from "../utils/archive.js";
 
 const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -607,6 +608,7 @@ async function requireAssignedLead(req) {
     error.status = 403;
     throw error;
   }
+  assertLeadMutable(lead);
   return { partner, lead };
 }
 

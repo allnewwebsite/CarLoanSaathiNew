@@ -66,9 +66,13 @@ export async function rebuildHistoricalMetrics({ limit = 250, dryRun = true, run
     });
     for (const lead of page.data) {
       const createdAt = lead.createdAt || new Date().toISOString();
-      bump(map, "metrics", "global", { id: "global", scopeType: "global", scopeId: "global", period: null }, lead);
       bump(map, "dailyMetrics", `global:${dayKey(createdAt)}`, { id: `global:${dayKey(createdAt)}`, scopeType: "global", scopeId: "global", period: dayKey(createdAt) }, lead);
       bump(map, "monthlyMetrics", `global:${monthKey(createdAt)}`, { id: `global:${monthKey(createdAt)}`, scopeType: "global", scopeId: "global", period: monthKey(createdAt) }, lead);
+      if (lead.isArchived === true) {
+        processed += 1;
+        continue;
+      }
+      bump(map, "metrics", "global", { id: "global", scopeType: "global", scopeId: "global", period: null }, lead);
       if (lead.dealershipId) bump(map, "dealershipMetrics", lead.dealershipId, { id: lead.dealershipId, scopeType: "dealership", scopeId: lead.dealershipId, period: null }, lead);
       if (lead.bankId) bump(map, "bankMetrics", lead.bankId, { id: lead.bankId, scopeType: "bank", scopeId: lead.bankId, period: null }, lead);
       if (lead.assignedExecutiveId) bump(map, "executiveMetrics", lead.assignedExecutiveId, { id: lead.assignedExecutiveId, scopeType: "executive", scopeId: lead.assignedExecutiveId, period: null }, lead);

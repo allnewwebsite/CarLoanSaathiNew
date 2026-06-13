@@ -1,5 +1,6 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
+import { assertLeadMutable } from "../utils/archive.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, setRequestCachedValue } from "./requestScope.service.js";
@@ -55,7 +56,6 @@ const memoryStore = {
   operationalMetrics: [],
   operationalEvents: [],
   operationalAlerts: [],
-  archivedLeads: [],
   archivalLogs: [],
   systemCounters: [],
   workflowLogViews: [],
@@ -252,7 +252,12 @@ export async function createRecord(collection, payload) {
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, payload?.id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
-  const record = { id: `${collection}-${Date.now()}`, ...cleanPayload, createdAt: new Date().toISOString() };
+  const record = {
+    id: `${collection}-${Date.now()}`,
+    ...(collection === "leads" ? { isArchived: false } : {}),
+    ...cleanPayload,
+    createdAt: new Date().toISOString(),
+  };
   if (!firestore) {
     memoryStore[collection] = memoryStore[collection] || [];
     memoryStore[collection].push(record);
@@ -795,6 +800,10 @@ export async function updateRecord(collection, id, payload) {
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const update = { ...cleanPayload, updatedAt: new Date().toISOString() };
   if (!firestore) {
+    if (collection === "leads") {
+      const existing = (memoryStore[collection] || []).find((item) => item.id === id);
+      if (existing) assertLeadMutable(existing);
+    }
     let updated = { id, ...update };
     memoryStore[collection] = (memoryStore[collection] || []).map((item) => {
       if (item.id !== id) return item;
@@ -805,6 +814,10 @@ export async function updateRecord(collection, id, payload) {
     return updated;
   }
   const ref = await resolveDocumentRef(collection, id);
+  if (collection === "leads") {
+    const existing = await ref.get();
+    if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
+  }
   await ref.update(update);
   const doc = await ref.get();
   recordFirestoreRead({ collection, operation: "update-readback", signature: readSignature(collection, "update-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
@@ -861,6 +874,7 @@ export async function upsertRecord(collection, id, payload) {
     memoryStore[collection] = memoryStore[collection] || [];
     const index = memoryStore[collection].findIndex((item) => item.id === id);
     if (index >= 0) {
+      if (collection === "leads") assertLeadMutable(memoryStore[collection][index]);
       memoryStore[collection][index] = { ...memoryStore[collection][index], ...update };
       await syncWriteProjections(collection, memoryStore[collection][index]);
       return memoryStore[collection][index];
@@ -869,6 +883,10 @@ export async function upsertRecord(collection, id, payload) {
     memoryStore[collection].push(record);
     await syncWriteProjections(collection, record);
     return record;
+  }
+  if (collection === "leads") {
+    const existing = await firestore.collection(collection).doc(id).get();
+    if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
   const doc = await firestore.collection(collection).doc(id).get();

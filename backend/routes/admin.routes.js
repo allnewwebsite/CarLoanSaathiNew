@@ -52,6 +52,7 @@ import {
   getAdminSubscription,
   suspendAdminSubscription,
 } from "../controllers/subscription.controller.js";
+import { getAdminArchivedLead, getAdminArchivedLeads } from "../controllers/archive.controller.js";
 
 const router = Router();
 
@@ -81,6 +82,8 @@ router.post("/approvals/banks/:id/reject", rejectBankApproval);
 router.post("/approvals/banks/:id/suspend", suspendBankApproval);
 router.get("/approvals/logs", getApprovalLogs);
 router.get("/leads", getAdminLeads);
+router.get("/archived-leads", getAdminArchivedLeads);
+router.get("/archived-leads/:id", getAdminArchivedLead);
 router.get("/leads/:id", getAdminLead);
 router.patch("/leads/:id/status", updateAdminLeadStatus);
 router.get("/analytics", getAdminAnalytics);

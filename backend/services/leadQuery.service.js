@@ -1,4 +1,4 @@
-import { countRecords, queryRecords } from "./firestore.service.js";
+import { queryRecords } from "./firestore.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
@@ -64,9 +64,15 @@ const LEAD_FIELDS = [
   "dealerEmail",
   "dealerName",
   "bankId",
+  "vehicleNumber",
+  "registrationNumber",
+  "isArchived",
+  "archivedAt",
+  "archiveReason",
+  "archivedBy",
 ];
 
-const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager"];
+const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "vehicleNumber", "registrationNumber", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedExecutiveName", "assignedExecutiveEmail", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager"];
 
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
@@ -114,6 +120,7 @@ function localFilters(leads, query = {}) {
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
   return leads.filter((lead) => {
+    if (lead.isArchived === true) return false;
     const normalizedQueryStatus = normalizeStatus(status);
     const financeStatus = normalizeFinanceStatus(lead.status);
     const leadStatus = normalizeStatus(lead.status);
@@ -287,19 +294,51 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     fields,
     allowGlobal: true,
   });
-  return pageResponse(result);
+  return pageResponse({
+    data: result.data.filter((lead) => lead.isArchived !== true),
+    limit,
+    nextCursor: result.nextCursor,
+  });
+}
+
+export async function queryArchivedLeads({ dealershipId = "", query = {}, fields = LEAD_FIELDS } = {}) {
+  const { limit, cursor, page } = paginationParams(query);
+  const where = [{ field: "isArchived", value: true }];
+  if (dealershipId) where.push({ field: "dealershipId", value: dealershipId });
+  if (query.status) where.push({ field: "status", value: normalizeStatus(query.status) });
+  const result = await queryRecords("leads", {
+    where,
+    orderBy: "archivedAt",
+    direction: "desc",
+    limit,
+    cursor,
+    page,
+    search: query.search,
+    searchFields: SEARCH_FIELDS,
+    fields,
+    maxLimit: 100,
+    allowGlobal: !dealershipId,
+  });
+  return pageResponse({
+    data: result.data.filter((lead) => lead.isArchived === true),
+    limit,
+    nextCursor: result.nextCursor,
+  });
 }
 
 export async function countOpenExecutiveLeads(executiveId) {
   if (!executiveId) return 0;
   let total = 0;
   for (const status of [LEAD_STATUSES.NEW, LEAD_STATUSES.CONTACTED, LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING]) {
-    total += await countRecords("leads", {
+    const page = await queryRecords("leads", {
       where: [
         { field: "assignedExecutiveId", value: executiveId },
         { field: "status", value: status },
       ],
+      limit: 100,
+      maxLimit: 100,
     });
+    total += page.data.filter((lead) => lead.isArchived !== true).length;
   }
   return total;
 }

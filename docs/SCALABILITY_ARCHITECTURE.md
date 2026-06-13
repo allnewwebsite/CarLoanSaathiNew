@@ -35,9 +35,9 @@
 
 ## Active/Archived Leads
 
-- Keep open workflow leads in `leads`.
-- Move closed leads older than the retention window to `archivedLeads`.
-- Keep analytics counters in metrics documents before archiving.
+- Keep all workflow leads in `leads`; archive eligible records in place.
+- Mark rejected leads after 90 days and disbursed leads after 180 days with `isArchived`, `archivedAt`, and `archiveReason`.
+- Remove archived records from active projections and counters while retaining historical daily/monthly metrics.
 
 ## Governance Additions
 
@@ -52,5 +52,5 @@
 - Analytics reads must use metrics documents and not live lead aggregation.
 - Redis/BullMQ is optional through `REDIS_URL`; local fallback preserves deployment compatibility.
 - Sentry is optional through `SENTRY_DSN` and `VITE_SENTRY_DSN`.
-- Archive jobs copy first and delete only when `ARCHIVE_DELETE_SOURCE=true`.
+- Archive jobs never copy or delete lead records; archived leads are immutable.
 - Large tables should migrate to `VirtualTable` from `frontend/src/components/VirtualTable.jsx`.

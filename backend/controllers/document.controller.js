@@ -9,6 +9,7 @@ import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { logError } from "../services/logger.service.js";
 import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "../services/whatsapp.service.js";
+import { assertLeadMutable } from "../utils/archive.js";
 
 function runDocumentSideEffect(label, task) {
   Promise.resolve()
@@ -25,6 +26,7 @@ function canUploadCustomerDocument(req, lead) {
 
 async function canReadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
+  if (lead?.isArchived === true && !["finance-desk", "super-admin"].includes(req.user?.role)) return false;
   const email = req.user?.email || req.user?.uid;
   if (["finance-desk", "gm"].includes(req.user?.role)) {
     return lead?.dealershipId === req.user?.dealershipId || lead?.dealerEmail === email || lead?.dealershipEmail === email || lead?.createdBy === email;
@@ -55,6 +57,7 @@ export async function uploadDocument(req, res, next) {
     if (!req.file) return res.status(400).json({ message: "Document file is required" });
     const lead = req.body.leadId ? await getRecord("leads", req.body.leadId) : null;
     if (!req.body.leadId || !lead) return res.status(404).json({ message: "Lead not found" });
+    assertLeadMutable(lead);
     if (!canUploadCustomerDocument(req, lead)) return res.status(403).json({ message: "Only finance desk can upload customer documents" });
     const uploaded = await uploadLeadDocument(req.file, req.body.leadId, {
       dealershipId: lead.dealershipId || req.user?.dealershipId,
@@ -141,6 +144,7 @@ export async function updateDocumentStatus(req, res, next) {
     if (!existingDocument) return res.status(404).json({ message: "Document not found" });
     const lead = existingDocument.leadId ? await getRecord("leads", existingDocument.leadId) : null;
     if (!lead) return res.status(404).json({ message: "Lead not found" });
+    assertLeadMutable(lead);
     if (!(await canReviewCustomerDocument(req, lead))) return res.status(403).json({ message: "Document access denied" });
     const nextStatus = assertValidDocumentStatusTransition(existingDocument.status, req.body.status);
     const document = await updateRecord("documents", req.params.id, {

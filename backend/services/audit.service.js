@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = {
   SUBSCRIPTION_TRIAL_ENDED: "SUBSCRIPTION_TRIAL_ENDED",
   SUBSCRIPTION_EXPIRED: "SUBSCRIPTION_EXPIRED",
   SUBSCRIPTION_ADMIN_OVERRIDE: "SUBSCRIPTION_ADMIN_OVERRIDE",
+  LEAD_ARCHIVED: "LEAD_ARCHIVED",
 };
 
 const sensitiveKeys = /password|token|secret|privateKey|authorization|apiKey|otp|credential/i;

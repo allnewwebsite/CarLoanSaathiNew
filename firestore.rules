@@ -85,27 +85,38 @@ service cloud.firestore {
         );
     }
 
+    function notArchived(data) {
+      return !("isArchived" in data) || data.isArchived != true;
+    }
+
     function canReadLead(data) {
-      return isSuperAdmin()
-        || ((isFinanceDesk() || isGm()) && sameDealership(data))
-        || (isBankManager() && sameBank(data) && sameBranch(data))
-        || (isLoanExecutive() && assignedExecutive(data));
+      return !notArchived(data)
+        ? (isSuperAdmin() || (isFinanceDesk() && sameDealership(data)))
+        : (
+          isSuperAdmin()
+          || ((isFinanceDesk() || isGm()) && sameDealership(data))
+          || (isBankManager() && sameBank(data) && sameBranch(data))
+          || (isLoanExecutive() && assignedExecutive(data))
+        );
     }
 
     function canReadDocument(data) {
-      return isSuperAdmin()
-        || sameDealership(data)
-        || (sameBank(data) && sameBranch(data))
-        || assignedExecutive(data);
+      return data.leadId != null
+        && exists(/databases/$(database)/documents/leads/$(data.leadId))
+        ? canReadLead(get(/databases/$(database)/documents/leads/$(data.leadId)).data)
+        : (
+          isSuperAdmin()
+          || sameDealership(data)
+          || (sameBank(data) && sameBranch(data))
+          || assignedExecutive(data)
+        );
     }
 
     function canReadTimeline(data) {
-      return canReadLead(data)
-        || (
-          data.leadId != null
-          && exists(/databases/$(database)/documents/leads/$(data.leadId))
-          && canReadLead(get(/databases/$(database)/documents/leads/$(data.leadId)).data)
-        );
+      return data.leadId != null
+        && exists(/databases/$(database)/documents/leads/$(data.leadId))
+        ? canReadLead(get(/databases/$(database)/documents/leads/$(data.leadId)).data)
+        : canReadLead(data);
     }
 
     function canReadNotification(data) {
@@ -124,7 +135,9 @@ service cloud.firestore {
     }
 
     function canReadPortalProjection(data) {
-      return isSuperAdmin()
+      return notArchived(data)
+        && (
+          isSuperAdmin()
         || ((isFinanceDesk() || isGm())
           && data.scopeType == "dealership"
           && dealershipId() != null
@@ -141,7 +154,8 @@ service cloud.firestore {
             || data.assignedExecutiveId == request.auth.uid
             || data.assignedExecutiveId == email()
             || data.assignedExecutiveEmail == email()
-          ));
+          ))
+        );
     }
 
     function safeNotificationReadUpdate() {
@@ -193,13 +207,16 @@ service cloud.firestore {
       allow read: if canReadLead(resource.data);
       allow create: if isFinanceDesk()
         && approved()
+        && notArchived(request.resource.data)
         && request.resource.data.dealershipId == dealershipId();
       allow update: if isLoanExecutive()
+        && notArchived(resource.data)
         && assignedExecutive(resource.data)
         && request.resource.data.dealershipId == resource.data.dealershipId
         && request.resource.data.bankId == resource.data.bankId;
       allow delete: if false;
-      allow read, write: if isSuperAdmin();
+      allow create: if isSuperAdmin() && notArchived(request.resource.data);
+      allow update: if isSuperAdmin() && notArchived(resource.data);
     }
 
     match /documents/{documentId} {
@@ -207,8 +224,12 @@ service cloud.firestore {
       allow create: if isFinanceDesk()
         && approved()
         && request.resource.data.dealershipId == dealershipId()
+        && request.resource.data.leadId != null
+        && exists(/databases/$(database)/documents/leads/$(request.resource.data.leadId))
+        && notArchived(get(/databases/$(database)/documents/leads/$(request.resource.data.leadId)).data)
         && request.resource.data.uploadedBy == email();
       allow update: if isLoanExecutive()
+        && notArchived(get(/databases/$(database)/documents/leads/$(resource.data.leadId)).data)
         && assignedExecutive(resource.data)
         && request.resource.data.leadId == resource.data.leadId
         && request.resource.data.dealershipId == resource.data.dealershipId
@@ -216,7 +237,14 @@ service cloud.firestore {
         && request.resource.data.assignedExecutiveId == resource.data.assignedExecutiveId
         && request.resource.data.assignedExecutiveEmail == resource.data.assignedExecutiveEmail;
       allow delete: if false;
-      allow read, write: if isSuperAdmin();
+      allow create: if isSuperAdmin()
+        && request.resource.data.leadId != null
+        && exists(/databases/$(database)/documents/leads/$(request.resource.data.leadId))
+        && notArchived(get(/databases/$(database)/documents/leads/$(request.resource.data.leadId)).data);
+      allow update, delete: if isSuperAdmin()
+        && resource.data.leadId != null
+        && exists(/databases/$(database)/documents/leads/$(resource.data.leadId))
+        && notArchived(get(/databases/$(database)/documents/leads/$(resource.data.leadId)).data);
     }
 
     match /leadTimeline/{timelineId} {
@@ -499,11 +527,6 @@ service cloud.firestore {
     }
 
     match /operationalAlerts/{id} {
-      allow read: if isSuperAdmin();
-      allow write: if false;
-    }
-
-    match /archivedLeads/{id} {
       allow read: if isSuperAdmin();
       allow write: if false;
     }

@@ -1889,7 +1889,7 @@ export async function getDealerLead(req, res, next) {
     });
     logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
     const lead = await getRecord("leads", req.params.id);
-    if (!lead || !owned([lead], email, dealershipEmail).length) return res.status(404).json({ message: "Lead not found" });
+    if (!lead || lead.isArchived === true || !owned([lead], email, dealershipEmail).length) return res.status(404).json({ message: "Lead not found" });
     const bankDocumentsPage = await queryRecords("bankDocuments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "createdAt",

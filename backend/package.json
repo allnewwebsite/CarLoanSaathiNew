@@ -27,6 +27,7 @@
     "verify:status-sync": "node scripts/verifyStatusSyncWorkflow.js",
     "verify:realtime": "node scripts/verifyRealtimeArchitecture.js",
     "verify:subscriptions": "node scripts/verifySubscriptionBilling.js",
+    "verify:archive": "node scripts/verifyArchiveSystem.js",
     "report:read-meter": "node scripts/reportReadMeter.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },

@@ -1,4 +1,5 @@
 import { countRecords, createRecord, getRecord, queryRecords, runRecordTransaction, updateRecord, upsertRecord } from "./firestore.service.js";
+import { assertLeadMutable } from "../utils/archive.js";
 import { createNotification } from "./notification.service.js";
 import { getEligiblePartners } from "./partner.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
@@ -454,6 +455,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       error.status = 404;
       throw error;
     }
+    assertLeadMutable(latestLead);
     const freshCurrent = {
       id: latestLead.assignedExecutiveId || null,
       email: latestLead.assignedExecutiveEmail || null,

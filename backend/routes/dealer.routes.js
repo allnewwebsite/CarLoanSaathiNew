@@ -12,6 +12,7 @@ import {
   getFinanceBillingHistory,
   verifyFinanceSubscriptionPayment,
 } from "../controllers/subscription.controller.js";
+import { getFinanceArchivedLead, getFinanceArchivedLeads } from "../controllers/archive.controller.js";
 
 const router = Router();
 
@@ -20,6 +21,8 @@ router.post("/register/email-start", registrationRateLimit, registrationSecurity
 router.post("/register/status", registrationRateLimit, registrationSecurity, getDealerRegistrationStatus);
 router.use(authenticate, requireRole(ROLES.FINANCE_DESK));
 router.get("/leads", getDealerLeads);
+router.get("/archived-leads", getFinanceArchivedLeads);
+router.get("/archived-leads/:id", getFinanceArchivedLead);
 router.get("/leads/:id", getDealerLead);
 router.post("/leads", requireLeadCreationSubscription, createDealerLead);
 router.get("/salespersons", getDealerSalespersons);

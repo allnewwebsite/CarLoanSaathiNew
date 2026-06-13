@@ -337,6 +337,7 @@ function leadTargets(lead = {}) {
 
 export async function syncLeadProjection(lead = {}) {
   if (!lead?.id) return null;
+  if (lead.isArchived === true) return removeLeadProjections(lead);
   const targets = leadTargets(lead);
   await Promise.all(targets.map((target) => upsertRecord(
     target.collection,
@@ -348,6 +349,20 @@ export async function syncLeadProjection(lead = {}) {
     syncBankDealershipProjection(lead),
   ]);
   return { synced: targets.length, leadId: lead.id };
+}
+
+export async function removeLeadProjections(lead = {}) {
+  if (!lead?.id) return { removed: 0, leadId: lead?.id || null };
+  const targets = leadTargets(lead);
+  const detailTargets = [
+    { collection: "leadDetailsProjection", docId: safeDocId(lead.id) },
+  ];
+  const allTargets = [...targets, ...detailTargets];
+  await Promise.all([
+    ...allTargets.map((target) => deleteRecord(target.collection, target.docId).catch(() => false)),
+    removeBankDealershipLeadProjection(lead.id),
+  ]);
+  return { removed: allTargets.length + 1, leadId: lead.id };
 }
 
 export function syncLeadProjectionSoon(lead = {}) {
@@ -481,7 +496,9 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       return null;
     }
     const mapStartedAt = Date.now();
-    const data = freshRows.map((item) => ({ ...item, id: item.sourceId || item.id }));
+    const data = freshRows
+      .filter((item) => item.isArchived !== true)
+      .map((item) => ({ ...item, id: item.sourceId || item.id }));
     const mapEndedAt = Date.now();
     const shapeStartedAt = Date.now();
     const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
@@ -714,6 +731,28 @@ export async function queryBankDealershipProjection({ bankId, query = {} } = {})
   const freshRows = await freshProjectionRows("bankDealershipViews", result.data);
   if (!freshRows.length) return null;
   return pageResponse({ data: freshRows, limit, nextCursor: result.nextCursor });
+}
+
+async function removeBankDealershipLeadProjection(leadId) {
+  const markerId = safeDocId(`bank_dealership_lead_${leadId}`);
+  const previous = await getRecord("bankDealershipLeadProjection", markerId).catch(() => null);
+  if (!previous) return false;
+  const summaryId = safeDocId(`bank_dealership_${previous.bankId}_${previous.dealershipId}`);
+  await applyBankDealershipDelta({
+    summaryId,
+    seed: {
+      id: summaryId,
+      viewType: "bank-dealership",
+      bankId: previous.bankId,
+      dealershipId: previous.dealershipId,
+      updatedAt: isoNow(),
+    },
+    totalDelta: -1,
+    disbursedDelta: previous.isDisbursed ? -1 : 0,
+    activeDelta: previous.isActive ? -1 : 0,
+  });
+  await deleteRecord("bankDealershipLeadProjection", markerId).catch(() => false);
+  return true;
 }
 
 export async function queryNotificationProjectionForUser({ user = {}, query = {} } = {}) {

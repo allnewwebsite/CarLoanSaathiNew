@@ -99,20 +99,14 @@ Future table migrations should use this component for:
 
 ## 5. Archival and Retention
 
-Closed leads can be archived from `leads` to `archivedLeads` through `archival.service.js`.
+Eligible rejected and disbursed leads are archived in place through `archival.service.js`.
 
-Default behavior is rollback-safe:
-
-- Copy lead to `archivedLeads`.
-- Mark source lead as `archiveReady`.
-- Do not delete source unless `ARCHIVE_DELETE_SOURCE=true`.
+The archive worker sets `isArchived`, `archivedAt`, and `archiveReason`, removes active projections, adjusts active metrics, and keeps the original lead immutable.
 
 ### Environment Variables
 
 ```text
-LEAD_ARCHIVE_AFTER_DAYS=180
 ARCHIVAL_BATCH_SIZE=50
-ARCHIVE_DELETE_SOURCE=false
 ```
 
 ### Cleanup

@@ -16,9 +16,9 @@ Never load the full `leads` collection for dashboard pages. Super Admin APIs mus
 
 ## Lead Retention
 
-- Active workflows stay in `leads`.
-- Closed leads older than the configured retention window move to `archivedLeads`.
-- Metrics must be updated before archiving.
+- Active and archived workflows stay in `leads`.
+- Rejected leads archive after 90 days and disbursed leads after 180 days.
+- Archiving removes active projections/counters while preserving historical metrics.
 - Documents remain in private Storage paths and metadata remains queryable.
 
 ## Async Notifications

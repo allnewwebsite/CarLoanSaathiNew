@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, Menu, PanelLeftClose, PanelLeftOpen, Users, X } from "lucide-react";
+import { Activity, Archive, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, Landmark, Menu, PanelLeftClose, PanelLeftOpen, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
@@ -24,6 +24,7 @@ const navByRole = {
     { label: "Active Salespersons", to: "/finance/active-salespersons", icon: Users },
     { label: "All Cases", to: "/finance/cases", icon: FileText },
     { label: "Status", to: "/finance/status", icon: FileClock },
+    { label: "Archived Cases", to: "/finance/archived-cases", icon: Archive },
     { label: "Bank Tie-Ups", to: "/finance/bank-tieups", icon: Landmark },
   ],
   "bank-manager": [
@@ -45,6 +46,7 @@ const navByRole = {
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
     { label: "Status", to: "/admin/status", icon: FileClock },
     { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
+    { label: "Archived Cases", to: "/admin/archived-cases", icon: Archive },
     { label: "Monitoring", to: "/admin/monitoring", icon: Activity },
   ],
 };

@@ -11,6 +11,7 @@ import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLead
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
+import { assertLeadMutable } from "../utils/archive.js";
 import { clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
@@ -356,6 +357,7 @@ export async function updateLeadStatus(req, res, next) {
   try {
     const existing = await getRecord("leads", req.params.id);
     if (!existing) return res.status(404).json({ message: "Lead not found" });
+    assertLeadMutable(existing);
     if (!(await canAccessLead(req, existing))) return res.status(403).json({ message: "Lead access denied" });
     const nextStatus = assertValidStatusTransition(existing?.status, req.body.status);
     const statusUpdate = {

@@ -87,6 +87,7 @@ function executiveIdForLead(lead = {}) {
 }
 
 function contributionForLead(lead = {}) {
+  if (lead.isArchived === true) return null;
   const bankId = bankIdForLead(lead);
   if (!bankId) return null;
   const status = normalizeStatus(lead.status || lead.assignmentStatus);
