@@ -89,6 +89,8 @@ function assertNoRouteMismatchMutation() {
   const source = sourceFile("routes/RoleProtectedRoute.jsx");
   assert(!/clearAuthStorage\s*\(/.test(source), "Role mismatch route guard must not clear auth storage.");
   assert(!/publishAuthEvent\s*\(/.test(source), "Role mismatch route guard must not broadcast logout.");
+  assert(!/navigate\s*\(\s*loginPathForRole/.test(source), "Role mismatch route guard must not auto-redirect to another portal.");
+  assert(source.includes("Portal access denied"), "Role mismatch route guard must render an isolated denial state.");
 }
 
 function assertFailedAttemptLeavesSessionUntouched({ activePath, activeUser, activeToken, attemptedPath, label }) {

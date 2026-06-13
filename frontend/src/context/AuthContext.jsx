@@ -17,10 +17,9 @@ import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { startRealtimeClient, stopRealtimeClient } from "../services/realtimeClient.js";
-import { teardownRealtimeSubscriptions } from "../services/realtimeManager.js";
 
 const AuthContext = createContext(null);
-const SESSION_VALIDATE_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_VALIDATE_FRESHNESS_MS = 5 * 60 * 1000;
 const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
 const LOGIN_PORTAL_ROLES = {
   dealer: ["finance-desk"],
@@ -78,27 +77,6 @@ function sessionFromResponse(response) {
   };
 }
 
-function jwtRole(token) {
-  try {
-    const payload = token?.split(".")?.[1];
-    if (!payload) return "";
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")))?.role || "";
-  } catch {
-    return "";
-  }
-}
-
-function logAuthDecision(label, { session, token, redirectTo } = {}) {
-  if (!import.meta.env.DEV) return;
-  console.info("[CLS auth]", label, {
-    hasSession: Boolean(session),
-    hasToken: Boolean(token),
-    jwtRoleMatchesSession: Boolean(session?.role && jwtRole(token) === session.role),
-    hasRedirect: Boolean(redirectTo || session?.redirectTo),
-    hasStoredUser: Boolean(getStoredUser()),
-  });
-}
-
 function registrationAccountError(message, code) {
   const error = new Error(message);
   error.code = code;
@@ -154,7 +132,6 @@ export function AuthProvider({ children }) {
   const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
   const applySession = (session, token, options = {}) => {
     storeAuthSession(session, token, options);
-    logAuthDecision("session-applied", { session, token });
     setUser(session);
     setIsAuthenticated(true);
     setAuthStatus(session.passwordExpired ? AUTH_STATES.PASSWORD_EXPIRED : AUTH_STATES.AUTHENTICATED);
@@ -162,7 +139,6 @@ export function AuthProvider({ children }) {
 
   const clearLocalSession = async ({ signOutFirebase = true, broadcast = true, reason = "local-clear" } = {}) => {
     stopRealtimeClient();
-    teardownRealtimeSubscriptions();
     clearAuthStorage();
     setFirebaseUser(null);
     setIsAuthenticated(false);
@@ -229,7 +205,6 @@ export function AuthProvider({ children }) {
     if (!allowedRoles.includes(session.role) || (session.loginPortal && session.loginPortal !== expectedLoginPortal)) {
       throw wrongPortalError();
     }
-    logAuthDecision("login-response", { session, token: response.data.token, redirectTo: response.data.redirectTo });
     applySession(session, response.data.token);
     detachFirebaseCredentialSession();
     return session;
@@ -327,23 +302,18 @@ export function AuthProvider({ children }) {
     }
     let recentlyValidated = false;
     try {
-      recentlyValidated = Date.now() - Number(sessionStorage.getItem(SESSION_VALIDATE_KEY) || 0) < SESSION_VALIDATE_INTERVAL_MS;
+      recentlyValidated = Date.now() - Number(sessionStorage.getItem(SESSION_VALIDATE_KEY) || 0) < SESSION_VALIDATE_FRESHNESS_MS;
     } catch {
       recentlyValidated = false;
     }
     if (!recentlyValidated) validateSession({ showLoading: false });
-    const interval = window.setInterval(() => {
-      const current = getStoredUser();
-      if (["finance-desk", "gm", "bank-manager", "loan-executive"].includes(current?.role)) validateSession();
-    }, SESSION_VALIDATE_INTERVAL_MS);
-    return () => {
-      window.clearInterval(interval);
-    };
+    const validateWhenOnline = () => validateSession();
+    window.addEventListener("online", validateWhenOnline);
+    return () => window.removeEventListener("online", validateWhenOnline);
   }, [authReady]);
 
   useEffect(() => {
     const onSessionCleared = () => {
-      teardownRealtimeSubscriptions();
       setFirebaseUser(null);
       setIsAuthenticated(false);
       setUser(null);

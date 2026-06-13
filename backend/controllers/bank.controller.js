@@ -1339,6 +1339,23 @@ export async function createBankExecutive(req, res, next) {
     await syncExecutiveSummaryProjection(executive, { totalAssignedCases: 0, currentActiveCases: 0 }).catch(() => null);
     clearBankSummaryCaches();
     await writeAuditLog({ req, actionType: "BANK_EXECUTIVE_CREATED", newValue: email, meta: { executiveId: executive.id, bankId: identity.bankId, reusedExistingAuthUser } });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.BANK_EXECUTIVE_CREATED,
+      actor: req.user,
+      data: {
+        bankId: identity.bankId,
+        branchId: executive.branchId || identity.bankLocation,
+        bankIfsc: executive.bankIfsc || executive.ifsc || identity.bankIfsc || null,
+        executiveId: executive.uid || executive.email || executive.id,
+        recipientId: executive.email,
+        bankEvent: {
+          action: "executive-created",
+          executiveId: executive.id,
+          email: executive.email,
+          name: executive.name,
+        },
+      },
+    });
     res.status(201).json({
       ...executive,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,

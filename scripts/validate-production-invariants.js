@@ -34,14 +34,44 @@ check("uploads directory is created before Multer writes", () => {
 check("production auth logging does not expose token or session details", () => {
   const authContext = read("frontend/src/context/AuthContext.jsx");
   const authController = read("backend/controllers/auth.controller.js");
-  assert(/if \(!import\.meta\.env\.DEV\) return;/.test(authContext), "auth logging must be development-only");
-  const logStatement = authContext.match(/console\.info\("\[CLS auth\]"[\s\S]*?\n  \}\);/)?.[0] || "";
-  assert(logStatement, "auth decision log statement must remain detectable");
-  assert(!/\bemail\s*:/.test(logStatement), "auth logging must not print email");
-  assert(!/\btoken\s*:/.test(logStatement), "auth logging must not print token");
+  assert(!authContext.includes("[CLS auth]"), "frontend auth decision logging must remain disabled");
+  assert(!authContext.includes("logAuthDecision"), "frontend auth session details must not be written to console");
   const backendLogStatements = [...authController.matchAll(/log(?:Info|Warn|Error)\([^;]+?\);/gs)].map((match) => match[0]).join("\n");
   assert(!/\bemail\s*:/.test(backendLogStatements), "backend auth telemetry must not print email");
   assert(!/\bsessionId\s*:/.test(backendLogStatements), "backend auth telemetry must not print session id");
+});
+
+check("SSE is the only dashboard realtime transport", () => {
+  const realtimeHook = read("frontend/src/hooks/useRealtimeRefresh.js");
+  const authContext = read("frontend/src/context/AuthContext.jsx");
+  const monitoringCenter = read("frontend/src/pages/dashboard/AdminMonitoringCenter.jsx");
+  assert(!fs.existsSync(path.join(root, "frontend/src/services/realtimeManager.js")), "legacy Firestore realtime manager must be removed");
+  assert(!fs.existsSync(path.join(root, "frontend/src/services/firestoreListeners.js")), "legacy Firestore listener helpers must be removed");
+  assert(!realtimeHook.includes("onSnapshot"), "dashboard realtime hooks must not open Firestore listeners");
+  assert(realtimeHook.includes("cls:data-mutated"), "dashboard refresh must consume SSE mutation events");
+  assert(realtimeHook.includes("cls:realtime-connection"), "dashboard refresh must reconcile after SSE reconnect");
+  assert(!authContext.includes("setInterval"), "session validation must not poll");
+  assert(!monitoringCenter.includes("setInterval"), "monitoring center must not poll");
+});
+
+check("executive lifecycle propagates over SSE", () => {
+  const bankController = read("backend/controllers/bank.controller.js");
+  const realtimeService = read("backend/services/realtime.service.js");
+  includesAll(realtimeService, ["BANK_EXECUTIVE_CREATED", "BANK_EXECUTIVE_DELETED"], "realtime executive events");
+  includesAll(bankController, [
+    "eventType: REALTIME_EVENTS.BANK_EXECUTIVE_CREATED",
+    "eventType: REALTIME_EVENTS.BANK_EXECUTIVE_DELETED",
+  ], "bank executive lifecycle");
+});
+
+check("monitoring detects repeated API and SSE disconnect failures", () => {
+  const monitoring = read("backend/services/monitoringCenter.service.js");
+  includesAll(monitoring, [
+    "REALTIME_DISCONNECT_STORM_THRESHOLD",
+    "disconnectStormDetected",
+    "REPEATED_API_FAILURE_THRESHOLD",
+    "repeatedFailuresDetected",
+  ], "monitoring failure detection");
 });
 
 check("production App Check is not accidentally bypassed", () => {
@@ -142,7 +172,7 @@ check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const authMiddleware = read("backend/middleware/auth.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
-  includesAll(authContext, ["stopRealtimeClient();", "teardownRealtimeSubscriptions();"], "auth cleanup");
+  includesAll(authContext, ["stopRealtimeClient();"], "auth cleanup");
   includesAll(authMiddleware, [
     "REALTIME_TICKET_PATH = \"/api/realtime/ticket\"",
     "realtimeTicketFastAuthEnabled",

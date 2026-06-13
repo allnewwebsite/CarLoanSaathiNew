@@ -105,8 +105,20 @@ export function AdminMonitoringCenter() {
 
   useEffect(() => {
     load({ silent: Boolean(cached) });
-    const timer = window.setInterval(() => load({ silent: true }), 30000);
-    return () => window.clearInterval(timer);
+    const refreshFromEvent = () => load({ silent: true });
+    const refreshWhenVisible = () => {
+      if (!document.hidden) refreshFromEvent();
+    };
+    window.addEventListener("cls:realtime-event", refreshFromEvent);
+    window.addEventListener("cls:realtime-connection", refreshFromEvent);
+    window.addEventListener("online", refreshFromEvent);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("cls:realtime-event", refreshFromEvent);
+      window.removeEventListener("cls:realtime-connection", refreshFromEvent);
+      window.removeEventListener("online", refreshFromEvent);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const sendWhatsappTest = async () => {

@@ -42,6 +42,12 @@ assertCheck(
   !frontendGuard.includes('user.role === ROLES.SUPER_ADMIN) return <Outlet />'),
   "Super Admin must use /admin routes, not bank/finance/gm portals.",
 );
+assertCheck(
+  "role mismatch does not auto-switch portals",
+  !frontendGuard.includes("navigate(loginPathForRole")
+    && frontendGuard.includes("Portal access denied"),
+  "A role mismatch must preserve the current scoped session and render denial without switching portals.",
+);
 assertCheck("finance route allows only finance-desk", router.includes('path: "/finance"') && router.includes("roles={[ROLES.FINANCE_DESK]}"));
 assertCheck("gm route allows only gm", router.includes('path: "/gm"') && router.includes("roles={[ROLES.GM]}"));
 assertCheck("bank manager route allows only bank-manager", router.includes('path: "/bank-manager"') && router.includes("roles={[ROLES.BANK_MANAGER]}"));

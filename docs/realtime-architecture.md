@@ -1,37 +1,43 @@
 # CarLoanSaathi Realtime Synchronization
 
-CarLoanSaathi uses scoped Firestore listeners as invalidation signals and keeps all business reads on the existing RBAC-protected APIs. This preserves pagination, tenant isolation, query governance, and backend branch filtering while removing manual browser refreshes.
+CarLoanSaathi uses authenticated Server-Sent Events (SSE) as the only dashboard
+realtime transport. Business data remains behind the existing RBAC-protected,
+paginated APIs; SSE events are invalidation signals that tell mounted views when
+to reload their authorized API scope.
 
-## Listener Rules
+## Event Rules
 
-- Never subscribe to a full `leads` collection.
-- Lead table listeners are limited to the visible working set, capped at 50 rows.
-- Finance Desk and GM listen only to `leads` for their `dealershipId`.
-- Loan Executives listen only to `assignedExecutiveId` and `assignedExecutiveEmail` scoped leads.
-- Bank Managers use bank-scoped notification signals, then refresh through `/bank/leads` so backend branch/city governance remains authoritative.
-- Super Admin listens to limited `operationalEvents` signals, then refreshes admin APIs.
-- Detail pages listen only to the selected lead document and its selected lead document rows.
-- Timeline views listen only to the selected lead timeline.
+- The browser opens one authenticated SSE connection for the active session.
+- Events contain identifiers and change metadata, not complete business records.
+- Mounted views refresh only when an event matches their role, lead, case, or API
+  scope.
+- Backend APIs remain authoritative for dealership, branch, city, assignment,
+  and role filtering.
+- Mutations also emit a local invalidation event so the initiating tab converges
+  immediately.
 
 ## Lifecycle Governance
 
-All subscriptions go through `frontend/src/services/realtimeManager.js`.
-
-- Subscriptions are keyed and deduplicated.
-- Duplicate consumers share one Firestore listener.
-- Route changes remove callbacks and close unused listeners.
-- Logout tears down all active subscriptions.
-- Background tabs defer refreshes and reconcile on visibility resume.
-- Listener errors fall back to API reloads.
+- The SSE client reconnects with bounded backoff after a disconnect.
+- Connection recovery and browser online recovery invalidate mounted views once.
+- Background tabs defer refreshes and reconcile when visible again.
+- Refresh callbacks are deduplicated without sharing or overwriting view state.
+- Logout closes the active stream and clears session-scoped data.
+- Role mismatches render an isolated access-denied state and never switch portals
+  automatically.
 
 ## Cost Controls
 
-- Every query uses equality scope, `orderBy`, and `limit`.
-- No listener scans whole tenant history.
+- There are no client Firestore snapshot listeners.
+- There are no dashboard or session polling intervals.
 - Existing paginated APIs remain the source of truth.
-- Snapshot changes are debounced before API refresh.
-- Firestore indexes are defined in `firestore.indexes.json`.
+- Event bursts are debounced before API refresh.
+- Monitoring reports repeated API failures and SSE disconnect storms.
 
 ## Operational Behavior
 
-Realtime listeners refresh dashboards, lead tables, notification badges, document views, and timelines without changing existing UI or workflows. If Firestore temporarily disconnects, the next snapshot, browser focus, or visibility resume reconciles the stale state through the backend API.
+SSE invalidations refresh dashboards, lead tables, notification badges, document
+views, timelines, and bank-executive lifecycle views without changing existing
+workflows. If the stream temporarily disconnects, bounded reconnection plus an
+online or visibility recovery refresh reconciles stale views through the backend
+API.

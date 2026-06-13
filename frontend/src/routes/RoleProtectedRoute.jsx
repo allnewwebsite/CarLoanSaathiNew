@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { ROLES, isKnownRole, loginPathForRole, passwordPathForRole, requiresPasswordChange } from "../auth/roleSystem.js";
 import { DetailPageSkeleton } from "../components/ui/Loading.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -7,14 +6,8 @@ import { useAuth } from "../context/AuthContext.jsx";
 export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const fallbackLogin = loginPath || loginPathForRole(user?.role);
   const portalRoleMismatch = Boolean(!loading && user && isKnownRole(user.role) && allowedRoles.length && !allowedRoles.includes(user.role));
-
-  useEffect(() => {
-    if (!portalRoleMismatch) return;
-    navigate(loginPathForRole(user.role), { replace: true, state: { reason: "portal-role-mismatch" } });
-  }, [navigate, portalRoleMismatch, user?.role]);
 
   if (loading) {
     return (
@@ -38,8 +31,13 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   }
   if (portalRoleMismatch) {
     return (
-      <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
-        <DetailPageSkeleton />
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4 sm:p-6">
+        <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-slate-950">Portal access denied</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            This portal is isolated from your current session. Open the matching portal explicitly to continue.
+          </p>
+        </section>
       </main>
     );
   }

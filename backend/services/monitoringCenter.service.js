@@ -1,5 +1,7 @@
 const WINDOW_LIMIT = Number(process.env.MONITORING_WINDOW_LIMIT || 1500);
 const SLOW_API_MS = Number(process.env.MONITORING_SLOW_API_MS || 1000);
+const REALTIME_DISCONNECT_STORM_THRESHOLD = Number(process.env.REALTIME_DISCONNECT_STORM_THRESHOLD || 25);
+const REPEATED_API_FAILURE_THRESHOLD = Number(process.env.REPEATED_API_FAILURE_THRESHOLD || 10);
 
 const state = {
   api: [],
@@ -281,6 +283,7 @@ function cacheSummary(readItems, signalItems) {
 }
 
 function realtimeSummary(realtimeItems, currentStats = {}) {
+  const disconnectedClients = realtimeItems.reduce((sum, item) => sum + item.disconnected, 0);
   return {
     activeSseConnections: Number(currentStats.clients || 0),
     pendingTickets: Number(currentStats.pendingTickets || 0),
@@ -288,7 +291,9 @@ function realtimeSummary(realtimeItems, currentStats = {}) {
     redisEnabled: Boolean(currentStats.redisEnabled),
     realtimeEventsToday: realtimeItems.length,
     realtimeErrors: realtimeItems.reduce((sum, item) => sum + item.errors, 0),
-    disconnectedClients: realtimeItems.reduce((sum, item) => sum + item.disconnected, 0),
+    disconnectedClients,
+    disconnectStormThreshold: REALTIME_DISCONNECT_STORM_THRESHOLD,
+    disconnectStormDetected: disconnectedClients >= REALTIME_DISCONNECT_STORM_THRESHOLD,
     averageEventDeliveryMs: average(realtimeItems.map((item) => item.durationMs)),
   };
 }
@@ -404,6 +409,8 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const signalItems = todayItems(state.signals);
   const realtimeItems = todayItems(state.realtime);
   const api = apiSummary(apiItems);
+  api.repeatedFailureThreshold = REPEATED_API_FAILURE_THRESHOLD;
+  api.repeatedFailuresDetected = api.errorCount >= REPEATED_API_FAILURE_THRESHOLD;
   const firestore = firestoreSummary(readItems, signalItems);
   const projection = projectionSummary(signalItems);
   const cache = cacheSummary(readItems, signalItems);
@@ -428,7 +435,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
     branches,
     dealers,
     statuses: {
-      api: statusFromThreshold(api.p95Ms, 1000, 2000),
+      api: api.repeatedFailuresDetected ? "critical" : statusFromThreshold(api.p95Ms, 1000, 2000),
       firestore: statusFromThreshold(firestore.estimatedReadsToday, 50000, 150000),
       projection: projection.staleProjectionCount > 10
         ? "critical"
@@ -436,7 +443,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
           ? "warning"
           : projection.projectionHitRate === null ? "warning" : statusFromThreshold(projection.projectionHitRate, 80, 50, true),
       cache: cache.hitRate === null ? "warning" : statusFromThreshold(cache.hitRate, 70, 40, true),
-      realtime: realtime.realtimeErrors > 0 ? "warning" : "healthy",
+      realtime: realtime.disconnectStormDetected || realtime.realtimeErrors > 0 ? "warning" : "healthy",
     },
   };
 }
