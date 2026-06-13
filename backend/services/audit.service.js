@@ -1,4 +1,4 @@
-import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { logError } from "./logger.service.js";
 
 export const AUDIT_ACTIONS = {
@@ -27,6 +27,9 @@ export const AUDIT_ACTIONS = {
   SUBSCRIPTION_TRIAL_ENDED: "SUBSCRIPTION_TRIAL_ENDED",
   SUBSCRIPTION_EXPIRED: "SUBSCRIPTION_EXPIRED",
   SUBSCRIPTION_ADMIN_OVERRIDE: "SUBSCRIPTION_ADMIN_OVERRIDE",
+  RAZORPAY_WEBHOOK_RECEIVED: "RAZORPAY_WEBHOOK_RECEIVED",
+  RAZORPAY_WEBHOOK_PROCESSED: "RAZORPAY_WEBHOOK_PROCESSED",
+  RAZORPAY_WEBHOOK_REJECTED: "RAZORPAY_WEBHOOK_REJECTED",
   LEAD_ARCHIVED: "LEAD_ARCHIVED",
 };
 
@@ -89,6 +92,43 @@ export async function writeAuditLog({
     sourcePortal: sourcePortal || meta.sourcePortal || req?.headers?.["x-source-portal"] || null,
     immutable: true,
     meta: maskSensitive(meta),
+  });
+}
+
+export async function writeAuditLogOnce(dedupeId, payload = {}) {
+  const id = String(dedupeId || "").trim();
+  if (!id) return writeAuditLog(payload);
+  const existing = await getRecord(payload.collection || "auditLogs", id).catch(() => null);
+  if (existing) return existing;
+  const timestamp = new Date().toISOString();
+  const performedBy = payload.actorId || payload.req?.user?.email || payload.req?.user?.uid || "system";
+  const role = payload.actorRole || payload.req?.user?.role || "system";
+  const resolvedAction = payload.actionType || payload.action;
+  return upsertRecord(payload.collection || "auditLogs", id, {
+    action: resolvedAction,
+    actionType: resolvedAction,
+    previousValue: maskSensitive(payload.previousValue || payload.oldValue || null),
+    oldValue: maskSensitive(payload.oldValue || null),
+    newValue: maskSensitive(payload.newValue || null),
+    performedBy,
+    role,
+    actorId: performedBy,
+    actorRole: role,
+    targetEntity: payload.targetEntity || null,
+    targetId: payload.targetId || null,
+    dealershipId: payload.meta?.dealershipId || payload.req?.user?.dealershipId || null,
+    bankId: payload.meta?.bankId || payload.req?.user?.bankId || null,
+    leadId: payload.leadId || null,
+    caseId: payload.meta?.caseId || payload.leadId || null,
+    timestamp,
+    createdAt: timestamp,
+    ipAddress: payload.req?.ip || payload.req?.headers?.["x-forwarded-for"] || null,
+    userAgent: payload.req?.headers?.["user-agent"] || null,
+    requestId: payload.req?.requestId || payload.meta?.requestId || null,
+    sourcePortal: payload.sourcePortal || payload.meta?.sourcePortal || payload.req?.headers?.["x-source-portal"] || null,
+    immutable: true,
+    dedupeId: id,
+    meta: maskSensitive(payload.meta || {}),
   });
 }
 

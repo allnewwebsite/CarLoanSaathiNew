@@ -114,6 +114,8 @@ export async function getAdminMonitoringCenter(_req, res, next) {
         projectionHealth: card(telemetry.statuses.projection, telemetry.projection.projectionHitRate === null ? "No projection samples yet" : `${telemetry.projection.projectionHitRate}% hit rate`),
         cacheHealth: card(telemetry.statuses.cache, telemetry.cache.hitRate === null ? "No cache samples yet" : `${telemetry.cache.hitRate}% hit rate`),
         firestoreHealth: card(health.checks?.firestore?.status === "ok" ? telemetry.statuses.firestore : health.checks?.firestore?.status, `${health.checks?.firestore?.latencyMs ?? 0}ms health read`),
+        razorpayWebhook: card(health.checks?.razorpayWebhook?.status, health.checks?.razorpayWebhook?.lastSuccessAt ? `Last success ${health.checks.razorpayWebhook.lastSuccessAt}` : "Waiting for successful delivery"),
+        paymentReconciliation: card(health.checks?.paymentReconciliation?.status, health.checks?.paymentReconciliation?.lastRunAt ? `Last run ${health.checks.paymentReconciliation.lastRunAt}` : "Waiting for first run"),
       };
 
       return {

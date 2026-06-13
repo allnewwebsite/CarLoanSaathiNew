@@ -34,9 +34,16 @@ export async function getFinanceBilling(req, res, next) {
 
 export async function createFinanceSubscriptionOrder(req, res, next) {
   try {
+    if (req.body?.refundPolicyAccepted !== true) {
+      const error = new Error("You must accept the non-refundable subscription policy before payment");
+      error.status = 400;
+      error.code = "REFUND_POLICY_ACCEPTANCE_REQUIRED";
+      throw error;
+    }
     const order = await createSubscriptionOrder({
       dealershipId: dealershipIdFromUser(req),
       requestedBy: req.user?.email || req.user?.uid,
+      refundPolicyAcceptedAt: new Date().toISOString(),
     });
     await writeAuditLog({
       req,
@@ -61,27 +68,6 @@ export async function verifyFinanceSubscriptionPayment(req, res, next) {
       verifiedBy: req.user?.email || req.user?.uid,
       actor: req.user,
     });
-    await Promise.all([
-      writeAuditLog({
-        req,
-        actionType: AUDIT_ACTIONS.PAYMENT_RECEIVED,
-        targetEntity: "subscriptionPayment",
-        targetId: result.payment.id,
-        newValue: { status: "PAID", invoiceNumber: result.invoice?.invoiceNumber },
-        meta: { dealershipId: dealershipIdFromUser(req), paymentId: result.payment.id },
-      }),
-      writeAuditLog({
-        req,
-        actionType: AUDIT_ACTIONS.SUBSCRIPTION_RENEWED,
-        targetEntity: "subscription",
-        targetId: dealershipIdFromUser(req),
-        newValue: {
-          subscriptionEndDate: result.subscription.subscriptionEndDate,
-          status: result.subscription.subscriptionStatus,
-        },
-        meta: { dealershipId: dealershipIdFromUser(req), invoiceNumber: result.invoice?.invoiceNumber },
-      }),
-    ]);
     res.json(result);
   } catch (error) {
     next(error);

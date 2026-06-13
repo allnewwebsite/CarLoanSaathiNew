@@ -130,25 +130,26 @@ const policyContent = {
   refund: {
     eyebrow: "Billing",
     title: "Refund Policy",
-    summary: "This policy describes how subscription-payment and refund requests are assessed.",
+    summary: "CarLoanSaathi subscription payments are non-refundable after successful capture and activation.",
     sections: [
       {
         title: "Subscription Payments",
         paragraphs: [
           "CarLoanSaathi subscriptions are renewed manually. Users can review the applicable plan price, GST, and validity period before completing payment through the supported payment provider.",
+          "The checkout flow requires acknowledgement that the subscription fee becomes non-refundable once payment is captured and the paid subscription period is activated.",
         ],
       },
       {
-        title: "Refund Review",
+        title: "No Refunds After Activation",
         paragraphs: [
-          "Completed subscription payments are generally non-refundable once the paid service period has been activated. A refund request may be reviewed where there is a duplicate charge, an identifiable payment-processing error, or another circumstance in which a refund is required by applicable law.",
-          "Approved refunds will ordinarily be returned through the original payment method. Processing times may depend on the payment provider and the user's bank.",
+          "Once a subscription payment is successfully captured and subscription access is activated, the payment is final and non-refundable.",
+          "CarLoanSaathi provides immediate access to software services including workflow tools, lead management, notifications, analytics, document handling, and operational infrastructure. Non-use, partial use, business outcomes, loan outcomes, account inactivity, or early discontinuation do not create a refund entitlement.",
         ],
       },
       {
-        title: "How to Raise a Request",
+        title: "Payment Record Corrections",
         paragraphs: [
-          "A refund request should be submitted promptly through the official support or operations channel with the dealership identity, invoice number, payment ID, payment date, and a clear explanation. Requests are assessed fairly using payment and account records.",
+          "Users may report an incorrect payment record or suspected duplicate technical charge through the official support channel with the dealership identity, invoice number, payment ID, and payment date. Reporting an issue does not alter the no-refund policy for a correctly captured and activated subscription.",
         ],
       },
       {
@@ -175,6 +176,7 @@ const policyContent = {
         paragraphs: [
           "The subscription price is Rs. 15,000 plus applicable GST for a 30-day service period. Renewal is manual. CarLoanSaathi does not initiate automatic recurring debits or subscription mandates.",
           "The applicable price, tax, total payable amount, validity dates, payment status, and invoice history are displayed to the authorized Finance Desk user in Plan & Billing.",
+          "Each successful captured payment activates or extends the paid service period. Once activated, subscription fees are non-refundable.",
         ],
       },
       {

@@ -9,7 +9,7 @@ import {
 import { createNotification } from "./notification.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { logError, logInfo } from "./logger.service.js";
-import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
+import { AUDIT_ACTIONS, writeAuditLog, writeAuditLogOnce } from "./audit.service.js";
 
 export const SUBSCRIPTION_STATUSES = Object.freeze({
   TRIAL: "TRIAL",
@@ -327,7 +327,13 @@ async function verifiedRazorpayPayment({ paymentId, orderId, amountPaise }) {
   return payment;
 }
 
-export async function createSubscriptionOrder({ dealershipId, requestedBy }) {
+export async function getCapturedRazorpayOrderPayment(orderId) {
+  const { data } = await razorpayRequest(`/orders/${encodeURIComponent(orderId)}/payments`);
+  const payments = Array.isArray(data?.items) ? data.items : [];
+  return payments.find((payment) => payment.status === "captured") || null;
+}
+
+export async function createSubscriptionOrder({ dealershipId, requestedBy, refundPolicyAcceptedAt = null }) {
   const id = cleanId(dealershipId);
   const subscription = await getDealershipSubscription(id);
   if (!subscription) {
@@ -344,6 +350,7 @@ export async function createSubscriptionOrder({ dealershipId, requestedBy }) {
     notes: {
       plan: SUBSCRIPTION_PLAN.name,
       dealershipRef: crypto.createHash("sha256").update(id).digest("hex").slice(0, 20),
+      refundPolicy: "non-refundable-after-capture-and-activation",
     },
   });
   await upsertRecord("subscriptionOrders", order.id, {
@@ -357,6 +364,9 @@ export async function createSubscriptionOrder({ dealershipId, requestedBy }) {
     status: "CREATED",
     razorpayOrderId: order.id,
     providerStatus: order.status || "created",
+    refundPolicy: "NON_REFUNDABLE",
+    refundPolicyAcceptedAt,
+    refundPolicyAcceptedBy: requestedBy,
     expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     createdAt: new Date().toISOString(),
   });
@@ -370,11 +380,16 @@ export async function createSubscriptionOrder({ dealershipId, requestedBy }) {
     dealershipName: subscription.dealershipName,
     financeDeskEmail: subscription.financeDeskEmail,
     financeDeskMobile: subscription.financeDeskMobile,
+    refundPolicy: "Subscription fees are non-refundable once payment is captured and subscription access is activated.",
   };
 }
 
 export function computeRazorpaySignature({ keySecret, orderId, paymentId }) {
   return crypto.createHmac("sha256", keySecret).update(`${orderId}|${paymentId}`).digest("hex");
+}
+
+export function computeRazorpayWebhookSignature({ webhookSecret, rawBody }) {
+  return crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
 }
 
 function validRazorpaySignature({ orderId, paymentId, signature }) {
@@ -389,58 +404,156 @@ function invoiceNumber(sequence, now = new Date()) {
   return `CLS-INV-${now.getUTCFullYear()}-${String(sequence).padStart(6, "0")}`;
 }
 
-export async function verifySubscriptionPayment({
-  dealershipId,
-  razorpayOrderId,
-  razorpayPaymentId,
-  razorpaySignature,
-  verifiedBy,
+export async function ensureSubscriptionPaymentAudits({
+  subscription,
+  payment,
+  invoice,
+  verificationSource,
+  verifiedBy = "system",
   actor = null,
 }) {
-  const id = cleanId(dealershipId);
-  if (!validRazorpaySignature({
-    orderId: razorpayOrderId,
-    paymentId: razorpayPaymentId,
-    signature: razorpaySignature,
-  })) {
-    const error = new Error("Payment signature verification failed");
-    error.status = 400;
-    error.code = "INVALID_PAYMENT_SIGNATURE";
-    throw error;
-  }
+  if (!payment?.id) return false;
+  await Promise.all([
+    writeAuditLogOnce(`payment-received-${payment.id}`, {
+      actorId: verifiedBy,
+      actorRole: actor?.role || "system",
+      actionType: AUDIT_ACTIONS.PAYMENT_RECEIVED,
+      targetEntity: "subscriptionPayment",
+      targetId: payment.id,
+      newValue: { status: "PAID", invoiceNumber: invoice?.invoiceNumber },
+      meta: {
+        dealershipId: payment.dealershipId,
+        paymentId: payment.id,
+        verificationSource,
+      },
+    }),
+    writeAuditLogOnce(`subscription-renewed-${payment.id}`, {
+      actorId: verifiedBy,
+      actorRole: actor?.role || "system",
+      actionType: AUDIT_ACTIONS.SUBSCRIPTION_RENEWED,
+      targetEntity: "subscription",
+      targetId: payment.dealershipId,
+      newValue: {
+        subscriptionEndDate: subscription?.subscriptionEndDate,
+        status: subscription?.subscriptionStatus,
+      },
+      meta: {
+        dealershipId: payment.dealershipId,
+        paymentId: payment.id,
+        invoiceNumber: invoice?.invoiceNumber,
+        verificationSource,
+      },
+    }),
+  ]);
+  return true;
+}
 
+export async function finalizeSubscriptionPayment({
+  dealershipId = null,
+  razorpayOrderId,
+  razorpayPaymentId,
+  verifiedBy,
+  providerPayment,
+  verificationSource = "frontend",
+  actor = null,
+}) {
   const now = new Date();
   const paidAt = now.toISOString();
   const amounts = subscriptionAmounts();
-  const providerPayment = await verifiedRazorpayPayment({
-    paymentId: razorpayPaymentId,
-    orderId: razorpayOrderId,
-    amountPaise: amounts.finalAmount * 100,
-  });
+  const providerMatches = providerPayment?.id === razorpayPaymentId
+    && providerPayment?.order_id === razorpayOrderId
+    && Number(providerPayment?.amount) === amounts.finalAmount * 100
+    && String(providerPayment?.currency || "").toUpperCase() === SUBSCRIPTION_PLAN.currency
+    && providerPayment?.status === "captured";
+  if (!providerMatches) {
+    const error = new Error("Razorpay payment is not captured or does not match the subscription order");
+    error.status = 409;
+    error.code = "PAYMENT_PROVIDER_MISMATCH";
+    throw error;
+  }
   const result = await runRecordTransaction(async (transaction) => {
     const order = await transaction.get("subscriptionOrders", razorpayOrderId);
     const existingPayment = await transaction.get("subscriptionPayments", razorpayPaymentId);
-    const current = await transaction.get(COLLECTION, id);
-    const counter = await transaction.get("systemCounters", "subscriptionInvoices");
-    if (!order || order.dealershipId !== id || Number(order.amountPaise) !== amounts.finalAmount * 100) {
+    const activation = await transaction.get("subscriptionPaymentActivations", razorpayPaymentId);
+    const id = cleanId(dealershipId || order?.dealershipId);
+    if (!order || !id || order.dealershipId !== id || Number(order.amountPaise) !== amounts.finalAmount * 100) {
       const error = new Error("Payment order does not match this dealership");
       error.status = 409;
       error.code = "PAYMENT_ORDER_MISMATCH";
       throw error;
     }
+    const current = await transaction.get(COLLECTION, id);
+    const counter = await transaction.get("systemCounters", "subscriptionInvoices");
     if (order.status === "PAID" && order.paymentId !== razorpayPaymentId) {
       const error = new Error("This payment order has already been used");
       error.status = 409;
       error.code = "PAYMENT_ORDER_ALREADY_USED";
       throw error;
     }
-    if (existingPayment?.status === "PAID") {
+    if (activation?.status === "ACTIVATED" || existingPayment?.status === "PAID") {
+      const invoiceNumberValue = activation?.invoiceNumber || existingPayment?.invoiceNumber;
+      let invoice = invoiceNumberValue
+        ? await transaction.get("subscriptionInvoices", invoiceNumberValue)
+        : null;
+      const resolvedPayment = existingPayment || activation?.paymentSnapshot || null;
+      if (!existingPayment && resolvedPayment) {
+        transaction.set("subscriptionPayments", razorpayPaymentId, resolvedPayment, { merge: false });
+      }
+      if (!invoice && invoiceNumberValue && resolvedPayment) {
+        invoice = activation?.invoiceSnapshot || {
+          id: invoiceNumberValue,
+          invoiceNumber: invoiceNumberValue,
+          dealershipId: id,
+          dealershipName: current?.dealershipName || "",
+          gstin: current?.gstin || "",
+          billingAddress: current?.billingAddress || "",
+          planName: resolvedPayment.planName || SUBSCRIPTION_PLAN.name,
+          monthlyAmount: resolvedPayment.monthlyAmount,
+          gstRate: resolvedPayment.gstRate,
+          gstAmount: resolvedPayment.gstAmount,
+          finalAmount: resolvedPayment.finalAmount,
+          currency: resolvedPayment.currency || SUBSCRIPTION_PLAN.currency,
+          paymentStatus: "PAID",
+          paymentId: razorpayPaymentId,
+          razorpayPaymentId,
+          paymentDate: resolvedPayment.paidAt || resolvedPayment.verifiedAt,
+          validityStartDate: resolvedPayment.validityStartDate,
+          validityEndDate: resolvedPayment.validityEndDate,
+          createdAt: resolvedPayment.paidAt || paidAt,
+          footerPolicy: "Subscription fees are non-refundable once payment is captured and subscription access is activated.",
+          repairedAt: paidAt,
+        };
+        transaction.set("subscriptionInvoices", invoiceNumberValue, invoice, { merge: false });
+      }
+      if (!activation && existingPayment?.status === "PAID") {
+        transaction.set("subscriptionPaymentActivations", razorpayPaymentId, {
+          id: razorpayPaymentId,
+          status: "ACTIVATED",
+          dealershipId: id,
+          razorpayOrderId,
+          razorpayPaymentId,
+          invoiceNumber: existingPayment.invoiceNumber,
+          validityStartDate: existingPayment.validityStartDate,
+          validityEndDate: existingPayment.validityEndDate,
+          activatedAt: existingPayment.verifiedAt || existingPayment.paidAt || paidAt,
+          verificationSource: existingPayment.verificationSource || "legacy",
+          paymentSnapshot: existingPayment,
+          invoiceSnapshot: invoice,
+        }, { merge: false });
+      }
       return {
         subscription: subscriptionSnapshot(current || {}),
-        payment: existingPayment,
-        invoice: await transaction.get("subscriptionInvoices", existingPayment.invoiceNumber),
+        payment: resolvedPayment,
+        invoice,
         idempotent: true,
+        verificationSource: activation?.verificationSource || existingPayment?.verificationSource || "unknown",
       };
+    }
+    if (order.status === "PAID" && order.paymentId === razorpayPaymentId) {
+      const error = new Error("Paid order is missing its payment record");
+      error.status = 409;
+      error.code = "PAYMENT_STATE_INCONSISTENT";
+      throw error;
     }
     const currentSnapshot = subscriptionSnapshot(current || {});
     const currentEnd = currentSnapshot.entitlementEndDate && new Date(currentSnapshot.entitlementEndDate) > now
@@ -482,9 +595,11 @@ export async function verifySubscriptionPayment({
       razorpayPaymentId,
       providerStatus: providerPayment.status,
       providerMethod: providerPayment.method || null,
+      refundPolicy: "NON_REFUNDABLE",
       paidAt,
       verifiedAt: paidAt,
       verifiedBy,
+      verificationSource,
       validityStartDate: currentEnd,
       validityEndDate: subscriptionEndDate,
     };
@@ -508,6 +623,7 @@ export async function verifySubscriptionPayment({
       validityStartDate: currentEnd,
       validityEndDate: subscriptionEndDate,
       createdAt: paidAt,
+      footerPolicy: "Subscription fees are non-refundable once payment is captured and subscription access is activated.",
     };
     transaction.set("systemCounters", "subscriptionInvoices", { value: sequence, updatedAt: paidAt }, { merge: true });
     transaction.set(COLLECTION, id, next, { merge: true });
@@ -519,14 +635,73 @@ export async function verifySubscriptionPayment({
     }, { merge: true });
     transaction.set("subscriptionPayments", razorpayPaymentId, payment, { merge: false });
     transaction.set("subscriptionInvoices", number, invoice, { merge: false });
-    return { subscription: next, payment, invoice, idempotent: false };
+    transaction.set("subscriptionPaymentActivations", razorpayPaymentId, {
+      id: razorpayPaymentId,
+      status: "ACTIVATED",
+      dealershipId: id,
+      razorpayOrderId,
+      razorpayPaymentId,
+      invoiceNumber: number,
+      validityStartDate: currentEnd,
+      validityEndDate: subscriptionEndDate,
+      activatedAt: paidAt,
+      verificationSource,
+      paymentSnapshot: payment,
+      invoiceSnapshot: invoice,
+    }, { merge: false });
+    return { subscription: next, payment, invoice, idempotent: false, verificationSource };
   });
 
   if (!result.idempotent) {
     await syncSubscriptionSummary(result.subscription);
     publishSubscription(result.subscription, actor, REALTIME_EVENTS.SUBSCRIPTION_RENEWED);
   }
+  if (result.payment?.id) {
+    await ensureSubscriptionPaymentAudits({
+      subscription: result.subscription,
+      payment: result.payment,
+      invoice: result.invoice,
+      verificationSource: result.verificationSource,
+      verifiedBy,
+      actor,
+    });
+  }
   return result;
+}
+
+export async function verifySubscriptionPayment({
+  dealershipId,
+  razorpayOrderId,
+  razorpayPaymentId,
+  razorpaySignature,
+  verifiedBy,
+  actor = null,
+}) {
+  if (!validRazorpaySignature({
+    orderId: razorpayOrderId,
+    paymentId: razorpayPaymentId,
+    signature: razorpaySignature,
+  })) {
+    const error = new Error("Payment signature verification failed");
+    error.status = 400;
+    error.code = "INVALID_PAYMENT_SIGNATURE";
+    throw error;
+  }
+  const amounts = subscriptionAmounts();
+  const providerPayment = await verifiedRazorpayPayment({
+    paymentId: razorpayPaymentId,
+    orderId: razorpayOrderId,
+    amountPaise: amounts.finalAmount * 100,
+  });
+  return finalizeSubscriptionPayment({
+    dealershipId,
+    razorpayOrderId,
+    razorpayPaymentId,
+    verifiedBy,
+    providerPayment,
+    verificationSource: "frontend",
+    actor,
+  });
 }
 
 export async function billingHistory(dealershipId, { limit = 25, cursor = null } = {}) {

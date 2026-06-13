@@ -27,7 +27,7 @@ export function validateEnv() {
   if (process.env.NODE_ENV !== "production") return;
   const missing = requiredInProduction.filter((key) => !process.env[key]);
   if (process.env.ENABLE_SUBSCRIPTION_BILLING === "true") {
-    ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"].forEach((key) => {
+    ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"].forEach((key) => {
       if (!process.env[key]) missing.push(key);
     });
   }

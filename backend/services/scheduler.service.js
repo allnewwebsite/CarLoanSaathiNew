@@ -5,6 +5,7 @@ import { validateProjectionFreshness } from "./projection.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { markWorkerHealth } from "./health.service.js";
 import { processSubscriptionLifecycle } from "./subscription.service.js";
+import { reconcileSubscriptionPayments } from "./paymentReconciliation.service.js";
 
 const scheduled = [];
 
@@ -24,9 +25,20 @@ function schedule(name, intervalMs, task) {
 }
 
 export function registerScheduledOperations() {
+  if (process.env.ENABLE_SUBSCRIPTION_BILLING === "true" && process.env.ENABLE_PAYMENT_RECONCILIATION !== "false") {
+    const reconciliationTask = () => addQueueJob(QUEUE_NAMES.BILLING, "payment-reconciliation", {}, {
+      priority: "high",
+      fallback: reconcileSubscriptionPayments,
+    });
+    schedule("payment-reconciliation", Number(process.env.PAYMENT_RECONCILIATION_INTERVAL_MS || 15 * 60 * 1000), reconciliationTask);
+    Promise.resolve().then(reconciliationTask).catch((error) => {
+      logWarn("Initial payment reconciliation failed", { error: error.message });
+    });
+  }
+
   if (process.env.ENABLE_SCHEDULED_OPERATIONS !== "true") {
     logInfo("Scheduled operations disabled");
-    return [];
+    return scheduled;
   }
 
   markWorkerHealth("scheduledOperationsRegisteredAt");
@@ -44,6 +56,5 @@ export function registerScheduledOperations() {
   schedule("projection-freshness", Number(process.env.PROJECTION_FRESHNESS_INTERVAL_MS || 10 * 60 * 1000), validateProjectionFreshness);
 
   schedule("subscription-lifecycle", Number(process.env.SUBSCRIPTION_LIFECYCLE_INTERVAL_MS || 6 * 60 * 60 * 1000), processSubscriptionLifecycle);
-
   return scheduled;
 }

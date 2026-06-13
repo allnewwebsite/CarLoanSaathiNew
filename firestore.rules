@@ -452,6 +452,22 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /subscriptionPaymentActivations/{id} {
+      allow read, write: if false;
+    }
+
+    match /razorpayWebhookEvents/{id} {
+      allow read, write: if false;
+    }
+
+    match /razorpayWebhookHealth/{id} {
+      allow read, write: if false;
+    }
+
+    match /paymentReconciliationHealth/{id} {
+      allow read, write: if false;
+    }
+
     match /systemCounters/{id} {
       allow read, write: if false;
     }

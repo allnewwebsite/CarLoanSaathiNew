@@ -88,6 +88,8 @@ function invoiceHtml(invoice) {
 <p><strong>Payment ID:</strong> ${escapeHtml(invoice.paymentId || invoice.razorpayPaymentId || "-")}</p>
 <p><strong>Payment date:</strong> ${dateValue(invoice.paymentDate)}</p>
 <p><strong>Validity:</strong> ${dateValue(invoice.validityStartDate)} to ${dateValue(invoice.validityEndDate)}</p>
+<hr style="margin-top:28px;border:0;border-top:1px solid #d1d5db">
+<p style="font-size:12px;line-height:1.6;color:#4b5563"><strong>Non-refundable subscription:</strong> Subscription fees are non-refundable once payment is captured and subscription access is activated.</p>
 </body></html>`;
   return html;
 }
@@ -127,6 +129,7 @@ export function PlanBillingModal({ open, onClose, user }) {
   const [message, setMessage] = useState("");
   const [paymentPage, setPaymentPage] = useState(1);
   const [invoicePage, setInvoicePage] = useState(1);
+  const [acceptedNoRefund, setAcceptedNoRefund] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,6 +147,7 @@ export function PlanBillingModal({ open, onClose, user }) {
 
   useEffect(() => {
     if (!open) return undefined;
+    setAcceptedNoRefund(false);
     load();
     const previousFocus = document.activeElement;
     const onKeyDown = (event) => {
@@ -169,7 +173,7 @@ export function PlanBillingModal({ open, onClose, user }) {
     try {
       const available = await loadRazorpayCheckout();
       if (!available) throw new Error("Razorpay Checkout could not be loaded.");
-      const orderResponse = await api.post("/dealer/billing/order");
+      const orderResponse = await api.post("/dealer/billing/order", { refundPolicyAccepted: true });
       const order = orderResponse.data;
       await new Promise((resolve, reject) => {
         const checkout = new window.Razorpay({
@@ -177,7 +181,7 @@ export function PlanBillingModal({ open, onClose, user }) {
           amount: order.amountPaise,
           currency: order.currency,
           name: "CarLoanSaathi",
-          description: order.planName,
+          description: `${order.planName} - 30-day non-refundable subscription`,
           order_id: order.orderId,
           prefill: {
             name: order.dealershipName || "",
@@ -270,10 +274,21 @@ export function PlanBillingModal({ open, onClose, user }) {
                 ) : (
                   <div><p className="text-base font-bold">{subscription.subscriptionStatus}</p><p className="mt-1 text-sm">{subscription.daysRemaining} days remaining. Manual renewal.</p></div>
                 )}
-                {showRenew ? <button type="button" onClick={renew} disabled={renewing} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-60">
+                {showRenew ? <button type="button" onClick={renew} disabled={renewing || !acceptedNoRefund} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-60">
                   {renewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Renew Subscription
                 </button> : null}
               </div>
+
+              <section className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-900">Non-refundable subscription</p>
+                <p className="mt-1 text-sm leading-6 text-amber-800">Once payment is captured and subscription access is activated, the subscription fee is non-refundable.</p>
+                {showRenew ? (
+                  <label className="mt-3 flex items-start gap-2 text-sm font-medium text-amber-950">
+                    <input type="checkbox" checked={acceptedNoRefund} onChange={(event) => setAcceptedNoRefund(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-amber-400" />
+                    I understand and accept the non-refundable subscription policy.
+                  </label>
+                ) : null}
+              </section>
 
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {details.map(([label, value]) => <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3"><dt className="text-xs font-medium uppercase text-slate-500">{label}</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{value || "-"}</dd></div>)}

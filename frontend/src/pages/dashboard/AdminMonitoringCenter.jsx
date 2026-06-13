@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, Database, Radio, RefreshCw, Server, ShieldCheck, Zap } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, CreditCard, Database, Radio, RefreshCw, Server, ShieldCheck, Zap } from "lucide-react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { api, getCachedGetData } from "../../services/api.js";
 import { useRenderDiagnostics } from "../../services/frontendLatency.js";
@@ -245,13 +245,15 @@ export function AdminMonitoringCenter() {
 
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
         <StatusCard title="System Status" icon={Server} item={cards.systemStatus} />
         <StatusCard title="API Health" icon={Activity} item={cards.apiHealth} />
         <StatusCard title="Realtime Status" icon={Radio} item={cards.realtimeStatus} />
         <StatusCard title="Projection Health" icon={Zap} item={cards.projectionHealth} />
         <StatusCard title="Cache Health" icon={ShieldCheck} item={cards.cacheHealth} />
         <StatusCard title="Firestore Health" icon={Database} item={cards.firestoreHealth} />
+        <StatusCard title="Razorpay Webhook" icon={CreditCard} item={cards.razorpayWebhook} />
+        <StatusCard title="Payment Reconciliation" icon={RefreshCw} item={cards.paymentReconciliation} />
       </div>
 
       <Section title="Platform Overview" subtitle={snapshot?.generatedAt ? `Generated ${new Date(snapshot.generatedAt).toLocaleString()}` : "Waiting for telemetry samples."}>

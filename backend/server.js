@@ -30,6 +30,7 @@ import { registerQueueWorkers } from "./services/queueWorkers.service.js";
 import { registerScheduledOperations } from "./services/scheduler.service.js";
 import { markWorkerHealth, observabilitySnapshot, productionHealth } from "./services/health.service.js";
 import { monitoringRequestHandler } from "./services/monitoring.service.js";
+import { handleRazorpayWebhook } from "./controllers/razorpayWebhook.controller.js";
 
 validateEnv();
 
@@ -73,6 +74,11 @@ app.use(securityHeaders);
 app.use(cors(corsOptions()));
 app.options("*", cors(corsOptions()));
 app.use(globalRateLimit);
+app.post(
+  "/api/webhooks/razorpay",
+  express.raw({ type: "application/json", limit: "256kb" }),
+  handleRazorpayWebhook,
+);
 app.use(express.json({ limit: "2mb" }));
 app.use((error, req, res, next) => {
   if (error instanceof SyntaxError && error.status === 400 && "body" in error) {

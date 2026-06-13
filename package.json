@@ -27,6 +27,7 @@
     "audit:api-efficiency": "node scripts/audit-api-efficiency.js",
     "validate:regression": "node scripts/validate-production-invariants.js",
     "verify:subscriptions": "npm --prefix backend run verify:subscriptions",
+    "verify:razorpay-webhook": "npm --prefix backend run verify:razorpay-webhook",
     "verify:archive": "npm --prefix backend run verify:archive",
     "load:smoke": "k6 run load-tests/k6/api-smoke.js",
     "load:auth": "k6 run load-tests/k6/auth-load.js",

@@ -3,6 +3,8 @@ import { firestore } from "../firebase/admin.js";
 import { getGlobalMetrics } from "./analyticsEngine.service.js";
 import { getOperationalDashboard, observeQueueHealth } from "./observability.service.js";
 import { queueEnabled, queueHealth } from "./queue.service.js";
+import { razorpayWebhookHealth } from "./razorpayWebhook.service.js";
+import { paymentReconciliationHealth } from "./paymentReconciliation.service.js";
 
 let workerState = {
   queueWorkersRegisteredAt: null,
@@ -68,6 +70,8 @@ export async function productionHealth({ deep = false } = {}) {
   };
 
   const queue = await queueHealth().catch((error) => ({ enabled: queueEnabled(), status: "down", error: error.message }));
+  const razorpayWebhook = await razorpayWebhookHealth().catch((error) => ({ status: "degraded", error: error.message }));
+  const paymentReconciliation = await paymentReconciliationHealth().catch((error) => ({ status: "degraded", error: error.message }));
   await observeQueueHealth(queue).catch(() => {});
 
   const checks = {
@@ -85,10 +89,12 @@ export async function productionHealth({ deep = false } = {}) {
     archival: {
       status: process.env.ENABLE_SCHEDULED_OPERATIONS === "true" ? "scheduled" : "manual",
     },
+    razorpayWebhook,
+    paymentReconciliation,
   };
 
   return {
-    status: scoreStatus([base.memory, checks.firestore, checks.metricsEngine, queue]),
+    status: scoreStatus([base.memory, checks.firestore, checks.metricsEngine, queue, razorpayWebhook, paymentReconciliation]),
     ...base,
     checks,
   };
