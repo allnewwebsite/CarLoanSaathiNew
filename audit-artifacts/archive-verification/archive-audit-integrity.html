@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archive Audit Integrity</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Segoe UI, Arial, sans-serif; }
+    body { margin: 0; background: #f1f5f9; color: #0f172a; }
+    main { max-width: 1180px; margin: 0 auto; padding: 36px; }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    h2 { margin-top: 28px; font-size: 20px; }
+    .subtitle { color: #475569; margin-bottom: 24px; }
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .card, table, pre { background: white; border: 1px solid #cbd5e1; border-radius: 10px; }
+    .card { padding: 18px; }
+    .metric { font-size: 28px; font-weight: 700; margin-top: 8px; }
+    .pass { color: #047857; font-weight: 700; }
+    .fail { color: #b91c1c; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { padding: 11px 13px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    th { background: #e2e8f0; }
+    pre { padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+    .note { padding: 14px 16px; border-left: 4px solid #2563eb; background: #dbeafe; }
+  </style>
+</head>
+<body><main>
+  <h1>Archive Integrity Evidence</h1>
+  <p class="subtitle">archive-audit-2026-06-13T17-40-23-283Z | Detailed assertions</p>
+  <table>
+    <thead><tr><th>Assertion</th><th>Result</th><th>Error</th></tr></thead>
+    <tbody>
+    <tr>
+      <td>Active lead remains unarchived</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Rejected lead is archived after 90 days</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Disbursed lead is archived after 180 days</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>First run archives exactly the two eligible leads</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Active lead business data is unchanged</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Rejected lead business data is preserved</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Disbursed lead business data is preserved</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archived rejected lead recovers by record ID</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archived rejected lead recovers by case ID</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archived disbursed lead recovers without data loss</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archive listing contains only the two eligible fixtures</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Active dealership listing excludes archived fixtures</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Active admin listing excludes archived fixtures</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archived records reject mutation</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Second run performs no duplicate archival</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Second run does not alter archived rejected lead</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Second run does not alter archived disbursed lead</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>No fixture lead is deleted</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Rejected lead has one archival audit event</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Disbursed lead has one archival audit event</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Archival run log records execution and idempotent rerun</td>
+      <td class="pass">PASS</td>
+      <td></td>
+    </tr></tbody>
+  </table>
+  <h2>Execution Evidence</h2>
+  <pre>{
+  &quot;firstRun&quot;: {
+    &quot;archived&quot;: 2,
+    &quot;archivedIds&quot;: [
+      &quot;archive-audit-2026-06-13T17-40-23-283Z-rejected&quot;,
+      &quot;archive-audit-2026-06-13T17-40-23-283Z-disbursed&quot;
+    ]
+  },
+  &quot;secondRun&quot;: {
+    &quot;archived&quot;: 0,
+    &quot;archivedIds&quot;: []
+  },
+  &quot;recovery&quot;: {
+    &quot;rejectedById&quot;: &quot;archive-audit-2026-06-13T17-40-23-283Z-rejected&quot;,
+    &quot;rejectedByCaseId&quot;: &quot;archive-audit-2026-06-13T17-40-23-283Z-rejected&quot;,
+    &quot;disbursedById&quot;: &quot;archive-audit-2026-06-13T17-40-23-283Z-disbursed&quot;
+  },
+  &quot;immutableError&quot;: {
+    &quot;code&quot;: &quot;ARCHIVED_LEAD_IMMUTABLE&quot;,
+    &quot;status&quot;: 409,
+    &quot;message&quot;: &quot;Archived cases are read-only&quot;
+  },
+  &quot;fixtureRecordsRemaining&quot;: 3
+}</pre>
+  <div class="note">Archive recovery verifies retained-record retrieval. The product intentionally has no unarchive workflow.</div></main></body>
+</html>

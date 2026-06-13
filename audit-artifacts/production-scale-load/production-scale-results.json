@@ -1,0 +1,146 @@
+{
+  "audit": "CarLoanSaathi production-scale local capacity benchmark",
+  "runStartedAt": "2026-06-13T17:47:59.274Z",
+  "completedAt": "2026-06-13T17:48:26.516Z",
+  "environment": {
+    "executionMode": "isolated-memory-and-loopback-http",
+    "productionDataTouched": false,
+    "node": "v24.14.0",
+    "platform": "win32 x64",
+    "cpuCount": 4,
+    "totalMemoryGb": 7.89
+  },
+  "dataset": {
+    "dealerships": 500,
+    "executives": 5000,
+    "leads": 100000,
+    "eligibleForArchive": 20000,
+    "seed": {
+      "durationMs": 859.638,
+      "heapUsedMb": 145.68
+    }
+  },
+  "measurements": {
+    "leadCreationLatency": {
+      "samples": 150,
+      "minMs": 20.763,
+      "averageMs": 25.668,
+      "p50Ms": 24.943,
+      "p95Ms": 31.773,
+      "p99Ms": 33.1,
+      "maxMs": 33.333,
+      "concurrency": 25,
+      "failures": 0
+    },
+    "leadSearchLatency": {
+      "samples": 500,
+      "minMs": 410.836,
+      "averageMs": 425.594,
+      "p50Ms": 417.022,
+      "p95Ms": 479.641,
+      "p99Ms": 499.195,
+      "maxMs": 509.085,
+      "concurrency": 25,
+      "failures": 0
+    },
+    "dashboardLoadTime": {
+      "samples": 500,
+      "minMs": 420.269,
+      "averageMs": 427.25,
+      "p50Ms": 426.283,
+      "p95Ms": 435.924,
+      "p99Ms": 441.927,
+      "maxMs": 443.062,
+      "concurrency": 25,
+      "failures": 0
+    },
+    "directServiceSearch": {
+      "samples": 300,
+      "minMs": 8.35,
+      "averageMs": 9.042,
+      "p50Ms": 8.881,
+      "p95Ms": 9.589,
+      "p99Ms": 10.151,
+      "maxMs": 48.987
+    },
+    "directServiceDashboard": {
+      "samples": 300,
+      "minMs": 10.67,
+      "averageMs": 11.751,
+      "p50Ms": 11.481,
+      "p95Ms": 12.466,
+      "p99Ms": 15.006,
+      "maxMs": 63.941
+    },
+    "apiP95Ms": 479.641,
+    "firestoreReadAmplification": {
+      "exactCaseSearch": {
+        "estimatedReads": 1,
+        "returned": 1,
+        "amplification": 1
+      },
+      "dealershipPage": {
+        "estimatedReads": 9,
+        "returned": 8,
+        "amplification": 1.125
+      },
+      "localMemoryScan": {
+        "examinedPerQuery": 100000,
+        "returned": 8,
+        "amplification": 12500,
+        "note": "Local fallback scan only; indexed Firestore should not scan 100,000 documents."
+      }
+    },
+    "archiveExecution": {
+      "batchLimit": 100,
+      "archived": 200,
+      "durationMs": 2340.919,
+      "throughputPerSecond": 85.437,
+      "estimatedFullBacklogSeconds": 234.092
+    },
+    "ssePropagation": {
+      "samples": 100,
+      "minMs": 4.509,
+      "averageMs": 5.009,
+      "p50Ms": 4.885,
+      "p95Ms": 5.627,
+      "p99Ms": 7.17,
+      "maxMs": 9.149,
+      "clients": 500,
+      "events": 100,
+      "deliveries": 50000
+    }
+  },
+  "bottlenecks": [
+    {
+      "severity": "high",
+      "area": "Local fallback query complexity",
+      "finding": "Memory fallback examines up to 1,00,000 leads for scoped sorting/search, producing a 12,500x examined-to-returned ratio for an 8-row dashboard page.",
+      "recommendation": "Never use memory fallback for production capacity. Require Firestore indexes and fail readiness checks when the backend reports memory-fallback."
+    },
+    {
+      "severity": "high",
+      "area": "Archive batch ceiling",
+      "finding": "A limit=100 archival run processed 200 records while 20,000 were eligible. Full backlog clearance is estimated at 234.1 seconds under this local profile.",
+      "recommendation": "Run archival continuously in bounded queue jobs, expose backlog depth, and alert when eligible backlog exceeds one day of configured throughput."
+    },
+    {
+      "severity": "medium",
+      "area": "Dashboard query fan-out",
+      "finding": "Dashboard assembly performs metrics, recent-lead, projection, and notification work concurrently. Tail latency follows the slowest dependency.",
+      "recommendation": "Keep projection hit rate above 95%, cache metrics, and monitor per-dependency p95 rather than only the aggregate endpoint."
+    },
+    {
+      "severity": "medium",
+      "area": "SSE fan-out",
+      "finding": "500 connected clients received 50000 synchronous in-process deliveries during the benchmark.",
+      "recommendation": "For multi-instance production, require Redis pub/sub, cap per-instance connections, and load-test proxy buffering and reconnect storms in staging."
+    }
+  ],
+  "limitations": [
+    "Managed Firestore network, index, quota, and billing behavior were not measured.",
+    "Render/Vercel autoscaling, TLS, proxy buffering, and internet latency were not measured.",
+    "Loopback HTTP results are application baselines, not deploy-environment capacity claims.",
+    "A staging k6 enterprise run is still required before broad production launch."
+  ]
+}

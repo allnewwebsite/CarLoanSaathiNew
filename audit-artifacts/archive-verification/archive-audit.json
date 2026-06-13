@@ -1,0 +1,144 @@
+{
+  "audit": "CarLoanSaathi archive verification",
+  "runId": "archive-audit-2026-06-13T17-40-23-283Z",
+  "startedAt": "2026-06-13T17:40:23.283Z",
+  "completedAt": "2026-06-13T17:40:23.323Z",
+  "executionMode": "isolated-memory",
+  "productionDataTouched": false,
+  "policy": {
+    "rejectedDays": 90,
+    "disbursedDays": 180
+  },
+  "fixtures": {
+    "active": {
+      "id": "archive-audit-2026-06-13T17-40-23-283Z-active",
+      "status": "CONTACTED",
+      "archived": false
+    },
+    "rejected": {
+      "id": "archive-audit-2026-06-13T17-40-23-283Z-rejected",
+      "status": "REJECTED",
+      "archived": true
+    },
+    "disbursed": {
+      "id": "archive-audit-2026-06-13T17-40-23-283Z-disbursed",
+      "status": "DISBURSED",
+      "archived": true
+    }
+  },
+  "firstRun": {
+    "archived": 2,
+    "archivedIds": [
+      "archive-audit-2026-06-13T17-40-23-283Z-rejected",
+      "archive-audit-2026-06-13T17-40-23-283Z-disbursed"
+    ]
+  },
+  "secondRun": {
+    "archived": 0,
+    "archivedIds": []
+  },
+  "immutableError": {
+    "code": "ARCHIVED_LEAD_IMMUTABLE",
+    "status": 409,
+    "message": "Archived cases are read-only"
+  },
+  "recovery": {
+    "rejectedById": "archive-audit-2026-06-13T17-40-23-283Z-rejected",
+    "rejectedByCaseId": "archive-audit-2026-06-13T17-40-23-283Z-rejected",
+    "disbursedById": "archive-audit-2026-06-13T17-40-23-283Z-disbursed"
+  },
+  "counts": {
+    "checks": 21,
+    "passed": 21,
+    "failed": 0,
+    "fixtureRecordsRemaining": 3
+  },
+  "checks": [
+    {
+      "name": "Active lead remains unarchived",
+      "status": "PASS"
+    },
+    {
+      "name": "Rejected lead is archived after 90 days",
+      "status": "PASS"
+    },
+    {
+      "name": "Disbursed lead is archived after 180 days",
+      "status": "PASS"
+    },
+    {
+      "name": "First run archives exactly the two eligible leads",
+      "status": "PASS"
+    },
+    {
+      "name": "Active lead business data is unchanged",
+      "status": "PASS"
+    },
+    {
+      "name": "Rejected lead business data is preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "Disbursed lead business data is preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "Archived rejected lead recovers by record ID",
+      "status": "PASS"
+    },
+    {
+      "name": "Archived rejected lead recovers by case ID",
+      "status": "PASS"
+    },
+    {
+      "name": "Archived disbursed lead recovers without data loss",
+      "status": "PASS"
+    },
+    {
+      "name": "Archive listing contains only the two eligible fixtures",
+      "status": "PASS"
+    },
+    {
+      "name": "Active dealership listing excludes archived fixtures",
+      "status": "PASS"
+    },
+    {
+      "name": "Active admin listing excludes archived fixtures",
+      "status": "PASS"
+    },
+    {
+      "name": "Archived records reject mutation",
+      "status": "PASS"
+    },
+    {
+      "name": "Second run performs no duplicate archival",
+      "status": "PASS"
+    },
+    {
+      "name": "Second run does not alter archived rejected lead",
+      "status": "PASS"
+    },
+    {
+      "name": "Second run does not alter archived disbursed lead",
+      "status": "PASS"
+    },
+    {
+      "name": "No fixture lead is deleted",
+      "status": "PASS"
+    },
+    {
+      "name": "Rejected lead has one archival audit event",
+      "status": "PASS"
+    },
+    {
+      "name": "Disbursed lead has one archival audit event",
+      "status": "PASS"
+    },
+    {
+      "name": "Archival run log records execution and idempotent rerun",
+      "status": "PASS"
+    }
+  ],
+  "verdict": "PASS",
+  "limitation": "Archive recovery verifies retained-record retrieval. The product intentionally has no unarchive workflow."
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archive Audit Overview</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Segoe UI, Arial, sans-serif; }
+    body { margin: 0; background: #f1f5f9; color: #0f172a; }
+    main { max-width: 1180px; margin: 0 auto; padding: 36px; }
+    h1 { margin: 0 0 8px; font-size: 30px; }
+    h2 { margin-top: 28px; font-size: 20px; }
+    .subtitle { color: #475569; margin-bottom: 24px; }
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .card, table, pre { background: white; border: 1px solid #cbd5e1; border-radius: 10px; }
+    .card { padding: 18px; }
+    .metric { font-size: 28px; font-weight: 700; margin-top: 8px; }
+    .pass { color: #047857; font-weight: 700; }
+    .fail { color: #b91c1c; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { padding: 11px 13px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    th { background: #e2e8f0; }
+    pre { padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+    .note { padding: 14px 16px; border-left: 4px solid #2563eb; background: #dbeafe; }
+  </style>
+</head>
+<body><main>
+  <h1>Archive Verification Audit</h1>
+  <p class="subtitle">archive-audit-2026-06-13T17-40-23-283Z | Isolated memory simulation | 2026-06-13T17:40:23.323Z</p>
+  <div class="cards">
+    <div class="card"><div>Verdict</div><div class="metric pass">PASS</div></div>
+    <div class="card"><div>Checks Passed</div><div class="metric">21/21</div></div>
+    <div class="card"><div>First Run Archived</div><div class="metric">2</div></div>
+    <div class="card"><div>Duplicate Archives</div><div class="metric">0</div></div>
+  </div>
+  <h2>Fixture Outcome</h2>
+  <table>
+    <thead><tr><th>Lead</th><th>Status</th><th>Archived</th><th>Expected</th></tr></thead>
+    <tbody>
+      <tr><td>Active</td><td>CONTACTED</td><td>false</td><td>false</td></tr>
+      <tr><td>Rejected, 91 days</td><td>REJECTED</td><td>true</td><td>true</td></tr>
+      <tr><td>Disbursed, 181 days</td><td>DISBURSED</td><td>true</td><td>true</td></tr>
+    </tbody>
+  </table>
+  <h2>Safety Summary</h2>
+  <div class="note">All three fixture records remain present. Archival is an in-place immutable marker operation; no lead deletion occurred.</div></main></body>
+</html>

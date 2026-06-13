@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Production Scale Percentiles</title>
+  <style>
+    body { margin: 0; background: #f1f5f9; color: #0f172a; font-family: Segoe UI, Arial, sans-serif; }
+    main { max-width: 1180px; margin: auto; padding: 36px; }
+    h1 { margin: 0 0 6px; }
+    .sub { color: #475569; margin-bottom: 24px; }
+    table, .note { width: 100%; background: white; border: 1px solid #cbd5e1; border-radius: 10px; }
+    table { border-collapse: collapse; overflow: hidden; margin-bottom: 26px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; text-align: right; }
+    th { background: #e2e8f0; }
+    th:first-child, td:first-child { text-align: left; }
+    .good { color: #047857; font-weight: 700; }
+    .warn { color: #b45309; font-weight: 700; }
+    .note { box-sizing: border-box; padding: 16px; border-left: 4px solid #2563eb; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Load Test Percentile Evidence</h1>
+  <div class="sub">500 dealerships | 5,000 executives | 100,000 leads | concurrency 25</div>
+  <h2>Loopback HTTP Latency</h2>
+  <table>
+    <thead><tr><th>Operation</th><th>Samples</th><th>Average</th><th>p50</th><th>p95</th><th>p99</th><th>Max</th><th>Failures</th></tr></thead>
+    <tbody>
+      <tr><td>Lead creation</td><td>150</td><td>25.668 ms</td><td>24.943 ms</td><td class="good">31.773 ms</td><td>33.100 ms</td><td>33.333 ms</td><td class="good">0</td></tr>
+      <tr><td>Exact lead search</td><td>500</td><td>425.594 ms</td><td>417.022 ms</td><td class="warn">479.641 ms</td><td>499.195 ms</td><td>509.085 ms</td><td class="good">0</td></tr>
+      <tr><td>Dashboard assembly</td><td>500</td><td>427.250 ms</td><td>426.283 ms</td><td class="warn">435.924 ms</td><td>441.927 ms</td><td>443.062 ms</td><td class="good">0</td></tr>
+    </tbody>
+  </table>
+  <h2>Direct Service Baseline</h2>
+  <table>
+    <thead><tr><th>Operation</th><th>Samples</th><th>Average</th><th>p50</th><th>p95</th><th>p99</th><th>Max</th></tr></thead>
+    <tbody>
+      <tr><td>Exact lead search</td><td>300</td><td>9.042 ms</td><td>8.881 ms</td><td class="good">9.589 ms</td><td>10.151 ms</td><td>48.987 ms</td></tr>
+      <tr><td>Dashboard assembly</td><td>300</td><td>11.751 ms</td><td>11.481 ms</td><td class="good">12.466 ms</td><td>15.006 ms</td><td>63.941 ms</td></tr>
+    </tbody>
+  </table>
+  <h2>Archive and Realtime</h2>
+  <table>
+    <thead><tr><th>Measurement</th><th>Result</th><th>Scale</th></tr></thead>
+    <tbody>
+      <tr><td>Archive batch</td><td>2,340.919 ms</td><td>200 records, 85.437 records/sec</td></tr>
+      <tr><td>Estimated 20,000-record backlog</td><td>234.092 sec</td><td>Local extrapolation</td></tr>
+      <tr><td>SSE propagation p95</td><td class="good">5.627 ms</td><td>500 clients, 100 events, 50,000 deliveries</td></tr>
+      <tr><td>SSE propagation p99</td><td>7.170 ms</td><td>Maximum 9.149 ms</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Loopback HTTP tail latency reflects single-process CPU contention and the memory fallback's full-array scans. It does not represent indexed managed Firestore latency.</div>
+</main>
+</body>
+</html>
