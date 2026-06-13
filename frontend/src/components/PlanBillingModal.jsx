@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, CreditCard, Download, Loader2, ReceiptIndianRupee, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CreditCard, Download, Loader2, ReceiptIndianRupee, X } from "lucide-react";
 import { api, invalidateGetCache } from "../services/api.js";
+
+const HISTORY_PAGE_SIZE = 5;
 
 const BENEFITS = [
   "Unlimited Leads",
@@ -59,33 +61,60 @@ function loadRazorpayCheckout() {
   });
 }
 
-function downloadInvoice(invoice) {
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function invoiceHtml(invoice) {
+  const invoiceNumber = escapeHtml(invoice.invoiceNumber || "CarLoanSaathi Invoice");
   const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>${invoice.invoiceNumber}</title>
-<style>body{font-family:Arial,sans-serif;color:#111827;padding:40px;max-width:760px;margin:auto}h1{font-size:24px}table{width:100%;border-collapse:collapse;margin-top:24px}td,th{border:1px solid #d1d5db;padding:10px;text-align:left}.total{font-weight:700}</style>
+<html><head><meta charset="utf-8"><title>${invoiceNumber}</title>
+<style>@page{size:A4;margin:18mm}body{font-family:Arial,sans-serif;color:#111827;max-width:760px;margin:auto}h1{font-size:24px}table{width:100%;border-collapse:collapse;margin-top:24px}td,th{border:1px solid #d1d5db;padding:10px;text-align:left}.total{font-weight:700}@media print{button{display:none}}</style>
 </head><body>
 <h1>CarLoanSaathi Tax Invoice</h1>
-<p><strong>Invoice:</strong> ${invoice.invoiceNumber || ""}</p>
-<p><strong>Dealership:</strong> ${invoice.dealershipName || ""}</p>
-<p><strong>GSTIN:</strong> ${invoice.gstin || "-"}</p>
-<p><strong>Billing address:</strong> ${invoice.billingAddress || "-"}</p>
+<p><strong>Invoice:</strong> ${invoiceNumber}</p>
+<p><strong>Dealership:</strong> ${escapeHtml(invoice.dealershipName || "")}</p>
+<p><strong>GSTIN:</strong> ${escapeHtml(invoice.gstin || "-")}</p>
+<p><strong>Billing address:</strong> ${escapeHtml(invoice.billingAddress || "-")}</p>
 <table><tr><th>Description</th><th>Amount</th></tr>
-<tr><td>${invoice.planName || "CarLoanSaathi Professional"}</td><td>${money(invoice.monthlyAmount)}</td></tr>
+<tr><td>${escapeHtml(invoice.planName || "CarLoanSaathi Professional")}</td><td>${money(invoice.monthlyAmount)}</td></tr>
 <tr><td>GST (${invoice.gstRate || 18}%)</td><td>${money(invoice.gstAmount)}</td></tr>
 <tr class="total"><td>Total paid</td><td>${money(invoice.finalAmount)}</td></tr></table>
-<p><strong>Payment ID:</strong> ${invoice.paymentId || invoice.razorpayPaymentId || "-"}</p>
+<p><strong>Payment ID:</strong> ${escapeHtml(invoice.paymentId || invoice.razorpayPaymentId || "-")}</p>
 <p><strong>Payment date:</strong> ${dateValue(invoice.paymentDate)}</p>
 <p><strong>Validity:</strong> ${dateValue(invoice.validityStartDate)} to ${dateValue(invoice.validityEndDate)}</p>
 </body></html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${invoice.invoiceNumber || "CarLoanSaathi-Invoice"}.html`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  return html;
+}
+
+function downloadInvoicePdf(invoice) {
+  const printWindow = window.open("", "_blank", "width=900,height=760");
+  if (!printWindow) return;
+  printWindow.opener = null;
+  printWindow.document.open();
+  printWindow.document.write(invoiceHtml(invoice));
+  printWindow.document.close();
+  window.setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 150);
+}
+
+function HistoryPagination({ page, total, onChange }) {
+  const pages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-2">
+      <button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => onChange(page - 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+      <span className="text-xs text-slate-500">Page {page} of {pages}</span>
+      <button type="button" aria-label="Next page" disabled={page >= pages} onClick={() => onChange(page + 1)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+    </div>
+  );
 }
 
 export function PlanBillingModal({ open, onClose, user }) {
@@ -96,6 +125,8 @@ export function PlanBillingModal({ open, onClose, user }) {
   const [renewing, setRenewing] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [invoicePage, setInvoicePage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -185,6 +216,12 @@ export function PlanBillingModal({ open, onClose, user }) {
   const plan = data?.plan || {};
   const payments = data?.history?.payments || [];
   const invoices = data?.history?.invoices || [];
+  const invoicesByNumber = useMemo(() => new Map(invoices.map((invoice) => [invoice.invoiceNumber, invoice])), [invoices]);
+  const visiblePayments = payments.slice((paymentPage - 1) * HISTORY_PAGE_SIZE, paymentPage * HISTORY_PAGE_SIZE);
+  const visibleInvoices = invoices.slice((invoicePage - 1) * HISTORY_PAGE_SIZE, invoicePage * HISTORY_PAGE_SIZE);
+  const showRenew = Number(subscription.daysRemaining ?? 0) <= 15;
+  const activeTrial = subscription.entitlementType === "TRIAL" && subscription.subscriptionStatus !== "EXPIRED";
+  const nextBillingDate = subscription.nextBillingDate || subscription.entitlementEndDate || subscription.trialEndDate;
   const details = useMemo(() => [
     ["Current Plan", subscription.planName || plan.name],
     ["Subscription Status", subscription.subscriptionStatus],
@@ -194,10 +231,11 @@ export function PlanBillingModal({ open, onClose, user }) {
     ["Subscription Start Date", dateValue(subscription.subscriptionStartDate)],
     ["Subscription End Date", dateValue(subscription.subscriptionEndDate)],
     ["Days Remaining", subscription.daysRemaining ?? "-"],
+    ["Next Billing Date", dateValue(nextBillingDate)],
     ["Monthly Price", money(subscription.monthlyAmount || plan.monthlyAmount)],
     [`GST (${subscription.gstRate || plan.gstRate || 18}%)`, money(subscription.gstAmount || plan.gstAmount)],
     ["Final Amount", money(subscription.finalAmount || plan.finalAmount)],
-  ], [plan, subscription]);
+  ], [nextBillingDate, plan, subscription]);
 
   if (!open) return null;
   return (
@@ -219,11 +257,22 @@ export function PlanBillingModal({ open, onClose, user }) {
           {message ? <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{message}</p> : null}
           {data ? (
             <div className="space-y-6">
-              <div className={`flex flex-col gap-3 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${statusTone(subscription.subscriptionStatus)}`}>
-                <div><p className="text-sm font-semibold">{subscription.subscriptionStatus}</p><p className="mt-0.5 text-sm">{subscription.daysRemaining} day(s) remaining. Renewal is manual.</p></div>
-                <button type="button" onClick={renew} disabled={renewing} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-60">
+              <div className={`flex flex-col gap-4 rounded-md border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${statusTone(subscription.subscriptionStatus)}`}>
+                {activeTrial ? (
+                  <div>
+                    <p className="text-base font-bold">FREE TRIAL ACTIVE</p>
+                    <p className="mt-1 text-xl font-semibold">{subscription.daysRemaining} {Number(subscription.daysRemaining) === 1 ? "Day" : "Days"} Remaining</p>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                      <span><strong>Trial Ends:</strong> {dateValue(subscription.trialEndDate)}</span>
+                      <span><strong>Manual Renewal</strong></span>
+                    </div>
+                  </div>
+                ) : (
+                  <div><p className="text-base font-bold">{subscription.subscriptionStatus}</p><p className="mt-1 text-sm">{subscription.daysRemaining} days remaining. Manual renewal.</p></div>
+                )}
+                {showRenew ? <button type="button" onClick={renew} disabled={renewing} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-60">
                   {renewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Renew Subscription
-                </button>
+                </button> : null}
               </div>
 
               <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -235,15 +284,24 @@ export function PlanBillingModal({ open, onClose, user }) {
               <section>
                 <h3 className="text-base font-semibold text-slate-900">Payment History</h3>
                 <div className="mt-3 overflow-x-auto rounded-md border border-slate-200">
-                  <table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">Invoice</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">GST</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Payment ID</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{payments.length ? payments.map((payment) => <tr key={payment.id}><td className="px-3 py-2 font-medium">{payment.invoiceNumber}</td><td className="px-3 py-2">{dateValue(payment.paidAt)}</td><td className="px-3 py-2">{money(payment.finalAmount)}</td><td className="px-3 py-2">{money(payment.gstAmount)}</td><td className="px-3 py-2">{payment.paymentStatus || payment.status}</td><td className="px-3 py-2">{payment.razorpayPaymentId}</td></tr>) : <tr><td colSpan="6" className="px-3 py-6 text-center text-slate-500">No payments recorded.</td></tr>}</tbody>
+                  <table className="min-w-[860px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">Invoice No</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Payment ID</th><th className="px-3 py-2">Download Invoice</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{visiblePayments.length ? visiblePayments.map((payment) => {
+                      const invoice = invoicesByNumber.get(payment.invoiceNumber);
+                      return <tr key={payment.id}><td className="px-3 py-2 font-medium">{payment.invoiceNumber}</td><td className="px-3 py-2">{dateValue(payment.paidAt)}</td><td className="px-3 py-2">{money(payment.finalAmount)}</td><td className="px-3 py-2">{payment.paymentStatus || payment.status}</td><td className="px-3 py-2">{payment.razorpayPaymentId}</td><td className="px-3 py-2"><button type="button" disabled={!invoice} onClick={() => downloadInvoicePdf(invoice)} className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-700 disabled:opacity-40"><Download className="h-3.5 w-3.5" />Invoice</button></td></tr>;
+                    }) : <tr><td colSpan="6" className="px-3 py-6 text-center text-slate-500">No payments recorded.</td></tr>}</tbody>
                   </table>
+                  <HistoryPagination page={paymentPage} total={payments.length} onChange={setPaymentPage} />
                 </div>
               </section>
 
               <section>
                 <h3 className="text-base font-semibold text-slate-900">Invoice History</h3>
-                <div className="mt-3 space-y-2">{invoices.length ? invoices.map((invoice) => <div key={invoice.id} className="flex flex-col gap-2 rounded-md border border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-semibold text-slate-900">{invoice.invoiceNumber}</p><p className="text-sm text-slate-500">{dateValue(invoice.paymentDate)} | {money(invoice.finalAmount)} | Valid until {dateValue(invoice.validityEndDate)}</p></div><button type="button" onClick={() => downloadInvoice(invoice)} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700"><Download className="h-4 w-4" />Download</button></div>) : <p className="rounded-md border border-slate-200 px-4 py-5 text-center text-sm text-slate-500">No invoices available.</p>}</div>
+                <div className="mt-3 overflow-x-auto rounded-md border border-slate-200">
+                  <table className="min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">Invoice No</th><th className="px-3 py-2">Invoice Date</th><th className="px-3 py-2">Amount</th><th className="px-3 py-2">GST</th><th className="px-3 py-2">Total</th><th className="px-3 py-2">Download PDF</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{visibleInvoices.length ? visibleInvoices.map((invoice) => <tr key={invoice.id}><td className="px-3 py-2 font-medium">{invoice.invoiceNumber}</td><td className="px-3 py-2">{dateValue(invoice.paymentDate)}</td><td className="px-3 py-2">{money(invoice.monthlyAmount)}</td><td className="px-3 py-2">{money(invoice.gstAmount)}</td><td className="px-3 py-2 font-medium">{money(invoice.finalAmount)}</td><td className="px-3 py-2"><button type="button" onClick={() => downloadInvoicePdf(invoice)} className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-700"><Download className="h-3.5 w-3.5" />PDF</button></td></tr>) : <tr><td colSpan="6" className="px-3 py-6 text-center text-slate-500">No invoices available.</td></tr>}</tbody>
+                  </table>
+                  <HistoryPagination page={invoicePage} total={invoices.length} onChange={setInvoicePage} />
+                </div>
               </section>
             </div>
           ) : null}
