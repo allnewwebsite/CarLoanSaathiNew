@@ -31,6 +31,7 @@ const pageModules = {
   gmTracking: () => import("../pages/dashboard/GmTrackingPanel.jsx"),
   superAdmin: () => import("../pages/dashboard/SuperAdminDashboard.jsx"),
   adminMonitoring: () => import("../pages/dashboard/AdminMonitoringCenter.jsx"),
+  legal: () => import("../pages/legal/LegalPages.jsx"),
 };
 
 const dashboardModules = [
@@ -76,12 +77,17 @@ const SuperAdminDealershipDetailPage = lazyPage(pageModules.superAdmin, "SuperAd
 const SuperAdminApprovalDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminApprovalDetailPage");
 const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLeadDetailPage");
 const AdminMonitoringCenter = lazyPage(pageModules.adminMonitoring, "AdminMonitoringCenter");
+const LegalPage = lazyPage(pageModules.legal, "LegalPage");
 
 export const router = createBrowserRouter([
   {
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
+      { path: "/terms", element: <LegalPage policy="terms" /> },
+      { path: "/privacy", element: <LegalPage policy="privacy" /> },
+      { path: "/refund-policy", element: <LegalPage policy="refund" /> },
+      { path: "/subscription-policy", element: <LegalPage policy="subscription" /> },
       { path: "/cars/:brandSlug", element: <Navigate to="/" replace /> },
       { path: "/apply-loan", element: <Navigate to="/" replace /> },
       { path: "/dealer/register", element: <DealerRegistrationPage /> },

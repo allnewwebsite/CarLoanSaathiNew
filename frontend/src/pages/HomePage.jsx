@@ -672,9 +672,17 @@ export function HomePage() {
       </section>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-7xl flex-col justify-between gap-5 text-sm text-slate-500 sm:flex-row">
-          <p>(c) 2026 CarLoanSaathi. Dealer-bank connectivity for controlled loan workflow management.</p>
-          <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> Platform access managed by operations.</p>
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 text-sm text-slate-500">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row">
+            <p>(c) 2026 CarLoanSaathi. Dealer-bank connectivity for controlled loan workflow management.</p>
+            <p className="flex items-center gap-2"><Phone className="h-4 w-4" /> Platform access managed by operations.</p>
+          </div>
+          <nav aria-label="Legal policies" className="flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-5">
+            <Link to="/terms" className="hover:text-slate-900">Terms & Conditions</Link>
+            <Link to="/privacy" className="hover:text-slate-900">Privacy Policy</Link>
+            <Link to="/refund-policy" className="hover:text-slate-900">Refund Policy</Link>
+            <Link to="/subscription-policy" className="hover:text-slate-900">Subscription Policy</Link>
+          </nav>
         </div>
       </footer>
     </main>
