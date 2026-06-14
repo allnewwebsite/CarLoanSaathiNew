@@ -499,6 +499,7 @@ export function HomePage() {
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
               CarLoanSaathi connects dealerships, finance teams, bank branches, and executives through a controlled platform for case tracking, bank coordination, and operational visibility.
             </p>
+            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Existing users</p>
             <div className="mt-8 flex max-w-4xl flex-col gap-3 sm:flex-row sm:flex-wrap">
               <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
               <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
@@ -654,19 +655,24 @@ export function HomePage() {
       </section>
 
       <section id="contact" className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 overflow-hidden rounded-[2rem] bg-slate-950 p-8 text-white public-premium-shadow lg:grid-cols-[1fr_auto] lg:items-center lg:p-10">
+        <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-[2rem] bg-slate-950 p-8 text-white public-premium-shadow lg:p-10">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Platform Access</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">Continue through your dedicated portal.</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-blue-100">
-              Approved dealerships, bank branches, finance heads, and loan executives can use their existing login paths. Public access paths remain disabled without deleting operational data or internal workflows.
-            </p>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Explore CarLoanSaathi</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">Ready to modernize your dealership loan operations?</h2>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-blue-100">
+                Approved teams can continue through their dedicated portal to manage dealership-to-bank workflows.
+              </p>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
-            <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
-            <PortalLink to="/finance/login" label="Dealership Head Login" variant="head" />
-            <PortalLink to="/executive/login" label="Loan Executive Login" variant="executive" />
+          <div className="mt-9 border-t border-white/10 pt-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Already registered? Continue through your portal.</p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
+              <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
+              <PortalLink to="/finance/login" label="Dealership Head Login" variant="head" />
+              <PortalLink to="/executive/login" label="Loan Executive Login" variant="executive" />
+            </div>
           </div>
         </div>
       </section>

@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import { PublicConversionCtas } from "../components/PublicConversionCtas.jsx";
 
 const pageTitle = "CarLoanSaathi Plans & Billing";
 const pageDescription =
@@ -183,31 +184,6 @@ function SectionHeading({ eyebrow, title, text, align = "center" }) {
   );
 }
 
-function PrimaryCta({ className = "" }) {
-  return (
-    <Link
-      to="/dealer/register"
-      className={`inline-flex min-h-12 items-center justify-center rounded-lg bg-[#0d47a1] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#083b86] ${className}`}
-    >
-      Start 60-Day Free Trial
-      <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-    </Link>
-  );
-}
-
-function SecondaryCta({ dark = false }) {
-  return (
-    <a
-      href="/#contact"
-      className={`inline-flex min-h-12 items-center justify-center rounded-lg border px-6 py-3 text-sm font-semibold transition ${
-        dark ? "border-white/30 bg-white/10 text-white hover:bg-white/15" : "border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50"
-      }`}
-    >
-      Contact Sales
-    </a>
-  );
-}
-
 function WorkflowPreview() {
   return (
     <div className="relative mx-auto w-full max-w-xl" aria-label="CarLoanSaathi workflow preview">
@@ -286,10 +262,7 @@ export function PlansBillingPage() {
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
               Digitize your dealership-to-bank loan operations with complete lead tracking, document management, workflow visibility, and real-time status updates.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <PrimaryCta />
-              <SecondaryCta />
-            </div>
+            <PublicConversionCtas location="plans_hero" className="mt-8" />
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm font-medium text-slate-600">
               {["No setup fee", "No hidden charges", "No long-term lock-in"].map((item) => (
                 <span key={item} className="inline-flex items-center gap-2">
@@ -310,11 +283,36 @@ export function PlansBillingPage() {
             title="One professional plan. Everything your operation needs."
             text="Start with a full 60-day free trial. Continue on a simple manual monthly subscription when your dealership is ready."
           />
+          <div className="mt-12 grid gap-5 lg:grid-cols-2">
+            <article className="rounded-2xl border-2 border-blue-300 bg-white p-7 shadow-sm sm:p-8">
+              <span className="inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-800">Most Popular</span>
+              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Start Free Trial</p>
+              <h3 className="mt-2 text-3xl font-semibold text-slate-950">60 Days</h3>
+              <ul className="mt-6 space-y-3 text-sm text-slate-700">
+                {["No payment required", "Full platform access", "Best for evaluation"].map((item) => (
+                  <li key={item} className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-blue-700" />{item}</li>
+                ))}
+              </ul>
+              <PublicConversionCtas location="plans_comparison_trial" className="mt-7" showBadges={false} showProfessional={false} showContact={false} />
+            </article>
+
+            <article className="rounded-2xl border border-emerald-300 bg-emerald-50/50 p-7 shadow-sm sm:p-8">
+              <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Ready To Launch</span>
+              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Get Professional Plan</p>
+              <h3 className="mt-2 text-3xl font-semibold text-slate-950">₹15,000 + GST</h3>
+              <ul className="mt-6 space-y-3 text-sm text-slate-700">
+                {["Immediate paid subscription after approval", "No waiting after approval", "Best for ready-to-use dealerships"].map((item) => (
+                  <li key={item} className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-emerald-700" />{item}</li>
+                ))}
+              </ul>
+              <PublicConversionCtas location="plans_comparison_professional" className="mt-7" showBadges={false} showTrial={false} showContact={false} />
+            </article>
+          </div>
           <div className="mx-auto mt-12 max-w-4xl overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-xl shadow-blue-950/10">
             <div className="grid lg:grid-cols-[1fr_0.8fr]">
               <div className="p-7 sm:p-10">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="rounded-full bg-[#0d47a1] px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white">Most Popular</span>
+                  <span className="rounded-full bg-emerald-700 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white">Ready To Launch</span>
                   <span className="text-sm font-medium text-slate-500">Built for dealerships</span>
                 </div>
                 <h2 className="mt-6 text-2xl font-semibold text-slate-950 sm:text-3xl">CarLoanSaathi Professional</h2>
@@ -349,7 +347,7 @@ export function PlansBillingPage() {
                     </div>
                   ))}
                 </dl>
-                <PrimaryCta className="mt-7 w-full" />
+                <PublicConversionCtas location="plans_summary" className="mt-7" showBadges={false} showContact={false} />
                 <p className="mt-3 text-center text-xs leading-5 text-slate-600">Trial begins after dealership approval. No card required to register.</p>
               </div>
             </div>
@@ -537,10 +535,7 @@ export function PlansBillingPage() {
             <h2 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight tracking-[-0.035em] text-white sm:text-4xl">Ready To Modernize Your Automotive Loan Operations?</h2>
             <p className="mt-4 max-w-2xl text-base leading-7 text-blue-100">Start your 60-day free trial and experience a better way to manage dealership-to-bank loan workflows.</p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <PrimaryCta className="!bg-white !text-[#0d47a1] hover:!bg-blue-50" />
-            <SecondaryCta dark />
-          </div>
+          <PublicConversionCtas location="plans_final_cta" dark />
         </div>
       </section>
 

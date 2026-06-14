@@ -1,6 +1,5 @@
 import {
   ArrowDown,
-  ArrowRight,
   BadgeCheck,
   Banknote,
   Building2,
@@ -25,7 +24,7 @@ import {
 } from "lucide-react";
 import { motion, MotionConfig, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { PublicConversionCtas } from "../components/PublicConversionCtas.jsx";
 
 const ease = [0.22, 1, 0.36, 1];
 const reveal = {
@@ -290,9 +289,9 @@ export function HowItWorksPage() {
               <span className="mt-2 block bg-gradient-to-r from-blue-700 via-cyan-600 to-emerald-600 bg-clip-text text-transparent">From Customer To Disbursement</span>
             </h1>
             <motion.p {...reveal} className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">One platform connecting dealerships, finance teams, loan executives, and banks through a trackable workflow.</motion.p>
-            <motion.div {...reveal} className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <motion.div {...reveal} className="mt-8">
               <a href="#live-workflow" className="inline-flex h-12 items-center justify-center rounded-full bg-blue-700 px-6 text-sm font-semibold text-white shadow-lg shadow-blue-700/20 transition hover:-translate-y-0.5 hover:bg-blue-800">Watch Workflow <ArrowDown className="ml-2 h-4 w-4" /></a>
-              <Link to="/dealer/register" className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-sm font-semibold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200">Start Free Trial <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <PublicConversionCtas location="how_it_works_hero" className="mt-5" buttonShape="rounded-full" showContact={false} />
             </motion.div>
           </div>
           <motion.div {...reveal} className="relative min-h-[30rem]"><div className="absolute inset-5 rounded-lg border border-white/80 bg-white/65 shadow-2xl shadow-blue-900/10 backdrop-blur-xl" /><div className="absolute left-1/2 top-1/2 w-[88%] -translate-x-1/2 -translate-y-1/2"><PlatformHub /></div></motion.div>
@@ -355,11 +354,9 @@ export function HowItWorksPage() {
       <section className="px-4 py-20 sm:px-6 lg:px-8">
         <motion.div {...reveal} className="mx-auto max-w-6xl overflow-hidden rounded-lg border border-blue-100 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_52%,#ecfeff_100%)] p-8 text-center shadow-xl shadow-blue-900/5 sm:p-14">
           <ShieldCheck className="mx-auto h-12 w-12 text-blue-700" />
-          <h2 className="mt-6 text-4xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-6xl">Ready To Transform Your Loan Operations?</h2>
-          <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link to="/dealer/register" className="inline-flex h-12 items-center justify-center rounded-full bg-blue-700 px-7 text-sm font-semibold text-white shadow-lg shadow-blue-700/20 transition hover:-translate-y-0.5 hover:bg-blue-800">Start 60-Day Free Trial <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            <Link to="/plans-and-billing" className="inline-flex h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-7 text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5 hover:border-blue-200">View Plans & Billing</Link>
-          </div>
+          <h2 className="mt-6 text-4xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-6xl">Ready to Get Started?</h2>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">Evaluate the platform free for 60 days, or choose Professional and complete payment only after dealership approval.</p>
+          <PublicConversionCtas location="how_it_works_final_cta" className="mt-8 justify-center" buttonShape="rounded-full" />
         </motion.div>
       </section>
 
