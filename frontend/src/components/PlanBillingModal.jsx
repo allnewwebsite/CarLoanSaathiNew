@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, CreditCard, Download, Loader2, ReceiptIndianRupee, X } from "lucide-react";
 import { api, invalidateGetCache } from "../services/api.js";
+import { startSubscriptionPayment } from "../services/subscriptionPayment.js";
 
 const HISTORY_PAGE_SIZE = 5;
 
@@ -40,25 +41,6 @@ function statusTone(status) {
   if (status === "EXPIRED") return "border-red-200 bg-red-50 text-red-700";
   if (status === "EXPIRING_SOON") return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
-}
-
-function loadRazorpayCheckout() {
-  if (window.Razorpay) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const existing = document.querySelector('script[data-cls-razorpay="true"]');
-    if (existing) {
-      existing.addEventListener("load", () => resolve(true), { once: true });
-      existing.addEventListener("error", () => resolve(false), { once: true });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.dataset.clsRazorpay = "true";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
 }
 
 function escapeHtml(value) {
@@ -171,42 +153,7 @@ export function PlanBillingModal({ open, onClose, user }) {
     setError("");
     setMessage("");
     try {
-      const available = await loadRazorpayCheckout();
-      if (!available) throw new Error("Razorpay Checkout could not be loaded.");
-      const orderResponse = await api.post("/dealer/billing/order", { refundPolicyAccepted: true });
-      const order = orderResponse.data;
-      await new Promise((resolve, reject) => {
-        const checkout = new window.Razorpay({
-          key: order.keyId,
-          amount: order.amountPaise,
-          currency: order.currency,
-          name: "CarLoanSaathi",
-          description: `${order.planName} - 30-day non-refundable subscription`,
-          order_id: order.orderId,
-          prefill: {
-            name: order.dealershipName || "",
-            email: order.financeDeskEmail || user?.email || "",
-            contact: String(order.financeDeskMobile || "").replace(/\D/g, "").slice(-10),
-          },
-          theme: { color: "#0d47a1" },
-          modal: { ondismiss: () => reject(new Error("Payment cancelled.")) },
-          handler: async (payment) => {
-            try {
-              await api.post("/dealer/billing/verify", {
-                razorpayOrderId: payment.razorpay_order_id,
-                razorpayPaymentId: payment.razorpay_payment_id,
-                razorpaySignature: payment.razorpay_signature,
-              });
-              resolve();
-            } catch (verificationError) {
-              reject(verificationError);
-            }
-          },
-        });
-        checkout.on("payment.failed", (failure) => reject(new Error(failure.error?.description || "Payment failed.")));
-        checkout.open();
-      });
-      invalidateGetCache({ prefix: "/dealer/billing", purge: true });
+      await startSubscriptionPayment({ user });
       setMessage("Payment verified. Subscription renewed successfully.");
       await load();
     } catch (renewalError) {

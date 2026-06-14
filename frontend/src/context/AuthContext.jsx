@@ -17,6 +17,7 @@ import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { auth } from "../services/firebase.js";
 import { startRealtimeClient, stopRealtimeClient } from "../services/realtimeClient.js";
+import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 
 const AuthContext = createContext(null);
 const SESSION_VALIDATE_FRESHNESS_MS = 5 * 60 * 1000;
@@ -73,6 +74,9 @@ function sessionFromResponse(response) {
     passwordDaysRemaining: Number.isFinite(Number(sessionUser.passwordDaysRemaining)) ? Number(sessionUser.passwordDaysRemaining) : null,
     passwordExpired: sessionUser.passwordExpired === true,
     profile: sessionUser.profile && typeof sessionUser.profile === "object" ? sessionUser.profile : {},
+    selectedPlan: sessionUser.selectedPlan || null,
+    subscriptionStatus: sessionUser.subscriptionStatus || null,
+    dashboardAccessAllowed: sessionUser.dashboardAccessAllowed !== false,
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };
 }
@@ -378,11 +382,11 @@ export function AuthProvider({ children }) {
     return credential;
   };
 
-  const startDealerRegistrationWithEmail = async ({ email, password }) => {
+  const startDealerRegistrationWithEmail = async ({ email, password, selectedPlan = selectedOnboardingPlan() }) => {
     const credential = await createRegistrationAccount({ email, password });
     setFirebaseUser(credential.user);
     const idToken = await credential.user.getIdToken();
-    const response = await api.post("/dealer/register/email-start", { idToken });
+    const response = await api.post("/dealer/register/email-start", { idToken, selectedPlan });
     const registration = {
       registrationId: response.data.registrationId || null,
       uid: credential.user.uid,
@@ -390,6 +394,7 @@ export function AuthProvider({ children }) {
       status: response.data.status,
       message: response.data.message,
       redirectTo: response.data.redirectTo || "/dealer-registration/form",
+      selectedPlan: response.data.selectedPlan || selectedPlan,
     };
     sessionStorage.setItem("cls_dealer_registration", JSON.stringify(registration));
     return registration;

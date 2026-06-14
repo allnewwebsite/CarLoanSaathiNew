@@ -13,6 +13,7 @@ import {
   resolveCanonicalIdentity,
   upsertCanonicalUser,
 } from "../services/identity.service.js";
+import { getDealershipSubscription } from "../services/subscription.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
@@ -34,6 +35,24 @@ const LOGIN_PORTAL_ROLES = {
   "loan-executive": ["loan-executive"],
   admin: ["super-admin"],
 };
+
+async function dealershipEntitlement(account, fallbackEmail = "") {
+  if (!["finance-desk", "gm"].includes(account?.role)) return {};
+  const dealershipId = account.dealershipId || fallbackEmail;
+  const subscription = await getDealershipSubscription(dealershipId);
+  return {
+    selectedPlan: subscription?.selectedPlan || account.selectedPlan || "TRIAL",
+    subscriptionStatus: subscription?.subscriptionStatus || "EXPIRED",
+    dashboardAccessAllowed: subscription?.dashboardAccessAllowed === true,
+  };
+}
+
+function entitlementRedirect(user, fallback) {
+  if (["finance-desk", "gm"].includes(user?.role) && user.dashboardAccessAllowed === false) {
+    return "/subscription-activation";
+  }
+  return fallback;
+}
 const ROLE_LOGIN_PORTALS = {
   "finance-desk": "finance",
   "gm": "gm",
@@ -1137,6 +1156,7 @@ export async function login(req, res, next) {
       bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
       profile: registrationProfile(account),
     };
+    Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
     authPhase = "create-user-session";
     const sessionStartedAt = Date.now();
     const sessionId = await createUserSession({ req, user });
@@ -1146,7 +1166,9 @@ export async function login(req, res, next) {
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     setAuthCookie(res, token);
     const forcedPasswordPath = passwordChangeRouteForRole(user.role);
-    const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role];
+    const redirectTo = user.firstLoginRequired === true || user.passwordExpired === true
+      ? forcedPasswordPath
+      : entitlementRedirect(user, ROLE_ROUTES[user.role]);
     logInfo("Auth login success", {
       requestId: req.requestId,
       jwtRole: user.role,
@@ -1165,6 +1187,16 @@ export async function login(req, res, next) {
         name: "login-activity",
         run: () => writeLoginActivity({ email: normalizedEmail, role: user.role, status: "success", req }),
       },
+      ...(user.dashboardAccessAllowed === true ? [{
+        name: "dashboard-access-audit",
+        run: () => writeAuditLog({
+          req,
+          actionType: "DASHBOARD_ACCESS",
+          targetEntity: "dealership",
+          targetId: user.dealershipId,
+          meta: { dealershipId: user.dealershipId, subscriptionStatus: user.subscriptionStatus },
+        }),
+      }] : []),
       {
         name: "firebase-claims",
         run: () => setFirebaseClaims(firebaseUid || normalizedEmail, user, { decoded }),
@@ -1264,6 +1296,7 @@ export async function restoreSession(req, res, next) {
       lastLoginAt: new Date().toISOString(),
       profile: registrationProfile(account),
     };
+    Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
     await upsertCanonicalUser(user.uid, user);
     await clearFailedLogin(normalizedEmail);
     await setFirebaseClaims(normalizedEmail, user);
@@ -1277,7 +1310,9 @@ export async function restoreSession(req, res, next) {
     res.json({
       token,
       user,
-      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
+      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true
+        ? forcedPasswordPath
+        : entitlementRedirect(user, ROLE_ROUTES[user.role]),
     });
   } catch (error) {
     next(error);
@@ -1337,6 +1372,7 @@ export async function refreshSession(req, res, next) {
       lastLoginAt: account.lastLoginAt || null,
       profile: registrationProfile(account),
     };
+    Object.assign(user, await dealershipEntitlement(account, email));
     Object.assign(user, await accountPresentation(email, user));
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     setAuthCookie(res, token);
@@ -1344,7 +1380,9 @@ export async function refreshSession(req, res, next) {
     res.json({
       token,
       user,
-      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true ? forcedPasswordPath : ROLE_ROUTES[user.role],
+      redirectTo: user.firstLoginRequired === true || user.passwordExpired === true
+        ? forcedPasswordPath
+        : entitlementRedirect(user, ROLE_ROUTES[user.role]),
     });
   } catch (error) {
     next(error);
@@ -1520,6 +1558,7 @@ export async function session(req, res, next) {
     }
 
     const presentation = await accountPresentation(email, account);
+    const entitlement = await dealershipEntitlement(account, email);
     const lifecycle = passwordLifecyclePatch(account);
     await persistPasswordLifecycleIfMissing(email, account, lifecycle);
     res.json({
@@ -1542,6 +1581,7 @@ export async function session(req, res, next) {
         passwordDaysRemaining: lifecycle.passwordDaysRemaining,
         emailVerified: true,
         profile: presentation.profile || registrationProfile(account),
+        ...entitlement,
         ...presentation,
       },
     });

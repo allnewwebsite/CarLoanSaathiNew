@@ -23,6 +23,7 @@ const pageModules = {
   howItWorks: () => import("../pages/HowItWorksPage.jsx"),
   plansBilling: () => import("../pages/PlansBillingPage.jsx"),
   dealerRegistration: () => import("../pages/DealerRegistrationPage.jsx"),
+  subscriptionActivation: () => import("../pages/SubscriptionActivationPage.jsx"),
   bankRegistration: () => import("../pages/public/BankRegistration.jsx"),
   bankBranchManager: () => import("../pages/bank/BankBranchManagerPanel.jsx"),
   loanExecutive: () => import("../pages/bank/LoanExecutivePanel.jsx"),
@@ -64,6 +65,7 @@ const DealerRegistrationPage = lazyPage(pageModules.dealerRegistration, "DealerR
 const DealerRegistrationFormPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationFormPage");
 const DealerRegistrationPendingPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPendingPage");
 const DealerRegistrationApprovedPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationApprovedPage");
+const SubscriptionActivationPage = lazyPage(pageModules.subscriptionActivation, "SubscriptionActivationPage");
 const BankRegistration = lazyPage(pageModules.bankRegistration, "BankRegistration");
 const BankBranchManagerPanel = lazyPage(pageModules.bankBranchManager, "BankBranchManagerPanel");
 const BankManagerLeadDetailPage = lazyPage(pageModules.bankBranchManager, "BankManagerLeadDetailPage");
@@ -115,6 +117,7 @@ export const router = createBrowserRouter([
       { path: "/dealer-registration/pending", element: <DealerRegistrationPendingPage /> },
       { path: "/dealer-registration/pending-approval", element: <DealerRegistrationPendingPage /> },
       { path: "/dealer-registration/approved", element: <DealerRegistrationApprovedPage /> },
+      { path: "/subscription-activation", element: <SubscriptionActivationPage /> },
       { path: "/bank-registration", element: <BankRegistration /> },
       { path: "/bank-registration/form", element: <BankRegistration mode="form" /> },
       { path: "/bank-registration/pending", element: <BankRegistration mode="pending" /> },

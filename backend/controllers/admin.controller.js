@@ -18,7 +18,8 @@ import { recordMonitoringSignal } from "../services/monitoringCenter.service.js"
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { normalizeIfsc, validateBankLocation } from "../services/bankLocationMaster.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
-import { initializeDealershipTrial } from "../services/subscription.service.js";
+import { initializeDealershipTrial, initializeProfessionalSubscriptionPending } from "../services/subscription.service.js";
+import { isProfessionalPlan, normalizeOnboardingPlan } from "../utils/onboardingPlan.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
@@ -370,6 +371,7 @@ function dealerIdentityProfile(dealership = {}, request = {}) {
 }
 
 async function materializeApprovedDealership({ request, loginEmail, dealership }) {
+  const selectedPlan = normalizeOnboardingPlan(request.selectedPlan || dealership.selectedPlan);
   const dealerLocation = dealership.dealerLocation || dealership.location || dealership.city || request.city || "";
   const dealerFields = {
     ...dealership,
@@ -381,6 +383,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     dealerStatus: "approved",
     monthlySalesCapacity: dealership.monthlySalesCapacity || dealership.monthlyCarSalesCapacity || "",
     location: dealerLocation,
+    selectedPlan,
   };
   await upsertRecord("dealerships", loginEmail, dealerFields);
   await upsertRecord("approvedDealerships", loginEmail, dealerFields);
@@ -403,6 +406,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     dealershipId: loginEmail,
     status: "active",
     accountStatus: "active",
+    selectedPlan,
   });
   if (request.generalManager?.email) {
     const gmEmail = normalizeEmail(request.generalManager.email);
@@ -427,6 +431,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
       dealershipId: loginEmail,
       status: "active",
       accountStatus: "active",
+      selectedPlan,
     });
   }
   await upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true });
@@ -450,6 +455,8 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
 }
 
 async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy }) {
+  const selectedPlan = normalizeOnboardingPlan(request.selectedPlan || request.dealership?.selectedPlan);
+  const subscriptionAccessStatus = isProfessionalPlan(selectedPlan) ? "PAYMENT_REQUIRED" : "TRIAL_ACTIVE";
   const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
     status: "approved",
     approvalStatus: "approved",
@@ -457,22 +464,24 @@ async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy 
     dealershipVerified: true,
     approvedAt: now,
     approvedBy,
+    selectedPlan,
+    subscriptionAccessStatus,
   });
-  if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy });
+  if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
   const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
-  if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy });
+  if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
   if (!pendingAccountId && loginEmail) {
     const pendingAccount = await firstAdminLookup([
       () => getRecord("pendingDealerAccounts", loginEmail),
       () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
     ]);
-    if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy });
+    if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
   }
   const queueItem = await firstAdminLookup([
     () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
     () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
   ]);
-  if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy });
+  if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
   return updated;
 }
 
@@ -1189,6 +1198,7 @@ export async function approveDealershipApproval(req, res, next) {
     const now = new Date().toISOString();
     const loginEmail = requestLoginEmail(request);
     if (!loginEmail) return res.status(400).json({ message: "Dealership login email is missing" });
+    const selectedPlan = normalizeOnboardingPlan(request.selectedPlan || request.dealership?.selectedPlan);
     const dealership = {
       ...(request.dealership || {}),
       loginEmail,
@@ -1203,23 +1213,35 @@ export async function approveDealershipApproval(req, res, next) {
       approvedAt: now,
       approvedBy: req.user?.email || "super-admin",
       onboardingRequestId: request.onboardingRequestId || request.id,
+      selectedPlan,
+      subscriptionAccessStatus: isProfessionalPlan(selectedPlan) ? "PAYMENT_REQUIRED" : "TRIAL_ACTIVE",
     };
     const approvedBy = req.user?.email || "super-admin";
     await materializeApprovedDealership({ request, loginEmail, dealership });
-    const subscription = await initializeDealershipTrial({
-      dealershipId: loginEmail,
-      dealership,
-      approvedAt: now,
-      actor: req.user,
-    });
+    const subscription = isProfessionalPlan(selectedPlan)
+      ? await initializeProfessionalSubscriptionPending({
+          dealershipId: loginEmail,
+          dealership,
+          approvedAt: now,
+          actor: req.user,
+        })
+      : await initializeDealershipTrial({
+          dealershipId: loginEmail,
+          dealership,
+          approvedAt: now,
+          actor: req.user,
+        });
     const updated = await approveDealershipBackrefs({ request, loginEmail, now, approvedBy });
     await approvalLog({ req, entityType: "dealership", entityId: request.id, previousStatus: request.status, newStatus: "approved" });
     await incrementPlatformCounters({ activeDealerships: 1, approvedDealerships: 1, pendingDealerships: -1 });
     const dealerPayload = dealerEventPayload({ loginEmail, dealership, status: "approved" });
     recordDealerSignal("DEALER-APPROVED", dealerPayload);
     publishDealerEvent(REALTIME_EVENTS.DEALER_APPROVED, req, dealerPayload);
-    await createNotification({ type: "dealership-approved", title: "Dealership approved", message: `${request.dealershipName} approved. Login access is active.`, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName } });
-    await writeAuditLog({ req, actionType: "DEALERSHIP_APPROVED", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail } });
+    const approvalMessage = isProfessionalPlan(selectedPlan)
+      ? `${request.dealershipName} approved. Complete Professional Plan payment to activate dashboard access.`
+      : `${request.dealershipName} approved. Your 60-day trial is active.`;
+    await createNotification({ type: "dealership-approved", title: "Dealership approved", message: approvalMessage, recipientRole: "finance-desk", recipientId: loginEmail, dealerEmail: loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, meta: { dealershipName: request.dealershipName, selectedPlan } });
+    await writeAuditLog({ req, actionType: "ADMIN_APPROVAL", oldValue: request.status, newValue: "approved", meta: { approvalId: request.id, loginEmail, selectedPlan } });
     clearAdminApprovalCaches();
     res.json({
       message: "Dealership approved",

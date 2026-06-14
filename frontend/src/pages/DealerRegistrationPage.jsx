@@ -6,6 +6,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { Toast } from "../components/ui/Toast.jsx";
 import { brandLogos } from "../data/catalogFallback.js";
 import { api } from "../services/api.js";
+import { CONVERSION_EVENTS, trackConversionEvent } from "../services/conversionAnalytics.js";
+import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 import { auth } from "../services/firebase.js";
 import { db } from "../services/firebaseDb.js";
 import { storage } from "../services/firebaseStorage.js";
@@ -158,7 +160,11 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
     setLoading(true);
     setError("");
     try {
-      const registration = await startDealerRegistrationWithEmail({ email: authEmail, password: authPassword });
+      const registration = await startDealerRegistrationWithEmail({
+        email: authEmail,
+        password: authPassword,
+        selectedPlan: selectedOnboardingPlan(),
+      });
       if (registration.status === "submitted") {
         navigate("/dealer-registration/pending");
       } else {
@@ -259,27 +265,6 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
           </div>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
-          <ShieldCheck className="mx-auto h-8 w-8 text-[#0d47a1]" />
-          <h2 className="mt-3 text-xl font-semibold text-slate-900">{isFinanceAudience ? "Ready to register the finance head account?" : "Ready to onboard your dealership?"}</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            {isFinanceAudience
-              ? "Create the official dealership finance email/password account first. Dashboard access starts only after Super Admin approval."
-              : "Create your official email/password account first. Dashboard access starts only after Super Admin approval."}
-          </p>
-          <div className="mx-auto mt-5 grid max-w-xl gap-3 sm:grid-cols-2">
-            <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} />
-            <div className="field flex h-11 items-center gap-2 rounded-md bg-white px-3">
-              <input type={showAuthPassword ? "text" : "password"} placeholder="Password" className="min-w-0 flex-1 bg-transparent outline-none" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} />
-              <button type="button" onClick={() => setShowAuthPassword((current) => !current)} className="text-slate-500" aria-label={showAuthPassword ? "Hide password" : "Show password"}>
-                {showAuthPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-          <button onClick={beginRegistration} disabled={loading} className="mt-5 inline-flex h-11 items-center justify-center rounded-md bg-[#0d47a1] px-6 text-sm font-medium text-white disabled:opacity-70">
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Create Account"}
-          </button>
-        </section>
       </div>
     </main>
   );
@@ -601,6 +586,7 @@ export function DealerRegistrationFormPage() {
         registrationId: registrationSession.registrationId,
         loginEmail: dealerEmail,
         dealerUid,
+        selectedPlan: registrationSession.selectedPlan || selectedOnboardingPlan(),
         documents: Object.entries(documents).filter(([, item]) => item.status === "uploaded").map(([type, item]) => ({
           type,
           documentType: item.documentType,
@@ -623,6 +609,7 @@ export function DealerRegistrationFormPage() {
           dealerLocation: form.city,
           mobile: form.officialDealershipMobile,
           registrationStatus: "pending-approval",
+          selectedPlan: registrationSession.selectedPlan || selectedOnboardingPlan(),
           submittedAt: serverTimestamp(),
         }, { merge: true });
         await setDoc(firestoreDoc(db, "pendingDealerAccounts", dealerUid), {
@@ -633,12 +620,14 @@ export function DealerRegistrationFormPage() {
           registrationSubmitted: true,
           accountApproved: false,
           accountActive: false,
+          selectedPlan: registrationSession.selectedPlan || selectedOnboardingPlan(),
           updatedAt: serverTimestamp(),
         }, { merge: true });
       } catch (metadataError) {
         console.warn("Dealer registration client metadata write skipped", metadataError);
       }
       setSuccess(`${response.data.message} Request ID: ${response.data.onboardingRequestId}`);
+      trackConversionEvent(CONVERSION_EVENTS.REGISTRATION_COMPLETED, "dealer_registration_form");
       navigate("/dealer-registration/pending-approval");
     } catch (err) {
       const serverMessage = err.response?.data?.message || err.response?.data?.error;

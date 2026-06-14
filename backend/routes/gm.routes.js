@@ -3,10 +3,11 @@ import { getGmLead, getGmLeads, getGmNotifications, getGmSalespersons } from "..
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { ROLES } from "../utils/constants.js";
+import { requireDashboardSubscription } from "../middleware/subscription.js";
 
 const router = Router();
 
-router.use(authenticate, requireRole(ROLES.GM));
+router.use(authenticate, requireRole(ROLES.GM), requireDashboardSubscription);
 router.get("/leads", getGmLeads);
 router.get("/salespersons", getGmSalespersons);
 router.get("/leads/:id", getGmLead);

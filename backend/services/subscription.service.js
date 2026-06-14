@@ -10,12 +10,14 @@ import { createNotification } from "./notification.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { logError, logInfo } from "./logger.service.js";
 import { AUDIT_ACTIONS, writeAuditLog, writeAuditLogOnce } from "./audit.service.js";
+import { isProfessionalPlan, normalizeOnboardingPlan, ONBOARDING_PLANS } from "../utils/onboardingPlan.js";
 
 export const SUBSCRIPTION_STATUSES = Object.freeze({
   TRIAL: "TRIAL",
   ACTIVE: "ACTIVE",
   EXPIRING_SOON: "EXPIRING_SOON",
   EXPIRED: "EXPIRED",
+  PAYMENT_PENDING: "PAYMENT_PENDING",
 });
 
 export const SUBSCRIPTION_PLAN = Object.freeze({
@@ -70,13 +72,19 @@ export function subscriptionSnapshot(record = {}, nowValue = new Date()) {
   const entitlementEndDate = latestDate([trialEndDate, subscriptionEndDate]);
   const remainingMs = entitlementEndDate ? new Date(entitlementEndDate).getTime() - now.getTime() : -1;
   const daysRemaining = Math.max(0, Math.ceil(remainingMs / DAY_MS));
-  const expired = record.adminSuspended === true || !entitlementEndDate || remainingMs <= 0;
+  const selectedPlan = normalizeOnboardingPlan(record.selectedPlan);
+  const professionalPlan = isProfessionalPlan(selectedPlan);
   const activeEntitlement = Boolean(
     subscriptionEndDate
     && entitlementEndDate === subscriptionEndDate
     && ["PAID", "MANUAL"].includes(String(record.paymentStatus || "").toUpperCase())
   );
-  const subscriptionStatus = expired
+  const hadPaidEntitlement = Boolean(subscriptionEndDate || record.lastPaymentDate || record.razorpayPaymentId);
+  const paymentPending = professionalPlan && !activeEntitlement && !hadPaidEntitlement && record.adminSuspended !== true;
+  const expired = record.adminSuspended === true || (!paymentPending && (!entitlementEndDate || remainingMs <= 0));
+  const subscriptionStatus = paymentPending
+    ? SUBSCRIPTION_STATUSES.PAYMENT_PENDING
+    : expired
     ? SUBSCRIPTION_STATUSES.EXPIRED
     : daysRemaining <= 7
       ? SUBSCRIPTION_STATUSES.EXPIRING_SOON
@@ -87,16 +95,18 @@ export function subscriptionSnapshot(record = {}, nowValue = new Date()) {
 
   return {
     ...record,
+    selectedPlan,
     planName: SUBSCRIPTION_PLAN.name,
     billingCycleDays: SUBSCRIPTION_PLAN.billingCycleDays,
     renewalType: "MANUAL",
     ...subscriptionAmounts(),
     subscriptionStatus,
-    entitlementType: activeEntitlement ? "PAID" : "TRIAL",
+    entitlementType: activeEntitlement ? "PAID" : professionalPlan ? "PROFESSIONAL" : "TRIAL",
     entitlementEndDate,
     daysRemaining,
-    trialStatus: !trialEndDate ? "NOT_STARTED" : trialRemaining > 0 ? "ACTIVE" : "EXPIRED",
-    leadCreationAllowed: !expired,
+    trialStatus: professionalPlan ? "NOT_APPLICABLE" : !trialEndDate ? "NOT_STARTED" : trialRemaining > 0 ? "ACTIVE" : "EXPIRED",
+    dashboardAccessAllowed: !expired && !paymentPending,
+    leadCreationAllowed: !expired && !paymentPending,
     nextBillingDate: subscriptionEndDate,
   };
 }
@@ -128,6 +138,7 @@ function baseSubscription({ dealershipId, dealership = {}, trialStartDate, trial
     subscriptionStartDate: null,
     subscriptionEndDate: null,
     paymentStatus: "NOT_PAID",
+    selectedPlan: ONBOARDING_PLANS.TRIAL,
     adminSuspended: false,
     warningDaysSent: [],
     createdAt: new Date().toISOString(),
@@ -136,6 +147,30 @@ function baseSubscription({ dealershipId, dealership = {}, trialStartDate, trial
     ...snapshot,
     nextLifecycleCheckAt: nextLifecycleCheckAt(snapshot),
   };
+}
+
+function professionalPendingSubscription({ dealershipId, dealership = {}, approvedAt }) {
+  const createdAt = iso(approvedAt) || new Date().toISOString();
+  const snapshot = subscriptionSnapshot({
+    id: dealershipId,
+    dealershipId,
+    dealershipName: dealership.dealershipName || dealership.name || "",
+    gstin: dealership.gstin || dealership.gstNumber || "",
+    billingAddress: dealership.address || dealership.fullAddress || "",
+    financeDeskEmail: dealership.loginEmail || dealership.email || dealershipId,
+    financeDeskMobile: dealership.officialDealershipMobile || dealership.mobile || dealership.ownerMobile || "",
+    selectedPlan: ONBOARDING_PLANS.PROFESSIONAL,
+    trialStartDate: null,
+    trialEndDate: null,
+    subscriptionStartDate: null,
+    subscriptionEndDate: null,
+    paymentStatus: "PENDING",
+    adminSuspended: false,
+    warningDaysSent: [],
+    approvedAt: createdAt,
+    createdAt,
+  });
+  return { ...snapshot, nextLifecycleCheckAt: addDays(createdAt, 30) };
 }
 
 async function dealershipRecord(dealershipId) {
@@ -159,6 +194,8 @@ async function syncSubscriptionSummary(snapshot) {
     lastPaymentDate: snapshot.lastPaymentDate || null,
     nextBillingDate: snapshot.nextBillingDate || null,
     paymentStatus: snapshot.paymentStatus || "NOT_PAID",
+    selectedPlan: snapshot.selectedPlan,
+    dashboardAccessAllowed: snapshot.dashboardAccessAllowed,
     razorpayOrderId: snapshot.razorpayOrderId || null,
     razorpayPaymentId: snapshot.razorpayPaymentId || null,
     invoiceNumber: snapshot.invoiceNumber || null,
@@ -228,6 +265,27 @@ export async function initializeDealershipTrial({
   return created;
 }
 
+export async function initializeProfessionalSubscriptionPending({
+  dealershipId,
+  dealership = null,
+  approvedAt = new Date().toISOString(),
+  actor = null,
+} = {}) {
+  const id = cleanId(dealershipId);
+  if (!id) throw new Error("Dealership ID is required to initialize subscription");
+  const profile = dealership || await dealershipRecord(id) || {};
+  const created = await runRecordTransaction(async (transaction) => {
+    const existing = await transaction.get(COLLECTION, id);
+    if (existing?.subscriptionEndDate || existing?.paymentStatus === "PAID") return subscriptionSnapshot(existing);
+    const subscription = professionalPendingSubscription({ dealershipId: id, dealership: profile, approvedAt });
+    transaction.set(COLLECTION, id, subscription, { merge: true });
+    return subscription;
+  });
+  await syncSubscriptionSummary(created);
+  publishSubscription(created, actor);
+  return created;
+}
+
 export async function getDealershipSubscription(dealershipId, { initialize = true } = {}) {
   const id = cleanId(dealershipId);
   if (!id) return null;
@@ -236,6 +294,13 @@ export async function getDealershipSubscription(dealershipId, { initialize = tru
   if (!initialize) return null;
   const dealership = await dealershipRecord(id);
   if (!dealership || dealership.approved === false || dealership.active === false) return null;
+  if (isProfessionalPlan(dealership.selectedPlan)) {
+    return initializeProfessionalSubscriptionPending({
+      dealershipId: id,
+      dealership,
+      approvedAt: dealership.approvedAt || dealership.reviewedAt || dealership.accountApprovedAt || new Date().toISOString(),
+    });
+  }
   return initializeDealershipTrial({
     dealershipId: id,
     dealership,
@@ -247,9 +312,12 @@ export async function assertLeadCreationAllowed(dealershipId) {
   const subscription = await getDealershipSubscription(dealershipId);
   const snapshot = subscriptionSnapshot(subscription || {});
   if (!subscription || !snapshot.leadCreationAllowed) {
-    const error = new Error("Your subscription has expired. Lead creation has been disabled. Please renew your subscription.");
+    const paymentRequired = snapshot.subscriptionStatus === SUBSCRIPTION_STATUSES.PAYMENT_PENDING;
+    const error = new Error(paymentRequired
+      ? "Professional Plan payment is required before dashboard access can be activated."
+      : "Your subscription has expired. Lead creation has been disabled. Please renew your subscription.");
     error.status = 403;
-    error.code = "SUBSCRIPTION_EXPIRED";
+    error.code = paymentRequired ? "SUBSCRIPTION_PAYMENT_REQUIRED" : "SUBSCRIPTION_EXPIRED";
     error.subscription = snapshot;
     throw error;
   }

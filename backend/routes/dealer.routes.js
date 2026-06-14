@@ -4,7 +4,7 @@ import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
 import { billingRateLimit, registrationRateLimit } from "../middleware/securityMiddleware.js";
-import { requireLeadCreationSubscription } from "../middleware/subscription.js";
+import { requireDashboardSubscription, requireLeadCreationSubscription } from "../middleware/subscription.js";
 import { ROLES } from "../utils/constants.js";
 import {
   createFinanceSubscriptionOrder,
@@ -20,6 +20,11 @@ router.post("/register", registrationRateLimit, registrationSecurity, registerDe
 router.post("/register/email-start", registrationRateLimit, registrationSecurity, startDealerRegistration);
 router.post("/register/status", registrationRateLimit, registrationSecurity, getDealerRegistrationStatus);
 router.use(authenticate, requireRole(ROLES.FINANCE_DESK));
+router.get("/billing", getFinanceBilling);
+router.get("/billing/history", getFinanceBillingHistory);
+router.post("/billing/order", billingRateLimit, createFinanceSubscriptionOrder);
+router.post("/billing/verify", billingRateLimit, verifyFinanceSubscriptionPayment);
+router.use(requireDashboardSubscription);
 router.get("/leads", getDealerLeads);
 router.get("/archived-leads", getFinanceArchivedLeads);
 router.get("/archived-leads/:id", getFinanceArchivedLead);
@@ -38,10 +43,6 @@ router.get("/staff/:id", getDealerStaffDetail);
 router.delete("/staff/:id", deleteDealerStaff);
 router.get("/earnings", getDealerEarnings);
 router.get("/profile", getDealerProfile);
-router.get("/billing", getFinanceBilling);
-router.get("/billing/history", getFinanceBillingHistory);
-router.post("/billing/order", billingRateLimit, createFinanceSubscriptionOrder);
-router.post("/billing/verify", billingRateLimit, verifyFinanceSubscriptionPayment);
 router.get("/bank-tieups", getDealerBankTieUps);
 router.patch("/bank-tieups", updateDealerBankTieUps);
 router.patch("/profile", updateDealerProfile);

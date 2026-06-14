@@ -2,6 +2,8 @@ export const CONVERSION_EVENTS = Object.freeze({
   FREE_TRIAL: "free_trial_button_click",
   PROFESSIONAL_PLAN: "professional_plan_button_click",
   CONTACT_SALES: "contact_sales_click",
+  REGISTRATION_COMPLETED: "registration_completed",
+  DASHBOARD_ACCESS: "dashboard_access",
 });
 
 export function trackConversionEvent(eventName, location) {

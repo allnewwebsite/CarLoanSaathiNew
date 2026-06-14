@@ -6,6 +6,7 @@ import {
   subscriptionAmounts,
   subscriptionSnapshot,
 } from "../services/subscription.service.js";
+import { normalizeOnboardingPlan, ONBOARDING_PLANS } from "../utils/onboardingPlan.js";
 
 const now = new Date("2026-06-13T00:00:00.000Z");
 const day = 24 * 60 * 60 * 1000;
@@ -25,6 +26,23 @@ assert.equal(subscriptionSnapshot({ trialEndDate: past(1), paymentStatus: "NOT_P
 assert.equal(subscriptionSnapshot({ subscriptionEndDate: future(30), paymentStatus: "PAID" }, now).subscriptionStatus, SUBSCRIPTION_STATUSES.ACTIVE);
 assert.equal(subscriptionSnapshot({ subscriptionEndDate: future(30), paymentStatus: "MANUAL" }, now).subscriptionStatus, SUBSCRIPTION_STATUSES.ACTIVE);
 assert.equal(subscriptionSnapshot({ subscriptionEndDate: future(30), paymentStatus: "PAID", adminSuspended: true }, now).leadCreationAllowed, false);
+const professionalPending = subscriptionSnapshot({
+  selectedPlan: ONBOARDING_PLANS.PROFESSIONAL,
+  paymentStatus: "PENDING",
+}, now);
+assert.equal(professionalPending.subscriptionStatus, SUBSCRIPTION_STATUSES.PAYMENT_PENDING);
+assert.equal(professionalPending.trialStartDate, undefined);
+assert.equal(professionalPending.trialEndDate, undefined);
+assert.equal(professionalPending.dashboardAccessAllowed, false);
+assert.equal(professionalPending.leadCreationAllowed, false);
+assert.equal(professionalPending.trialStatus, "NOT_APPLICABLE");
+assert.equal(subscriptionSnapshot({
+  selectedPlan: ONBOARDING_PLANS.PROFESSIONAL,
+  subscriptionEndDate: future(30),
+  paymentStatus: "PAID",
+}, now).dashboardAccessAllowed, true);
+assert.equal(normalizeOnboardingPlan(undefined), ONBOARDING_PLANS.TRIAL);
+assert.equal(normalizeOnboardingPlan("professional"), ONBOARDING_PLANS.PROFESSIONAL);
 assert.equal(SUBSCRIPTION_PLAN.billingCycleDays, 30);
 assert.equal(SUBSCRIPTION_PLAN.trialDays, 60);
 

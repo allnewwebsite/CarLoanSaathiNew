@@ -21,6 +21,9 @@ export function RoleProtectedRoute({ allowedRoles = [], loginPath }) {
   if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
     return <Navigate to="/dealer-registration/pending" replace />;
   }
+  if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role) && user.dashboardAccessAllowed === false) {
+    return <Navigate to="/subscription-activation" replace />;
+  }
   if ([ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE].includes(user.role) && (user.accountApproved !== true || user.accountActive === false)) {
     return <Navigate to="/bank-registration/pending" replace />;
   }

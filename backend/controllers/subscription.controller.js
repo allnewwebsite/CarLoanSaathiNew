@@ -47,7 +47,7 @@ export async function createFinanceSubscriptionOrder(req, res, next) {
     });
     await writeAuditLog({
       req,
-      actionType: AUDIT_ACTIONS.SUBSCRIPTION_ORDER_CREATED,
+      actionType: AUDIT_ACTIONS.PAYMENT_REQUESTED,
       targetEntity: "subscription",
       targetId: dealershipIdFromUser(req),
       meta: { dealershipId: dealershipIdFromUser(req), orderId: order.orderId, amount: order.amount },

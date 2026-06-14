@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { CONVERSION_EVENTS, trackConversionEvent } from "../services/conversionAnalytics.js";
+import { ONBOARDING_PLANS, selectOnboardingPlan } from "../services/onboardingPlan.js";
 
 const planFeatures = [
   ["Unlimited Leads", BadgeCheck],
@@ -149,6 +150,7 @@ function ProfessionalPlanModal({ open, onClose, location }) {
               to="/dealer/register"
               onClick={() => {
                 trackConversionEvent(CONVERSION_EVENTS.PROFESSIONAL_PLAN, `${location}_modal_continue`);
+                selectOnboardingPlan(ONBOARDING_PLANS.PROFESSIONAL);
                 onClose();
               }}
               className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
@@ -186,7 +188,10 @@ export function PublicConversionCtas({
           {showBadges ? <CtaBadge>Most Popular</CtaBadge> : null}
           <Link
             to="/dealer/register"
-            onClick={() => trackConversionEvent(CONVERSION_EVENTS.FREE_TRIAL, location)}
+            onClick={() => {
+              selectOnboardingPlan(ONBOARDING_PLANS.TRIAL);
+              trackConversionEvent(CONVERSION_EVENTS.FREE_TRIAL, location);
+            }}
             className={`${baseClass} bg-blue-700 text-white shadow-lg shadow-blue-700/15 hover:-translate-y-0.5 hover:bg-blue-800`}
           >
             {trialLabel}
