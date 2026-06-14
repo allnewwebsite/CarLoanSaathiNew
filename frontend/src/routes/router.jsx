@@ -20,6 +20,7 @@ function lazyPage(factory, exportName) {
 
 const pageModules = {
   home: () => import("../pages/HomePage.jsx"),
+  howItWorks: () => import("../pages/HowItWorksPage.jsx"),
   plansBilling: () => import("../pages/PlansBillingPage.jsx"),
   dealerRegistration: () => import("../pages/DealerRegistrationPage.jsx"),
   bankRegistration: () => import("../pages/public/BankRegistration.jsx"),
@@ -57,6 +58,7 @@ export function preloadDashboardRoutes() {
 }
 
 const HomePage = lazyPage(pageModules.home, "HomePage");
+const HowItWorksPage = lazyPage(pageModules.howItWorks, "HowItWorksPage");
 const PlansBillingPage = lazyPage(pageModules.plansBilling, "PlansBillingPage");
 const DealerRegistrationPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPage");
 const DealerRegistrationFormPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationFormPage");
@@ -89,6 +91,7 @@ export const router = createBrowserRouter([
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
+      { path: "/how-it-works", element: <HowItWorksPage /> },
       { path: "/plans-and-billing", element: <PlansBillingPage /> },
       { path: "/terms", element: <LegalPage policy="terms" /> },
       { path: "/privacy", element: <LegalPage policy="privacy" /> },
