@@ -66,6 +66,15 @@
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "isArchived", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "dealershipId", "order": "ASCENDING" },
         { "fieldPath": "salespersonId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }

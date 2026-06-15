@@ -61,7 +61,6 @@ function invoiceHtml(invoice) {
 <h1>CarLoanSaathi Tax Invoice</h1>
 <p><strong>Invoice:</strong> ${invoiceNumber}</p>
 <p><strong>Dealership:</strong> ${escapeHtml(invoice.dealershipName || "")}</p>
-<p><strong>GSTIN:</strong> ${escapeHtml(invoice.gstin || "-")}</p>
 <p><strong>Billing address:</strong> ${escapeHtml(invoice.billingAddress || "-")}</p>
 <table><tr><th>Description</th><th>Amount</th></tr>
 <tr><td>${escapeHtml(invoice.planName || "CarLoanSaathi Professional")}</td><td>${money(invoice.monthlyAmount)}</td></tr>

@@ -9,6 +9,7 @@ const EVENT_BUFFER_LIMIT = 500;
 const REALTIME_REDIS_CHANNEL = "cls:realtime:events:v1";
 const tickets = new Map();
 const clients = new Map();
+const clientsByIdentity = new Map();
 const eventBuffer = [];
 const instanceId = crypto.randomUUID();
 let redisPublisher = null;
@@ -278,9 +279,40 @@ function writeSse(res, event) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+function realtimeClientIdentity(user = {}) {
+  return [
+    user.sessionId,
+    user.role,
+    user.uid || user.email,
+    user.organizationId || user.dealershipId || user.bankId || "",
+  ].map(scope).filter(Boolean).join(":");
+}
+
+function closeDuplicateClient(identity = "", nextClientId = "") {
+  if (!identity) return;
+  const existingClientId = clientsByIdentity.get(identity);
+  if (!existingClientId || existingClientId === nextClientId) return;
+  const existing = clients.get(existingClientId);
+  if (!existing) {
+    clientsByIdentity.delete(identity);
+    return;
+  }
+  try {
+    existing.res.write(`event: replaced\ndata: ${JSON.stringify({ reason: "duplicate-session", timestamp: new Date().toISOString() })}\n\n`);
+    existing.res.end();
+  } catch {
+    // Existing socket is already gone.
+  }
+  if (existing.heartbeat) clearInterval(existing.heartbeat);
+  clients.delete(existingClientId);
+  clientsByIdentity.delete(identity);
+}
+
 export function connectRealtimeClient({ user, req, res }) {
   initRedisPubSub();
   const clientId = crypto.randomUUID();
+  const identity = realtimeClientIdentity(user);
+  closeDuplicateClient(identity, clientId);
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store, no-transform",
@@ -298,8 +330,9 @@ export function connectRealtimeClient({ user, req, res }) {
   }, 25_000);
   heartbeat.unref?.();
 
-  const client = { id: clientId, user, res, heartbeat };
+  const client = { id: clientId, identity, user, res, heartbeat };
   clients.set(clientId, client);
+  if (identity) clientsByIdentity.set(identity, clientId);
   recordRealtimeMetric({ eventType: "SSE_CONNECTED", activeClients: clients.size });
 
   const lastEventId = Number(req.headers["last-event-id"] || req.query.lastEventId || 0);
@@ -311,6 +344,7 @@ export function connectRealtimeClient({ user, req, res }) {
 
   req.on("close", () => {
     clients.delete(clientId);
+    if (identity && clientsByIdentity.get(identity) === clientId) clientsByIdentity.delete(identity);
     clearInterval(heartbeat);
     recordRealtimeMetric({ eventType: "SSE_DISCONNECTED", activeClients: clients.size, disconnected: 1 });
   });
@@ -336,6 +370,7 @@ function dispatchLocalEvent(event) {
       errors += 1;
       if (client.heartbeat) clearInterval(client.heartbeat);
       clients.delete(client.id);
+      if (client.identity && clientsByIdentity.get(client.identity) === client.id) clientsByIdentity.delete(client.identity);
     }
   }
   recordRealtimeMetric({

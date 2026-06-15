@@ -798,11 +798,64 @@ async function existingBranchForIfsc(ifsc = "") {
   return pending[0] || bank[0] || partner[0] || branch[0] || null;
 }
 
+async function firebaseUserVerified(decoded, email) {
+  if (decoded?.email_verified === true) return true;
+  if (!firebaseAdmin) return false;
+  try {
+    const user = decoded?.uid
+      ? await firebaseAdmin.auth().getUser(decoded.uid)
+      : await firebaseAdmin.auth().getUserByEmail(email);
+    return user.emailVerified === true;
+  } catch {
+    return false;
+  }
+}
+
+async function assertBankRegistrationEmailVerified({ uid, email }) {
+  if (!firebaseAdmin) return;
+  let user = null;
+  try {
+    user = uid ? await firebaseAdmin.auth().getUser(uid) : null;
+  } catch {
+    user = null;
+  }
+  if (!user && email) {
+    try {
+      user = await firebaseAdmin.auth().getUserByEmail(email);
+    } catch {
+      user = null;
+    }
+  }
+  if (user && user.emailVerified !== true) {
+    const error = new Error("Verify your email address before submitting bank registration.");
+    error.status = 403;
+    error.code = "EMAIL_NOT_VERIFIED";
+    throw error;
+  }
+}
+
+function bankEmailPendingPayload({ registrationId, email }) {
+  return {
+    status: "email-pending",
+    approvalStatus: "email-pending",
+    accountState: "EMAIL_PENDING",
+    registrationSubmitted: false,
+    accountApproved: false,
+    accountActive: false,
+    emailVerified: false,
+    registrationId,
+    email,
+    message: "Verify your email address before completing bank registration.",
+    redirectTo: "/bank-registration/verify-email",
+  };
+}
+
 export async function registerBankPartner(req, res, next) {
   try {
     const email = String(req.body.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Email is required" });
     const now = new Date().toISOString();
+    await assertBankRegistrationEmailVerified({ uid: req.body.bankUid, email });
     let pendingAccount = await getRecord("pendingBankAccounts", email).catch(() => null)
       || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
       || null;
@@ -814,6 +867,8 @@ export async function registerBankPartner(req, res, next) {
         onboardingStarted: true,
         registrationSubmitted: false,
         approvalStatus: "not-submitted",
+        accountState: "EMAIL_VERIFIED",
+        emailVerified: true,
         accountApproved: false,
         accountActive: false,
       });
@@ -906,6 +961,8 @@ export async function registerBankPartner(req, res, next) {
     await updateRecord("pendingBankAccounts", pendingAccount.id, {
       registrationSubmitted: true,
       approvalStatus: "pending",
+      accountState: "PENDING_APPROVAL",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       submittedAt: now,
@@ -927,6 +984,7 @@ export async function startBankRegistration(req, res, next) {
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
+    const emailVerified = await firebaseUserVerified(decoded, email);
     const now = new Date().toISOString();
     let existing = await getRecord("pendingBankAccounts", email).catch(() => null)
       || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
@@ -942,6 +1000,8 @@ export async function startBankRegistration(req, res, next) {
         onboardingStarted: true,
         registrationSubmitted: false,
         approvalStatus: "not-submitted",
+        accountState: emailVerified ? "REGISTRATION_STARTED" : "EMAIL_PENDING",
+        emailVerified,
         accountApproved: false,
         accountActive: false,
         submittedAt: null,
@@ -951,12 +1011,51 @@ export async function startBankRegistration(req, res, next) {
         lastAuthAt: now,
       });
     }
+    if (!emailVerified) {
+      const pendingPayload = {
+        uid: decoded.uid || email,
+        email,
+        name: decoded.name || email,
+        photoURL: decoded.picture || "",
+        authProvider: "password",
+        onboardingStarted: true,
+        registrationSubmitted: false,
+        approvalStatus: "email-pending",
+        accountState: "EMAIL_PENDING",
+        emailVerified: false,
+        accountApproved: false,
+        accountActive: false,
+        submittedAt: null,
+        approvalRequestId: existing?.approvalRequestId || null,
+        bankData: existing?.bankData || {},
+        startedAt: existing?.startedAt || now,
+        lastAuthAt: now,
+      };
+      const registration = existing ? await updateRecord("pendingBankAccounts", existing.id, pendingPayload) : await createRecord("pendingBankAccounts", pendingPayload);
+      await upsertCanonicalUser(decoded.uid || email, {
+        uid: decoded.uid || email,
+        email,
+        role: "bank-manager",
+        approved: false,
+        active: false,
+        accountStatus: "email-pending",
+        accountState: "EMAIL_PENDING",
+        emailVerified: false,
+        accountApproved: false,
+        accountActive: false,
+        dealershipId: null,
+        bankId: null,
+        createdAt: existing?.createdAt || now,
+        lastLoginAt: null,
+      });
+      return res.json(bankEmailPendingPayload({ registrationId: registration.id, email }));
+    }
     if (existing?.approvalStatus === "pending" && live.live) {
       await updateRecord("pendingBankAccounts", existing.id, { lastAuthAt: now });
-      return res.json({ status: "submitted", registrationId: existing.id, email, message: "Your bank registration is pending Super Admin approval.", redirectTo: "/bank-registration/pending" });
+      return res.json({ status: "submitted", approvalStatus: "pending", accountState: "PENDING_APPROVAL", registrationSubmitted: true, emailVerified: true, registrationId: existing.id, email, message: "Your bank registration is pending Super Admin approval.", redirectTo: "/bank-registration/pending" });
     }
     if (existing?.approvalStatus === "approved" && live.live) {
-      return res.json({ status: "approved", registrationId: existing.id, email, message: "Bank account already approved.", redirectTo: "/bank-registration/approved" });
+      return res.json({ status: "approved", approvalStatus: "approved", accountState: "APPROVED", registrationSubmitted: true, emailVerified: true, registrationId: existing.id, email, message: "Bank account already approved.", redirectTo: "/bank-registration/approved" });
     }
     const payload = {
       uid: decoded.uid || email,
@@ -967,6 +1066,8 @@ export async function startBankRegistration(req, res, next) {
       onboardingStarted: true,
       registrationSubmitted: false,
       approvalStatus: "not-submitted",
+      accountState: "EMAIL_VERIFIED",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       startedAt: existing?.startedAt || now,
@@ -983,6 +1084,8 @@ export async function startBankRegistration(req, res, next) {
       approved: false,
       active: false,
       accountStatus: "pending",
+      accountState: "EMAIL_VERIFIED",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       dealershipId: null,
@@ -990,7 +1093,7 @@ export async function startBankRegistration(req, res, next) {
       createdAt: existing?.createdAt || now,
       lastLoginAt: null,
     });
-    res.json({ status: "account-created", registrationId: registration.id, email, message: "Account created successfully. Continue bank registration.", redirectTo: "/bank-registration/form" });
+    res.json({ status: "account-created", approvalStatus: "not-submitted", accountState: "EMAIL_VERIFIED", registrationSubmitted: false, emailVerified: true, registrationId: registration.id, email, message: "Account created successfully. Continue bank registration.", redirectTo: "/bank-registration/form" });
   } catch (error) {
     recordOperationalEvent({
       type: "bank_lead_detail_fetch_failed",
@@ -1013,21 +1116,61 @@ export async function getBankRegistrationStatus(req, res, next) {
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
+    const emailVerified = await firebaseUserVerified(decoded, email);
     const account = await getRecord("pendingBankAccounts", email).catch(() => null)
       || (await findRecordsByField("pendingBankAccounts", "email", email, 3))[0]
       || null;
+    if (!emailVerified) {
+      return res.json(bankEmailPendingPayload({ registrationId: account?.id || null, email }));
+    }
+    if (account && (account.emailVerified !== true || account.accountState === "EMAIL_PENDING" || account.approvalStatus === "email-pending")) {
+      const nextApprovalStatus = account.registrationSubmitted === true ? "pending" : "not-submitted";
+      await updateRecord("pendingBankAccounts", account.id, {
+        emailVerified: true,
+        accountState: "EMAIL_VERIFIED",
+        approvalStatus: nextApprovalStatus,
+        lastVerifiedAt: new Date().toISOString(),
+      }).catch(() => null);
+      account.emailVerified = true;
+      account.accountState = "EMAIL_VERIFIED";
+      account.approvalStatus = nextApprovalStatus;
+    }
     const live = account ? await liveBankRegistrationForAccount(account) : { live: false };
     const active = live.branchManager?.active !== false && live.bankPartner?.active !== false;
     if (account?.approvalStatus === "approved" && account.accountApproved === true && account.accountActive === true && active) {
-      return res.json({ status: "approved", approvalStatus: "approved", registrationSubmitted: true, accountApproved: true, accountActive: true, email, redirectTo: "/bank-registration/approved", message: "Your bank account has been approved successfully by CarLoanSaathi." });
+      return res.json({ status: "approved", approvalStatus: "approved", accountState: "APPROVED", registrationSubmitted: true, accountApproved: true, accountActive: true, emailVerified: true, email, redirectTo: "/bank-registration/approved", message: "Your bank account has been approved successfully by CarLoanSaathi." });
     }
     if (account?.registrationSubmitted === false || account?.approvalStatus === "not-submitted") {
-      return res.json({ status: "not-submitted", approvalStatus: "not-submitted", registrationSubmitted: false, accountApproved: false, accountActive: false, email, registrationId: account.id, redirectTo: "/bank-registration/form", message: "Complete your bank registration form." });
+      return res.json({ status: "not-submitted", approvalStatus: "not-submitted", accountState: "EMAIL_VERIFIED", registrationSubmitted: false, accountApproved: false, accountActive: false, emailVerified: true, email, registrationId: account.id, redirectTo: "/bank-registration/form", message: "Complete your bank registration form." });
     }
     if (!live.live) {
-      return res.json({ status: "not-registered", approvalStatus: "not-registered", registrationSubmitted: false, accountApproved: false, accountActive: false, email, redirectTo: "/bank-registration", message: "No active bank registration was found for this account." });
+      return res.json({ status: "not-registered", approvalStatus: "not-registered", accountState: "REGISTRATION_STARTED", registrationSubmitted: false, accountApproved: false, accountActive: false, emailVerified: true, email, redirectTo: "/bank-registration", message: "No active bank registration was found for this account." });
     }
-    res.json({ status: account?.approvalStatus || "pending", approvalStatus: account?.approvalStatus || "pending", registrationSubmitted: account?.registrationSubmitted !== false, accountApproved: account?.accountApproved === true, accountActive: account?.accountActive === true, email, registrationId: account?.id || null, redirectTo: "/bank-registration/pending", message: "Your bank account is still pending approval from CarLoanSaathi." });
+    res.json({
+      status: account?.approvalStatus || "pending",
+      approvalStatus: account?.approvalStatus || "pending",
+      accountState: account?.approvalStatus === "rejected"
+        ? "REJECTED"
+        : account?.approvalStatus === "suspended"
+          ? "SUSPENDED"
+          : "PENDING_APPROVAL",
+      registrationSubmitted: account?.registrationSubmitted !== false,
+      accountApproved: account?.accountApproved === true,
+      accountActive: account?.accountActive === true,
+      emailVerified: true,
+      email,
+      registrationId: account?.id || null,
+      redirectTo: account?.approvalStatus === "rejected"
+        ? "/bank-registration/rejected"
+        : account?.approvalStatus === "suspended"
+          ? "/bank-registration/suspended"
+          : "/bank-registration/pending",
+      message: account?.approvalStatus === "rejected"
+        ? account.rejectionReason || "Your bank registration was rejected."
+        : account?.approvalStatus === "suspended"
+          ? account.suspensionReason || "Your bank account is suspended."
+          : "Your bank account is still pending approval from CarLoanSaathi.",
+    });
   } catch (error) {
     next(error);
   }
@@ -1560,16 +1703,17 @@ export async function getBankLead(req, res, next) {
       const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
         const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
         const leadDocuments = async (collection) => {
-          const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
-            where: [{ field: "leadId", value: leadId }],
+          if (!documentLeadIds.length) return [];
+          const page = await queryRecords(collection, {
+            where: [{ field: "leadId", op: "in", value: documentLeadIds.slice(0, 10) }],
             orderBy: "leadId",
             direction: "asc",
             limit: 50,
             maxLimit: 50,
             fields: LEAD_DOCUMENT_FIELDS,
-          })));
+          });
           const byId = new Map();
-          pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
+          page.data.forEach((document) => byId.set(document.id, document));
           return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
         };
         const [documents, bankDocuments] = await Promise.all([

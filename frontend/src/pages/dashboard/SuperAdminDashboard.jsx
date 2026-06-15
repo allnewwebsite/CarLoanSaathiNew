@@ -798,7 +798,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
       ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount]]],
     ]
     : [
-      ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["Selected Plan", item.selectedPlan || item.dealership?.selectedPlan || "TRIAL"], ["GSTIN", item.dealership?.gstin], ["Address", item.dealership?.address]]],
+      ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["Selected Plan", item.selectedPlan || item.dealership?.selectedPlan || "TRIAL"], ["Address", item.dealership?.address]]],
       ["Business Capacity", [["Monthly Sales", item.dealership?.monthlyCarSalesCapacity]]],
     ];
   return (

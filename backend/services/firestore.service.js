@@ -811,7 +811,7 @@ export async function getRecord(collection, id) {
   }
 }
 
-export async function updateRecord(collection, id, payload) {
+export async function updateRecord(collection, id, payload, { readback = true } = {}) {
   const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, id);
@@ -833,12 +833,24 @@ export async function updateRecord(collection, id, payload) {
     return updated;
   }
   const ref = await resolveDocumentRef(collection, id);
+  let existingRecord = null;
   if (collection === "leads") {
     const existing = await ref.get();
-    if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
+    if (existing.exists) {
+      existingRecord = { id: existing.id, ...existing.data() };
+      assertLeadMutable(existingRecord);
+    }
   }
   await ref.update(update);
   recordWriteMetric({ collection, operation: "update", id, startedAt });
+  if (!readback) return { id, ...update };
+  if (existingRecord) {
+    const record = { ...existingRecord, ...update, id: existingRecord.id };
+    await syncWriteProjections(collection, record).catch((error) => {
+      logWarn("Projection write skipped after update", { collection, id, error: error.message });
+    });
+    return record;
+  }
   const doc = await ref.get();
   recordFirestoreRead({ collection, operation: "update-readback", signature: readSignature(collection, "update-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { ...doc.data(), id: doc.id };
@@ -885,7 +897,7 @@ export async function runRecordTransaction(handler) {
   });
 }
 
-export async function upsertRecord(collection, id, payload) {
+export async function upsertRecord(collection, id, payload, { readback = true } = {}) {
   const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, id);
@@ -907,12 +919,24 @@ export async function upsertRecord(collection, id, payload) {
     recordWriteMetric({ collection, operation: "upsert", id, startedAt });
     return record;
   }
+  let existingRecord = null;
   if (collection === "leads") {
     const existing = await firestore.collection(collection).doc(id).get();
-    if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
+    if (existing.exists) {
+      existingRecord = { id: existing.id, ...existing.data() };
+      assertLeadMutable(existingRecord);
+    }
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
   recordWriteMetric({ collection, operation: "upsert", id, startedAt });
+  if (!readback) return { id, ...update };
+  if (existingRecord) {
+    const record = { ...existingRecord, ...update, id };
+    await syncWriteProjections(collection, record).catch((error) => {
+      logWarn("Projection write skipped after upsert", { collection, id, error: error.message });
+    });
+    return record;
+  }
   const doc = await firestore.collection(collection).doc(id).get();
   recordFirestoreRead({ collection, operation: "upsert-readback", signature: readSignature(collection, "upsert-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { id: doc.id, ...doc.data() };

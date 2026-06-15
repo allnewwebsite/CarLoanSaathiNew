@@ -56,7 +56,6 @@ function profileRows(user) {
       ["Owner Name", displayValue(valueFrom(user, "ownerName", "ownerFullName", "fullName", "name"))],
       ["Email", displayValue(valueFrom(user, "officialEmail", "email"))],
       ["Mobile", mobileValue(valueFrom(user, "officialMobile", "officialDealershipMobile", "mobile", "ownerMobile"))],
-      ["GST Number", displayValue(valueFrom(user, "gstin", "gstNumber"))],
       ["Address", displayValue(valueFrom(user, "address", "fullAddress"))],
       ["City", displayValue(valueFrom(user, "city", "dealerCity"))],
       ["State", displayValue(valueFrom(user, "state"))],

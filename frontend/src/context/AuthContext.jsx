@@ -41,8 +41,17 @@ const ROLE_LOGIN_PORTALS = {
   "super-admin": "admin",
 };
 
-function actionCodeSettings() {
-  const url = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL || `${window.location.origin}/dealer/login`;
+const FIREBASE_CONTINUE_PATHS = {
+  dealer: "/dealer-registration/verify-email",
+  finance: "/dealer-registration/verify-email",
+  bank: "/bank-registration/verify-email",
+  "bank-manager": "/bank-registration/verify-email",
+};
+
+function actionCodeSettings(portal = "dealer") {
+  const fallbackPath = FIREBASE_CONTINUE_PATHS[String(portal || "dealer").trim().toLowerCase()] || "/dealer-registration/verify-email";
+  const explicitUrl = import.meta.env.VITE_FIREBASE_ACTION_CONTINUE_URL;
+  const url = explicitUrl || `${window.location.origin}${fallbackPath}`;
   return { url, handleCodeInApp: false };
 }
 
@@ -168,10 +177,13 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    if (isAuthenticated && user?.role) startRealtimeClient();
+    const realtimeIdentity = [user?.sessionId, user?.role, user?.uid || user?.email, user?.organizationId || user?.dealershipId || user?.bankId || ""]
+      .filter(Boolean)
+      .join(":");
+    if (isAuthenticated && user?.role) startRealtimeClient(realtimeIdentity);
     else stopRealtimeClient();
-    return () => stopRealtimeClient();
-  }, [isAuthenticated, user?.role, user?.email, user?.dealershipId, user?.bankId]);
+    return () => stopRealtimeClient(realtimeIdentity);
+  }, [isAuthenticated, user?.sessionId, user?.role, user?.uid, user?.email, user?.organizationId, user?.dealershipId, user?.bankId]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -220,7 +232,7 @@ export function AuthProvider({ children }) {
     await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings());
   };
 
-  const resendVerificationEmail = async ({ email, password } = {}) => {
+  const resendVerificationEmail = async ({ email, password, portal = "dealer" } = {}) => {
     let currentUser = auth.currentUser;
     if (!currentUser && email && password) {
       const credential = await signInWithEmailAndPassword(auth, String(email || "").trim().toLowerCase(), password);
@@ -233,7 +245,7 @@ export function AuthProvider({ children }) {
     }
     await currentUser.reload();
     if (currentUser.emailVerified) return { alreadyVerified: true };
-    await sendEmailVerification(currentUser, actionCodeSettings());
+    await sendEmailVerification(currentUser, actionCodeSettings(portal));
     return { sent: true };
   };
 
@@ -346,7 +358,7 @@ export function AuthProvider({ children }) {
     clearLocalSession({ signOutFirebase: false, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
   }), []);
 
-  const createRegistrationAccount = async ({ email, password }) => {
+  const createRegistrationAccount = async ({ email, password, portal = "dealer" }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
     try {
@@ -378,20 +390,25 @@ export function AuthProvider({ children }) {
       }
     }
     await credential.user.reload();
-    if (!credential.user.emailVerified) await sendEmailVerification(credential.user, actionCodeSettings());
+    if (!credential.user.emailVerified) await sendEmailVerification(credential.user, actionCodeSettings(portal));
     return credential;
   };
 
   const startDealerRegistrationWithEmail = async ({ email, password, selectedPlan = selectedOnboardingPlan() }) => {
-    const credential = await createRegistrationAccount({ email, password });
+    const credential = await createRegistrationAccount({ email, password, portal: "dealer" });
     setFirebaseUser(credential.user);
-    const idToken = await credential.user.getIdToken();
+    await credential.user.reload();
+    const idToken = await credential.user.getIdToken(true);
     const response = await api.post("/dealer/register/email-start", { idToken, selectedPlan });
     const registration = {
       registrationId: response.data.registrationId || null,
       uid: credential.user.uid,
       email: response.data.email || credential.user.email,
       status: response.data.status,
+      approvalStatus: response.data.approvalStatus || response.data.status,
+      accountState: response.data.accountState || null,
+      emailVerified: response.data.emailVerified === true,
+      registrationSubmitted: response.data.registrationSubmitted,
       message: response.data.message,
       redirectTo: response.data.redirectTo || "/dealer-registration/form",
       selectedPlan: response.data.selectedPlan || selectedPlan,
@@ -404,7 +421,8 @@ export function AuthProvider({ children }) {
     const currentUser = auth.currentUser;
     if (!currentUser && silent) return { status: "unknown", message: "Sign in with your email and password to check the latest approval status." };
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/dealer-registration" };
-    const idToken = await currentUser.getIdToken();
+    await currentUser.reload();
+    const idToken = await currentUser.getIdToken(true);
     const response = await api.post("/dealer/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -412,6 +430,8 @@ export function AuthProvider({ children }) {
       email: response.data.email || currentUser.email,
       status: response.data.status,
       approvalStatus: response.data.approvalStatus || response.data.status,
+      accountState: response.data.accountState || null,
+      emailVerified: response.data.emailVerified === true,
       registrationSubmitted: response.data.registrationSubmitted,
       accountApproved: response.data.accountApproved === true,
       accountActive: response.data.accountActive === true,
@@ -428,15 +448,20 @@ export function AuthProvider({ children }) {
   };
 
   const startBankRegistrationWithEmail = async ({ email, password }) => {
-    const credential = await createRegistrationAccount({ email, password });
+    const credential = await createRegistrationAccount({ email, password, portal: "bank" });
     setFirebaseUser(credential.user);
-    const idToken = await credential.user.getIdToken();
+    await credential.user.reload();
+    const idToken = await credential.user.getIdToken(true);
     const response = await api.post("/bank/register/email-start", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
       uid: credential.user.uid,
       email: response.data.email || credential.user.email,
       status: response.data.status,
+      approvalStatus: response.data.approvalStatus || response.data.status,
+      accountState: response.data.accountState || null,
+      emailVerified: response.data.emailVerified === true,
+      registrationSubmitted: response.data.registrationSubmitted,
       message: response.data.message,
       redirectTo: response.data.redirectTo || "/bank-registration/form",
     };
@@ -448,7 +473,8 @@ export function AuthProvider({ children }) {
     const currentUser = auth.currentUser;
     if (!currentUser && silent) return { status: "unknown", message: "Sign in with your email and password to check the latest approval status.", redirectTo: "/bank-registration" };
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/bank-registration" };
-    const idToken = await currentUser.getIdToken();
+    await currentUser.reload();
+    const idToken = await currentUser.getIdToken(true);
     const response = await api.post("/bank/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -456,6 +482,8 @@ export function AuthProvider({ children }) {
       email: response.data.email || currentUser.email,
       status: response.data.status,
       approvalStatus: response.data.approvalStatus || response.data.status,
+      accountState: response.data.accountState || null,
+      emailVerified: response.data.emailVerified === true,
       registrationSubmitted: response.data.registrationSubmitted,
       accountApproved: response.data.accountApproved === true,
       accountActive: response.data.accountActive === true,

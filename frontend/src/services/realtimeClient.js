@@ -8,6 +8,8 @@ let reconnectTimer = 0;
 let lastEventId = "";
 let heartbeatTimer = 0;
 let ackTimer = 0;
+let activeIdentity = "";
+let reconnectAttempts = 0;
 const pendingAckIds = new Set();
 const MUTATION_KINDS = new Set(["document", "notification", "staff", "bank", "dealer", "subscription"]);
 
@@ -156,6 +158,11 @@ function closeSource() {
   }
 }
 
+function reconnectDelay() {
+  reconnectAttempts += 1;
+  return Math.min(1000 * (2 ** Math.min(reconnectAttempts - 1, 4)), 15000);
+}
+
 function resetHeartbeatWatch() {
   if (typeof window === "undefined" || !active) return;
   window.clearTimeout(heartbeatTimer);
@@ -165,7 +172,7 @@ function resetHeartbeatWatch() {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = window.setTimeout(() => {
       connect().catch(() => {});
-    }, 500);
+    }, reconnectDelay());
   }, HEARTBEAT_TIMEOUT_MS);
 }
 
@@ -198,6 +205,7 @@ async function connect() {
       if (lastEventId) params.set("lastEventId", lastEventId);
       source = new EventSource(`${apiBaseUrl()}/realtime/events?${params.toString()}`);
       source.addEventListener("connected", () => {
+        reconnectAttempts = 0;
         resetHeartbeatWatch();
         window.__CLS_REALTIME_CONNECTED = true;
         window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: true } }));
@@ -232,7 +240,7 @@ async function connect() {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = window.setTimeout(() => {
           connect().catch(() => {});
-        }, 1500);
+        }, reconnectDelay());
       };
       return source;
     })
@@ -242,13 +250,24 @@ async function connect() {
   return connectPromise;
 }
 
-export function startRealtimeClient() {
+export function startRealtimeClient(identity = "") {
+  const nextIdentity = String(identity || "").trim();
+  if (active && activeIdentity && nextIdentity && activeIdentity === nextIdentity && (source || connectPromise)) return;
+  if (active && activeIdentity && nextIdentity && activeIdentity !== nextIdentity) {
+    closeSource();
+    connectPromise = null;
+  }
+  activeIdentity = nextIdentity || activeIdentity;
   active = true;
   connect().catch(() => {});
 }
 
-export function stopRealtimeClient() {
+export function stopRealtimeClient(identity = "") {
+  const nextIdentity = String(identity || "").trim();
+  if (nextIdentity && activeIdentity && nextIdentity !== activeIdentity) return;
   active = false;
+  activeIdentity = "";
+  reconnectAttempts = 0;
   window.clearTimeout(reconnectTimer);
   window.clearTimeout(heartbeatTimer);
   window.clearTimeout(ackTimer);

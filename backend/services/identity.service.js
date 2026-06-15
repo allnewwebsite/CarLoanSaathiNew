@@ -190,5 +190,5 @@ export async function upsertCanonicalUser(uid, payload = {}) {
     uid: canonicalUid,
     email,
     canonical: true,
-  });
+  }, { readback: false });
 }

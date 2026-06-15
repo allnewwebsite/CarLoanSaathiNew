@@ -1,4 +1,4 @@
-import { queryRecords } from "./firestore.service.js";
+import { countRecords, queryRecords } from "./firestore.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
@@ -248,28 +248,34 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
   const { limit, cursor, page } = paginationParams(query);
   const identity = String(executiveId || executiveEmail || "").trim();
   const email = String(executiveEmail || "").trim();
-  const idResult = await queryRecords("leads", {
+  const idQuery = queryRecords("leads", {
     where: queryWhere([{ field: "assignedExecutiveId", value: identity }], query),
     orderBy: "createdAt",
     direction: "desc",
     limit,
     cursor,
+    page,
     search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
     searchFields: SEARCH_FIELDS,
     fields,
   });
-  let rows = idResult.data;
-  let nextCursor = idResult.nextCursor;
-  if (email && email !== identity) {
-    const emailResult = await queryRecords("leads", {
+  const emailQuery = email && email !== identity
+    ? queryRecords("leads", {
       where: queryWhere([{ field: "assignedExecutiveEmail", value: email }], query),
       orderBy: "createdAt",
       direction: "desc",
       limit,
+      cursor,
+      page,
       search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
       searchFields: SEARCH_FIELDS,
       fields,
-    });
+    })
+    : Promise.resolve(null);
+  const [idResult, emailResult] = await Promise.all([idQuery, emailQuery]);
+  let rows = idResult.data;
+  let nextCursor = idResult.nextCursor;
+  if (emailResult) {
     const byId = new Map(rows.map((lead) => [lead.id, lead]));
     for (const lead of emailResult.data) byId.set(lead.id, lead);
     rows = [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, limit);
@@ -328,17 +334,29 @@ export async function queryArchivedLeads({ dealershipId = "", query = {}, fields
 
 export async function countOpenExecutiveLeads(executiveId) {
   if (!executiveId) return 0;
-  let total = 0;
-  for (const status of [LEAD_STATUSES.NEW, LEAD_STATUSES.CONTACTED, LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED, LEAD_STATUSES.UNDER_BANK_PROCESS, LEAD_STATUSES.ASSIGNED, LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.DOCS_PENDING]) {
-    const page = await queryRecords("leads", {
-      where: [
-        { field: "assignedExecutiveId", value: executiveId },
-        { field: "status", value: status },
-      ],
-      limit: 100,
-      maxLimit: 100,
-    });
-    total += page.data.filter((lead) => lead.isArchived !== true).length;
+  const openStatuses = [
+    LEAD_STATUSES.NEW,
+    LEAD_STATUSES.CONTACTED,
+    LEAD_STATUSES.REQUEST_DOCUMENT,
+    LEAD_STATUSES.DOCUMENT_RECEIVED,
+    LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
+    LEAD_STATUSES.ALL_DOCUMENTS_RECEIVED,
+    LEAD_STATUSES.UNDER_BANK_PROCESS,
+    LEAD_STATUSES.ASSIGNED,
+    LEAD_STATUSES.ACCEPTED,
+    LEAD_STATUSES.UNDER_REVIEW,
+    LEAD_STATUSES.DOCS_PENDING,
+  ];
+  const chunks = [];
+  for (let index = 0; index < openStatuses.length; index += 10) {
+    chunks.push(openStatuses.slice(index, index + 10));
   }
-  return total;
+  const counts = await Promise.all(chunks.map((statuses) => countRecords("leads", {
+    where: [
+      { field: "assignedExecutiveId", value: executiveId },
+      { field: "status", op: "in", value: statuses },
+      { field: "isArchived", value: false },
+    ],
+  })));
+  return counts.reduce((sum, count) => sum + Number(count || 0), 0);
 }

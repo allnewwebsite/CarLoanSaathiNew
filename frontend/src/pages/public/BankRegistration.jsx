@@ -170,10 +170,12 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(mode === "pending" || mode === "approved");
   const [approved, setApproved] = useState(mode === "approved");
+  const [status, setStatus] = useState(mode === "verify-email" ? "email-pending" : mode);
+  const [statusMessage, setStatusMessage] = useState("");
   const [pendingDetails, setPendingDetails] = useState(null);
   const bankUid = auth.currentUser?.uid || session.uid || session.email || form.email || "bank";
   const bankEmail = auth.currentUser?.email || session.email || form.email || authEmail;
-  const hasEmailAccount = Boolean(auth.currentUser || session.email);
+  const hasEmailAccount = Boolean(bankEmail && (auth.currentUser?.emailVerified === true || session.emailVerified === true));
   const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
   const update = (field, value) => setForm((current) => {
@@ -246,15 +248,24 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
   };
 
   useEffect(() => {
-    if (mode !== "pending" && mode !== "approved") return undefined;
+    if (!["verify-email", "pending", "approved", "rejected", "suspended"].includes(mode)) return undefined;
     setPendingDetails(JSON.parse(sessionStorage.getItem("cls_bank_pending_details") || "null"));
     const check = async () => {
       setChecking(true);
       try {
         const registration = await checkBankRegistrationWithEmail({ silent: true });
-        const pending = registration.status === "pending" || registration.approvalStatus === "pending" || registration.status === "submitted";
-        if (registration.status === "approved" || registration.approvalStatus === "approved") setApproved(true);
-        else if (!pending) navigate(registration.redirectTo || "/bank-registration", { replace: true });
+        const nextStatus = registration.status || registration.approvalStatus || "pending";
+        if (registration.status === "approved" || registration.approvalStatus === "approved") {
+          setApproved(true);
+        } else if (nextStatus === "not-submitted" || registration.accountState === "EMAIL_VERIFIED") {
+          navigate(registration.redirectTo || "/bank-registration/form", { replace: true });
+        } else if (["email-pending", "pending", "submitted", "rejected", "suspended"].includes(nextStatus)) {
+          setStatus(nextStatus);
+          setStatusMessage(registration.message || "");
+          if (registration.redirectTo) navigate(registration.redirectTo, { replace: true });
+        } else {
+          navigate(registration.redirectTo || "/bank-registration", { replace: true });
+        }
       } finally {
         setChecking(false);
       }
@@ -262,8 +273,8 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
     check();
   }, [mode, navigate, checkBankRegistrationWithEmail]);
 
-  if (mode === "pending" || mode === "approved") {
-    if (checking) return <main className="flex min-h-[calc(100vh-88px)] w-full items-center justify-center bg-slate-50 px-4 py-12"><section className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 shadow-sm">Checking bank approval...</section></main>;
+  if (["verify-email", "pending", "approved", "rejected", "suspended"].includes(mode)) {
+    if (checking) return <main className="flex min-h-[calc(100vh-88px)] w-full items-center justify-center bg-slate-50 px-4 py-12"><section className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 shadow-sm">Checking bank registration status...</section></main>;
     if (approved) {
       return (
         <main className="flex min-h-[calc(100vh-88px)] w-full items-center justify-center bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
@@ -276,15 +287,51 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
         </main>
       );
     }
+    const statusCopy = {
+      "email-pending": {
+        title: "Verify Your Email",
+        body: "We sent a verification link to your bank email address. Verify it before completing branch registration.",
+        badge: "Email Verification Pending",
+        steps: [["Done", "Email account created"], ["Pending", "Email verification"], ["Next", "Complete branch registration"]],
+      },
+      rejected: {
+        title: "Registration Rejected",
+        body: statusMessage || "Your bank branch registration was rejected by CarLoanSaathi.",
+        badge: "Rejected",
+        steps: [["Done", "Email verified"], ["Done", "Branch reviewed"], ["Rejected", "Approval not granted"]],
+      },
+      suspended: {
+        title: "Account Suspended",
+        body: statusMessage || "Your bank branch account is suspended. Contact CarLoanSaathi support for next steps.",
+        badge: "Suspended",
+        steps: [["Done", "Email verified"], ["Done", "Account reviewed"], ["Suspended", "Portal access blocked"]],
+      },
+      pending: {
+        title: "Registration submitted successfully",
+        body: "Your bank branch registration is under CarLoanSaathi Super Admin verification. Login access will open automatically after approval.",
+        badge: "Pending Super Admin Verification",
+        steps: [["Done", "Email verified"], ["Done", "Branch details submitted"], ["Pending", "Super Admin verification"], ["Next", "Bank portal activation"]],
+      },
+      submitted: {
+        title: "Registration submitted successfully",
+        body: "Your bank branch registration is under CarLoanSaathi Super Admin verification. Login access will open automatically after approval.",
+        badge: "Pending Super Admin Verification",
+        steps: [["Done", "Email verified"], ["Done", "Branch details submitted"], ["Pending", "Super Admin verification"], ["Next", "Bank portal activation"]],
+      },
+    };
+    const copy = statusCopy[status] || statusCopy.pending;
     return (
       <main className="min-h-[calc(100vh-88px)] w-full bg-slate-50 px-4 py-10 sm:px-6 lg:px-8">
         <section className="mx-auto grid max-w-5xl gap-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
           <div>
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#0d47a1]/10 text-[#0d47a1]"><ShieldCheck className="h-8 w-8" /></span>
             <p className="mt-5 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Bank branch onboarding</p>
-            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">Registration submitted successfully</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">Your bank branch registration is under CarLoanSaathi Super Admin verification. Login access will open automatically after approval.</p>
-            <p className="mt-5 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Pending Super Admin Verification</p>
+            <h1 className="mt-3 text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">{copy.title}</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">{copy.body}</p>
+            <p className="mt-5 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{copy.badge}</p>
+            {status === "email-pending" && (
+              <button type="button" onClick={() => window.location.reload()} className="mt-5 block h-10 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700">I Verified My Email</button>
+            )}
           </div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <h2 className="text-sm font-semibold text-slate-900">Submission Summary</h2>
@@ -299,16 +346,11 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           </div>
         </section>
         <section className="mx-auto mt-5 max-w-5xl rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-base font-semibold text-slate-900">Approval Workflow</h2>
-          <div className="mt-4 grid gap-2 md:grid-cols-4">
-            {[
-              ["Done", "Account created"],
-              ["Done", "Branch details submitted"],
-              ["Pending", "Super Admin verification"],
-              ["Next", "Bank portal activation"],
-            ].map(([status, label]) => (
+            <h2 className="text-base font-semibold text-slate-900">Approval Workflow</h2>
+            <div className="mt-4 grid gap-2 md:grid-cols-4">
+            {copy.steps.map(([stepStatus, label]) => (
               <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700">
-                <span className={`mb-2 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${status === "Done" ? "bg-emerald-50 text-emerald-700" : status === "Pending" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{status}</span>
+                <span className={`mb-2 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${stepStatus === "Done" ? "bg-emerald-50 text-emerald-700" : stepStatus === "Rejected" || stepStatus === "Suspended" ? "bg-red-50 text-red-700" : stepStatus === "Pending" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{stepStatus}</span>
                 <p>{label}</p>
               </div>
             ))}
@@ -387,7 +429,7 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-700"><CheckCircle2 className="h-5 w-5" /></span>
-              <div><p className="text-sm font-semibold text-slate-900">{hasEmailAccount ? bankEmail : "Email account not verified"}</p><p className="text-xs text-slate-500">{hasEmailAccount ? "Verified email/password session active" : "Create account before submitting"}</p></div>
+              <div><p className="text-sm font-semibold text-slate-900">{hasEmailAccount ? bankEmail : "Email account not verified"}</p><p className="text-xs text-slate-500">{hasEmailAccount ? "Verified email/password session active" : "Verify email before submitting"}</p></div>
             </div>
             <button type="button" onClick={startEmailAccount} className="h-10 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700">Create Account</button>
           </div>

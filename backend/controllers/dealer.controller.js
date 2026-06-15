@@ -157,6 +157,17 @@ function required(value, label) {
   return text;
 }
 
+function stripRemovedDealershipFields(dealership = {}) {
+  const {
+    gstin,
+    gstinNumber,
+    gstNumber,
+    officialDealershipEmail,
+    ...rest
+  } = dealership || {};
+  return rest;
+}
+
 function generateTemporaryPassword() {
   const digits = crypto.randomInt(1000, 10000);
   const suffix = "abcdefghijkmnopqrstuvwxyz".charAt(crypto.randomInt(0, 24));
@@ -386,6 +397,59 @@ async function liveDealerRegistrationForAccount(account) {
   return { linkedOnboarding, linkedApproval, dealership, live: Boolean(linkedOnboarding || linkedApproval || dealership) };
 }
 
+async function firebaseUserVerified(decoded, email) {
+  if (decoded?.email_verified === true) return true;
+  if (!firebaseAdmin) return false;
+  try {
+    const user = decoded?.uid
+      ? await firebaseAdmin.auth().getUser(decoded.uid)
+      : await firebaseAdmin.auth().getUserByEmail(email);
+    return user.emailVerified === true;
+  } catch {
+    return false;
+  }
+}
+
+async function assertDealerRegistrationEmailVerified({ uid, email }) {
+  if (!firebaseAdmin) return;
+  let user = null;
+  try {
+    user = uid ? await firebaseAdmin.auth().getUser(uid) : null;
+  } catch {
+    user = null;
+  }
+  if (!user && email) {
+    try {
+      user = await firebaseAdmin.auth().getUserByEmail(email);
+    } catch {
+      user = null;
+    }
+  }
+  if (user && user.emailVerified !== true) {
+    const error = new Error("Verify your email address before submitting dealership registration.");
+    error.status = 403;
+    error.code = "EMAIL_NOT_VERIFIED";
+    throw error;
+  }
+}
+
+function dealerEmailPendingPayload({ registrationId, email, selectedPlan }) {
+  return {
+    status: "email-pending",
+    approvalStatus: "email-pending",
+    accountState: "EMAIL_PENDING",
+    registrationSubmitted: false,
+    accountApproved: false,
+    accountActive: false,
+    emailVerified: false,
+    registrationId,
+    email,
+    message: "Verify your email address before completing dealership registration.",
+    redirectTo: "/dealer-registration/verify-email",
+    selectedPlan,
+  };
+}
+
 export async function startDealerRegistration(req, res, next) {
   try {
     const { idToken } = req.body;
@@ -395,6 +459,7 @@ export async function startDealerRegistration(req, res, next) {
     const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
     const email = String(decoded.email || "").trim().toLowerCase();
     if (!email) return res.status(400).json({ message: "Account email is required" });
+    const emailVerified = await firebaseUserVerified(decoded, email);
 
     const now = new Date().toISOString();
     const requestedPlan = normalizeOnboardingPlan(req.body.selectedPlan);
@@ -413,6 +478,8 @@ export async function startDealerRegistration(req, res, next) {
         registrationSubmitted: false,
         registrationCompleted: false,
         approvalStatus: "not-submitted",
+        accountState: emailVerified ? "REGISTRATION_STARTED" : "EMAIL_PENDING",
+        emailVerified,
         accountApproved: false,
         accountActive: false,
         submittedAt: null,
@@ -427,13 +494,68 @@ export async function startDealerRegistration(req, res, next) {
       });
     }
 
+    if (!emailVerified) {
+      const pendingPayload = {
+        uid: decoded.uid || email,
+        email,
+        name: decoded.name || email,
+        photoURL: decoded.picture || "",
+        authProvider: "password",
+        onboardingStarted: true,
+        registrationSubmitted: false,
+        registrationCompleted: false,
+        approvalStatus: "email-pending",
+        accountState: "EMAIL_PENDING",
+        emailVerified: false,
+        accountApproved: false,
+        accountActive: false,
+        submittedAt: null,
+        dealershipData: existing?.dealershipData || {},
+        documents: existing?.documents || [],
+        onboardingRequestId: existing?.onboardingRequestId || null,
+        approvalRequestId: existing?.approvalRequestId || null,
+        dealerApprovalQueueId: existing?.dealerApprovalQueueId || null,
+        selectedPlan: existing?.selectedPlan || requestedPlan,
+        startedAt: existing?.startedAt || now,
+        lastAuthAt: now,
+      };
+      const registration = existing
+        ? await updateRecord("pendingDealerAccounts", existing.id, pendingPayload)
+        : await createRecord("pendingDealerAccounts", pendingPayload);
+      await upsertCanonicalUser(decoded.uid || email, {
+        uid: decoded.uid || email,
+        email,
+        role: "finance-desk",
+        approved: false,
+        active: false,
+        accountStatus: "email-pending",
+        accountState: "EMAIL_PENDING",
+        accountApproved: false,
+        accountActive: false,
+        emailVerified: false,
+        dealershipId: null,
+        bankId: null,
+        createdAt: existing?.createdAt || now,
+        lastLoginAt: null,
+      });
+      return res.json(dealerEmailPendingPayload({
+        registrationId: registration.id,
+        email,
+        selectedPlan: registration.selectedPlan || requestedPlan,
+      }));
+    }
+
     if (existing?.approvalStatus === "approved" && existingLive.live) {
       return res.json({
-        status: "account-created",
+        status: "approved",
+        approvalStatus: "approved",
+        accountState: "APPROVED",
+        registrationSubmitted: true,
+        emailVerified: true,
         registrationId: existing.id,
         email,
         message: "Account already exists.",
-        redirectTo: "/dealer-registration/form",
+        redirectTo: "/dealer-registration/approved",
       });
     }
 
@@ -441,10 +563,13 @@ export async function startDealerRegistration(req, res, next) {
       await updateRecord("pendingDealerAccounts", existing.id, { lastAuthAt: now });
       return res.json({
         status: existing.approvalStatus,
+        approvalStatus: existing.approvalStatus,
+        accountState: String(existing.approvalStatus).toUpperCase(),
+        emailVerified: true,
         registrationId: existing.id,
         email,
         message: existing.rejectionReason || existing.suspensionReason || "Your dealership onboarding request cannot continue.",
-        redirectTo: "/dealer-registration/pending",
+        redirectTo: existing.approvalStatus === "rejected" ? "/dealer-registration/rejected" : "/dealer-registration/suspended",
       });
     }
 
@@ -452,6 +577,10 @@ export async function startDealerRegistration(req, res, next) {
       await updateRecord("pendingDealerAccounts", existing.id, { lastAuthAt: now });
       return res.json({
         status: "submitted",
+        approvalStatus: "pending",
+        accountState: "PENDING_APPROVAL",
+        registrationSubmitted: true,
+        emailVerified: true,
         registrationId: existing.id,
         email,
         message: "Your dealership onboarding request is pending Super Admin approval.",
@@ -469,6 +598,8 @@ export async function startDealerRegistration(req, res, next) {
       registrationSubmitted: false,
       registrationCompleted: false,
       approvalStatus: "not-submitted",
+      accountState: "EMAIL_VERIFIED",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       submittedAt: null,
@@ -492,6 +623,8 @@ export async function startDealerRegistration(req, res, next) {
       approved: false,
       active: false,
       accountStatus: "pending",
+      accountState: "EMAIL_VERIFIED",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       dealershipId: null,
@@ -502,6 +635,10 @@ export async function startDealerRegistration(req, res, next) {
 
     res.json({
       status: "account-created",
+      approvalStatus: "not-submitted",
+      accountState: "EMAIL_VERIFIED",
+      registrationSubmitted: false,
+      emailVerified: true,
       registrationId: registration.id,
       email,
       message: "Account created successfully. Continue dealership registration.",
@@ -532,6 +669,28 @@ export async function getDealerRegistrationStatus(req, res, next) {
       || (await findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 3))[0]
       || (await findRecordsByField("pendingDealerAccounts", "email", email, 3))[0]
       || null;
+
+    if (!emailVerified) {
+      return res.json(dealerEmailPendingPayload({
+        registrationId: account?.id || null,
+        email,
+        selectedPlan: account?.selectedPlan || normalizeOnboardingPlan(),
+      }));
+    }
+
+    if (account && (account.emailVerified !== true || account.accountState === "EMAIL_PENDING" || account.approvalStatus === "email-pending")) {
+      const nextApprovalStatus = account.registrationSubmitted === true ? "pending" : "not-submitted";
+      await updateRecord("pendingDealerAccounts", account.id, {
+        emailVerified: true,
+        accountState: "EMAIL_VERIFIED",
+        approvalStatus: nextApprovalStatus,
+        lastVerifiedAt: new Date().toISOString(),
+      }).catch(() => null);
+      account.emailVerified = true;
+      account.accountState = "EMAIL_VERIFIED";
+      account.approvalStatus = nextApprovalStatus;
+    }
+
     const linkedOnboarding = account ? await getRecord("onboardingRequests", account.onboardingRequestId || "").catch(() => null)
       || (await findRecordsByField("onboardingRequests", "loginEmail", account.email, 3))[0]
       || (await findRecordsByField("onboardingRequests", "primaryGoogleEmail", account.email, 3))[0]
@@ -566,13 +725,31 @@ export async function getDealerRegistrationStatus(req, res, next) {
       return res.json({
         status: "approved",
         approvalStatus: "approved",
+        accountState: "APPROVED",
         registrationSubmitted: true,
         accountApproved: true,
         accountActive: true,
+        emailVerified: true,
         email,
         dealershipEmail,
         message: "Your dealership account has been approved successfully by CarLoanSaathi.",
         redirectTo: "/dealer-registration/approved",
+      });
+    }
+
+    if (account?.registrationSubmitted === false || account?.approvalStatus === "not-submitted") {
+      return res.json({
+        status: "not-submitted",
+        approvalStatus: "not-submitted",
+        accountState: "EMAIL_VERIFIED",
+        registrationSubmitted: false,
+        accountApproved: false,
+        accountActive: false,
+        emailVerified: true,
+        email,
+        registrationId: account.id,
+        message: "Complete your dealership registration form.",
+        redirectTo: "/dealer-registration/form",
       });
     }
 
@@ -582,9 +759,11 @@ export async function getDealerRegistrationStatus(req, res, next) {
       return res.json({
         status: "not-registered",
         approvalStatus: "not-registered",
+        accountState: "REGISTRATION_STARTED",
         registrationSubmitted: false,
         accountApproved: false,
         accountActive: false,
+        emailVerified: true,
         email,
         registrationId: null,
         message: "No active dealership registration was found for this account.",
@@ -596,9 +775,11 @@ export async function getDealerRegistrationStatus(req, res, next) {
       return res.json({
         status: "inactive",
         approvalStatus: "inactive",
+        accountState: "DEACTIVATED",
         registrationSubmitted: false,
         accountApproved: false,
         accountActive: false,
+        emailVerified: true,
         email,
         registrationId: null,
         message: "This dealership account is inactive or deleted.",
@@ -606,26 +787,18 @@ export async function getDealerRegistrationStatus(req, res, next) {
       });
     }
 
-    if (account?.registrationSubmitted === false || account?.approvalStatus === "not-submitted") {
-      return res.json({
-        status: "not-submitted",
-        approvalStatus: "not-submitted",
-        registrationSubmitted: false,
-        accountApproved: false,
-        accountActive: false,
-        email,
-        registrationId: account.id,
-        message: "Complete your dealership registration form.",
-        redirectTo: "/dealer-registration/form",
-      });
-    }
-
     return res.json({
       status: account?.approvalStatus || "pending",
       approvalStatus: account?.approvalStatus || "pending",
+      accountState: account?.approvalStatus === "rejected"
+        ? "REJECTED"
+        : account?.approvalStatus === "suspended"
+          ? "SUSPENDED"
+          : "PENDING_APPROVAL",
       registrationSubmitted: account?.registrationSubmitted !== false,
       accountApproved: account?.accountApproved === true,
       accountActive: account?.accountActive === true,
+      emailVerified: true,
       email,
       registrationId: account?.id || null,
       message: account?.approvalStatus === "rejected"
@@ -633,7 +806,11 @@ export async function getDealerRegistrationStatus(req, res, next) {
         : account?.approvalStatus === "suspended"
           ? account.suspensionReason || "Your dealership account is suspended."
           : "Your dealership account is still pending approval from CarLoanSaathi.",
-      redirectTo: "/dealer-registration/pending",
+      redirectTo: account?.approvalStatus === "rejected"
+        ? "/dealer-registration/rejected"
+        : account?.approvalStatus === "suspended"
+          ? "/dealer-registration/suspended"
+          : "/dealer-registration/pending",
     });
   } catch (error) {
     next(error);
@@ -725,8 +902,9 @@ function normalizeFinanceStatus(status) {
 
 export async function registerDealerOnboarding(req, res, next) {
   try {
-    const loginEmail = required(req.body.primaryGoogleEmail || req.body.loginEmail || req.body.officialDealershipEmail, "Official login email").toLowerCase();
+    const loginEmail = required(req.body.primaryGoogleEmail || req.body.loginEmail, "Official login email").toLowerCase();
     const now = new Date().toISOString();
+    await assertDealerRegistrationEmailVerified({ uid: req.body.dealerUid, email: loginEmail });
     const state = normalizeBankState(req.body.state || "Haryana");
     const city = normalizeBankLocation(state, req.body.city || req.body.dealerLocation || req.body.location);
     if (!state || !city) {
@@ -749,6 +927,8 @@ export async function registerDealerOnboarding(req, res, next) {
         onboardingStarted: true,
         registrationSubmitted: false,
         approvalStatus: "not-submitted",
+        accountState: "EMAIL_VERIFIED",
+        emailVerified: true,
         accountApproved: false,
         accountActive: false,
         createdFromRegistrationSubmit: true,
@@ -783,8 +963,6 @@ export async function registerDealerOnboarding(req, res, next) {
       dealershipName: required(req.body.dealershipName, "Dealership name"),
       dealershipBrand,
       authorizedDealerCode: required(req.body.authorizedDealerCode, "Authorized dealer code"),
-      gstin: required(req.body.gstin, "GSTIN number"),
-      officialDealershipEmail: required(req.body.officialDealershipEmail, "Official dealership email").toLowerCase(),
       officialDealershipMobile: required(req.body.officialDealershipMobile, "Official dealership mobile"),
       state,
       city,
@@ -848,7 +1026,6 @@ export async function registerDealerOnboarding(req, res, next) {
       ...(generalManager ? { generalManager } : {}),
       ...(financeDesk ? { financeDesk } : {}),
       verification: {
-        gstinVerified: false,
         dealershipVerified: false,
       },
       selectedPlan,
@@ -892,6 +1069,8 @@ export async function registerDealerOnboarding(req, res, next) {
     await updateRecord("pendingDealerAccounts", pendingAccount.id, {
       registrationSubmitted: true,
       approvalStatus: "pending",
+      accountState: "PENDING_APPROVAL",
+      emailVerified: true,
       accountApproved: false,
       accountActive: false,
       registrationCompleted: true,
@@ -930,6 +1109,8 @@ export async function registerDealerOnboarding(req, res, next) {
       active: false,
       accountApproved: false,
       accountActive: false,
+      accountState: "PENDING_APPROVAL",
+      emailVerified: true,
       dealershipId: loginEmail,
       status: "pending",
       selectedPlan,
@@ -1731,7 +1912,6 @@ export async function createDealerStaff(req, res, next) {
       city,
       state: dealership.state || dealership.dealerState || "",
       address: dealership.address || "",
-      gstin: dealership.gstin || "",
       createdAt: now,
       firstLoginRequired: true,
       passwordChangedAt: null,
@@ -1959,13 +2139,14 @@ export async function getDealerProfile(req, res, next) {
   try {
     const { email, dealershipEmail, desk, dealership } = await financeDeskContext(req);
     if (dealership?.dealershipName || dealership?.dealershipBrand) {
+      const safeDealership = stripRemovedDealershipFields(dealership);
       return res.json({
         email,
         dealershipId: dealershipEmail,
-        dealershipCity: dealership.city || dealership.registeredCity || desk?.city || "",
-        dealershipBrand: dealership.dealershipBrand || dealership.brand || "",
-        ...dealership,
-        dealershipBankPartners: dealership.dealershipBankPartners || [],
+        dealershipCity: safeDealership.city || safeDealership.registeredCity || desk?.city || "",
+        dealershipBrand: safeDealership.dealershipBrand || safeDealership.brand || "",
+        ...safeDealership,
+        dealershipBankPartners: safeDealership.dealershipBankPartners || [],
         financeDesk: desk || null,
       });
     }
@@ -2005,8 +2186,8 @@ export async function updateDealerProfile(req, res, next) {
     const profile = existing
       ? await updateRecord("dealerProfiles", existing.id, payload)
       : await createRecord("dealerProfiles", payload);
-    await upsertRecord("dealers", dealershipEmail, { ...(dealership || {}), ...payload });
-    await upsertRecord("dealerships", dealershipEmail, { ...(dealership || {}), ...payload });
+    await upsertRecord("dealers", dealershipEmail, { ...stripRemovedDealershipFields(dealership || {}), ...payload });
+    await upsertRecord("dealerships", dealershipEmail, { ...stripRemovedDealershipFields(dealership || {}), ...payload });
     res.json({ message: "Dealer profile saved", profile });
   } catch (error) {
     next(error);

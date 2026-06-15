@@ -40,8 +40,6 @@ const initialForm = {
   dealershipName: "",
   dealershipBrand: "",
   authorizedDealerCode: "",
-  gstin: "",
-  officialDealershipEmail: "",
   officialDealershipMobile: "",
   state: "Haryana",
   city: "",
@@ -165,11 +163,7 @@ export function DealerRegistrationPage({ audience = "dealer" }) {
         password: authPassword,
         selectedPlan: selectedOnboardingPlan(),
       });
-      if (registration.status === "submitted") {
-        navigate("/dealer-registration/pending");
-      } else {
-        navigate("/dealer-registration/form");
-      }
+      navigate(registration.redirectTo || "/dealer-registration/form");
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Unable to create email/password account.");
     } finally {
@@ -313,28 +307,53 @@ export function DealerRegistrationApprovedPage() {
   );
 }
 
-export function DealerRegistrationPendingPage() {
+export function DealerRegistrationPendingPage({ mode = "pending" }) {
   const [checking, setChecking] = useState(true);
   const [message, setMessage] = useState("");
   const [approved, setApproved] = useState(false);
+  const [status, setStatus] = useState(mode === "verify-email" ? "email-pending" : mode);
   const { checkDealerRegistrationWithEmail } = useAuth();
   const navigate = useNavigate();
+
+  const statusRoute = {
+    "email-pending": "/dealer-registration/verify-email",
+    pending: "/dealer-registration/pending",
+    submitted: "/dealer-registration/pending",
+    rejected: "/dealer-registration/rejected",
+    suspended: "/dealer-registration/suspended",
+  };
+
+  const applyRegistrationStatus = (registration) => {
+    const nextStatus = registration.status || registration.approvalStatus || "pending";
+    if (registration.status === "approved" || registration.approvalStatus === "approved") {
+      setApproved(true);
+      return;
+    }
+    if (nextStatus === "not-submitted" || registration.accountState === "EMAIL_VERIFIED") {
+      navigate(registration.redirectTo || "/dealer-registration/form", { replace: true });
+      return;
+    }
+    const allowed = ["email-pending", "pending", "submitted", "rejected", "suspended"].includes(nextStatus);
+    if (!allowed) {
+      navigate(registration.redirectTo || "/dealer-registration", { replace: true });
+      return;
+    }
+    setStatus(nextStatus);
+    setMessage(registration.message || "");
+    const expectedRoute = statusRoute[nextStatus] || "/dealer-registration/pending";
+    if (registration.redirectTo && registration.redirectTo !== expectedRoute) {
+      navigate(registration.redirectTo, { replace: true });
+    } else if (window.location.pathname !== expectedRoute) {
+      navigate(expectedRoute, { replace: true });
+    }
+  };
 
   const checkStatus = async () => {
     setChecking(true);
     setMessage("");
     try {
       const registration = await checkDealerRegistrationWithEmail();
-      const pending = registration.status === "pending" || registration.approvalStatus === "pending" || registration.status === "submitted";
-      if (registration.status === "approved" || registration.approvalStatus === "approved") {
-        setApproved(true);
-      } else if (!pending) {
-        navigate(registration.redirectTo || "/dealer-registration", { replace: true });
-      } else if (registration.redirectTo && registration.redirectTo !== "/dealer-registration/pending") {
-        navigate(registration.redirectTo, { replace: true });
-      } else {
-        setMessage(registration.message || "Your dealership account is still pending approval.");
-      }
+      applyRegistrationStatus(registration);
     } catch (err) {
       setMessage(err.response?.data?.message || err.message || "Unable to check approval status.");
     } finally {
@@ -347,10 +366,7 @@ export function DealerRegistrationPendingPage() {
       setChecking(true);
       try {
         const registration = await checkDealerRegistrationWithEmail({ silent: true });
-        const pending = registration.status === "pending" || registration.approvalStatus === "pending" || registration.status === "submitted";
-        if (registration.status === "approved" || registration.approvalStatus === "approved") setApproved(true);
-        else if (!pending) navigate(registration.redirectTo || "/dealer-registration", { replace: true });
-        else if (registration.redirectTo && registration.redirectTo !== "/dealer-registration/pending") navigate(registration.redirectTo, { replace: true });
+        applyRegistrationStatus(registration);
       } finally {
         setChecking(false);
       }
@@ -393,24 +409,61 @@ export function DealerRegistrationPendingPage() {
     );
   }
 
+  const statusCopy = {
+    "email-pending": {
+      title: "Verify Your Email",
+      body: "We sent a verification link to your email address. Verify it before completing dealership registration.",
+      badge: "Email Verification Pending",
+      steps: [["Done", "Email account created"], ["Pending", "Email verification"], ["Next", "Complete dealership registration"]],
+    },
+    rejected: {
+      title: "Registration Rejected",
+      body: message || "Your dealership registration was rejected by CarLoanSaathi.",
+      badge: "Rejected",
+      steps: [["Done", "Email verified"], ["Done", "Registration reviewed"], ["Rejected", "Approval not granted"]],
+    },
+    suspended: {
+      title: "Account Suspended",
+      body: message || "Your dealership account is suspended. Contact CarLoanSaathi support for next steps.",
+      badge: "Suspended",
+      steps: [["Done", "Email verified"], ["Done", "Account reviewed"], ["Suspended", "Dashboard access blocked"]],
+    },
+    pending: {
+      title: "Approval Pending",
+      body: "Your dealership registration has been submitted successfully and is under verification by CarLoanSaathi.",
+      badge: "Pending Super Admin Verification",
+      steps: [["Done", "Email verified"], ["Done", "Registration submitted"], ["Pending", "Waiting for admin verification"]],
+    },
+    submitted: {
+      title: "Approval Pending",
+      body: "Your dealership registration has been submitted successfully and is under verification by CarLoanSaathi.",
+      badge: "Pending Super Admin Verification",
+      steps: [["Done", "Email verified"], ["Done", "Registration submitted"], ["Pending", "Waiting for admin verification"]],
+    },
+  };
+  const copy = statusCopy[status] || statusCopy.pending;
+
   return (
     <main className="w-full bg-slate-50 px-4 py-12 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
         <ShieldCheck className="mx-auto h-10 w-10 text-[#0d47a1]" />
-        <h1 className="mt-4 text-2xl font-semibold text-slate-900">Approval Pending</h1>
+        <h1 className="mt-4 text-2xl font-semibold text-slate-900">{copy.title}</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Your dealership registration has been submitted successfully and is under verification by CarLoanSaathi.
+          {copy.body}
         </p>
         <div className="mt-6 space-y-2 text-left">
-          {["Email account created", "Registration submitted", "Waiting for admin verification"].map((item, index) => (
+          {copy.steps.map(([stepStatus, item]) => (
             <div key={item} className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-              <span className={`flex h-6 w-16 items-center justify-center rounded-full text-xs ${index < 2 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{index < 2 ? "Done" : "Pending"}</span>
+              <span className={`flex h-6 w-20 items-center justify-center rounded-full text-xs ${stepStatus === "Done" ? "bg-emerald-50 text-emerald-700" : stepStatus === "Rejected" || stepStatus === "Suspended" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{stepStatus}</span>
               {item}
             </div>
           ))}
         </div>
-        <p className="mt-5 text-sm leading-6 text-slate-600">You cannot login until your dealership is approved by Super Admin.</p>
+        <p className="mt-5 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{copy.badge}</p>
         {message && <p className="mt-4 rounded-md bg-blue-50 px-3 py-2 text-sm font-medium text-[#0d47a1]">{message}</p>}
+        {status === "email-pending" && (
+          <button type="button" onClick={checkStatus} className="mt-5 mr-3 inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700">I Verified My Email</button>
+        )}
         <Link to="/" className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white">Return to Homepage</Link>
       </section>
     </main>
@@ -442,11 +495,10 @@ export function DealerRegistrationFormPage() {
   const hasVerifiedEmail = Boolean(
     dealerEmail
     && (
-      auth.currentUser
-      || firebaseUser
+      auth.currentUser?.emailVerified === true
+      || firebaseUser?.emailVerified === true
+      || registrationSession.emailVerified === true
       || isAuthenticated
-      || registrationSession.registrationId
-      || registrationSession.email
     )
   );
 
@@ -463,7 +515,6 @@ export function DealerRegistrationFormPage() {
     setForm((current) => {
       const next = { ...current, [field]: value };
       if (field === "state") next.city = "";
-      if (field === "officialDealershipEmail" && !current.loginEmail) next.loginEmail = value;
       return next;
     });
   };
@@ -551,8 +602,6 @@ export function DealerRegistrationFormPage() {
       ["dealershipName", "Dealership Name"],
       ["dealershipBrand", "Dealership Brand"],
       ["authorizedDealerCode", "Authorized Dealer Code"],
-      ["gstin", "GSTIN Number"],
-      ["officialDealershipEmail", "Official Dealership Email"],
       ["officialDealershipMobile", "Official Dealership Mobile Number"],
       ["state", "State"],
       ["city", "Location"],
@@ -718,8 +767,6 @@ export function DealerRegistrationFormPage() {
               <label className={labelClass}>Dealership Name *<input required className={fieldClass} value={form.dealershipName} onChange={(e) => update("dealershipName", e.target.value)} /></label>
               <SelectBox label="Dealership Brand *" value={form.dealershipBrand} options={dealershipBrands} onChange={(value) => update("dealershipBrand", value)} />
               <label className={labelClass}>Authorized Dealer Code *<input required className={fieldClass} value={form.authorizedDealerCode} onChange={(e) => update("authorizedDealerCode", e.target.value)} /></label>
-              <label className={labelClass}>GSTIN Number *<input required className={fieldClass} value={form.gstin} onChange={(e) => update("gstin", e.target.value.toUpperCase())} /></label>
-              <label className={labelClass}>Official Dealership Email *<input required type="email" className={fieldClass} value={form.officialDealershipEmail} onChange={(e) => update("officialDealershipEmail", e.target.value)} /></label>
               <label className={labelClass}>
                 Official Dealership Mobile Number *
                 <div className="mt-2 flex h-10 overflow-hidden rounded-2xl border border-slate-200 bg-white focus-within:border-[#0d47a1]">

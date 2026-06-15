@@ -305,6 +305,32 @@ function requestLoginEmail(request) {
   return normalizeEmail(request.loginEmail || request.primaryGoogleEmail || request.dealership?.loginEmail || request.financeDesk?.officialEmail || request.dealership?.officialDealershipEmail);
 }
 
+function stripRemovedDealershipFields(dealership = {}) {
+  const {
+    gstin,
+    gstinNumber,
+    gstNumber,
+    officialDealershipEmail,
+    ...rest
+  } = dealership || {};
+  return rest;
+}
+
+function safeDealershipApprovalRecord(record = {}) {
+  if (!record || typeof record !== "object") return record;
+  const {
+    gstin,
+    gstinNumber,
+    gstNumber,
+    officialDealershipEmail,
+    ...rest
+  } = record;
+  return {
+    ...rest,
+    ...(record.dealership ? { dealership: stripRemovedDealershipFields(record.dealership) } : {}),
+  };
+}
+
 function dealerEventPayload({ loginEmail, dealership = {}, status = "updated" } = {}) {
   return {
     dealerId: loginEmail || dealership.dealerId || dealership.loginEmail || "",
@@ -364,11 +390,9 @@ function dealerIdentityProfile(dealership = {}, request = {}) {
   return {
     dealershipName: dealership.dealershipName || dealership.name || request.dealershipName || "",
     dealerName: dealership.dealerName || dealership.dealershipName || request.dealershipName || "",
-    officialDealershipEmail: dealership.officialDealershipEmail || request.loginEmail || "",
     officialDealershipMobile: dealership.officialDealershipMobile || request.owner?.mobile || "",
     ownerName: request.owner?.fullName || dealership.ownerName || "",
     ownerMobile: request.owner?.mobile || dealership.ownerMobile || "",
-    gstin: dealership.gstin || request.gstin || "",
     address: dealership.address || dealership.fullAddress || "",
     city: dealership.city || dealership.location || request.city || "",
     state: dealership.state || request.state || "",
@@ -380,7 +404,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
   const selectedPlan = normalizeOnboardingPlan(request.selectedPlan || dealership.selectedPlan);
   const dealerLocation = dealership.dealerLocation || dealership.location || dealership.city || request.city || "";
   const dealerFields = {
-    ...dealership,
+    ...stripRemovedDealershipFields(dealership),
     dealerId: loginEmail,
     dealerName: dealership.dealerName || dealership.dealershipName || request.dealershipName || "",
     dealerBrand: dealership.dealerBrand || dealership.dealershipBrand || request.dealershipBrand || "",
@@ -400,7 +424,7 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     ...dealerIdentityProfile(dealerFields, request),
     uid: financeCanonicalId,
     email: loginEmail,
-    officialEmail: dealerFields.officialDealershipEmail || loginEmail,
+    officialEmail: loginEmail,
     mobile: dealerFields.officialDealershipMobile || request.owner?.mobile || "",
     ownerName: request.owner?.fullName || "",
     ownerMobile: request.owner?.mobile || "",
@@ -466,7 +490,6 @@ async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy 
   const updated = await updateRecordIfExists("pendingDealershipApprovals", request.id, {
     status: "approved",
     approvalStatus: "approved",
-    gstinVerified: true,
     dealershipVerified: true,
     approvedAt: now,
     approvedBy,
@@ -720,7 +743,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
 
   const approvedBy = req.user?.email || "super-admin";
   const dealership = {
-    ...(request.dealership || {}),
+    ...stripRemovedDealershipFields(request.dealership || {}),
     dealershipName: request.dealershipName || request.dealership?.dealershipName || request.dealership?.name,
     dealershipBrand: request.dealershipBrand || request.dealership?.dealershipBrand || request.dealership?.brand,
     city: request.city || request.dealership?.city,
@@ -733,7 +756,6 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     accountActive: true,
     accountApproved: true,
     verified: true,
-    gstinVerified: true,
     dealershipVerified: true,
     approvedAt: now,
     approvedBy,
@@ -747,7 +769,7 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     ...dealerIdentityProfile(dealership, request),
     uid: loginEmail,
     email: loginEmail,
-    officialEmail: dealership.officialDealershipEmail || loginEmail,
+    officialEmail: loginEmail,
     mobile: dealership.officialDealershipMobile || request.owner?.mobile || "",
     ownerName: request.owner?.fullName || "",
     ownerMobile: request.owner?.mobile || "",
@@ -861,7 +883,6 @@ async function activateDealerAccessFromRequest({ request, req, now }) {
     await updateRecordIfExists("pendingDealershipApprovals", approval.id, {
       status: "approved",
       approvalStatus: "approved",
-      gstinVerified: true,
       dealershipVerified: true,
       approvedAt: now,
       approvedBy,
@@ -1096,9 +1117,9 @@ async function dealershipApprovalListPayload({ status, search, query }) {
   const requests = page.data.filter((item) => {
     const statusOk = !status || String(item.status || "").toLowerCase() === status;
     const typeOk = (item.accountType || item.type || "dealership") === "dealership";
-    const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.gstin, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
+    const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
     return typeOk && statusOk && (!search || text.includes(search));
-  });
+  }).map(safeDealershipApprovalRecord);
   const meta = await cached("admin:approvals:dealerships:meta", 30000, async () => {
     const [logsPage, dealershipCount] = await Promise.all([
       queryRecords("approvalLogs", {
@@ -1203,7 +1224,7 @@ export async function approveDealershipApproval(req, res, next) {
     if (!loginEmail) return res.status(400).json({ message: "Dealership login email is missing" });
     const selectedPlan = normalizeOnboardingPlan(request.selectedPlan || request.dealership?.selectedPlan);
     const dealership = {
-      ...(request.dealership || {}),
+      ...stripRemovedDealershipFields(request.dealership || {}),
       loginEmail,
       primaryGoogleEmail: request.primaryGoogleEmail || loginEmail,
       status: "approved",
@@ -1211,7 +1232,6 @@ export async function approveDealershipApproval(req, res, next) {
       approved: true,
       accountActive: true,
       verified: true,
-      gstinVerified: true,
       dealershipVerified: true,
       approvedAt: now,
       approvedBy: req.user?.email || "super-admin",
@@ -1249,7 +1269,7 @@ export async function approveDealershipApproval(req, res, next) {
     res.json({
       message: "Dealership approved",
       subscription,
-      request: updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now },
+      request: safeDealershipApprovalRecord(updated || { ...request, status: "approved", approvalStatus: "approved", approvedAt: now }),
     });
   } catch (error) {
     next(error);
@@ -1276,7 +1296,7 @@ export async function rejectDealershipApproval(req, res, next) {
     await createNotification({ type: "dealership-rejected", title: "Dealership rejected", message: reason, recipientRole: "finance-desk", recipientId: request.loginEmail, dealerEmail: request.loginEmail, phoneNumber: request.dealership?.officialDealershipMobile || request.owner?.mobile, priority: "high", meta: { dealershipName: request.dealershipName, reason } });
     await writeAuditLog({ req, actionType: "DEALERSHIP_REJECTED", oldValue: request.status, newValue: "rejected", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
-    res.json({ message: "Dealership rejected", request: updated || { ...request, status: "rejected", rejectionReason: reason, rejectedAt: now } });
+    res.json({ message: "Dealership rejected", request: safeDealershipApprovalRecord(updated || { ...request, status: "rejected", rejectionReason: reason, rejectedAt: now }) });
   } catch (error) {
     next(error);
   }
@@ -1321,7 +1341,7 @@ export async function suspendDealershipApproval(req, res, next) {
     publishDealerEvent(REALTIME_EVENTS.DEALER_DISABLED, req, dealerPayload);
     await writeAuditLog({ req, actionType: "DEALERSHIP_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
-    res.json({ message: "Dealership suspended", request: updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now } });
+    res.json({ message: "Dealership suspended", request: safeDealershipApprovalRecord(updated || { ...request, status: "suspended", suspensionReason: reason, suspendedAt: now }) });
   } catch (error) {
     next(error);
   }
@@ -1699,7 +1719,7 @@ export async function updateAdminOnboardingRequest(req, res, next) {
     if (loginEmail) {
       const dealerWrites = [
         upsertRecord("dealerships", loginEmail, {
-        ...(request.dealership || {}),
+        ...stripRemovedDealershipFields(request.dealership || {}),
         onboardingRequestId: request.id,
         loginEmail,
         status,
@@ -1708,7 +1728,7 @@ export async function updateAdminOnboardingRequest(req, res, next) {
         approvedBy: active ? req.user?.email || "super-admin" : null,
         }),
         upsertRecord("dealers", loginEmail, {
-        ...(request.dealership || {}),
+        ...stripRemovedDealershipFields(request.dealership || {}),
         onboardingRequestId: request.id,
         loginEmail,
         role: "finance-desk",
@@ -1736,7 +1756,7 @@ export async function updateAdminOnboardingRequest(req, res, next) {
       if (loginEmail) {
         await initializeDealershipTrial({
           dealershipId: loginEmail,
-          dealership: { ...(request.dealership || {}), loginEmail, dealershipName: request.dealershipName },
+          dealership: { ...stripRemovedDealershipFields(request.dealership || {}), loginEmail, dealershipName: request.dealershipName },
           approvedAt: now,
           actor: req.user,
         });
@@ -1761,7 +1781,7 @@ export async function updateAdminOnboardingRequest(req, res, next) {
     }
 
     clearAdminApprovalCaches();
-    res.json({ message: `Onboarding request ${status}`, request: updated });
+    res.json({ message: `Onboarding request ${status}`, request: safeDealershipApprovalRecord(updated) });
     runAdminSideEffects("dealer-onboarding-status", [
       () => createNotification({
         type: active ? "dealer-approved" : status === "Rejected" ? "dealer-rejected" : "dealer-onboarding-update",

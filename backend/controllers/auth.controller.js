@@ -618,7 +618,6 @@ function registrationProfile(account = {}) {
     dealerName: account.dealerName || account.dealershipName || "",
     ownerName: account.ownerName || account.ownerFullName || account.owner?.fullName || "",
     ownerMobile: account.ownerMobile || account.owner?.mobile || "",
-    gstin: account.gstin || account.gstNumber || "",
     bankName: account.bankName || account.companyName || "",
     branchName: account.branchName || account.bankBranchLocation || account.branchLocation || account.branch || "",
     bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || "",
