@@ -40,6 +40,7 @@ const initialForm = {
   dealershipName: "",
   dealershipBrand: "",
   authorizedDealerCode: "",
+  gstinNumber: "",
   officialDealershipMobile: "",
   state: "Haryana",
   city: "",
@@ -602,6 +603,7 @@ export function DealerRegistrationFormPage() {
       ["dealershipName", "Dealership Name"],
       ["dealershipBrand", "Dealership Brand"],
       ["authorizedDealerCode", "Authorized Dealer Code"],
+      ["gstinNumber", "GSTIN Number"],
       ["officialDealershipMobile", "Official Dealership Mobile Number"],
       ["state", "State"],
       ["city", "Location"],
@@ -612,6 +614,7 @@ export function DealerRegistrationFormPage() {
     ];
     const missing = requiredFields.find(([field]) => !String(form[field] || "").trim());
     if (missing) return `${missing[1]} is required.`;
+    if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(form.gstinNumber)) return "Enter a valid 15-character GSTIN number.";
     if (!bankStates.includes(form.state)) return "Please select a supported dealership state.";
     if (!locationOptions.includes(form.city)) return "Please select a supported dealership location.";
     if (!hasVerifiedEmail || !dealerEmail) return "Create an email/password account before submitting dealership registration.";
@@ -652,6 +655,7 @@ export function DealerRegistrationFormPage() {
           email: dealerEmail,
           dealershipName: form.dealershipName,
           dealerBrand: form.dealershipBrand,
+          gstinNumber: form.gstinNumber,
           state: form.state,
           city: form.city,
           dealerState: form.state,
@@ -767,6 +771,7 @@ export function DealerRegistrationFormPage() {
               <label className={labelClass}>Dealership Name *<input required className={fieldClass} value={form.dealershipName} onChange={(e) => update("dealershipName", e.target.value)} /></label>
               <SelectBox label="Dealership Brand *" value={form.dealershipBrand} options={dealershipBrands} onChange={(value) => update("dealershipBrand", value)} />
               <label className={labelClass}>Authorized Dealer Code *<input required className={fieldClass} value={form.authorizedDealerCode} onChange={(e) => update("authorizedDealerCode", e.target.value)} /></label>
+              <label className={labelClass}>GSTIN Number *<input required maxLength={15} className={fieldClass} value={form.gstinNumber} onChange={(e) => update("gstinNumber", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 15))} placeholder="06ABCDE1234F1Z5" /></label>
               <label className={labelClass}>
                 Official Dealership Mobile Number *
                 <div className="mt-2 flex h-10 overflow-hidden rounded-2xl border border-slate-200 bg-white focus-within:border-[#0d47a1]">

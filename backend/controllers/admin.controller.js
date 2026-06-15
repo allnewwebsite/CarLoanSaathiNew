@@ -306,9 +306,6 @@ function requestLoginEmail(request) {
 
 function stripRemovedDealershipFields(dealership = {}) {
   const {
-    gstin,
-    gstinNumber,
-    gstNumber,
     officialDealershipEmail,
     ...rest
   } = dealership || {};
@@ -318,9 +315,6 @@ function stripRemovedDealershipFields(dealership = {}) {
 function safeDealershipApprovalRecord(record = {}) {
   if (!record || typeof record !== "object") return record;
   const {
-    gstin,
-    gstinNumber,
-    gstNumber,
     officialDealershipEmail,
     ...rest
   } = record;

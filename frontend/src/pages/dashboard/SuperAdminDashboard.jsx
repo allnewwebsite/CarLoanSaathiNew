@@ -705,7 +705,7 @@ export function SuperAdminDealershipDetailPage() {
     <section className="space-y-5">
       <PageTitle mode="dealership details" />
       <div className="grid gap-3 md:grid-cols-4">
-        {[["Dealership", dealer.dealershipName], ["Brand", dealer.dealershipBrand], ["City", dealer.city], ["Login Email", dealer.loginEmail || dealer.email || email], ["Salesperson Count", dealer.salespersonCount || "-"], ["Total Leads", leads.length], ["Approval Ratio", approvalRatio(leads)], ["Status", dealer.status]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
+        {[["Dealership", dealer.dealershipName], ["Brand", dealer.dealershipBrand], ["GSTIN", dealer.gstinNumber || dealer.dealership?.gstinNumber], ["City", dealer.city], ["Login Email", dealer.loginEmail || dealer.email || email], ["Salesperson Count", dealer.salespersonCount || "-"], ["Total Leads", leads.length], ["Approval Ratio", approvalRatio(leads)], ["Status", dealer.status]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
       </div>
       <AdminSubscriptionPanel dealershipId={dealer.loginEmail || dealer.email || email} />
       <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", LEAD_TABLE_LABELS.currentStatus, "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" lead={lead} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
@@ -798,7 +798,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
       ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount]]],
     ]
     : [
-      ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["City", item.city], ["Selected Plan", item.selectedPlan || item.dealership?.selectedPlan || "TRIAL"], ["Address", item.dealership?.address]]],
+      ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["GSTIN", item.gstinNumber || item.dealership?.gstinNumber], ["City", item.city], ["Selected Plan", item.selectedPlan || item.dealership?.selectedPlan || "TRIAL"], ["Address", item.dealership?.address]]],
       ["Business Capacity", [["Monthly Sales", item.dealership?.monthlyCarSalesCapacity]]],
     ];
   return (

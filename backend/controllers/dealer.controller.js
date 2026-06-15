@@ -157,11 +157,18 @@ function required(value, label) {
   return text;
 }
 
+function requiredGstin(value) {
+  const gstin = required(value, "GSTIN number").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) {
+    const error = new Error("Enter a valid 15-character GSTIN number");
+    error.status = 400;
+    throw error;
+  }
+  return gstin;
+}
+
 function stripRemovedDealershipFields(dealership = {}) {
   const {
-    gstin,
-    gstinNumber,
-    gstNumber,
     officialDealershipEmail,
     ...rest
   } = dealership || {};
@@ -963,6 +970,7 @@ export async function registerDealerOnboarding(req, res, next) {
       dealershipName: required(req.body.dealershipName, "Dealership name"),
       dealershipBrand,
       authorizedDealerCode: required(req.body.authorizedDealerCode, "Authorized dealer code"),
+      gstinNumber: requiredGstin(req.body.gstinNumber || req.body.gstin || req.body.gstNumber),
       officialDealershipMobile: required(req.body.officialDealershipMobile, "Official dealership mobile"),
       state,
       city,
@@ -1018,6 +1026,7 @@ export async function registerDealerOnboarding(req, res, next) {
       location: city,
       dealershipName: dealership.dealershipName,
       dealershipBrand: dealership.dealershipBrand,
+      gstinNumber: dealership.gstinNumber,
       loginEmail,
       submittedAt: now,
       documents,
@@ -1044,6 +1053,7 @@ export async function registerDealerOnboarding(req, res, next) {
       location: city,
       dealershipName: dealership.dealershipName,
       dealershipBrand: dealership.dealershipBrand,
+      gstinNumber: dealership.gstinNumber,
       loginEmail,
       primaryGoogleEmail: loginEmail,
       submittedAt: now,

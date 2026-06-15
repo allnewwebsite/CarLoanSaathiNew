@@ -419,7 +419,7 @@ check("registration email verification gates remain enforced", () => {
   ], "registration status routes");
 });
 
-check("removed dealership and bank GSTIN fields stay removed from new workflows", () => {
+check("dealership GSTIN is restored while bank GSTIN stays removed", () => {
   const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
   const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
   const dealerController = read("backend/controllers/dealer.controller.js");
@@ -427,7 +427,9 @@ check("removed dealership and bank GSTIN fields stay removed from new workflows"
   const adminController = read("backend/controllers/admin.controller.js");
   const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
   assert(!dealerRegistration.includes("officialDealershipEmail"), "dealer registration UI must not contain Official Dealership Email state or inputs");
-  assert(!dealerRegistration.includes("gstinNumber"), "dealer registration UI must not contain GSTIN Number state or inputs");
+  includesAll(dealerRegistration, ["gstinNumber", "GSTIN Number", "06ABCDE1234F1Z5"], "dealer GSTIN registration UI");
+  includesAll(dealerController, ["requiredGstin", "gstinNumber: requiredGstin", "gstinNumber: dealership.gstinNumber"], "dealer GSTIN backend");
+  includesAll(superAdmin, ["[\"GSTIN\", dealer.gstinNumber || dealer.dealership?.gstinNumber]", "[\"GSTIN\", item.gstinNumber || item.dealership?.gstinNumber]"], "dealer GSTIN admin review");
   assert(!bankRegistration.includes("gstin"), "bank registration UI must not contain GSTIN state, validation, or payload");
   assert(!bankRegistration.includes("GSTIN"), "bank registration UI must not show GSTIN label or validation text");
   assert(!bankRegistration.includes("GST Certificate"), "bank registration UI must not request GST Certificate");
@@ -437,7 +439,7 @@ check("removed dealership and bank GSTIN fields stay removed from new workflows"
   assert(!approvalFields.includes("\"gstin\""), "admin bank approval projection must not include GSTIN");
   const bankApprovalDetail = superAdmin.match(/const sections = type === "banks"[\s\S]*?: \[/)?.[0] || superAdmin;
   assert(!bankApprovalDetail.includes("[\"GSTIN\""), "admin bank review must not display GSTIN");
-  includesAll(dealerController, ["stripRemovedDealershipFields", "officialDealershipEmail", "gstinNumber"], "legacy dealership field sanitizer");
+  includesAll(dealerController, ["stripRemovedDealershipFields", "officialDealershipEmail"], "legacy dealership email sanitizer");
 });
 
 check("public header hides dealership menu while preserving dealer entry points", () => {
