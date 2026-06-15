@@ -933,7 +933,6 @@ export async function registerBankPartner(req, res, next) {
       branchIfsc: ifsc,
       ifscCode: ifsc,
       bankIfsc: ifsc,
-      gstin: String(req.body.gstin || "").trim().toUpperCase(),
       branchLocation: location.location,
       bankBranchLocation: location.location,
       contactPerson: String(req.body.contactPerson || "").trim(),

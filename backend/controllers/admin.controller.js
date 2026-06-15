@@ -184,7 +184,6 @@ const APPROVAL_LIST_FIELDS = [
   "email",
   "officialEmail",
   "state",
-  "gstin",
   "monthlyLoanCapacity",
   "monthlyCapacity",
   "approvalLimit",

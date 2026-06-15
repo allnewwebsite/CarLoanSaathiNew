@@ -792,7 +792,7 @@ export function SuperAdminApprovalDetailPage({ type }) {
   const sections = type === "banks"
     ? [
       ["Bank Details", [["Bank Name", item.bankName || item.companyName], ["Email", item.email], ["Mobile", item.mobile]]],
-      ["Branch Details", [["Bank Branch Location", item.bankBranchLocation || item.branchLocation || item.city], ["State", item.state || "Haryana"], ["IFSC", item.ifsc], ["GSTIN", item.gstin]]],
+      ["Branch Details", [["Bank Branch Location", item.bankBranchLocation || item.branchLocation || item.city], ["State", item.state || "Haryana"], ["IFSC", item.ifsc]]],
       ["Branch Manager Details", [["Manager", item.managerName || item.contactPerson], ["Email", item.officialEmail || item.email], ["Mobile", item.mobile]]],
       ["Executive List", (item.executives || []).map((exec, index) => [`Executive ${index + 1}`, exec.name || exec.fullName || exec.email])],
       ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount]]],
@@ -816,7 +816,6 @@ export function SuperAdminApprovalDetailPage({ type }) {
       </div>
       <DataTable title="Uploaded Verification Files" headers={["Document", "File", "Status", "Actions"]} rows={((item.documents || []).length ? item.documents : type === "banks" ? [
         { type: "Authorization Letter" },
-        { type: "GST Certificate" },
         { type: "Branch Address Proof" },
         { type: "Manager ID" },
       ] : [
