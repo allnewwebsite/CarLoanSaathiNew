@@ -1,5 +1,4 @@
 import { Component } from "react";
-import { captureError } from "../services/monitoring.js";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -12,7 +11,9 @@ export class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    captureError(error, { componentStack: info.componentStack });
+    import("../services/monitoring.js").then(({ captureError }) => {
+      captureError(error, { componentStack: info.componentStack });
+    });
   }
 
   render() {

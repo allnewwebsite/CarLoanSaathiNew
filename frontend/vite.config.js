@@ -11,7 +11,6 @@ export default defineConfig({
           firebase: ["firebase/app", "firebase/auth"],
           axios: ["axios"],
           icons: ["lucide-react"],
-          motion: ["framer-motion"],
           charts: ["recharts"],
         },
       },

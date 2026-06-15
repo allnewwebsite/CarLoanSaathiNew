@@ -129,6 +129,20 @@ check("frontend keeps Firestore and Storage out of the initial registration bund
   includesAll(uploadHelper, ["uploadStorageFile", "deleteStoragePath", "uploadBytesResumable"], "lazy Firebase upload helper");
 });
 
+check("frontend app shell keeps dashboard, Sentry, and motion out of startup", () => {
+  const main = read("frontend/src/main.jsx");
+  const errorBoundary = read("frontend/src/components/ErrorBoundary.jsx");
+  const router = read("frontend/src/routes/router.jsx");
+  const viteConfig = read("frontend/vite.config.js");
+  assert(!main.includes("import { initFrontendMonitoring }"), "main entry must not statically import Sentry monitoring");
+  includesAll(main, ["import(\"./services/monitoring.js\")", "requestIdleCallback"], "lazy Sentry startup");
+  assert(!errorBoundary.includes("import { captureError }"), "error boundary must not statically import Sentry monitoring");
+  includesAll(errorBoundary, ["import(\"../services/monitoring.js\")"], "lazy Sentry error capture");
+  assert(!router.includes("import { DashboardLayout }"), "router must not statically import dashboard layout into public startup");
+  includesAll(router, ["const DashboardLayout = lazy(() => import(\"../layouts/DashboardLayout.jsx\")"], "lazy dashboard layout");
+  assert(!viteConfig.includes("motion: [\"framer-motion\"]"), "Vite manual chunks must not force Framer Motion into shared startup chunks");
+});
+
 check("Firestore direct-id collections avoid fallback query chains", () => {
   const firestoreService = read("backend/services/firestore.service.js");
   includesAll(firestoreService, [

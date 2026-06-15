@@ -1,7 +1,6 @@
 import { lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { PublicLayout } from "../layouts/PublicLayout.jsx";
-import { DashboardLayout } from "../layouts/DashboardLayout.jsx";
 import { ROLES } from "../auth/roleSystem.js";
 import { ProtectedRoute } from "./ProtectedRoute.jsx";
 
@@ -67,6 +66,7 @@ const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLea
 const AdminMonitoringCenter = lazyPage(pageModules.adminMonitoring, "AdminMonitoringCenter");
 const ArchivedCasesPage = lazyPage(pageModules.archivedCases, "ArchivedCasesPage");
 const LegalPage = lazyPage(pageModules.legal, "LegalPage");
+const DashboardLayout = lazy(() => import("../layouts/DashboardLayout.jsx").then((module) => ({ default: module.DashboardLayout })));
 
 export const router = createBrowserRouter([
   {
