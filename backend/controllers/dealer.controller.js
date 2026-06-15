@@ -1228,9 +1228,8 @@ export async function createDealerLead(req, res, next) {
 export async function getDealerLeads(req, res, next) {
   const startedAt = Date.now();
   const requestStartedAt = Number(res.locals.startedAt || startedAt);
-  let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
+  let authStarted, authEnded, queryStarted, queryEnded;
   let projectionStarted, projectionEnded, fallbackStarted, fallbackEnded;
-  let parseStarted, parseEnded;
   let projectionError = null;
   let fallbackTriggered = false;
   try {
@@ -1256,12 +1255,6 @@ export async function getDealerLeads(req, res, next) {
       fallbackEnded = Date.now();
     }
     queryEnded = Date.now();
-    serializeStarted = Date.now();
-    const responseJson = JSON.stringify(page);
-    serializeEnded = Date.now();
-    parseStarted = Date.now();
-    const responseBody = JSON.parse(responseJson);
-    parseEnded = Date.now();
     const rowCount = Array.isArray(page?.data) ? page.data.length : 0;
     const fieldCounts = Array.isArray(page?.data) ? page.data.map((item) => Object.keys(item || {}).length) : [];
     const maxFieldCount = fieldCounts.length ? Math.max(...fieldCounts) : 0;
@@ -1278,12 +1271,12 @@ export async function getDealerLeads(req, res, next) {
       executiveLookupCount: 0,
       dealershipLookupCount: 0,
       documentFormattingCount: 0,
-      jsonStringifyDurationMs: serializeEnded - serializeStarted,
-      jsonParseDurationMs: parseEnded - parseStarted,
+      jsonStringifyDurationMs: 0,
+      jsonParseDurationMs: 0,
       rowCount,
       totalFieldCount,
       maxFieldCount,
-      responseBytes: Buffer.byteLength(responseJson),
+      responseBytes: null,
       fallbackTriggered,
       projectionDurationMs: projectionEnded - projectionStarted,
       fallbackDurationMs: fallbackTriggered ? fallbackEnded - fallbackStarted : 0,
@@ -1304,10 +1297,10 @@ export async function getDealerLeads(req, res, next) {
       fallbackDurationMs: fallbackTriggered ? fallbackEnded - fallbackStarted : 0,
       fallbackResultCount: fallbackTriggered && Array.isArray(page?.data) ? page.data.length : 0,
       queryDurationMs: queryEnded - queryStarted,
-      serializationDurationMs: serializeEnded - serializeStarted,
+      serializationDurationMs: 0,
       controllerDurationMs: Date.now() - startedAt,
       totalDurationMs: Date.now() - requestStartedAt,
-      responseBytes: Buffer.byteLength(responseJson),
+      responseBytes: null,
     });
     logInfo("Dealer lead query completed", {
       requestId: req.requestId,
@@ -1316,11 +1309,11 @@ export async function getDealerLeads(req, res, next) {
       totalMs: Date.now() - startedAt,
       authMs: authEnded - authStarted,
       queryMs: queryEnded - queryStarted,
-      serializeMs: serializeEnded - serializeStarted,
+      serializeMs: 0,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(page?.data) ? page.data.length : undefined,
     });
-    res.json(responseBody);
+    res.json(page);
   } catch (error) {
     next(error);
   }
@@ -1478,7 +1471,7 @@ export async function getDealerStaff(req, res, next) {
     const cachedStaff = await cached(cacheKey, 30000, async () => {
       cacheHit = false;
       const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { ...req.query, limit } }).catch(() => null);
-      if (projected?.length) {
+      if (Array.isArray(projected)) {
         logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: projected.length });
         return projected;
       }

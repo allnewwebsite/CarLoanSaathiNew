@@ -1035,7 +1035,7 @@ export async function getBankRegistrationStatus(req, res, next) {
 
 export async function getBankLeads(req, res, next) {
   const startedAt = Date.now();
-  let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
+  let authStarted, authEnded, queryStarted, queryEnded;
   try {
     authStarted = Date.now();
     const partner = await currentPartner(req);
@@ -1048,9 +1048,6 @@ export async function getBankLeads(req, res, next) {
       const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit });
       response = pageResponse({ data: scopedLeads.slice(0, limit), limit, nextCursor: null, total: scopedLeads.length });
       queryEnded = Date.now();
-      serializeStarted = Date.now();
-      const responseJson = JSON.stringify(response);
-      serializeEnded = Date.now();
       logInfo("Bank executive lead query completed", {
         requestId: req.requestId,
         path: req.originalUrl,
@@ -1058,11 +1055,11 @@ export async function getBankLeads(req, res, next) {
         totalMs: Date.now() - startedAt,
         authMs: authEnded - authStarted,
         queryMs: queryEnded - queryStarted,
-        serializeMs: serializeEnded - serializeStarted,
+        serializeMs: 0,
         warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
         dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
       });
-      return res.json(JSON.parse(responseJson));
+      return res.json(response);
     }
     const { limit } = paginationParams(req.query);
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: Math.min(Math.max(limit * 3, limit), 100) });
@@ -1078,9 +1075,6 @@ export async function getBankLeads(req, res, next) {
       meta: { returned: data.length, bankId: bankIdentity(partner).bankId, branchId: partner.branchId || partner.branchCity || partner.bankBranchLocation },
     });
     const page = pageResponse({ data, limit, nextCursor: null, total: scopedLeads.length });
-    serializeStarted = Date.now();
-    const responseJson = JSON.stringify(page);
-    serializeEnded = Date.now();
     logInfo("Bank manager lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
@@ -1088,11 +1082,11 @@ export async function getBankLeads(req, res, next) {
       totalMs: Date.now() - startedAt,
       authMs: authEnded - authStarted,
       queryMs: queryEnded - queryStarted,
-      serializeMs: serializeEnded - serializeStarted,
+      serializeMs: 0,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: data.length,
     });
-    return res.json(JSON.parse(responseJson));
+    return res.json(page);
   } catch (error) {
     next(error);
   }
@@ -1154,6 +1148,11 @@ export async function getBankExecutives(req, res, next) {
       return queryExecutiveSummaryProjection({ bankId: identity.bankId, query: { ...req.query, limit } }).catch(() => null);
     });
     if (projectionCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/executives", cacheKey: projectionCacheKey });
+    if (Array.isArray(projected) && projected.length === 0) {
+      logProjectionRead("PROJECTION-HIT", req, { collection: "executiveSummaryProjection", resultCount: 0 });
+      logReadMetric("READS-AFTER", req, { endpoint: "GET /api/bank/executives", estimatedReads: projectionCacheHit ? 0 : 1, limit });
+      return res.json({ data: [] });
+    }
     if (projected?.length) {
       const canonicalActiveCount = await countCanonicalBankExecutives(identity).catch(() => projected.length);
       if (canonicalActiveCount > projected.length) {
@@ -2124,7 +2123,7 @@ export async function getBankLeadTimeline(req, res, next) {
   try {
     await requireAssignedLead(req);
     const projected = await queryTimelineProjection({ leadId: req.params.id, actor: req.user, query: req.query }).catch(() => null);
-    if (projected?.data?.length) return res.json(projected.data);
+    if (projected) return res.json(projected.data || []);
     res.json(await getTimelineForLead(req.params.id));
   } catch (error) {
     next(error);

@@ -937,18 +937,15 @@ async function deleteFirebaseAuthByEmail(email) {
 
 export async function getAdminLeads(req, res, next) {
   const startedAt = Date.now();
-  let queryStarted, queryEnded, enrichStarted, enrichEnded, serializeStarted, serializeEnded;
+  let queryStarted, queryEnded, enrichStarted, enrichEnded;
   try {
     queryStarted = Date.now();
-    const page = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null)
-      || await queryAllLeads({ query: req.query });
+    const projectedPage = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null);
+    const page = projectedPage || await queryAllLeads({ query: req.query });
     queryEnded = Date.now();
     enrichStarted = Date.now();
     const response = { ...page, data: await enrichAdminLeadRows(page.data) };
     enrichEnded = Date.now();
-    serializeStarted = Date.now();
-    const responseJson = JSON.stringify(response);
-    serializeEnded = Date.now();
     logInfo("Admin lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
@@ -956,11 +953,11 @@ export async function getAdminLeads(req, res, next) {
       totalMs: Date.now() - startedAt,
       queryMs: queryEnded - queryStarted,
       enrichMs: enrichEnded - enrichStarted,
-      serializeMs: serializeEnded - serializeStarted,
+      serializeMs: 0,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(response?.data) ? response.data.length : undefined,
     });
-    res.json(JSON.parse(responseJson));
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -1974,7 +1971,7 @@ async function adminEcosystemPayload(req) {
 
     const leadSummaryPromise = cached(`admin:ecosystem:leads:${leadLimit}:${req.query.cursor || ""}:v2`, 15000, async () => {
       const projected = await queryLeadProjectionForUser({ user: req.user, query: { limit: leadLimit, cursor: req.query.cursor } }).catch(() => null);
-      if (projected?.data?.length) return projected;
+      if (projected) return projected;
       return queryAllLeads({ query: { limit: leadLimit, cursor: req.query.cursor } });
     });
 

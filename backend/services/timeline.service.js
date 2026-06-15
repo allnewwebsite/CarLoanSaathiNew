@@ -283,10 +283,10 @@ export async function getTimelineForLead(leadId) {
 
 export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
   const projected = await queryTimelineProjection({ leadId, query, actor }).catch(() => null);
-  if (projected?.data?.length) {
+  if (projected) {
     return {
-      data: projected.data,
-      total: projected.data.length,
+      data: projected.data || [],
+      total: (projected.data || []).length,
       page: Math.max(Number(query.page || 1), 1),
       limit: projected.limit || Math.min(Math.max(Number(query.limit || 20), 1), 100),
     };

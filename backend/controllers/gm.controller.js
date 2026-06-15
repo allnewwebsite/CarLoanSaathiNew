@@ -134,7 +134,7 @@ async function gmLeads(req) {
 
 export async function getGmLeads(req, res, next) {
   const startedAt = Date.now();
-  let authStarted, authEnded, queryStarted, queryEnded, serializeStarted, serializeEnded;
+  let authStarted, authEnded, queryStarted, queryEnded;
   try {
     authStarted = Date.now();
     const dealershipEmail = await dealershipEmailForGm(req);
@@ -154,7 +154,7 @@ export async function getGmLeads(req, res, next) {
         user: { ...req.user, role: "gm", dealershipId: dealershipEmail },
         query: { ...queryWithoutSalesperson, salespersonId: salesperson.id || salesperson.sourceId || salesperson.jobId || salesperson.email, limit, page: requestedPage },
       }).catch(() => null) : null;
-      if (projectionPage?.data?.length) {
+      if (projectionPage) {
         page = projectionPage;
       } else {
         const fullPage = await queryLeadProjectionForUser({
@@ -179,9 +179,6 @@ export async function getGmLeads(req, res, next) {
       }).catch(() => null) || await queryDealershipLeads({ dealershipId: dealershipEmail, query: req.query });
     }
     queryEnded = Date.now();
-    serializeStarted = Date.now();
-    const responseJson = JSON.stringify(page);
-    serializeEnded = Date.now();
     logInfo("GM lead query completed", {
       requestId: req.requestId,
       path: req.originalUrl,
@@ -189,11 +186,11 @@ export async function getGmLeads(req, res, next) {
       totalMs: Date.now() - startedAt,
       authMs: authEnded - authStarted,
       queryMs: queryEnded - queryStarted,
-      serializeMs: serializeEnded - serializeStarted,
+      serializeMs: 0,
       warmup: String(req.headers["x-cls-warmup"] || "").toLowerCase() === "true",
       dataCount: Array.isArray(page?.data) ? page.data.length : undefined,
     });
-    res.json(JSON.parse(responseJson));
+    res.json(page);
   } catch (error) {
     next(error);
   }
