@@ -73,6 +73,7 @@ export const api = axios.create({
 
 let refreshPromise = null;
 const getCache = new Map();
+const pendingGetRequests = new Map();
 let appCheckCache = { token: "", expiresAt: 0, promise: null };
 let getCacheHydrated = false;
 let getCachePersistTimer = null;
@@ -187,6 +188,53 @@ function cachedResponse(config) {
   const entry = getCache.get(key);
   if (!entry || entry.stale || entry.expiresAt <= Date.now()) return null;
   return { ...entry.response, config, request: { cached: true } };
+}
+
+function axiosAdapter(adapter) {
+  if (typeof adapter === "function") return adapter;
+  if (typeof axios.getAdapter === "function") return axios.getAdapter(adapter || api.defaults.adapter || axios.defaults.adapter);
+  return null;
+}
+
+function coalesceGetRequest(config) {
+  const key = cacheKey(config);
+  if (!key || config.adapter) return false;
+
+  const pending = pendingGetRequests.get(key);
+  if (pending) {
+    config.adapter = () => pending.then((response) => ({
+      ...response,
+      config,
+      request: { ...(response.request || {}), deduped: true },
+    }));
+    return true;
+  }
+
+  const adapter = axiosAdapter(api.defaults.adapter || axios.defaults.adapter);
+  if (!adapter) return false;
+
+  let resolvePending;
+  let rejectPending;
+  const shared = new Promise((resolve, reject) => {
+    resolvePending = resolve;
+    rejectPending = reject;
+  });
+  shared.catch(() => {});
+  pendingGetRequests.set(key, shared);
+
+  config.adapter = async (adapterConfig) => {
+    try {
+      const response = await adapter(adapterConfig);
+      resolvePending(response);
+      return response;
+    } catch (error) {
+      rejectPending(error);
+      throw error;
+    } finally {
+      pendingGetRequests.delete(key);
+    }
+  };
+  return true;
 }
 
 function rememberGetResponse(response) {
@@ -562,11 +610,13 @@ api.interceptors.request.use(async (config) => {
   config.headers = config.headers || {};
   config.headers["X-CLS-Portal"] = requestPortalHeader();
   const cached = cachedResponse(config);
-  markApiRequestStart(config, { cacheHit: Boolean(cached) });
   if (cached) {
+    markApiRequestStart(config, { cacheHit: true });
     config.adapter = () => Promise.resolve(cached);
     return config;
   }
+  const coalesced = coalesceGetRequest(config);
+  markApiRequestStart(config, { cacheHit: false, coalesced });
   if (isAuthEndpoint) {
     config.timeout = Math.max(Number(config.timeout) || 0, AUTH_REQUEST_TIMEOUT_MS);
   }

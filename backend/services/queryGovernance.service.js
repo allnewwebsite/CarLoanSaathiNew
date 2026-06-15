@@ -6,7 +6,9 @@ export const QUERY_LIMITS = Object.freeze({
   maxLimit: Number(process.env.FIRESTORE_MAX_PAGE_SIZE || 100),
   timeoutMs: Number(process.env.FIRESTORE_QUERY_TIMEOUT_MS || 8000),
   slowQueryMs: Number(process.env.FIRESTORE_SLOW_QUERY_MS || 1200),
-  cursorOnly: String(process.env.FIRESTORE_CURSOR_ONLY || "").toLowerCase() === "true",
+  cursorOnly: process.env.NODE_ENV === "production"
+    ? String(process.env.FIRESTORE_CURSOR_ONLY || "true").toLowerCase() !== "false"
+    : String(process.env.FIRESTORE_CURSOR_ONLY || "").toLowerCase() === "true",
   maxOffsetRows: Number(process.env.FIRESTORE_MAX_OFFSET_ROWS || 500),
 });
 

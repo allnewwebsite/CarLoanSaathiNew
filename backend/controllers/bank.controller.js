@@ -1105,7 +1105,7 @@ export async function getBankDealerships(req, res, next) {
     const identity = bankIdentity(partner);
     const cacheKey = `bank:dealerships:${identity.bankId}:${req.query.page || 1}:${req.query.limit || 20}:${String(req.query.search || "").trim().toLowerCase()}`;
     const projected = await cached(cacheKey, 20000, () => queryBankDealershipProjection({ bankId: identity.bankId, query: req.query }).catch(() => null));
-    if (projected?.data?.length) return res.json(projected);
+    if (projected) return res.json(projected);
 
     const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: 100 });
@@ -1127,7 +1127,7 @@ export async function getBankDealershipDisbursedCases(req, res, next) {
       user: { ...req.user, role: "bank-manager", bankId: identity.bankId },
       query: { ...req.query, dealershipId, status: LEAD_STATUSES.DISBURSED },
     }).catch(() => null);
-    if (projected?.data?.length) return res.json(projected);
+    if (projected) return res.json(projected);
 
     const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, status: LEAD_STATUSES.DISBURSED, limit: 100 });
