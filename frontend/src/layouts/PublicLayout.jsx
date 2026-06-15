@@ -1,4 +1,4 @@
-import { ChevronDown, Landmark, Menu, Users, X } from "lucide-react";
+import { ChevronDown, Landmark, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 
@@ -12,14 +12,6 @@ const customerNav = [
 ];
 
 const roleGroups = [
-  {
-    key: "dealerships",
-    label: "For Dealerships",
-    icon: Users,
-    items: [
-      { label: "Dealer Registration", to: "/dealer/register", description: "Create an approved dealership account." },
-    ],
-  },
   {
     key: "banks",
     label: "For Banks",
@@ -125,7 +117,7 @@ function MobileSection({ title, items, open, onToggle, onNavigate }) {
 export function PublicLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState("");
-  const [mobileSections, setMobileSections] = useState({ platform: true, dealerships: false, banks: false });
+  const [mobileSections, setMobileSections] = useState({ platform: true, banks: false });
   const headerRef = useRef(null);
 
   useEffect(() => {
