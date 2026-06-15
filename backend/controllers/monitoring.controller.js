@@ -99,8 +99,8 @@ export async function getAdminMonitoringCenter(_req, res, next) {
     const snapshot = await cached("admin:monitoring:center:v1", 15000, async () => {
       const currentRealtimeStats = realtimeStats();
       const [health, operational, metrics] = await Promise.all([
-        productionHealth({ deep: true }),
-        getOperationalDashboard({ limit: 20 }),
+        productionHealth({ deep: false }),
+        getOperationalDashboard({ limit: 10 }),
         getGlobalMetrics(),
       ]);
       const telemetry = monitoringTelemetrySummary({ realtimeStats: currentRealtimeStats });

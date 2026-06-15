@@ -3,7 +3,7 @@ import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
 import { assertLeadMutable } from "../utils/archive.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
-import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, setRequestCachedValue } from "./requestScope.service.js";
+import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, recordFirestoreWrite, setRequestCachedValue } from "./requestScope.service.js";
 import { logRealtimeTicketStep } from "./realtimeTicketLatency.service.js";
 import { clearCachedValue } from "./ttlCache.service.js";
 import crypto from "node:crypto";
@@ -231,6 +231,17 @@ function clearCollectionReadCache(collection) {
   clearRequestCachedValue(collectionCachePrefix(collection));
 }
 
+function recordWriteMetric({ collection, operation, id = "", documentsWritten = 1, startedAt = Date.now() }) {
+  recordFirestoreWrite({
+    collection,
+    operation,
+    signature: readSignature(collection, operation, id ? [["id", hashValue(id)]] : []),
+    documentsWritten,
+    estimatedWrites: documentsWritten,
+    durationMs: Date.now() - startedAt,
+  });
+}
+
 function clearAuthCacheForWrite(collection, id = "") {
   if (collection === "users") {
     clearCachedValue("identity:candidates:");
@@ -249,6 +260,7 @@ function clearAuthCacheForWrite(collection, id = "") {
 }
 
 export async function createRecord(collection, payload) {
+  const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, payload?.id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
@@ -262,9 +274,11 @@ export async function createRecord(collection, payload) {
     memoryStore[collection] = memoryStore[collection] || [];
     memoryStore[collection].push(record);
     await syncWriteProjections(collection, record);
+    recordWriteMetric({ collection, operation: "create", id: record.id, startedAt });
     return record;
   }
   await firestore.collection(collection).doc(record.id).set(record);
+  recordWriteMetric({ collection, operation: "create", id: record.id, startedAt });
   await syncWriteProjections(collection, record).catch((error) => {
     logWarn("Projection write skipped after create", { collection, error: error.message });
   });
@@ -467,14 +481,17 @@ function bankBranchCatalogProjection(collection, record = {}) {
 
 async function writeProjectionRecord(collection, id, payload) {
   if (!payload || !id) return;
+  const startedAt = Date.now();
   if (!firestore) {
     memoryStore[collection] = memoryStore[collection] || [];
     const index = memoryStore[collection].findIndex((item) => item.id === id);
     if (index >= 0) memoryStore[collection][index] = { ...memoryStore[collection][index], ...payload };
     else memoryStore[collection].push({ id, ...payload });
+    recordWriteMetric({ collection, operation: "projection-write", id, startedAt });
     return;
   }
   await firestore.collection(collection).doc(id).set(payload, { merge: true });
+  recordWriteMetric({ collection, operation: "projection-write", id, startedAt });
 }
 
 export async function syncWriteProjections(collection, record = {}) {
@@ -795,6 +812,7 @@ export async function getRecord(collection, id) {
 }
 
 export async function updateRecord(collection, id, payload) {
+  const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
@@ -811,6 +829,7 @@ export async function updateRecord(collection, id, payload) {
       return updated;
     });
     await syncWriteProjections(collection, updated);
+    recordWriteMetric({ collection, operation: "update", id, startedAt });
     return updated;
   }
   const ref = await resolveDocumentRef(collection, id);
@@ -819,6 +838,7 @@ export async function updateRecord(collection, id, payload) {
     if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
   }
   await ref.update(update);
+  recordWriteMetric({ collection, operation: "update", id, startedAt });
   const doc = await ref.get();
   recordFirestoreRead({ collection, operation: "update-readback", signature: readSignature(collection, "update-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { ...doc.data(), id: doc.id };
@@ -866,6 +886,7 @@ export async function runRecordTransaction(handler) {
 }
 
 export async function upsertRecord(collection, id, payload) {
+  const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, id);
   const cleanPayload = assertNonEmptyFirestoreData(payload);
@@ -877,11 +898,13 @@ export async function upsertRecord(collection, id, payload) {
       if (collection === "leads") assertLeadMutable(memoryStore[collection][index]);
       memoryStore[collection][index] = { ...memoryStore[collection][index], ...update };
       await syncWriteProjections(collection, memoryStore[collection][index]);
+      recordWriteMetric({ collection, operation: "upsert", id, startedAt });
       return memoryStore[collection][index];
     }
     const record = { id, ...update, createdAt: new Date().toISOString() };
     memoryStore[collection].push(record);
     await syncWriteProjections(collection, record);
+    recordWriteMetric({ collection, operation: "upsert", id, startedAt });
     return record;
   }
   if (collection === "leads") {
@@ -889,6 +912,7 @@ export async function upsertRecord(collection, id, payload) {
     if (existing.exists) assertLeadMutable({ id: existing.id, ...existing.data() });
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
+  recordWriteMetric({ collection, operation: "upsert", id, startedAt });
   const doc = await firestore.collection(collection).doc(id).get();
   recordFirestoreRead({ collection, operation: "upsert-readback", signature: readSignature(collection, "upsert-readback", [["id", hashValue(id)]]), documentsReturned: doc.exists ? 1 : 0, estimatedReads: 1 });
   const record = { id: doc.id, ...doc.data() };
@@ -899,6 +923,7 @@ export async function upsertRecord(collection, id, payload) {
 }
 
 export async function incrementRecord(collection, id, increments = {}, base = {}) {
+  const startedAt = Date.now();
   const now = new Date().toISOString();
   if (!firestore) {
     memoryStore[collection] = memoryStore[collection] || [];
@@ -910,6 +935,7 @@ export async function incrementRecord(collection, id, increments = {}, base = {}
     }
     if (index >= 0) memoryStore[collection][index] = next;
     else memoryStore[collection].push(next);
+    recordWriteMetric({ collection, operation: "increment", id, startedAt });
     return next;
   }
   const { FieldValue } = await import("firebase-admin/firestore");
@@ -918,11 +944,13 @@ export async function incrementRecord(collection, id, increments = {}, base = {}
     update[key] = FieldValue.increment(Number(value || 0));
   }
   await firestore.collection(collection).doc(id).set(update, { merge: true });
+  recordWriteMetric({ collection, operation: "increment", id, startedAt });
   const doc = await firestore.collection(collection).doc(id).get();
   return { id: doc.id, ...doc.data() };
 }
 
 export async function bulkUpsertRecords(collection, records = []) {
+  const startedAt = Date.now();
   const rows = records.filter((record) => record?.id);
   if (!rows.length) return 0;
   clearCollectionReadCache(collection);
@@ -937,6 +965,7 @@ export async function bulkUpsertRecords(collection, records = []) {
       });
     }
     memoryStore[collection] = [...byId.values()];
+    recordWriteMetric({ collection, operation: "bulk-upsert", documentsWritten: rows.length, startedAt });
     return rows.length;
   }
   const writer = firestore.bulkWriter();
@@ -945,10 +974,12 @@ export async function bulkUpsertRecords(collection, records = []) {
     writer.set(firestore.collection(collection).doc(id), payload, { merge: true });
   }
   await writer.close();
+  recordWriteMetric({ collection, operation: "bulk-upsert", documentsWritten: rows.length, startedAt });
   return rows.length;
 }
 
 export async function deleteRecord(collection, id) {
+  const startedAt = Date.now();
   const deletedLead = collection === "leads" ? await getRecord(collection, id).catch(() => null) : null;
   if (!firestore) {
     memoryStore[collection] = (memoryStore[collection] || []).filter((item) => item.id !== id);
@@ -956,10 +987,12 @@ export async function deleteRecord(collection, id) {
       const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
       await removeBankAnalyticsAggregate(deletedLead);
     }
+    recordWriteMetric({ collection, operation: "delete", id, startedAt });
     return true;
   }
   const ref = await resolveDocumentRef(collection, id);
   await ref.delete();
+  recordWriteMetric({ collection, operation: "delete", id, startedAt });
   if (deletedLead) {
     const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
     await removeBankAnalyticsAggregate(deletedLead);

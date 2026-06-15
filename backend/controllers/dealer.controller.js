@@ -1150,25 +1150,10 @@ export async function createDealerLead(req, res, next) {
     });
 
     const lead = await createRecord("leads", leadPayload);
-    let responseLead = lead;
-    try {
-      responseLead = await reassignLeadToNextBranchExecutive(lead.id, "lead-created-auto-assignment", email);
-    } catch (assignmentError) {
-      logInfo("Dealer lead created without executive auto-assignment", {
-        requestId: req.requestId,
-        leadId: lead.id,
-        caseId: lead.caseId,
-        dealershipId,
-        bankId: branchTieUp.bankId,
-        ifscCode,
-        reason: assignmentError.message,
-      });
-    }
-    clearLeadSyncCaches(responseLead.id || lead.id);
+    clearLeadSyncCaches(lead.id);
 
     runDealerLeadSideEffects("dealer-lead-created", [
-      () => syncLeadProjectionSoon(responseLead),
-      () => queueLeadAssignedWhatsApp(responseLead),
+      () => syncLeadProjectionSoon(lead),
       () => writeAuditLog({
         req,
         actionType: AUDIT_ACTIONS.LEAD_CREATED,
@@ -1196,6 +1181,26 @@ export async function createDealerLead(req, res, next) {
       }),
     ]);
 
+    runDealerLeadSideEffects("dealer-lead-auto-assignment", [
+      async () => {
+        try {
+          const assignedLead = await reassignLeadToNextBranchExecutive(lead.id, "lead-created-auto-assignment", email);
+          clearLeadSyncCaches(assignedLead.id || lead.id);
+          await queueLeadAssignedWhatsApp(assignedLead);
+        } catch (assignmentError) {
+          logInfo("Dealer lead created without executive auto-assignment", {
+            requestId: req.requestId,
+            leadId: lead.id,
+            caseId: lead.caseId,
+            dealershipId,
+            bankId: branchTieUp.bankId,
+            ifscCode,
+            reason: assignmentError.message,
+          });
+        }
+      },
+    ]);
+
     logInfo("Finance Desk lead created", { 
       requestId: req.requestId, 
       leadId: lead.id, 
@@ -1205,17 +1210,17 @@ export async function createDealerLead(req, res, next) {
     });
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.LEAD_CREATED,
-      lead: responseLead,
+      lead,
       actor: req.user,
-      data: { dealershipId, bankId: responseLead.bankId || branchTieUp.bankId },
+      data: { dealershipId, bankId: lead.bankId || branchTieUp.bankId },
     });
 
     res.status(201).json({ 
       success: true,
-      leadId: responseLead.id, 
-      caseId: responseLead.caseId, 
-      message: responseLead.assignedExecutiveId ? "Lead created and assigned to loan executive" : "Lead created successfully", 
-      lead: responseLead 
+      leadId: lead.id, 
+      caseId: lead.caseId, 
+      message: "Lead created successfully", 
+      lead,
     });
   } catch (error) {
     if (error?.issues) {

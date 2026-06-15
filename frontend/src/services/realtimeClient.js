@@ -104,13 +104,11 @@ function invalidateRealtimeCaches(event = {}) {
     invalidateGetCache({ prefix: "/dealer/available-banks", purge: true });
     invalidateGetCache({ prefix: "/dealer/bank-tieups", purge: true });
     invalidateGetCache({ prefix: "/admin/approvals/banks", purge: true });
-    invalidateGetCache({ prefix: "/admin/monitoring", purge: true });
     return;
   }
   if (event.kind === "dealer") {
     invalidateGetCache({ prefix: "/admin/approvals/dealerships", purge: true });
     invalidateGetCache({ prefix: "/admin/dealerships", purge: true });
-    invalidateGetCache({ prefix: "/admin/monitoring", purge: true });
     invalidateGetCache({ prefix: "/dealer/profile", purge: true });
     invalidateGetCache({ prefix: "/dashboard", purge: true });
     invalidateGetCache({ prefix: "/bank/dealerships", purge: true });

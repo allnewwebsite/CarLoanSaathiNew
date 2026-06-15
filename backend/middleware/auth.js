@@ -320,6 +320,7 @@ export async function authenticate(req, res, next) {
         && !passwordBlocked
       ) {
         req.user = realtimeUserFromToken(tokenUser, email);
+        req.authTokenClaims = tokenUser;
         setRequestScopeUser(req.user);
         logRealtimeTicketStep("realtime_ticket_fast_auth", Date.now() - authStartedAt, {
           cacheStatus: "trusted-jwt",
@@ -459,6 +460,8 @@ export async function authenticate(req, res, next) {
       loginPortal: accountLoginPortal,
       organizationId: accountOrganizationId,
     };
+    req.authAccount = account;
+    req.authTokenClaims = tokenUser;
     setRequestScopeUser(req.user);
     if (passwordChangeRequired(account) && !authUrlAllowedDuringPasswordChange(req)) {
       observeAuthFailure(req, "password_change_required");

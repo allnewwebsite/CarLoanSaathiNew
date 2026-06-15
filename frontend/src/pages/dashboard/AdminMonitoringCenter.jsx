@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, BarChart3, CreditCard, Database, Radio, RefreshCw, Server, ShieldCheck, Zap } from "lucide-react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { api, getCachedGetData } from "../../services/api.js";
@@ -82,7 +82,9 @@ function rows(items = [], mapper) {
 
 export function AdminMonitoringCenter() {
   useRenderDiagnostics("AdminMonitoringCenter");
-  const cached = getCachedGetData("/admin/monitoring") || null;
+  const initialCachedRef = useRef(getCachedGetData("/admin/monitoring") || null);
+  const cached = initialCachedRef.current;
+  const lastSilentRefreshAtRef = useRef(0);
   const [snapshot, setSnapshot] = useState(cached);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState("");
@@ -90,7 +92,9 @@ export function AdminMonitoringCenter() {
   const [whatsappTestLoading, setWhatsappTestLoading] = useState(false);
   const [whatsappTestResult, setWhatsappTestResult] = useState(null);
 
-  const load = async ({ silent = false } = {}) => {
+  const load = useCallback(async ({ silent = false, force = false } = {}) => {
+    if (silent && !force && Date.now() - lastSilentRefreshAtRef.current < 15000) return;
+    if (silent) lastSilentRefreshAtRef.current = Date.now();
     if (!silent) setLoading(true);
     setError("");
     try {
@@ -101,10 +105,10 @@ export function AdminMonitoringCenter() {
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    load({ silent: Boolean(cached) });
+    load({ silent: Boolean(initialCachedRef.current) });
     const refreshFromEvent = () => load({ silent: true });
     const refreshWhenVisible = () => {
       if (!document.hidden) refreshFromEvent();
@@ -119,7 +123,7 @@ export function AdminMonitoringCenter() {
       window.removeEventListener("online", refreshFromEvent);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, []);
+  }, [load]);
 
   const sendWhatsappTest = async () => {
     const phone = whatsappTestPhone.trim();
@@ -250,7 +254,7 @@ export function AdminMonitoringCenter() {
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Monitoring Center</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">Operations view for API latency, Firestore reads, projections, cache behavior, and realtime delivery.</p>
         </div>
-        <button type="button" onClick={() => load()} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+        <button type="button" onClick={() => load({ force: true })} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
       </div>

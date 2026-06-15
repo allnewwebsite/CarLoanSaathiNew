@@ -679,6 +679,46 @@ async function accountPresentation(email, account = {}) {
   return result;
 }
 
+function sessionUserFromAuthenticatedRequest(req, account = req.authAccount || {}, claims = req.authTokenClaims || {}) {
+  const role = account.role || req.user?.role || claims.role;
+  const lifecycle = passwordLifecyclePatch({ ...claims, ...account, role });
+  const presentation = claims.profile || req.user?.profile
+    ? {
+      profile: claims.profile || req.user?.profile,
+      dealershipName: claims.dealershipName || req.user?.dealershipName,
+      dealerCity: claims.dealerCity || req.user?.dealerCity,
+      bankName: claims.bankName || req.user?.bankName,
+      bankIfsc: claims.bankIfsc || req.user?.bankIfsc,
+      bankBranchLocation: claims.bankBranchLocation || req.user?.bankBranchLocation,
+    }
+    : { profile: registrationProfile({ ...claims, ...account, ...req.user }) };
+  return {
+    uid: account.uid || req.user?.uid || claims.uid || account.email || req.user?.email,
+    email: account.email || req.user?.email || claims.email,
+    role,
+    approved: account.approved === true || req.user?.approved === true || claims.approved === true,
+    active: account.active !== false && req.user?.active !== false && claims.active !== false,
+    accountApproved: ["bank-manager", "loan-executive"].includes(role)
+      ? account.accountApproved !== false && claims.accountApproved !== false
+      : account.accountApproved === true || req.user?.accountApproved === true || claims.accountApproved === true || role === "super-admin",
+    accountActive: account.accountActive !== false && req.user?.accountActive !== false && claims.accountActive !== false,
+    dealershipId: account.dealershipId || req.user?.dealershipId || claims.dealershipId || null,
+    bankId: account.bankId || req.user?.bankId || claims.bankId || null,
+    branchId: account.branchId || req.user?.branchId || claims.branchId || null,
+    status: account.status || account.accountStatus || req.user?.status || claims.status || "active",
+    firstLoginRequired: firstLoginRequiredFor({ ...claims, ...account }),
+    passwordChangedAt: lifecycle.passwordChangedAt,
+    passwordExpiresAt: lifecycle.passwordExpiresAt,
+    passwordExpired: lifecycle.passwordExpired,
+    passwordDaysRemaining: lifecycle.passwordDaysRemaining,
+    emailVerified: true,
+    selectedPlan: claims.selectedPlan || account.selectedPlan || "TRIAL",
+    subscriptionStatus: claims.subscriptionStatus || account.subscriptionStatus || undefined,
+    dashboardAccessAllowed: claims.dashboardAccessAllowed ?? account.dashboardAccessAllowed,
+    ...presentation,
+  };
+}
+
 async function dealerRegistrationStatus(email) {
   const registration = await firstLookup([
     () => getRecord("pendingDealerAccounts", email),
@@ -1322,67 +1362,29 @@ export async function restoreSession(req, res, next) {
 export async function refreshSession(req, res, next) {
   try {
     const email = String(req.user?.email || "").trim().toLowerCase();
-    const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session", code: "INVALID_SESSION" });
-    const account = await resolveCanonicalIdentity({ uid, email });
-    if (!account?.role || !ROLE_ROUTES[account.role]) {
+    const account = req.authAccount || req.user || {};
+    const role = account.role || req.user?.role;
+    if (!role || !ROLE_ROUTES[role]) {
       return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
     }
-    if (!accountActive(account)) {
-      const inactive = inactiveAccountMessage(account);
-      return res.status(inactive.code === "ACCOUNT_LOCKED" ? 423 : 403).json(inactive);
-    }
-    if (req.user.sessionId) {
-      const sessionRecord = await getRecord("userSessions", req.user.sessionId).catch(() => null);
-      const accountPortal = portalForRole(account.role);
-      const accountLoginPortal = loginPortalForRole(account.role);
-      if (!sessionRecord || sessionRecord.revoked === true || String(sessionRecord.email || "").toLowerCase() !== email || sessionRecord.role !== account.role || (sessionRecord.portal && sessionRecord.portal !== accountPortal) || (sessionRecord.loginPortal && sessionRecord.loginPortal !== accountLoginPortal)) {
-        return res.status(401).json({ message: "Session expired. Please login again.", code: "SESSION_EXPIRED" });
-      }
-    }
-    const lifecycle = passwordLifecyclePatch(account);
-    await persistPasswordLifecycleIfMissing(email, account, lifecycle);
     const user = {
-      uid: account.uid || account.email || email,
-      email,
-      role: account.role,
-      portal: portalForRole(account.role),
-      scope: portalForRole(account.role),
-      loginPortal: loginPortalForRole(account.role),
+      ...sessionUserFromAuthenticatedRequest(req, account),
+      portal: portalForRole(role),
+      scope: portalForRole(role),
+      loginPortal: loginPortalForRole(role),
       organizationId: organizationIdForAccount(account),
-      createdAt: new Date().toISOString(),
-      approved: account.approved === true,
-      active: account.active !== false,
-      accountStatus: account.accountStatus || account.status || "active",
-      emailVerified: true,
-      accountApproved: ["bank-manager", "loan-executive"].includes(account.role) ? account.accountApproved !== false : account.accountApproved === true || account.role === "super-admin",
-      accountActive: account.accountActive !== false,
-      dealershipId: account.dealershipId || null,
-      bankId: account.bankId || null,
-      branchId: account.branchId || null,
-      portalType: account.portalType || null,
-      accountType: account.accountType || null,
-      status: account.status || "active",
-      firstLoginRequired: firstLoginRequiredFor(account),
-      passwordChangedAt: lifecycle.passwordChangedAt,
-      passwordExpiresAt: lifecycle.passwordExpiresAt,
-      passwordExpired: lifecycle.passwordExpired,
-      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       sessionId: req.user.sessionId || null,
-      lastLoginAt: account.lastLoginAt || null,
-      profile: registrationProfile(account),
     };
-    Object.assign(user, await dealershipEntitlement(account, email));
-    Object.assign(user, await accountPresentation(email, user));
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
     setAuthCookie(res, token);
-    const forcedPasswordPath = passwordChangeRouteForRole(user.role);
+    const forcedPasswordPath = passwordChangeRouteForRole(role);
     res.json({
       token,
       user,
       redirectTo: user.firstLoginRequired === true || user.passwordExpired === true
         ? forcedPasswordPath
-        : entitlementRedirect(user, ROLE_ROUTES[user.role]),
+        : entitlementRedirect(user, ROLE_ROUTES[role]),
     });
   } catch (error) {
     next(error);
@@ -1522,69 +1524,8 @@ export async function validatePasswordReset(req, res, next) {
 export async function session(req, res, next) {
   try {
     const email = String(req.user?.email || "").trim().toLowerCase();
-    const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
-    if (req.user?.role === "super-admin") return res.json({ user: req.user });
-
-    const account = await resolveCanonicalIdentity({ uid, email });
-    if (!account) {
-      return res.status(403).json({ message: "Account no longer exists", code: "ACCOUNT_DELETED" });
-    }
-
-    if (["finance-desk", "gm"].includes(account.role)) {
-      const dealershipId = account.dealershipId || email;
-      const dealership = await getRecord("dealerships", dealershipId) || await getRecord("approvedDealerships", dealershipId);
-      const active = account.approved === true
-        && account.active === true
-        && account.accountApproved === true
-        && account.accountActive === true
-        && dealership
-        && dealership.active !== false
-        && dealership.accountActive !== false
-        && !["pending", "rejected", "suspended", "deleted", "inactive"].includes(String(dealership.status || "").toLowerCase());
-      if (!active) {
-        return res.status(403).json({ message: "Dealer account is inactive or deleted", code: "DEALER_ACCOUNT_INACTIVE" });
-      }
-    }
-
-    if (["bank-manager", "loan-executive"].includes(account.role)) {
-      const active = account.approved === true
-        && account.active === true
-        && account.accountActive !== false
-        && !["pending", "rejected", "suspended", "deleted", "inactive"].includes(String(account.status || "").toLowerCase());
-      if (!active) {
-        return res.status(403).json({ message: "Bank account is inactive or deleted", code: "BANK_ACCOUNT_INACTIVE" });
-      }
-    }
-
-    const presentation = await accountPresentation(email, account);
-    const entitlement = await dealershipEntitlement(account, email);
-    const lifecycle = passwordLifecyclePatch(account);
-    await persistPasswordLifecycleIfMissing(email, account, lifecycle);
-    res.json({
-      user: {
-        uid: account.uid || account.email,
-        email: account.email,
-        role: account.role,
-        approved: account.approved === true,
-        active: account.active !== false,
-        accountApproved: ["bank-manager", "loan-executive"].includes(account.role) ? account.accountApproved !== false : account.accountApproved === true,
-        accountActive: account.accountActive !== false,
-        dealershipId: account.dealershipId || null,
-        bankId: account.bankId || null,
-        branchId: account.branchId || null,
-        status: account.status || "active",
-        firstLoginRequired: firstLoginRequiredFor(account),
-        passwordChangedAt: lifecycle.passwordChangedAt,
-        passwordExpiresAt: lifecycle.passwordExpiresAt,
-        passwordExpired: lifecycle.passwordExpired,
-        passwordDaysRemaining: lifecycle.passwordDaysRemaining,
-        emailVerified: true,
-        profile: presentation.profile || registrationProfile(account),
-        ...entitlement,
-        ...presentation,
-      },
-    });
+    res.json({ user: sessionUserFromAuthenticatedRequest(req) });
   } catch (error) {
     next(error);
   }

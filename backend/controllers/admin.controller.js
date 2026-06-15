@@ -205,6 +205,12 @@ function clearAdminApprovalCaches() {
   clearCachedValue("admin:partners:");
 }
 
+function runAdminSideEffects(label, tasks = []) {
+  Promise.allSettled(tasks.map((task) => task())).catch((error) => {
+    logError("Admin side effect runner failed", { label, error: error.message });
+  });
+}
+
 function clearLeadMutationCaches(leadId) {
   clearCachedValue(`lead-detail:${leadId}:`);
   clearCachedValue(`timeline:lead:${leadId}:`);
@@ -1545,13 +1551,15 @@ export async function suspendBankApproval(req, res, next) {
       suspendedBy: req.user?.email || "super-admin",
     });
     if (bankId) {
-      await upsertRecord("bankPartners", bankId, { status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
-      await upsertRecord("banks", bankId, { status: "suspended", active: false, approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now });
-      await upsertRecord("branches", bankId, { status: "suspended", active: false, publicStatus: "suspended", suspensionReason: reason, suspendedAt: now });
-      if (bankEmail) {
-        await upsertRecord("branchManagers", bankEmail, { email: bankEmail, bankId, branchId: bankId, status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now });
-        await upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: false, accountActive: false, bankId, branchId: bankId, status: "suspended" });
-      }
+      await Promise.all([
+        upsertRecord("bankPartners", bankId, { status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now }),
+        upsertRecord("banks", bankId, { status: "suspended", active: false, approvalStatus: "suspended", suspensionReason: reason, suspendedAt: now }),
+        upsertRecord("branches", bankId, { status: "suspended", active: false, publicStatus: "suspended", suspensionReason: reason, suspendedAt: now }),
+        ...(bankEmail ? [
+          upsertRecord("branchManagers", bankEmail, { email: bankEmail, bankId, branchId: bankId, status: "suspended", active: false, accountActive: false, suspensionReason: reason, suspendedAt: now }),
+          upsertRecord("users", bankEmail, { uid: bankEmail, email: bankEmail, role: "bank-manager", approved: true, active: false, accountActive: false, bankId, branchId: bankId, status: "suspended" }),
+        ] : []),
+      ]);
     }
     const pendingBankAccount = await firstAdminLookup([
       () => getRecord("pendingBankAccounts", request.email),
@@ -1559,8 +1567,6 @@ export async function suspendBankApproval(req, res, next) {
       () => findRecordsByField("pendingBankAccounts", "approvalRequestId", request.id, 5),
     ]);
     if (pendingBankAccount) await updateRecordIfExists("pendingBankAccounts", pendingBankAccount.id, { approvalStatus: "suspended", accountApproved: false, accountActive: false, suspensionReason: reason, suspendedAt: now, suspendedBy: req.user?.email || "super-admin" });
-    await approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason });
-    await incrementPlatformCounters({ bankPartners: -1, activeBanks: -1, disabledBranches: 1 });
     recordMonitoringSignal("BRANCH-DISABLED", {
       collection: "branches",
       projectionId: bankId,
@@ -1587,9 +1593,13 @@ export async function suspendBankApproval(req, res, next) {
         ifscCode: bankId,
       },
     });
-    await writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } });
     clearAdminApprovalCaches();
     res.json({ message: "Bank suspended", request: updated || { ...request, status: "suspended", suspendedAt: now, suspensionReason: reason } });
+    runAdminSideEffects("bank-suspended", [
+      () => approvalLog({ req, entityType: "bank", entityId: request.id, previousStatus: request.status, newStatus: "suspended", rejectionReason: reason }),
+      () => incrementPlatformCounters({ bankPartners: -1, activeBanks: -1, disabledBranches: 1 }),
+      () => writeAuditLog({ req, actionType: "BANK_SUSPENDED", oldValue: request.status, newValue: "suspended", meta: { approvalId: request.id, reason } }),
+    ]);
   } catch (error) {
     next(error);
   }
@@ -1687,7 +1697,8 @@ export async function updateAdminOnboardingRequest(req, res, next) {
     const loginEmail = requestLoginEmail(request);
     const active = status === "Approved";
     if (loginEmail) {
-      await upsertRecord("dealerships", loginEmail, {
+      const dealerWrites = [
+        upsertRecord("dealerships", loginEmail, {
         ...(request.dealership || {}),
         onboardingRequestId: request.id,
         loginEmail,
@@ -1695,8 +1706,8 @@ export async function updateAdminOnboardingRequest(req, res, next) {
         active,
         approvedAt: active ? now : null,
         approvedBy: active ? req.user?.email || "super-admin" : null,
-      });
-      await upsertRecord("dealers", loginEmail, {
+        }),
+        upsertRecord("dealers", loginEmail, {
         ...(request.dealership || {}),
         onboardingRequestId: request.id,
         loginEmail,
@@ -1705,17 +1716,19 @@ export async function updateAdminOnboardingRequest(req, res, next) {
         active,
         approvedAt: active ? now : null,
         approvedBy: active ? req.user?.email || "super-admin" : null,
-      });
+        }),
+      ];
       if (request.city) {
-        await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, {
+        dealerWrites.push(upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, {
           type: "dealer",
           city: request.city,
           dealershipEmail: loginEmail,
           dealershipName: request.dealershipName,
           status,
           active,
-        });
+        }));
       }
+      await Promise.all(dealerWrites);
     }
 
     if (active) {
@@ -1747,20 +1760,21 @@ export async function updateAdminOnboardingRequest(req, res, next) {
       }
     }
 
-    await createNotification({
-      type: active ? "dealer-approved" : status === "Rejected" ? "dealer-rejected" : "dealer-onboarding-update",
-      title: `Dealer onboarding ${status}`,
-      message: `${request.dealershipName || loginEmail} onboarding marked ${status}`,
-      recipientRole: "finance-desk",
-      recipientId: loginEmail,
-      dealerEmail: loginEmail,
-      admin: true,
-      meta: { onboardingRequestId: request.id, dealershipName: request.dealershipName, status },
-    });
-    await writeAuditLog({ req, actionType: "DEALER_ONBOARDING_STATUS", oldValue: request.status, newValue: status, meta: { onboardingRequestId: request.id, loginEmail } });
-
     clearAdminApprovalCaches();
     res.json({ message: `Onboarding request ${status}`, request: updated });
+    runAdminSideEffects("dealer-onboarding-status", [
+      () => createNotification({
+        type: active ? "dealer-approved" : status === "Rejected" ? "dealer-rejected" : "dealer-onboarding-update",
+        title: `Dealer onboarding ${status}`,
+        message: `${request.dealershipName || loginEmail} onboarding marked ${status}`,
+        recipientRole: "finance-desk",
+        recipientId: loginEmail,
+        dealerEmail: loginEmail,
+        admin: true,
+        meta: { onboardingRequestId: request.id, dealershipName: request.dealershipName, status },
+      }),
+      () => writeAuditLog({ req, actionType: "DEALER_ONBOARDING_STATUS", oldValue: request.status, newValue: status, meta: { onboardingRequestId: request.id, loginEmail } }),
+    ]);
   } catch (error) {
     next(error);
   }

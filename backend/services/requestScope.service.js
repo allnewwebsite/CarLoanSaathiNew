@@ -11,6 +11,7 @@ export function runRequestScope(req, next) {
     method: req.method,
     role: null,
     reads: [],
+    writes: [],
     cache: { hits: 0, misses: 0 },
     requestCache: new Map(),
   }, next);
@@ -37,6 +38,19 @@ export function recordFirestoreRead(meta = {}) {
     documentsReturned: Number(meta.documentsReturned || 0),
     estimatedReads: Number(meta.estimatedReads || meta.documentsReturned || 0),
     limit: meta.limit || null,
+  });
+}
+
+export function recordFirestoreWrite(meta = {}) {
+  const scope = storage.getStore();
+  if (!scope) return;
+  scope.writes.push({
+    collection: meta.collection,
+    operation: meta.operation || "write",
+    signature: meta.signature || `${meta.collection || "unknown"}:${meta.operation || "write"}`,
+    documentsWritten: Number(meta.documentsWritten || 1),
+    estimatedWrites: Number(meta.estimatedWrites || meta.documentsWritten || 1),
+    durationMs: Number(meta.durationMs || 0),
   });
 }
 
@@ -72,8 +86,9 @@ export function clearRequestCachedValue(prefix = "") {
 
 export function flushFirestoreReadReport(meta = {}) {
   const scope = storage.getStore();
-  if (!scope || (!scope.reads.length && !scope.cache.hits && !scope.cache.misses)) return;
+  if (!scope || (!scope.reads.length && !scope.writes.length && !scope.cache.hits && !scope.cache.misses)) return;
   const totalEstimatedReads = scope.reads.reduce((sum, item) => sum + Number(item.estimatedReads || 0), 0);
+  const totalEstimatedWrites = scope.writes.reduce((sum, item) => sum + Number(item.estimatedWrites || 0), 0);
   const totalCacheEvents = scope.cache.hits + scope.cache.misses;
   const cacheHitRate = totalCacheEvents ? Math.round((scope.cache.hits / totalCacheEvents) * 100) : null;
   const byCollection = scope.reads.reduce((acc, item) => {
@@ -97,44 +112,42 @@ export function flushFirestoreReadReport(meta = {}) {
     .filter((value) => value.count > 1)
     .sort((left, right) => right.estimatedReads - left.estimatedReads)
     .slice(0, 10);
+  const duplicateReadCount = duplicateReads.reduce((sum, item) => sum + item.count - 1, 0);
+  const writesByCollection = scope.writes.reduce((acc, item) => {
+    const key = item.collection || "unknown";
+    acc[key] = (acc[key] || 0) + Number(item.estimatedWrites || 0);
+    return acc;
+  }, {});
+  const writeOperations = scope.writes.reduce((acc, item) => {
+    const key = `${item.collection || "unknown"}:${item.operation || "write"}`;
+    acc[key] = (acc[key] || 0) + Number(item.estimatedWrites || 0);
+    return acc;
+  }, {});
+  const payload = {
+    requestId: scope.requestId,
+    route: scope.endpoint,
+    endpoint: scope.endpoint,
+    method: scope.method,
+    role: scope.role,
+    queryCount: scope.reads.length,
+    totalEstimatedReads,
+    writeCount: scope.writes.length,
+    totalEstimatedWrites,
+    cacheHit: scope.cache.hits,
+    cacheMiss: scope.cache.misses,
+    cacheHitRate,
+    duplicateReadCount,
+    duplicateReads,
+    statusCode: meta.statusCode || null,
+    durationMs: meta.durationMs || null,
+    responseBytes: meta.responseBytes || null,
+    byCollection,
+    writesByCollection,
+    writeOperations,
+  };
 
-  logInfo("Firestore read meter", {
-    tag: "READ-METER",
-    requestId: scope.requestId,
-    route: scope.endpoint,
-    endpoint: scope.endpoint,
-    method: scope.method,
-    role: scope.role,
-    queryCount: scope.reads.length,
-    totalEstimatedReads,
-    cacheHit: scope.cache.hits,
-    cacheMiss: scope.cache.misses,
-    cacheHitRate,
-    duplicateReadCount: duplicateReads.reduce((sum, item) => sum + item.count - 1, 0),
-    duplicateReads,
-    statusCode: meta.statusCode || null,
-    durationMs: meta.durationMs || null,
-    responseBytes: meta.responseBytes || null,
-    byCollection,
-  });
-  recordReadMeterMetric({
-    requestId: scope.requestId,
-    route: scope.endpoint,
-    endpoint: scope.endpoint,
-    method: scope.method,
-    role: scope.role,
-    queryCount: scope.reads.length,
-    totalEstimatedReads,
-    cacheHit: scope.cache.hits,
-    cacheMiss: scope.cache.misses,
-    cacheHitRate,
-    duplicateReadCount: duplicateReads.reduce((sum, item) => sum + item.count - 1, 0),
-    duplicateReads,
-    statusCode: meta.statusCode || null,
-    durationMs: meta.durationMs || null,
-    responseBytes: meta.responseBytes || null,
-    byCollection,
-  });
+  logInfo("Firestore read meter", { tag: "READ-METER", ...payload });
+  recordReadMeterMetric(payload);
   if (duplicateReads.length) {
     logWarn("Duplicate Firestore reads detected", {
       tag: "READ-METER-DUPLICATE",

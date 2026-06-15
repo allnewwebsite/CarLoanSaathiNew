@@ -85,12 +85,16 @@ export function recordReadMeterMetric(meta = {}) {
     endpoint: routeKey(meta.route || meta.endpoint || ""),
     route: meta.route || meta.endpoint || "",
     totalEstimatedReads: Number(meta.totalEstimatedReads || 0),
+    writeCount: Number(meta.writeCount || 0),
+    totalEstimatedWrites: Number(meta.totalEstimatedWrites || 0),
     cacheHit: Number(meta.cacheHit || 0),
     cacheMiss: Number(meta.cacheMiss || 0),
     cacheHitRate: meta.cacheHitRate === null || meta.cacheHitRate === undefined ? null : Number(meta.cacheHitRate),
     duplicateReadCount: Number(meta.duplicateReadCount || 0),
     duplicateReads: Array.isArray(meta.duplicateReads) ? meta.duplicateReads : [],
     byCollection: meta.byCollection || {},
+    writesByCollection: meta.writesByCollection || {},
+    writeOperations: meta.writeOperations || {},
     durationMs: Number(meta.durationMs || 0),
     responseBytes: Number(meta.responseBytes || 0),
   });
@@ -184,14 +188,13 @@ function firestoreSummary(readItems, signalItems) {
     },
   ).sort((a, b) => b.estimatedReads - a.estimatedReads).slice(0, 10);
 
-  const writeSignals = signalItems.filter((item) => item.tag === "READS-AFTER" && !/^GET\s/i.test(item.endpoint || ""));
   const topWriteEndpoints = groupBy(
-    writeSignals,
-    (item) => item.endpoint || "unknown",
+    readItems.filter((item) => item.totalEstimatedWrites > 0),
+    (item) => `${item.method} ${item.endpoint}`,
     () => ({ count: 0, estimatedWrites: 0 }),
     (row, item) => {
       row.count += 1;
-      row.estimatedWrites += item.estimatedReads || 1;
+      row.estimatedWrites += item.totalEstimatedWrites || 0;
     },
   ).sort((a, b) => b.estimatedWrites - a.estimatedWrites).slice(0, 10);
 
@@ -203,7 +206,7 @@ function firestoreSummary(readItems, signalItems) {
 
   return {
     estimatedReadsToday: readItems.reduce((sum, item) => sum + item.totalEstimatedReads, 0),
-    estimatedWritesToday: topWriteEndpoints.reduce((sum, item) => sum + item.estimatedWrites, 0),
+    estimatedWritesToday: readItems.reduce((sum, item) => sum + item.totalEstimatedWrites, 0),
     topReadEndpoints,
     topWriteEndpoints,
     readReductionScore: before > 0 ? Math.max(0, Math.round(((before - after) / before) * 100)) : null,
@@ -212,6 +215,12 @@ function firestoreSummary(readItems, signalItems) {
     byCollection: readItems.reduce((acc, item) => {
       Object.entries(item.byCollection || {}).forEach(([collection, reads]) => {
         acc[collection] = (acc[collection] || 0) + Number(reads || 0);
+      });
+      return acc;
+    }, {}),
+    writesByCollection: readItems.reduce((acc, item) => {
+      Object.entries(item.writesByCollection || {}).forEach(([collection, writes]) => {
+        acc[collection] = (acc[collection] || 0) + Number(writes || 0);
       });
       return acc;
     }, {}),
