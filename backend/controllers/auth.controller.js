@@ -14,6 +14,7 @@ import {
   upsertCanonicalUser,
 } from "../services/identity.service.js";
 import { getDealershipSubscription } from "../services/subscription.service.js";
+import { cached } from "../services/ttlCache.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
@@ -35,15 +36,33 @@ const LOGIN_PORTAL_ROLES = {
   "loan-executive": ["loan-executive"],
   admin: ["super-admin"],
 };
+const AUTH_ENTITLEMENT_CACHE_TTL_MS = Number(process.env.AUTH_ENTITLEMENT_CACHE_TTL_MS || 60_000);
+const AUTH_DEALERSHIP_ACCESS_CACHE_TTL_MS = Number(process.env.AUTH_DEALERSHIP_ACCESS_CACHE_TTL_MS || 120_000);
+
+function accountEntitlementSnapshot(account = {}) {
+  if (!["finance-desk", "gm"].includes(account?.role)) return null;
+  if (typeof account.dashboardAccessAllowed !== "boolean" || !account.subscriptionStatus) return null;
+  return {
+    selectedPlan: account.selectedPlan || "TRIAL",
+    subscriptionStatus: account.subscriptionStatus,
+    dashboardAccessAllowed: account.dashboardAccessAllowed === true,
+  };
+}
 
 async function dealershipEntitlement(account, fallbackEmail = "") {
   if (!["finance-desk", "gm"].includes(account?.role)) return {};
   const dealershipId = account.dealershipId || fallbackEmail;
-  const subscription = await getDealershipSubscription(dealershipId);
+  const accountSnapshot = accountEntitlementSnapshot(account);
+  if (accountSnapshot) return accountSnapshot;
+  const subscription = await cached(
+    `auth:dealership-entitlement:${dealershipId}`,
+    AUTH_ENTITLEMENT_CACHE_TTL_MS,
+    async () => await getDealershipSubscription(dealershipId, { initialize: false }).catch(() => null) || false
+  );
   return {
     selectedPlan: subscription?.selectedPlan || account.selectedPlan || "TRIAL",
-    subscriptionStatus: subscription?.subscriptionStatus || "EXPIRED",
-    dashboardAccessAllowed: subscription?.dashboardAccessAllowed === true,
+    subscriptionStatus: subscription?.subscriptionStatus || account.subscriptionStatus || "EXPIRED",
+    dashboardAccessAllowed: subscription?.dashboardAccessAllowed ?? account.dashboardAccessAllowed === true,
   };
 }
 
@@ -630,54 +649,6 @@ function registrationProfile(account = {}) {
   };
 }
 
-async function accountPresentation(email, account = {}) {
-  const result = {};
-  try {
-    if (["finance-desk", "gm"].includes(account.role)) {
-      const dealershipId = account.dealershipId || email;
-      const dealership = await getRecord("dealerships", dealershipId).catch(() => null)
-        || await getRecord("approvedDealerships", dealershipId).catch(() => null);
-      result.dealershipName = dealership?.dealershipName || dealership?.name || dealership?.dealershipBrand || account.dealershipName || "";
-      result.dealerCity = dealership?.city || dealership?.dealershipCity || account.dealerCity || "";
-      result.profile = registrationProfile({
-        ...account,
-        ...dealership,
-        dealershipName: result.dealershipName,
-        city: result.dealerCity,
-      });
-    }
-    if (["bank-manager", "loan-executive"].includes(account.role)) {
-      const bankId = account.bankId || email;
-      const [branchManager, bankPartner, bankApproval, executive] = await Promise.all([
-        getRecord("branchManagers", email).catch(() => null),
-        getRecord("bankPartners", bankId).catch(() => null),
-        getRecord("pendingBankApprovals", bankId).catch(() => null),
-        account.role === "loan-executive" ? getRecord("loanExecutives", email).catch(() => null) : Promise.resolve(null),
-      ]);
-      const profile = branchManager || executive || bankPartner || bankApproval || {};
-      result.bankName = profile.bankName || profile.companyName || bankPartner?.bankName || bankPartner?.companyName || account.bankName || "";
-      result.bankIfsc = profile.ifsc || profile.bankIfsc || profile.ifscCode || bankPartner?.ifsc || account.bankIfsc || "";
-      result.bankBranchLocation = profile.bankBranchLocation || profile.branchLocation || profile.branchCity || profile.city || account.branchId || "";
-      result.profile = registrationProfile({
-        ...account,
-        ...bankApproval,
-        ...bankPartner,
-        ...profile,
-        bankName: result.bankName,
-        bankIfsc: result.bankIfsc,
-        bankBranchLocation: result.bankBranchLocation,
-      });
-    }
-  } catch (error) {
-    logWarn("Account presentation lookup skipped", {
-      role: account.role,
-      code: error.code,
-      message: error.message,
-    });
-  }
-  return result;
-}
-
 function sessionUserFromAuthenticatedRequest(req, account = req.authAccount || {}, claims = req.authTokenClaims || {}) {
   const role = account.role || req.user?.role || claims.role;
   const lifecycle = passwordLifecyclePatch({ ...claims, ...account, role });
@@ -835,8 +806,13 @@ async function approvedDealerAccess(email, account) {
     && account?.accountApproved === true
     && account?.accountActive === true;
   const [dealership, registration] = await Promise.all([
-    getRecord("dealerships", dealershipEmail).catch(() => null)
-      .then((record) => record || getRecord("approvedDealerships", dealershipEmail).catch(() => null)),
+    cached(
+      `auth:approved-dealership:${dealershipEmail}`,
+      AUTH_DEALERSHIP_ACCESS_CACHE_TTL_MS,
+      async () => await getRecord("dealerships", dealershipEmail).catch(() => null)
+        || await getRecord("approvedDealerships", dealershipEmail).catch(() => null)
+        || false
+    ),
     activeApprovedAccount
       ? Promise.resolve(null)
       : firstLookup([
@@ -1305,7 +1281,6 @@ export async function restoreSession(req, res, next) {
     }
 
     const lifecycle = passwordLifecyclePatch(account);
-    await persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle);
     const user = {
       uid: firebaseUid || account.uid || normalizedEmail,
       email: normalizedEmail,
@@ -1333,17 +1308,17 @@ export async function restoreSession(req, res, next) {
       passwordExpired: lifecycle.passwordExpired,
       passwordDaysRemaining: lifecycle.passwordDaysRemaining,
       lastLoginAt: new Date().toISOString(),
+      dealershipName: account.dealershipName || null,
+      dealerCity: account.dealerCity || account.city || null,
+      bankName: account.bankName || account.companyName || null,
+      bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || null,
+      bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
       profile: registrationProfile(account),
     };
     Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
-    await upsertCanonicalUser(user.uid, user);
-    await clearFailedLogin(normalizedEmail);
-    await setFirebaseClaims(normalizedEmail, user);
     const sessionId = await createUserSession({ req, user });
     user.sessionId = sessionId;
-    Object.assign(user, await accountPresentation(normalizedEmail, user));
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
-    await writeLoginActivity({ email: normalizedEmail, role: user.role, status: "session-restored", req });
     setAuthCookie(res, token);
     const forcedPasswordPath = passwordChangeRouteForRole(user.role);
     res.json({
@@ -1353,6 +1328,28 @@ export async function restoreSession(req, res, next) {
         ? forcedPasswordPath
         : entitlementRedirect(user, ROLE_ROUTES[user.role]),
     });
+    scheduleLoginMaintenance(req.requestId, [
+      {
+        name: "canonical-session-user",
+        run: () => upsertCanonicalUser(user.uid, user),
+      },
+      {
+        name: "failed-login-clear",
+        run: () => clearFailedLogin(normalizedEmail),
+      },
+      {
+        name: "firebase-claims",
+        run: () => setFirebaseClaims(normalizedEmail, user),
+      },
+      {
+        name: "password-lifecycle",
+        run: () => persistPasswordLifecycleIfMissing(normalizedEmail, account, lifecycle),
+      },
+      {
+        name: "login-activity",
+        run: () => writeLoginActivity({ email: normalizedEmail, role: user.role, status: "session-restored", req }),
+      },
+    ]);
   } catch (error) {
     next(error);
   }

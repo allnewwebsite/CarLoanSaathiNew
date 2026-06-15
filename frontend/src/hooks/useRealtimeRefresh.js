@@ -3,18 +3,12 @@ import { invalidateGetCache } from "../services/api.js";
 import { logSseRefresh } from "../services/frontendLatency.js";
 
 const REFRESH_COOLDOWN_MS = 12000;
-const MUTATION_DEDUPE_MS = 800;
+const MUTATION_DEDUPE_MS = 2000;
 const MUTATION_MEMO_MAX_ENTRIES = 300;
-const refreshStates = new WeakMap();
 const mutationRefreshMemo = new Map();
 
-function refreshState(callback) {
-  let state = refreshStates.get(callback);
-  if (!state) {
-    state = { timer: 0, inFlight: false, lastRefreshAt: 0, pendingInstant: false };
-    refreshStates.set(callback, state);
-  }
-  return state;
+function newRefreshState() {
+  return { timer: 0, inFlight: false, lastRefreshAt: 0, pendingInstant: false };
 }
 
 function rememberMutationRefresh(key) {
@@ -31,6 +25,25 @@ function rememberMutationRefresh(key) {
   return true;
 }
 
+function mutationRefreshKey(refreshKey, detail = {}) {
+  const entityId = detail.leadId
+    || detail.caseId
+    || detail.documentId
+    || detail.executiveId
+    || detail.salespersonId
+    || detail.financeManagerId
+    || detail.dealershipId
+    || detail.bankId
+    || "";
+  return [
+    refreshKey,
+    detail.kind || "generic",
+    detail.eventType || detail.event || "mutation",
+    detail.canonicalUrl || detail.url || "",
+    entityId || detail.status || "",
+  ].join(":");
+}
+
 function invalidatePortalCaches() {
   invalidateGetCache({ prefix: "/dealer/" });
   invalidateGetCache({ prefix: "/gm/" });
@@ -41,9 +54,8 @@ function invalidatePortalCaches() {
   invalidateGetCache({ prefix: "/notifications" });
 }
 
-function runFreshRefresh(callback, { force = false } = {}) {
+function runFreshRefresh(callback, state, { force = false } = {}) {
   if (typeof callback !== "function") return;
-  const state = refreshState(callback);
   const elapsed = Date.now() - state.lastRefreshAt;
   if (state.inFlight || (!force && elapsed < REFRESH_COOLDOWN_MS)) return;
   state.inFlight = true;
@@ -56,14 +68,13 @@ function runFreshRefresh(callback, { force = false } = {}) {
       state.inFlight = false;
       if (state.pendingInstant) {
         state.pendingInstant = false;
-        window.setTimeout(() => runInstantRefresh(callback), 0);
+        window.setTimeout(() => runInstantRefresh(callback, state), 0);
       }
     });
 }
 
-function runInstantRefresh(callback) {
+function runInstantRefresh(callback, state) {
   if (typeof callback !== "function") return;
-  const state = refreshState(callback);
   if (state.inFlight) {
     state.pendingInstant = true;
     return;
@@ -79,7 +90,7 @@ function runInstantRefresh(callback) {
       state.lastRefreshAt = Date.now();
       if (state.pendingInstant) {
         state.pendingInstant = false;
-        window.setTimeout(() => runInstantRefresh(callback), 0);
+        window.setTimeout(() => runInstantRefresh(callback, state), 0);
       }
     });
 }
@@ -93,33 +104,38 @@ export function mutationUrlMatches(detail = {}, prefixes = []) {
   return urls.some((url) => prefixes.some((prefix) => url.startsWith(prefix)));
 }
 
-function scheduleFreshRefresh(callback, delay = 250) {
+function scheduleFreshRefresh(callback, state, delay = 250) {
   if (typeof callback !== "function") return;
-  const state = refreshState(callback);
   window.clearTimeout(state.timer);
-  state.timer = window.setTimeout(() => runFreshRefresh(callback), delay);
+  state.timer = window.setTimeout(() => runFreshRefresh(callback, state), delay);
 }
 
 export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "default", mutationFilter = null } = {}) {
   const refreshRef = useRef(onRefresh);
+  const mutationFilterRef = useRef(mutationFilter);
+  const stateRef = useRef(null);
+  if (!stateRef.current) stateRef.current = newRefreshState();
   refreshRef.current = onRefresh;
+  mutationFilterRef.current = mutationFilter;
 
   useEffect(() => {
-    if (!enabled || typeof onRefresh !== "function") return undefined;
+    if (!enabled || typeof window === "undefined") return undefined;
+    const state = stateRef.current;
     const reconnectRefresh = () => {
       if (document.hidden) return;
       logSseRefresh({ eventType: "online", refreshTriggered: true, component: refreshKey });
-      scheduleFreshRefresh(refreshRef.current);
+      scheduleFreshRefresh(refreshRef.current, state);
     };
     const onRealtimeConnection = (event) => {
       if (event?.detail?.connected !== true || document.hidden) return;
       logSseRefresh({ eventType: "sse-connected", refreshTriggered: true, component: refreshKey });
-      scheduleFreshRefresh(refreshRef.current, 100);
+      scheduleFreshRefresh(refreshRef.current, state, 100);
     };
     const onMutation = (event) => {
       const detail = event?.detail || {};
-      if (typeof mutationFilter === "function" && !mutationFilter(detail)) return;
-      const key = `${refreshKey}:${detail.source || ""}:${detail.at || ""}:${detail.eventType || ""}:${detail.url || ""}`;
+      const filter = mutationFilterRef.current;
+      if (typeof filter === "function" && !filter(detail)) return;
+      const key = mutationRefreshKey(refreshKey, detail);
       if (!rememberMutationRefresh(key)) return;
       logSseRefresh({
         eventType: detail.eventType || detail.kind || "data-mutated",
@@ -128,7 +144,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
         url: detail.url || "",
         realtime: Boolean(detail.realtime),
       });
-      runInstantRefresh(refreshRef.current);
+      runInstantRefresh(refreshRef.current, state);
     };
     window.addEventListener("online", reconnectRefresh);
     window.addEventListener("cls:realtime-connection", onRealtimeConnection);
@@ -137,8 +153,9 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       window.removeEventListener("online", reconnectRefresh);
       window.removeEventListener("cls:realtime-connection", onRealtimeConnection);
       window.removeEventListener("cls:data-mutated", onMutation);
+      window.clearTimeout(state.timer);
     };
-  }, [enabled, mutationFilter, refreshKey]);
+  }, [enabled, refreshKey]);
 }
 
 export function useRealtimeRefresh({ key, onRefresh, enabled = true, mutationFilter = null }) {

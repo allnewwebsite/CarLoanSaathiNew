@@ -228,13 +228,13 @@ function DataTable({ title, headers, rows, loading, page, total, onPage, onExpor
   return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} action={action} />;
 }
 
-function useAdminEcosystem() {
+function useAdminEcosystem({ includeAudit = false } = {}) {
   const cachedEcosystem = getCachedGetData("/admin/ecosystem") || {};
   const cachedAnalytics = getCachedGetData("/admin/analytics") || {};
-  const cachedAuditLogs = getCachedGetData("/admin/audit-logs") || [];
+  const cachedAuditLogs = includeAudit ? getCachedGetData("/admin/audit-logs") || [] : [];
   const cachedAdminState = {
     ...cachedEcosystem,
-    auditLogs: cachedAuditLogs.length ? cachedAuditLogs : cachedEcosystem.auditLogs || [],
+    auditLogs: includeAudit && cachedAuditLogs.length ? cachedAuditLogs : cachedEcosystem.auditLogs || [],
   };
   const [state, setState] = useState({
     leads: [],
@@ -269,14 +269,14 @@ function useAdminEcosystem() {
       const [ecosystem, analyticsResponse, auditResponse] = await Promise.all([
         api.get("/admin/ecosystem"),
         api.get("/admin/analytics"),
-        api.get("/admin/audit-logs"),
+        includeAudit ? api.get("/admin/audit-logs") : Promise.resolve({ data: [] }),
       ]);
-      setState((current) => ({ ...current, ...(ecosystem.data || {}), auditLogs: auditResponse.data || [] }));
+      setState((current) => ({ ...current, ...(ecosystem.data || {}), ...(includeAudit ? { auditLogs: auditResponse.data || [] } : {}) }));
       setAnalytics(analyticsResponse.data || {});
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [includeAudit]);
 
   useEffect(() => { load({ silent: Boolean(cachedEcosystem && Object.keys(cachedEcosystem).length) }); }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
@@ -646,7 +646,7 @@ export function SuperAdminDashboard({ mode = "dashboard" }) {
 
 export function SuperAdminLeadDetailPage() {
   const { leadId } = useParams();
-  const data = useAdminEcosystem();
+  const data = useAdminEcosystem({ includeAudit: true });
   const cachedLead = getCachedGetData(`/admin/leads/${leadId}`)
     || data.leads.find((item) => item.id === leadId || item.caseId === leadId);
   const [detailLead, setDetailLead] = useState(() => cachedLead || null);

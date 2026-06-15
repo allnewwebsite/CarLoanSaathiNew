@@ -344,6 +344,9 @@ export async function getActiveBankBranches() {
       approved: true,
       active: true,
     }));
+  if (catalogRows.length) {
+    return catalogRows.sort((left, right) => `${left.bankName} ${left.ifscCode}`.localeCompare(`${right.bankName} ${right.ifscCode}`));
+  }
   const [banks, bankPartners, branches, branchManagers, pendingBankApprovals] = await Promise.all([
     boundedBankSourceRecords("banks"),
     boundedBankSourceRecords("bankPartners"),

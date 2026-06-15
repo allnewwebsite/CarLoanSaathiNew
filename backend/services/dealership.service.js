@@ -389,20 +389,23 @@ export async function updateDealershipBankTieUps(dealershipId, ifscCodes, req = 
     throw error;
   }
 
+  const availableBranches = await getBankBranchCatalog();
+  const branchesByIfsc = new Map(availableBranches.map((branch) => [String(branch.ifscCode || "").toUpperCase(), branch]));
+
   // Validate all IFSC codes exist and are approved/active
   const validatedCodes = [];
   for (const ifsc of ifscCodes) {
     const normalized = String(ifsc).trim().toUpperCase();
-    try {
-      const bank = await getBankByIFSC(normalized);
-      if (!bank.approved || !bank.active) {
-        logInfo("Bank not approved/active, skipping", { ifsc: normalized });
-        continue;
-      }
-      validatedCodes.push(normalized);
-    } catch (error) {
+    const bank = branchesByIfsc.get(normalized);
+    if (!bank) {
       logInfo("Bank IFSC not found", { ifsc: normalized });
+      continue;
     }
+    if (!bank.approved || !bank.active) {
+      logInfo("Bank not approved/active, skipping", { ifsc: normalized });
+      continue;
+    }
+    validatedCodes.push(normalized);
   }
 
   // Remove duplicates
@@ -412,7 +415,7 @@ export async function updateDealershipBankTieUps(dealershipId, ifscCodes, req = 
   const currentTieUps = Array.isArray(dealership.bankTieUps) ? dealership.bankTieUps : [];
   const removedIFSCs = currentTieUps.filter((ifsc) => !uniqueCodes.includes(ifsc));
 
-  for (const removedIfsc of removedIFSCs) {
+  const activeLeadChecks = await Promise.all(removedIFSCs.map(async (removedIfsc) => {
     const activeLeads = await queryRecords("leads", {
       where: [
         { field: "dealershipId", value: dealershipId },
@@ -421,30 +424,32 @@ export async function updateDealershipBankTieUps(dealershipId, ifscCodes, req = 
       ],
       maxLimit: 1,
     });
+    return { removedIfsc, active: activeLeads.data.length > 0 };
+  }));
 
-    if (activeLeads.data.length > 0) {
-      const error = new Error(`Cannot remove ${removedIfsc} - active leads exist with this branch`);
-      error.status = 409;
-      error.code = "ACTIVE_LEADS_WITH_REMOVED_BRANCH";
-      throw error;
-    }
+  const blockedRemoval = activeLeadChecks.find((item) => item.active);
+  if (blockedRemoval) {
+    const error = new Error(`Cannot remove ${blockedRemoval.removedIfsc} - active leads exist with this branch`);
+    error.status = 409;
+    error.code = "ACTIVE_LEADS_WITH_REMOVED_BRANCH";
+    throw error;
   }
 
   const now = new Date().toISOString();
   const updateDate = {};
-  for (const ifsc of uniqueCodes) {
+  await Promise.all(uniqueCodes.map(async (ifsc) => {
     updateDate[ifsc] = currentTieUps.includes(ifsc) ? dealership.bankTieUpDates?.[ifsc] : now;
-    const bank = await getBankByIFSC(ifsc);
+    const bank = branchesByIfsc.get(ifsc);
     await upsertTieUpRecord(dealershipId, bank, ifsc, req, true, updateDate[ifsc]);
-  }
-  for (const ifsc of removedIFSCs) {
+  }));
+  await Promise.all(removedIFSCs.map(async (ifsc) => {
     try {
-      const bank = await getBankByIFSC(ifsc);
+      const bank = branchesByIfsc.get(ifsc) || await getBankByIFSC(ifsc);
       await upsertTieUpRecord(dealershipId, bank, ifsc, req, false, dealership.bankTieUpDates?.[ifsc] || now);
     } catch (error) {
       logInfo("Removed bank tie-up relation could not resolve bank", { ifsc, dealershipId });
     }
-  }
+  }));
 
   const updated = await updateRecord("dealerships", dealershipId, {
     bankTieUps: uniqueCodes,

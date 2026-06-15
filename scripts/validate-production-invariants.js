@@ -43,6 +43,7 @@ check("production auth logging does not expose token or session details", () => 
 
 check("SSE is the only dashboard realtime transport", () => {
   const realtimeHook = read("frontend/src/hooks/useRealtimeRefresh.js");
+  const realtimeClient = read("frontend/src/services/realtimeClient.js");
   const authContext = read("frontend/src/context/AuthContext.jsx");
   const monitoringCenter = read("frontend/src/pages/dashboard/AdminMonitoringCenter.jsx");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/realtimeManager.js")), "legacy Firestore realtime manager must be removed");
@@ -50,6 +51,28 @@ check("SSE is the only dashboard realtime transport", () => {
   assert(!realtimeHook.includes("onSnapshot"), "dashboard realtime hooks must not open Firestore listeners");
   assert(realtimeHook.includes("cls:data-mutated"), "dashboard refresh must consume SSE mutation events");
   assert(realtimeHook.includes("cls:realtime-connection"), "dashboard refresh must reconcile after SSE reconnect");
+  includesAll(realtimeHook, [
+    "const refreshRef = useRef(onRefresh);",
+    "const mutationFilterRef = useRef(mutationFilter);",
+    "const stateRef = useRef(null);",
+    "function mutationRefreshKey(refreshKey, detail = {})",
+    "const MUTATION_DEDUPE_MS = 2000;",
+    "if (!enabled || typeof window === \"undefined\") return undefined;",
+  ], "stable realtime refresh hook");
+  assert(!realtimeHook.includes("if (!enabled || typeof onRefresh !== \"function\")"), "realtime refresh hook must attach listeners even if callback appears after first render");
+  includesAll(realtimeClient, [
+    "connectionGeneration",
+    "expectedGeneration !== connectionGeneration",
+    "REALTIME_LEADER_PREFIX",
+    "BroadcastChannel(REALTIME_EVENT_CHANNEL)",
+    "writeLeader(activeIdentity)",
+    "dispatchConnectionState(true, { shared: true, leaderTab: false })",
+    "if (!remote) resetHeartbeatWatch();",
+    "if (!remote) queueAck(event.id);",
+    "function closeSource({ notify = true, forceNotify = false } = {})",
+    "closeSource({ notify: false })",
+    "closeSource({ forceNotify: true })",
+  ], "single-tab SSE leader and reconnect guard");
   assert(!authContext.includes("setInterval"), "session validation must not poll");
   assert(!monitoringCenter.includes("setInterval"), "monitoring center must not poll");
 });
@@ -342,6 +365,136 @@ check("Redis queues and realtime pubsub are explicit opt-in", () => {
     "ENABLE_REDIS_QUEUE=false",
     "ENABLE_REALTIME_REDIS=false",
   ], "Redis opt-in env example");
+});
+
+check("registration email verification gates remain enforced", () => {
+  const authContext = read("frontend/src/context/AuthContext.jsx");
+  const dealerController = read("backend/controllers/dealer.controller.js");
+  const bankController = read("backend/controllers/bank.controller.js");
+  const router = read("frontend/src/routes/router.jsx");
+  includesAll(authContext, [
+    "dealer: \"/dealer-registration/verify-email\"",
+    "bank: \"/bank-registration/verify-email\"",
+    "createRegistrationAccount({ email, password, portal: \"dealer\" })",
+    "createRegistrationAccount({ email, password, portal: \"bank\" })",
+    "await credential.user.reload();",
+    "await currentUser.reload();",
+    "getIdToken(true)",
+  ], "frontend registration verification");
+  includesAll(dealerController, [
+    "assertDealerRegistrationEmailVerified",
+    "dealerEmailPendingPayload",
+    "accountState: \"EMAIL_PENDING\"",
+    "accountState: \"EMAIL_VERIFIED\"",
+    "accountState: \"PENDING_APPROVAL\"",
+    "accountState: \"APPROVED\"",
+    "Your dealership registration was rejected.",
+    "Your dealership account is suspended.",
+    "Verify your email address before submitting dealership registration.",
+    "redirectTo: \"/dealer-registration/verify-email\"",
+    "/dealer-registration/rejected",
+    "/dealer-registration/suspended",
+  ], "dealer registration backend");
+  includesAll(bankController, [
+    "assertBankRegistrationEmailVerified",
+    "bankEmailPendingPayload",
+    "accountState: \"EMAIL_PENDING\"",
+    "accountState: \"EMAIL_VERIFIED\"",
+    "accountState: \"PENDING_APPROVAL\"",
+    "accountState: \"APPROVED\"",
+    "Your bank registration was rejected.",
+    "Your bank account is suspended.",
+    "Verify your email address before submitting bank registration.",
+    "redirectTo: \"/bank-registration/verify-email\"",
+    "/bank-registration/rejected",
+    "/bank-registration/suspended",
+  ], "bank registration backend");
+  includesAll(router, [
+    "/dealer-registration/verify-email",
+    "/dealer-registration/rejected",
+    "/dealer-registration/suspended",
+    "/bank-registration/verify-email",
+    "/bank-registration/rejected",
+    "/bank-registration/suspended",
+  ], "registration status routes");
+});
+
+check("removed dealership and bank GSTIN fields stay removed from new workflows", () => {
+  const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
+  const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
+  const dealerController = read("backend/controllers/dealer.controller.js");
+  const bankController = read("backend/controllers/bank.controller.js");
+  const adminController = read("backend/controllers/admin.controller.js");
+  const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
+  assert(!dealerRegistration.includes("officialDealershipEmail"), "dealer registration UI must not contain Official Dealership Email state or inputs");
+  assert(!dealerRegistration.includes("gstinNumber"), "dealer registration UI must not contain GSTIN Number state or inputs");
+  assert(!bankRegistration.includes("gstin"), "bank registration UI must not contain GSTIN state, validation, or payload");
+  assert(!bankRegistration.includes("GSTIN"), "bank registration UI must not show GSTIN label or validation text");
+  assert(!bankRegistration.includes("GST Certificate"), "bank registration UI must not request GST Certificate");
+  assert(!bankController.includes("req.body.gstin"), "bank registration backend must not read GSTIN from request body");
+  assert(!bankController.includes("gstin:"), "bank registration backend must not write GSTIN for new registrations");
+  const approvalFields = adminController.match(/const APPROVAL_LIST_FIELDS = \[[\s\S]*?\];/)?.[0] || "";
+  assert(!approvalFields.includes("\"gstin\""), "admin bank approval projection must not include GSTIN");
+  const bankApprovalDetail = superAdmin.match(/const sections = type === "banks"[\s\S]*?: \[/)?.[0] || superAdmin;
+  assert(!bankApprovalDetail.includes("[\"GSTIN\""), "admin bank review must not display GSTIN");
+  includesAll(dealerController, ["stripRemovedDealershipFields", "officialDealershipEmail", "gstinNumber"], "legacy dealership field sanitizer");
+});
+
+check("public header hides dealership menu while preserving dealer entry points", () => {
+  const publicLayout = read("frontend/src/layouts/PublicLayout.jsx");
+  const router = read("frontend/src/routes/router.jsx");
+  const publicCtas = read("frontend/src/components/PublicConversionCtas.jsx");
+  assert(!publicLayout.includes("For Dealerships"), "public header must not show For Dealerships");
+  assert(!publicLayout.includes("key: \"dealerships\""), "public header must not keep dealership role group");
+  assert(!publicLayout.includes("Users"), "public header must not import or show dealership icon");
+  assert(!publicLayout.includes("Dealer Registration"), "public header dropdown must not link dealer registration");
+  includesAll(publicLayout, ["For Banks", "Bank Registration", "key: \"banks\"", "mobileSections"], "bank header menu");
+  includesAll(router, [
+    "{ path: \"/dealer/register\", element: <DealerRegistrationPage /> }",
+    "{ path: \"/dealer-registration\", element: <DealerRegistrationPage /> }",
+    "{ path: \"/dealer-registration/form\", element: <DealerRegistrationFormPage /> }",
+  ], "dealer routes preserved");
+  includesAll(publicCtas, ["to=\"/dealer/register\"", "Dealer"], "dealer CTAs preserved");
+});
+
+check("dashboard Firestore cost optimizations stay in place", () => {
+  const bankService = read("backend/services/bank.service.js");
+  const dealershipService = read("backend/services/dealership.service.js");
+  const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
+  includesAll(bankService, [
+    "queryRecords(\"bankBranchCatalog\"",
+    "if (catalogRows.length) {",
+    "return catalogRows.sort",
+  ], "bank branch catalog fast path");
+  includesAll(dealershipService, [
+    "const availableBranches = await getBankBranchCatalog();",
+    "const branchesByIfsc = new Map",
+    "const activeLeadChecks = await Promise.all",
+    "await Promise.all(uniqueCodes.map",
+    "await Promise.all(removedIFSCs.map",
+  ], "dealer tie-up bulk update");
+  includesAll(superAdmin, [
+    "function useAdminEcosystem({ includeAudit = false } = {})",
+    "includeAudit ? api.get(\"/admin/audit-logs\") : Promise.resolve({ data: [] })",
+    "useAdminEcosystem({ includeAudit: true })",
+  ], "admin audit lazy loading");
+});
+
+check("auth hot path avoids avoidable Firestore reads and writes", () => {
+  const authController = read("backend/controllers/auth.controller.js");
+  includesAll(authController, [
+    "AUTH_ENTITLEMENT_CACHE_TTL_MS",
+    "auth:dealership-entitlement:",
+    "getDealershipSubscription(dealershipId, { initialize: false })",
+    "auth:approved-dealership:",
+    "AUTH_DEALERSHIP_ACCESS_CACHE_TTL_MS",
+    "scheduleLoginMaintenance(req.requestId",
+    "name: \"canonical-session-user\"",
+    "name: \"firebase-claims\"",
+    "name: \"password-lifecycle\"",
+    "name: \"login-activity\"",
+  ], "auth login and restore fast path");
+  assert(!authController.includes("Object.assign(user, await accountPresentation"), "restore session must not perform presentation Firestore reads before response");
 });
 
 let failed = 0;
