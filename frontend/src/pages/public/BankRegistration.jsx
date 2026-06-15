@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, FileCheck2, Loader2, ShieldCheck, UploadCloud } from "lucide-react";
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { auth } from "../../services/firebase.js";
-import { storage } from "../../services/firebaseStorage.js";
 import { bankLoanCapacityRanges, bankStates, locationsForState } from "../../data/bankLocationMaster.js";
 
 const banks = [
@@ -82,7 +80,7 @@ function fieldError(form) {
 function UploadBox({ doc, bankUid, value, onChange }) {
   const [error, setError] = useState("");
 
-  const upload = (file) => {
+  const upload = async (file) => {
     setError("");
     if (!file) return;
     if (!allowedTypes.includes(file.type)) {
@@ -94,23 +92,27 @@ function UploadBox({ doc, bankUid, value, onChange }) {
       return;
     }
     const storagePath = `bank-registration/${bankUid}/${doc.folder}/${Date.now()}-${file.name}`;
-    const task = uploadBytesResumable(ref(storage, storagePath), file);
     onChange({ status: "uploading", progress: 0, fileName: file.name, storagePath, fileUrl: "" });
-    task.on("state_changed", (snapshot) => {
-      onChange((current) => ({ ...current, progress: Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) }));
-    }, (uploadError) => {
+    try {
+      const { uploadStorageFile } = await import("../../services/firebaseUpload.js");
+      const { fileUrl } = await uploadStorageFile({
+        file,
+        storagePath,
+        contentType: file.type,
+        onProgress: (progress) => onChange((current) => ({ ...current, progress })),
+      });
+      onChange({ status: "uploaded", progress: 100, fileName: file.name, storagePath, fileUrl, documentType: doc.type, label: doc.label, size: file.size });
+    } catch (uploadError) {
       setError(uploadError.message || "Upload failed.");
       onChange((current) => ({ ...current, status: "error" }));
-    }, async () => {
-      const fileUrl = await getDownloadURL(task.snapshot.ref);
-      onChange({ status: "uploaded", progress: 100, fileName: file.name, storagePath, fileUrl, documentType: doc.type, label: doc.label, size: file.size });
-    });
+    }
   };
 
   const remove = async () => {
     if (value?.storagePath) {
       try {
-        await deleteObject(ref(storage, value.storagePath));
+        const { deleteStoragePath } = await import("../../services/firebaseUpload.js");
+        await deleteStoragePath(value.storagePath);
       } catch {
         // File may already be gone; UI state should still clear.
       }

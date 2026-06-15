@@ -1,6 +1,4 @@
 import { CheckCircle2, ChevronDown, Eye, EyeOff, FileCheck2, Landmark, Loader2, Search, ShieldCheck, Sparkles, UploadCloud } from "lucide-react";
-import { doc as firestoreDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Toast } from "../components/ui/Toast.jsx";
@@ -9,8 +7,6 @@ import { api } from "../services/api.js";
 import { CONVERSION_EVENTS, trackConversionEvent } from "../services/conversionAnalytics.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 import { auth } from "../services/firebase.js";
-import { db } from "../services/firebaseDb.js";
-import { storage } from "../services/firebaseStorage.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { bankStates, dealershipBrands, locationsForState } from "../data/bankLocationMaster.js";
 
@@ -543,41 +539,28 @@ export function DealerRegistrationFormPage() {
     setError("");
     const safeName = `${Date.now()}-${file.name}`.replace(/[^a-zA-Z0-9._-]/g, "-");
     const storagePath = `dealer-registration/${uid}/${config.folder}/${safeName}`;
-    const storageRef = ref(storage, storagePath);
-    const task = uploadBytesResumable(storageRef, file, { contentType: file.type });
 
     setDocuments((current) => ({
       ...current,
       [name]: { file, progress: 0, status: "uploading", storagePath, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : "" },
     }));
 
-    task.on("state_changed", (snapshot) => {
-      const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-      setDocuments((current) => ({ ...current, [name]: { ...current[name], progress, status: "uploading" } }));
-    }, (uploadError) => {
-      setDocuments((current) => ({ ...current, [name]: { ...current[name], status: "error", error: uploadError.message } }));
-      setError(uploadError.message || "Document upload failed. Please retry.");
-    }, async () => {
-      const fileUrl = await getDownloadURL(task.snapshot.ref);
-      const metadata = {
-        dealerUid: uid,
-        documentType: config.type,
-        fileName: file.name,
-        fileUrl,
+    try {
+      const { uploadStorageFile } = await import("../services/firebaseUpload.js");
+      const { fileUrl } = await uploadStorageFile({
+        file,
         storagePath,
-        uploadedAt: serverTimestamp(),
-        verified: false,
-      };
-      try {
-        await setDoc(firestoreDoc(db, "dealerRegistrationDocuments", `${uid}-${config.type}`), metadata, { merge: true });
-      } catch (metadataError) {
-        console.warn("Dealer registration document metadata write skipped", metadataError);
-      }
+        contentType: file.type,
+        onProgress: (progress) => setDocuments((current) => ({ ...current, [name]: { ...current[name], progress, status: "uploading" } })),
+      });
       setDocuments((current) => ({
         ...current,
         [name]: { ...current[name], progress: 100, status: "uploaded", fileUrl, storagePath, documentType: config.type },
       }));
-    });
+    } catch (uploadError) {
+      setDocuments((current) => ({ ...current, [name]: { ...current[name], status: "error", error: uploadError.message } }));
+      setError(uploadError.message || "Document upload failed. Please retry.");
+    }
   };
 
   const removeDocument = async (event, name) => {
@@ -586,7 +569,8 @@ export function DealerRegistrationFormPage() {
     const document = documents[name];
     if (document?.storagePath) {
       try {
-        await deleteObject(ref(storage, document.storagePath));
+        const { deleteStoragePath } = await import("../services/firebaseUpload.js");
+        await deleteStoragePath(document.storagePath);
       } catch {
         // Metadata cleanup is best-effort; stale failed deletes should not block the user.
       }
@@ -649,36 +633,6 @@ export function DealerRegistrationFormPage() {
         })),
       };
       const response = await api.post("/dealer/register", payload);
-      try {
-        await setDoc(firestoreDoc(db, "dealerRegistrations", dealerUid), {
-          dealerUid,
-          email: dealerEmail,
-          dealershipName: form.dealershipName,
-          dealerBrand: form.dealershipBrand,
-          gstinNumber: form.gstinNumber,
-          state: form.state,
-          city: form.city,
-          dealerState: form.state,
-          dealerLocation: form.city,
-          mobile: form.officialDealershipMobile,
-          registrationStatus: "pending-approval",
-          selectedPlan: registrationSession.selectedPlan || selectedOnboardingPlan(),
-          submittedAt: serverTimestamp(),
-        }, { merge: true });
-        await setDoc(firestoreDoc(db, "pendingDealerAccounts", dealerUid), {
-          uid: dealerUid,
-          email: dealerEmail,
-          approvalStatus: "pending",
-          registrationCompleted: true,
-          registrationSubmitted: true,
-          accountApproved: false,
-          accountActive: false,
-          selectedPlan: registrationSession.selectedPlan || selectedOnboardingPlan(),
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-      } catch (metadataError) {
-        console.warn("Dealer registration client metadata write skipped", metadataError);
-      }
       setSuccess(`${response.data.message} Request ID: ${response.data.onboardingRequestId}`);
       trackConversionEvent(CONVERSION_EVENTS.REGISTRATION_COMPLETED, "dealer_registration_form");
       navigate("/dealer-registration/pending-approval");

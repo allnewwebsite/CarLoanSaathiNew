@@ -112,6 +112,23 @@ check("frontend API base URL is environment driven", () => {
   includesAll(api, ["import.meta.env.VITE_API_BASE_URL", "import.meta.env.PROD ? \"/api\""], "api base URL");
 });
 
+check("frontend keeps Firestore and Storage out of the initial registration bundles", () => {
+  const viteConfig = read("frontend/vite.config.js");
+  const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
+  const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
+  const uploadHelper = read("frontend/src/services/firebaseUpload.js");
+  assert(!fs.existsSync(path.join(root, "frontend/src/services/firebaseDb.js")), "frontend Firestore db wrapper must stay removed");
+  assert(!viteConfig.includes("firebase/firestore"), "Vite manual chunks must not force Firestore into production bundles");
+  assert(!dealerRegistration.includes("firebase/firestore"), "dealer registration must not import Firestore client APIs");
+  assert(!dealerRegistration.includes("setDoc("), "dealer registration must not write duplicate Firestore metadata from the browser");
+  assert(!dealerRegistration.includes("serverTimestamp"), "dealer registration must not import Firestore timestamp helpers");
+  assert(!dealerRegistration.includes("firebase/storage"), "dealer registration must lazy-load Firebase Storage only on upload");
+  assert(!bankRegistration.includes("firebase/storage"), "bank registration must lazy-load Firebase Storage only on upload");
+  includesAll(dealerRegistration, ["import(\"../services/firebaseUpload.js\")"], "dealer registration upload lazy import");
+  includesAll(bankRegistration, ["import(\"../../services/firebaseUpload.js\")"], "bank registration upload lazy import");
+  includesAll(uploadHelper, ["uploadStorageFile", "deleteStoragePath", "uploadBytesResumable"], "lazy Firebase upload helper");
+});
+
 check("Firestore direct-id collections avoid fallback query chains", () => {
   const firestoreService = read("backend/services/firestore.service.js");
   includesAll(firestoreService, [
