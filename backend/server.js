@@ -23,6 +23,7 @@ import { requireMonitoringAccess } from "./middleware/monitoringAuth.js";
 import { requestContext } from "./middleware/requestContext.js";
 import { attachApiResponse } from "./utils/apiResponse.js";
 import { auditMiddleware } from "./middleware/auditMiddleware.js";
+import { gzipCompression } from "./middleware/compressionMiddleware.js";
 import { logError, logInfo } from "./services/logger.service.js";
 import { initBackendMonitoring } from "./services/monitoring.service.js";
 import { addQueueJob, logQueueDisabled, queueEnabled, queueHealth, QUEUE_NAMES } from "./services/queue.service.js";
@@ -74,6 +75,7 @@ app.use(securityHeaders);
 app.use(cors(corsOptions()));
 app.options("*", cors(corsOptions()));
 app.use(globalRateLimit);
+app.use(gzipCompression());
 app.post(
   "/api/webhooks/razorpay",
   express.raw({ type: "application/json", limit: "256kb" }),

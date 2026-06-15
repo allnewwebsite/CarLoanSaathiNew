@@ -1523,70 +1523,80 @@ export async function getBankLead(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
-    const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
-    if (
-      projection
-      && projectedLeadHasRequiredBankScope(partner, projection)
-      && partnerCanAccessLead(partner, projection)
-      && Array.isArray(projection.documents)
-      && Array.isArray(projection.bankDocuments)
-    ) {
-      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id });
-      return res.json(leadDetailResponseFromProjection(projection, {
-        documents: projection.documents || [],
-        bankDocuments: projection.bankDocuments || [],
-      }));
-    }
-    if (projection && projectedLeadHasRequiredBankScope(partner, projection) && !partnerCanAccessLead(partner, projection)) {
-      logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id, result: "denied" });
-      emitBankLeadAccessDenied(req, partner);
-      return res.status(403).json({ message: "Lead not assigned to this bank partner" });
-    }
-    logProjectionRead("PROJECTION-MISS", req, {
-      collection: "leadDetailsProjection",
-      leadId: req.params.id,
-      reason: projection ? "invalid_projection_for_bank_scope_or_response" : "missing_projection",
-    });
-    logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
-    const { partner: canonicalPartner, lead } = await requireAssignedLead(req);
-    const [hydratedLead] = await attachExecutiveMobile(canonicalPartner, [lead]);
-    const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
-      const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
-      const leadDocuments = async (collection) => {
-        const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
-          where: [{ field: "leadId", value: leadId }],
-          orderBy: "leadId",
-          direction: "asc",
-          limit: 50,
-          maxLimit: 50,
-          fields: LEAD_DOCUMENT_FIELDS,
+    const cacheActor = [partner.roleType, partner.id, partner.email, partner.bankId, partner.branchId].filter(Boolean).join(":");
+    const detailCacheKey = `lead-detail:${req.params.id}:bank-response:${cacheActor}`;
+    let detailCacheHit = true;
+    const response = await cached(detailCacheKey, 10000, async () => {
+      detailCacheHit = false;
+      const projection = await getLeadDetailProjection(req.params.id).catch(() => null);
+      if (
+        projection
+        && projectedLeadHasRequiredBankScope(partner, projection)
+        && partnerCanAccessLead(partner, projection)
+        && Array.isArray(projection.documents)
+        && Array.isArray(projection.bankDocuments)
+      ) {
+        logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id });
+        return leadDetailResponseFromProjection(projection, {
+          documents: projection.documents || [],
+          bankDocuments: projection.bankDocuments || [],
+        });
+      }
+      if (projection && projectedLeadHasRequiredBankScope(partner, projection) && !partnerCanAccessLead(partner, projection)) {
+        logProjectionRead("PROJECTION-HIT", req, { collection: "leadDetailsProjection", leadId: req.params.id, result: "denied" });
+        emitBankLeadAccessDenied(req, partner);
+        const error = new Error("Lead not assigned to this bank partner");
+        error.status = 403;
+        throw error;
+      }
+      logProjectionRead("PROJECTION-MISS", req, {
+        collection: "leadDetailsProjection",
+        leadId: req.params.id,
+        reason: projection ? "invalid_projection_for_bank_scope_or_response" : "missing_projection",
+      });
+      logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
+      const { partner: canonicalPartner, lead } = await requireAssignedLead(req);
+      const [hydratedLead] = await attachExecutiveMobile(canonicalPartner, [lead]);
+      const { hydratedDocuments, hydratedBankDocuments } = await cached(`lead-detail:${hydratedLead.id}:bank-docs:v2`, 10000, async () => {
+        const documentLeadIds = [...new Set([hydratedLead.id, hydratedLead.caseId].filter(Boolean))];
+        const leadDocuments = async (collection) => {
+          const pages = await Promise.all(documentLeadIds.map((leadId) => queryRecords(collection, {
+            where: [{ field: "leadId", value: leadId }],
+            orderBy: "leadId",
+            direction: "asc",
+            limit: 50,
+            maxLimit: 50,
+            fields: LEAD_DOCUMENT_FIELDS,
+          })));
+          const byId = new Map();
+          pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
+          return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
+        };
+        const [documents, bankDocuments] = await Promise.all([
+          leadDocuments("documents"),
+          leadDocuments("bankDocuments"),
+        ]);
+        const hydrateDocumentUrls = async (rows) => Promise.all(rows.map(async (document) => ({
+          ...document,
+          url: document.url || document.fileUrl || document.downloadUrl || await createShortLivedDocumentUrl(document.storagePath || document.filePath),
         })));
-        const byId = new Map();
-        pages.flatMap((page) => page.data).forEach((document) => byId.set(document.id, document));
-        return [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, 50);
-      };
-      const [documents, bankDocuments] = await Promise.all([
-        leadDocuments("documents"),
-        leadDocuments("bankDocuments"),
-      ]);
-      const hydrateDocumentUrls = async (rows) => Promise.all(rows.map(async (document) => ({
-        ...document,
-        url: document.url || document.fileUrl || document.downloadUrl || await createShortLivedDocumentUrl(document.storagePath || document.filePath),
-      })));
+        return {
+          hydratedDocuments: await hydrateDocumentUrls(documents),
+          hydratedBankDocuments: await hydrateDocumentUrls(bankDocuments),
+        };
+      });
+      syncLeadDetailProjection(hydratedLead, {
+        documents: hydratedDocuments,
+        bankDocuments: hydratedBankDocuments,
+      }).catch(() => {});
       return {
-        hydratedDocuments: await hydrateDocumentUrls(documents),
-        hydratedBankDocuments: await hydrateDocumentUrls(bankDocuments),
+        ...hydratedLead,
+        documents: hydratedDocuments,
+        bankDocuments: hydratedBankDocuments,
       };
     });
-    syncLeadDetailProjection(hydratedLead, {
-      documents: hydratedDocuments,
-      bankDocuments: hydratedBankDocuments,
-    }).catch(() => {});
-    res.json({
-      ...hydratedLead,
-      documents: hydratedDocuments,
-      bankDocuments: hydratedBankDocuments,
-    });
+    if (detailCacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/bank/leads/:id", cacheKey: detailCacheKey, estimatedReads: 0 });
+    res.json(response);
   } catch (error) {
     next(error);
   }

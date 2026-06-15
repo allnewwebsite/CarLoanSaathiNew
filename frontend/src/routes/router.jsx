@@ -38,26 +38,6 @@ const pageModules = {
   legal: () => import("../pages/legal/LegalPages.jsx"),
 };
 
-const dashboardModules = [
-  pageModules.financeDesk,
-  pageModules.gmTracking,
-  pageModules.bankBranchManager,
-  pageModules.loanExecutive,
-  pageModules.superAdmin,
-  pageModules.adminMonitoring,
-  pageModules.archivedCases,
-  pageModules.executiveChangePassword,
-  pageModules.loginActivity,
-];
-
-export function preloadDashboardRoutes() {
-  dashboardModules.forEach((factory) => {
-    loadModule(factory).catch(() => {
-      // React.lazy will surface any chunk error when that route is actually opened.
-    });
-  });
-}
-
 const HomePage = lazyPage(pageModules.home, "HomePage");
 const HowItWorksPage = lazyPage(pageModules.howItWorks, "HowItWorksPage");
 const PlansBillingPage = lazyPage(pageModules.plansBilling, "PlansBillingPage");
