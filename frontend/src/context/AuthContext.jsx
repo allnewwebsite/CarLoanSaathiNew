@@ -1,8 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
-import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
-import { startRealtimeClient, stopRealtimeClient } from "../services/realtimeClient.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 
 const AuthContext = createContext(null);
@@ -34,6 +32,7 @@ const FIREBASE_CONTINUE_PATHS = {
   "bank-manager": "/bank-registration/verify-email",
 };
 let firebaseAuthLoaded = false;
+let realtimeClientLoaded = false;
 
 function actionCodeSettings(portal = "dealer") {
   const fallbackPath = FIREBASE_CONTINUE_PATHS[String(portal || "dealer").trim().toLowerCase()] || "/dealer-registration/verify-email";
@@ -132,6 +131,21 @@ async function loadFirebaseAuth() {
   return { ...firebaseAuth, auth: authModule.auth };
 }
 
+async function loadApi() {
+  return import("../services/api.js");
+}
+
+async function loadRealtimeClient() {
+  const realtimeClient = await import("../services/realtimeClient.js");
+  realtimeClientLoaded = true;
+  return realtimeClient;
+}
+
+function stopRealtimeIfLoaded(identity) {
+  if (!realtimeClientLoaded) return;
+  loadRealtimeClient().then(({ stopRealtimeClient }) => stopRealtimeClient(identity));
+}
+
 function restoredFirebaseUser(auth, onAuthStateChanged) {
   if (auth.currentUser) return Promise.resolve(auth.currentUser);
   return new Promise((resolve) => {
@@ -164,7 +178,7 @@ export function AuthProvider({ children }) {
   };
 
   const clearLocalSession = async ({ signOutFirebase = true, broadcast = true, reason = "local-clear" } = {}) => {
-    stopRealtimeClient();
+    stopRealtimeIfLoaded();
     clearAuthStorage();
     setFirebaseUser(null);
     setIsAuthenticated(false);
@@ -196,12 +210,22 @@ export function AuthProvider({ children }) {
     const realtimeIdentity = [user?.sessionId, user?.role, user?.uid || user?.email, user?.organizationId || user?.dealershipId || user?.bankId || ""]
       .filter(Boolean)
       .join(":");
-    if (isAuthenticated && user?.role) startRealtimeClient(realtimeIdentity);
-    else stopRealtimeClient();
-    return () => stopRealtimeClient(realtimeIdentity);
+    let cancelled = false;
+    if (isAuthenticated && user?.role) {
+      loadRealtimeClient().then(({ startRealtimeClient }) => {
+        if (!cancelled) startRealtimeClient(realtimeIdentity);
+      });
+    } else {
+      stopRealtimeIfLoaded();
+    }
+    return () => {
+      cancelled = true;
+      stopRealtimeIfLoaded(realtimeIdentity);
+    };
   }, [isAuthenticated, user?.sessionId, user?.role, user?.uid, user?.email, user?.organizationId, user?.dealershipId, user?.bankId]);
 
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
+    const { api } = await loadApi();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const loginPayload = { email: normalizedEmail, password, portal, targetPortal };
 
@@ -229,6 +253,7 @@ export function AuthProvider({ children }) {
   };
 
   const sendPasswordReset = async (email) => {
+    const { api } = await loadApi();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     await api.post("/auth/password-reset/validate", { email: normalizedEmail });
     const { auth, sendPasswordResetEmail } = await loadFirebaseAuth();
@@ -281,6 +306,7 @@ export function AuthProvider({ children }) {
     }
     await updatePassword(currentUser, newPassword);
     await currentUser.getIdToken(true);
+    const { api } = await loadApi();
     const response = await api.post("/auth/password/change-complete");
     if (response.data?.token && response.data?.user) {
       const session = sessionFromResponse(response);
@@ -301,6 +327,7 @@ export function AuthProvider({ children }) {
     }
     if (showLoading) setSessionChecking(true);
     try {
+      const { api } = await loadApi();
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
       applySession(session, token);
@@ -413,6 +440,7 @@ export function AuthProvider({ children }) {
     setFirebaseUser(credential.user);
     await credential.user.reload();
     const idToken = await credential.user.getIdToken(true);
+    const { api } = await loadApi();
     const response = await api.post("/dealer/register/email-start", { idToken, selectedPlan });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -438,6 +466,7 @@ export function AuthProvider({ children }) {
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/dealer-registration" };
     await currentUser.reload();
     const idToken = await currentUser.getIdToken(true);
+    const { api } = await loadApi();
     const response = await api.post("/dealer/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -458,6 +487,7 @@ export function AuthProvider({ children }) {
   };
 
   const registerBankPartner = async ({ email, profile }) => {
+    const { api } = await loadApi();
     const response = await api.post("/bank/register", { ...profile, email });
     return response.data;
   };
@@ -467,6 +497,7 @@ export function AuthProvider({ children }) {
     setFirebaseUser(credential.user);
     await credential.user.reload();
     const idToken = await credential.user.getIdToken(true);
+    const { api } = await loadApi();
     const response = await api.post("/bank/register/email-start", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -491,6 +522,7 @@ export function AuthProvider({ children }) {
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/bank-registration" };
     await currentUser.reload();
     const idToken = await currentUser.getIdToken(true);
+    const { api } = await loadApi();
     const response = await api.post("/bank/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -512,6 +544,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
+      const { api } = await loadApi();
       await api.post("/auth/logout");
     } catch {
       // Local cleanup must still happen even if the log request fails.

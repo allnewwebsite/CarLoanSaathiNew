@@ -145,9 +145,13 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   assert(!router.includes("import { DashboardLayout }"), "router must not statically import dashboard layout into public startup");
   includesAll(router, ["const DashboardLayout = lazy(() => import(\"../layouts/DashboardLayout.jsx\")"], "lazy dashboard layout");
   assert(!viteConfig.includes("motion: [\"framer-motion\"]"), "Vite manual chunks must not force Framer Motion into shared startup chunks");
+  assert(!viteConfig.includes("icons: [\"lucide-react\"]"), "Vite manual chunks must not force Lucide icons into a shared startup chunk");
   assert(!authContext.includes("from \"firebase/auth\""), "AuthContext must lazy-load Firebase Auth");
   assert(!authContext.includes("from \"../services/firebase"), "AuthContext must not statically import Firebase services");
   includesAll(authContext, ["import(\"firebase/auth\")", "import(\"../services/firebaseAuth.js\")"], "lazy Firebase Auth");
+  assert(!authContext.includes("from \"../services/api.js\""), "AuthContext must lazy-load the API client");
+  assert(!authContext.includes("from \"../services/realtimeClient.js\""), "AuthContext must lazy-load the realtime client");
+  includesAll(authContext, ["import(\"../services/api.js\")", "import(\"../services/realtimeClient.js\")"], "lazy API and realtime client");
   assert(!api.includes("from \"firebase/app-check\""), "API client must lazy-load Firebase App Check");
   assert(!api.includes("from \"./firebase.js\""), "API client must not statically import Firebase");
   includesAll(api, ["import(\"firebase/app-check\")", "import(\"./firebase.js\")"], "lazy Firebase App Check");
@@ -238,7 +242,7 @@ check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const authMiddleware = read("backend/middleware/auth.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
-  includesAll(authContext, ["stopRealtimeClient();"], "auth cleanup");
+  includesAll(authContext, ["stopRealtimeIfLoaded();", "import(\"../services/realtimeClient.js\")"], "lazy auth realtime cleanup");
   includesAll(authMiddleware, [
     "REALTIME_TICKET_PATH = \"/api/realtime/ticket\"",
     "realtimeTicketFastAuthEnabled",

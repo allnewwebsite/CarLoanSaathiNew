@@ -10,7 +10,6 @@ export default defineConfig({
           react: ["react", "react-dom", "react-router-dom"],
           firebase: ["firebase/app", "firebase/auth"],
           axios: ["axios"],
-          icons: ["lucide-react"],
           charts: ["recharts"],
         },
       },
