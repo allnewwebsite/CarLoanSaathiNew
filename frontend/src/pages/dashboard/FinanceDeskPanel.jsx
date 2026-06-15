@@ -1373,11 +1373,7 @@ export function FinanceLeadDocumentsPage() {
   }, [leadId]);
 
   useEffect(() => { loadDocs(); }, [loadDocs]);
-  useEffect(() => {
-    let active = true;
-    api.get(`/dealer/leads/${leadId}`).then((response) => { if (active) setLead(response.data); }).catch(() => {});
-    return () => { active = false; };
-  }, [leadId]);
+  useEffect(() => { loadLead(); }, [loadLead]);
   useRealtimeLeadDetailPatch({ leadId, setLead });
   useLeadDetailRealtime({
     lead,

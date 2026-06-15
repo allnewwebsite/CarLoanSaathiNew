@@ -50,6 +50,11 @@ export default function CreateDealerLead() {
   const [loadingCars, setLoadingCars] = useState(true);
   const [documents, setDocuments] = useState([]);
 
+  const brandSlugForName = useCallback((brandName) => {
+    const match = cars.find((brand) => brand.name === brandName || brand.slug === brandName);
+    return match?.slug || "";
+  }, [cars]);
+
   /**
    * Fetch dealership's bank tie-ups
    */
@@ -90,9 +95,12 @@ export default function CreateDealerLead() {
   const fetchCars = useCallback(async () => {
     try {
       setLoadingCars(true);
-      const response = await api.get("/catalog/cars");
-
-      setCars(response.data.brands || []);
+      const response = await api.get("/brands");
+      const brands = Array.isArray(response.data) ? response.data : [];
+      setCars(brands.map((brand) => ({
+        name: brand.name || brand.slug || "",
+        slug: brand.slug || "",
+      })).filter((brand) => brand.name && brand.slug));
     } catch (err) {
       console.error("Error fetching cars:", err);
       // Fall back to empty list
@@ -112,15 +120,20 @@ export default function CreateDealerLead() {
       }
 
       try {
-        const response = await api.get(`/catalog/cars/${brand}/models`);
-
-        setModels(response.data.models || []);
+        const brandSlug = brandSlugForName(brand);
+        if (!brandSlug) {
+          setModels([]);
+          return;
+        }
+        const response = await api.get(`/cars/${brandSlug}`);
+        const carsForBrand = Array.isArray(response.data) ? response.data : [];
+        setModels(carsForBrand.map((model) => model.name || model.model || "").filter(Boolean));
       } catch (err) {
         console.error("Error fetching models:", err);
         setModels([]);
       }
     },
-    [user]
+    [brandSlugForName]
   );
 
   /**
@@ -414,8 +427,8 @@ export default function CreateDealerLead() {
               >
                 <option value="">{loadingCars ? "Loading brands..." : "Select brand"}</option>
                 {cars.map((brand) => (
-                  <option key={brand} value={brand}>
-                    {brand}
+                  <option key={brand.slug} value={brand.name}>
+                    {brand.name}
                   </option>
                 ))}
               </select>

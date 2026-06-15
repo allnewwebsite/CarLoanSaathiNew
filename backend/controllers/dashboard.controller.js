@@ -55,7 +55,7 @@ const RECENT_LEAD_FIELDS = [
 async function recentLeadsForUser(user = {}) {
   const query = { page: 1, limit: 8 };
   const projected = await queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null);
-  if (projected?.data?.length) return { ...projected, source: "projection" };
+  if (projected) return { ...projected, source: "projection" };
   if (user.role === ROLES.SUPER_ADMIN) return queryAllLeads({ query, fields: RECENT_LEAD_FIELDS });
   if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role)) {
     return queryDealershipLeads({ dealershipId: user.dealershipId, query, fields: RECENT_LEAD_FIELDS });
@@ -97,7 +97,6 @@ export async function getFastDashboard(req, res, next) {
     const notificationRows = Array.isArray(notifications?.data) ? notifications.data : [];
     res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=300").json({
       generatedAt: new Date().toISOString(),
-      roleSnapshot: permissionSnapshot(req.user),
       permissionSnapshot: permissionSnapshot(req.user),
       counts: {
         totalLeads: metrics.totalLeads || recentRecords.length || 0,
