@@ -134,6 +134,10 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   const errorBoundary = read("frontend/src/components/ErrorBoundary.jsx");
   const router = read("frontend/src/routes/router.jsx");
   const viteConfig = read("frontend/vite.config.js");
+  const authContext = read("frontend/src/context/AuthContext.jsx");
+  const api = read("frontend/src/services/api.js");
+  const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
+  const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
   assert(!main.includes("import { initFrontendMonitoring }"), "main entry must not statically import Sentry monitoring");
   includesAll(main, ["import(\"./services/monitoring.js\")", "requestIdleCallback"], "lazy Sentry startup");
   assert(!errorBoundary.includes("import { captureError }"), "error boundary must not statically import Sentry monitoring");
@@ -141,6 +145,14 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   assert(!router.includes("import { DashboardLayout }"), "router must not statically import dashboard layout into public startup");
   includesAll(router, ["const DashboardLayout = lazy(() => import(\"../layouts/DashboardLayout.jsx\")"], "lazy dashboard layout");
   assert(!viteConfig.includes("motion: [\"framer-motion\"]"), "Vite manual chunks must not force Framer Motion into shared startup chunks");
+  assert(!authContext.includes("from \"firebase/auth\""), "AuthContext must lazy-load Firebase Auth");
+  assert(!authContext.includes("from \"../services/firebase"), "AuthContext must not statically import Firebase services");
+  includesAll(authContext, ["import(\"firebase/auth\")", "import(\"../services/firebaseAuth.js\")"], "lazy Firebase Auth");
+  assert(!api.includes("from \"firebase/app-check\""), "API client must lazy-load Firebase App Check");
+  assert(!api.includes("from \"./firebase.js\""), "API client must not statically import Firebase");
+  includesAll(api, ["import(\"firebase/app-check\")", "import(\"./firebase.js\")"], "lazy Firebase App Check");
+  assert(!dealerRegistration.includes("services/firebase.js"), "dealer registration must not statically import Firebase");
+  assert(!bankRegistration.includes("services/firebase.js"), "bank registration must not statically import Firebase");
 });
 
 check("Firestore direct-id collections avoid fallback query chains", () => {

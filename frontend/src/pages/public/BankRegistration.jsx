@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, FileCheck2, Loader2, ShieldCheck, UploadCloud } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { auth } from "../../services/firebase.js";
 import { bankLoanCapacityRanges, bankStates, locationsForState } from "../../data/bankLocationMaster.js";
 
 const banks = [
@@ -172,9 +171,9 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
   const [status, setStatus] = useState(mode === "verify-email" ? "email-pending" : mode);
   const [statusMessage, setStatusMessage] = useState("");
   const [pendingDetails, setPendingDetails] = useState(null);
-  const bankUid = auth.currentUser?.uid || session.uid || session.email || form.email || "bank";
-  const bankEmail = auth.currentUser?.email || session.email || form.email || authEmail;
-  const hasEmailAccount = Boolean(bankEmail && (auth.currentUser?.emailVerified === true || session.emailVerified === true));
+  const bankUid = session.uid || session.email || form.email || "bank";
+  const bankEmail = session.email || form.email || authEmail;
+  const hasEmailAccount = Boolean(bankEmail && session.emailVerified === true);
   const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
   const update = (field, value) => setForm((current) => {

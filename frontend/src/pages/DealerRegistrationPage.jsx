@@ -6,7 +6,6 @@ import { brandLogos } from "../data/catalogFallback.js";
 import { api } from "../services/api.js";
 import { CONVERSION_EVENTS, trackConversionEvent } from "../services/conversionAnalytics.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
-import { auth } from "../services/firebase.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { bankStates, dealershipBrands, locationsForState } from "../data/bankLocationMaster.js";
 
@@ -485,15 +484,14 @@ export function DealerRegistrationFormPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const dealerUid = firebaseUser?.uid || auth.currentUser?.uid || registrationSession.uid || registrationSession.registrationId || registrationSession.email || "";
-  const dealerEmail = firebaseUser?.email || auth.currentUser?.email || registrationSession.email || "";
+  const dealerUid = firebaseUser?.uid || registrationSession.uid || registrationSession.registrationId || registrationSession.email || "";
+  const dealerEmail = firebaseUser?.email || registrationSession.email || "";
   const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
   const hasVerifiedEmail = Boolean(
-    dealerEmail
+      dealerEmail
     && (
-      auth.currentUser?.emailVerified === true
-      || firebaseUser?.emailVerified === true
+      firebaseUser?.emailVerified === true
       || registrationSession.emailVerified === true
       || isAuthenticated
     )
@@ -531,7 +529,7 @@ export function DealerRegistrationFormPage() {
       setError("Document size must be 10MB or less.");
       return;
     }
-    const uid = dealerUid || auth.currentUser?.uid;
+    const uid = dealerUid;
     if (!uid) {
       setError("Create an email/password account before uploading dealership documents.");
       return;

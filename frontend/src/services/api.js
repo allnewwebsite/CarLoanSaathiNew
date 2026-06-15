@@ -1,6 +1,4 @@
 import axios from "axios";
-import { getToken } from "firebase/app-check";
-import { appCheck } from "./firebase.js";
 import { clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
 import { markApiRequestStart, markApiResponseEnd } from "./frontendLatency.js";
 
@@ -422,6 +420,11 @@ function emitDataMutation(url = "", data = {}) {
 setupDataMutationListeners();
 
 async function appCheckHeaderToken() {
+  if (!import.meta.env.VITE_FIREBASE_APPCHECK_RECAPTCHA_SITE_KEY) return "";
+  const [{ getToken }, { appCheck }] = await Promise.all([
+    import("firebase/app-check"),
+    import("./firebase.js"),
+  ]);
   if (!appCheck) return "";
   if (appCheckCache.token && appCheckCache.expiresAt > Date.now()) return appCheckCache.token;
   if (!appCheckCache.promise) {

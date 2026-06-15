@@ -1,21 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import {
-  createUserWithEmailAndPassword,
-  EmailAuthProvider,
-  onAuthStateChanged,
-  reauthenticateWithCredential,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  setPersistence,
-  signInWithEmailAndPassword,
-  signOut,
-  updatePassword,
-  browserSessionPersistence,
-} from "firebase/auth";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { api } from "../services/api.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
-import { auth } from "../services/firebase.js";
 import { startRealtimeClient, stopRealtimeClient } from "../services/realtimeClient.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 
@@ -47,6 +33,7 @@ const FIREBASE_CONTINUE_PATHS = {
   bank: "/bank-registration/verify-email",
   "bank-manager": "/bank-registration/verify-email",
 };
+let firebaseAuthLoaded = false;
 
 function actionCodeSettings(portal = "dealer") {
   const fallbackPath = FIREBASE_CONTINUE_PATHS[String(portal || "dealer").trim().toLowerCase()] || "/dealer-registration/verify-email";
@@ -136,11 +123,37 @@ function shouldClearSessionForError(error) {
   ].includes(code);
 }
 
+async function loadFirebaseAuth() {
+  const [firebaseAuth, authModule] = await Promise.all([
+    import("firebase/auth"),
+    import("../services/firebaseAuth.js"),
+  ]);
+  firebaseAuthLoaded = true;
+  return { ...firebaseAuth, auth: authModule.auth };
+}
+
+function restoredFirebaseUser(auth, onAuthStateChanged) {
+  if (auth.currentUser) return Promise.resolve(auth.currentUser);
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    const finish = (user) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(user || auth.currentUser || null);
+    };
+    const timeout = window.setTimeout(() => finish(null), 1200);
+    unsubscribe = onAuthStateChanged(auth, finish);
+  });
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredToken()));
-  const [authReady, setAuthReady] = useState(() => Boolean(getStoredToken() || getStoredUser()));
+  const [authReady] = useState(true);
   const [sessionChecking, setSessionChecking] = useState(false);
   const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
   const applySession = (session, token, options = {}) => {
@@ -159,6 +172,7 @@ export function AuthProvider({ children }) {
     setAuthStatus(AUTH_STATES.UNAUTHORIZED);
     if (signOutFirebase) {
       try {
+        const { auth, signOut } = await loadFirebaseAuth();
         await signOut(auth);
       } catch {
         // Local session is already cleared.
@@ -169,7 +183,9 @@ export function AuthProvider({ children }) {
 
   const detachFirebaseCredentialSession = async () => {
     setFirebaseUser(null);
+    if (!firebaseAuthLoaded) return;
     try {
+      const { auth, signOut } = await loadFirebaseAuth();
       if (auth.currentUser) await signOut(auth);
     } catch {
       // Backend JWT session remains the source of truth after login.
@@ -184,20 +200,6 @@ export function AuthProvider({ children }) {
     else stopRealtimeClient();
     return () => stopRealtimeClient(realtimeIdentity);
   }, [isAuthenticated, user?.sessionId, user?.role, user?.uid, user?.email, user?.organizationId, user?.dealershipId, user?.bankId]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setFirebaseUser(currentUser || null);
-      setAuthReady(true);
-      const token = getStoredToken();
-      if (!currentUser && !token) {
-        setUser(null);
-        setIsAuthenticated(false);
-        setAuthStatus(AUTH_STATES.UNAUTHORIZED);
-      }
-    });
-    return unsubscribe;
-  }, []);
 
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -229,11 +231,13 @@ export function AuthProvider({ children }) {
   const sendPasswordReset = async (email) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     await api.post("/auth/password-reset/validate", { email: normalizedEmail });
+    const { auth, sendPasswordResetEmail } = await loadFirebaseAuth();
     await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings());
   };
 
   const resendVerificationEmail = async ({ email, password, portal = "dealer" } = {}) => {
-    let currentUser = auth.currentUser;
+    const { auth, onAuthStateChanged, sendEmailVerification, signInWithEmailAndPassword } = await loadFirebaseAuth();
+    let currentUser = await restoredFirebaseUser(auth, onAuthStateChanged);
     if (!currentUser && email && password) {
       const credential = await signInWithEmailAndPassword(auth, String(email || "").trim().toLowerCase(), password);
       currentUser = credential.user;
@@ -250,6 +254,15 @@ export function AuthProvider({ children }) {
   };
 
   const changeCurrentPassword = async ({ currentPassword, newPassword }) => {
+    const {
+      auth,
+      browserSessionPersistence,
+      EmailAuthProvider,
+      reauthenticateWithCredential,
+      setPersistence,
+      signInWithEmailAndPassword,
+      updatePassword,
+    } = await loadFirebaseAuth();
     const expectedEmail = String(user?.email || getStoredUser()?.email || "").trim().toLowerCase();
     if (!expectedEmail) {
       const error = new Error("Login again before changing your password.");
@@ -359,6 +372,7 @@ export function AuthProvider({ children }) {
   }), []);
 
   const createRegistrationAccount = async ({ email, password, portal = "dealer" }) => {
+    const { auth, createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } = await loadFirebaseAuth();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     let credential;
     try {
@@ -418,7 +432,8 @@ export function AuthProvider({ children }) {
   };
 
   const checkDealerRegistrationWithEmail = async ({ silent = false } = {}) => {
-    const currentUser = auth.currentUser;
+    const { auth, onAuthStateChanged } = await loadFirebaseAuth();
+    const currentUser = await restoredFirebaseUser(auth, onAuthStateChanged);
     if (!currentUser && silent) return { status: "unknown", message: "Sign in with your email and password to check the latest approval status." };
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/dealer-registration" };
     await currentUser.reload();
@@ -470,7 +485,8 @@ export function AuthProvider({ children }) {
   };
 
   const checkBankRegistrationWithEmail = async ({ silent = false } = {}) => {
-    const currentUser = auth.currentUser;
+    const { auth, onAuthStateChanged } = await loadFirebaseAuth();
+    const currentUser = await restoredFirebaseUser(auth, onAuthStateChanged);
     if (!currentUser && silent) return { status: "unknown", message: "Sign in with your email and password to check the latest approval status.", redirectTo: "/bank-registration" };
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/bank-registration" };
     await currentUser.reload();

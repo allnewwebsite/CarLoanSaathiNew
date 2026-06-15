@@ -1,5 +1,5 @@
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
-import { auth } from "./firebase.js";
+import { auth } from "./firebaseAuth.js";
 
 export function createRecaptchaVerifier(containerId = "recaptcha-container") {
   return new RecaptchaVerifier(auth, containerId, {
