@@ -4,9 +4,10 @@ function benefits(items = []) {
   return items.map((text) => ({ text }));
 }
 
-export function onboardingSlidesFor(user = {}) {
-  const role = String(user.role || "").trim().toLowerCase();
-  const selectedPlan = String(user.selectedPlan || user.subscriptionStatus || "").trim().toLowerCase();
+export function onboardingSlidesFor(user) {
+  const safeUser = user && typeof user === "object" ? user : {};
+  const role = String(safeUser.role || "").trim().toLowerCase();
+  const selectedPlan = String(safeUser.selectedPlan || safeUser.subscriptionStatus || "").trim().toLowerCase();
   const isTrial = selectedPlan.includes("trial") || selectedPlan === "";
 
   if (role === "bank-manager") {

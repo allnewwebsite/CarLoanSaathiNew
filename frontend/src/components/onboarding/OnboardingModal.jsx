@@ -9,7 +9,7 @@ export function OnboardingModal({ open, user, onComplete, onSkip }) {
   const closeRef = useRef(null);
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState("next");
-  const slides = useMemo(() => onboardingSlidesFor(user), [user]);
+  const slides = useMemo(() => (open ? onboardingSlidesFor(user) : []), [open, user]);
   const slide = slides[index] || slides[0];
   const last = index === slides.length - 1;
 
