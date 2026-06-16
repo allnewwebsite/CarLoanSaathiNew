@@ -179,7 +179,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/change-password",
-    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
+    element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
     children: [
       { index: true, element: <ExecutiveChangePasswordPage /> },
     ],
@@ -203,6 +203,7 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute roles={[ROLES.BANK_MANAGER]} loginPath="/bank/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/bank-manager/leads" replace /> },
+      { path: "change-password", element: <ExecutiveChangePasswordPage /> },
       { path: "leads", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="leads" /> }] },
       { path: "status", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="status" /> }] },
       { path: "analytics", element: <DashboardLayout />, children: [{ index: true, element: <BankBranchManagerPanel mode="analytics" /> }] },

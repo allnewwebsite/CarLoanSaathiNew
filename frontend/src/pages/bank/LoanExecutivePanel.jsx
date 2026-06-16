@@ -14,6 +14,7 @@ import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
+import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -83,17 +84,19 @@ function useExecutiveLeads({ search, status }) {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
   const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "" });
-  const cachedRows = responseRows({ data: cached });
+  const apiFilterStatus = status ? apiStatus(status) : "";
+  const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status: apiFilterStatus, search, limit: pageSize });
+  const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
+  const [loading, setLoading] = useState(false);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status: status ? apiStatus(status) : "", ...cursorParamsForPage(targetPage) } });
+      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status: apiFilterStatus, ...cursorParamsForPage(targetPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -102,8 +105,11 @@ function useExecutiveLeads({ search, status }) {
     } finally {
       if (!options.silent) setLoading(false);
     }
-  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
-  useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
+  }, [page, search, apiFilterStatus, cursorParamsForPage, rememberNextCursor]);
+  useEffect(() => { load(page, { silent: true }); }, [load, page]);
+  useEffect(() => {
+    scheduleLeadPrefetch("/bank/leads", BANK_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
+  }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRealtimeLeadPatch({ setRows, statusFilter: status ? apiStatus(status) : "" });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });

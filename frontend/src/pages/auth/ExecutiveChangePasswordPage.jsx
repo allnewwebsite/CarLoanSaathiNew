@@ -60,7 +60,15 @@ export function ExecutiveChangePasswordPage() {
   const checks = useMemo(() => passwordChecks(form.newPassword), [form.newPassword]);
   const score = Object.values(checks).filter(Boolean).length;
   const isExecutive = user?.role === "loan-executive";
-  const destination = user?.role === "gm" ? "/gm/dashboard" : isExecutive ? "/loan-executive/leads" : "/finance/dashboard";
+  const isBankManager = user?.role === "bank-manager";
+  const isBankRole = isExecutive || isBankManager;
+  const destination = user?.role === "gm"
+    ? "/gm/dashboard"
+    : isExecutive
+      ? "/loan-executive/leads"
+      : isBankManager
+        ? "/bank-manager/leads"
+        : "/finance/dashboard";
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -97,9 +105,9 @@ export function ExecutiveChangePasswordPage() {
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isExecutive ? "Loan Executive Security" : "Dealership Staff Security"}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isBankRole ? "Bank Staff Security" : "Dealership Staff Security"}</p>
         <h1 className="mt-3 text-2xl font-semibold text-slate-950">Change Temporary Password</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">For security, change the temporary password issued by your {isExecutive ? "bank manager" : "dealership admin"} before opening your dashboard.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">For security, change the temporary password issued by your {isBankRole ? "bank admin" : "dealership admin"} before opening your dashboard.</p>
 
         <form onSubmit={submit} className="mt-6 space-y-4" autoComplete="off" data-form-type="other">
           <PasswordInput label="Current Temporary Password" name="cls_current_temporary_password" value={form.currentPassword} onChange={(value) => update("currentPassword", value)} visible={visible.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} autoComplete="off" error={fieldErrors.currentPassword} />

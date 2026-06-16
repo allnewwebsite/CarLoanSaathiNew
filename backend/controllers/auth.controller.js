@@ -157,6 +157,7 @@ function wrongLoginPortalPayload() {
 
 function passwordChangeRouteForRole(role) {
   if (role === "loan-executive") return "/loan-executive/change-password";
+  if (role === "bank-manager") return "/bank-manager/change-password";
   if (role === "gm") return "/gm/change-password";
   if (role === "finance-desk") return "/finance/change-password";
   return "/change-password";

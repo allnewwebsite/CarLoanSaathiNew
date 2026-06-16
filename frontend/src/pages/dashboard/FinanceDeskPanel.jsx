@@ -12,6 +12,7 @@ import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
+import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { bankDocumentRows, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 import { cleanEmail, cleanText, dateTime, dateValue, digits10, display, moneyValue, numericAmount, validEmail } from "./financeDesk.helpers.js";
 
@@ -118,11 +119,14 @@ function useFinanceManagers({ includeInactive = false } = {}) {
 function useDealerLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/dealer/leads", initialParams);
-  const cachedPayload = normalizePagedResponse(cached, { defaultLimit: pageSize });
+  const fallbackRows = cached ? [] : cachedLeadRows("/dealer/leads", { status: filters.status, search: filters.search, limit: pageSize });
+  const cachedPayload = cached
+    ? normalizePagedResponse(cached, { defaultLimit: pageSize })
+    : { data: fallbackRows, total: fallbackRows.length, hasMore: false, nextCursor: "" };
   const [leads, setLeads] = useState(() => cachedPayload?.data || []);
   const [total, setTotal] = useState(() => cachedPayload?.total || 0);
   const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload?.hasMore || cachedPayload?.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
+  const [loading, setLoading] = useState(false);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.financeManagerId || "", filters.search || ""]);
   const loadLeads = useCallback(async (next = {}) => {
     const silent = next.silent === true;
@@ -143,8 +147,11 @@ function useDealerLeads(filters = {}) {
   }, [filters.status, filters.salespersonId, filters.financeManagerId, filters.search, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => {
-    loadLeads({ silent: Boolean(cachedPayload) });
+    loadLeads({ silent: true });
   }, [loadLeads]);
+  useEffect(() => {
+    scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
+  }, [filters.search]);
   useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
   useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, loadLeads };

@@ -25,6 +25,7 @@ export const ROLE_LOGIN_ROUTES = {
 export const ROLE_PASSWORD_ROUTES = {
   [ROLES.FINANCE_DESK]: "/finance/change-password",
   [ROLES.GM]: "/gm/change-password",
+  [ROLES.BANK_MANAGER]: "/bank-manager/change-password",
   [ROLES.LOAN_EXECUTIVE]: "/loan-executive/change-password",
 };
 

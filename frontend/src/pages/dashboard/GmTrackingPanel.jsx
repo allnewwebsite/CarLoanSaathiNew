@@ -13,6 +13,7 @@ import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
+import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -96,11 +97,14 @@ function sameSalesperson(person = {}, value = "") {
 function useGmLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/gm/leads", initialParams);
-  const cachedPayload = normalizePagedResponse(cached, { defaultLimit: pageSize });
+  const fallbackRows = cached ? [] : cachedLeadRows("/gm/leads", { status: filters.status, search: filters.search, limit: pageSize });
+  const cachedPayload = cached
+    ? normalizePagedResponse(cached, { defaultLimit: pageSize })
+    : { data: fallbackRows, total: fallbackRows.length, hasMore: false, nextCursor: "" };
   const [leads, setLeads] = useState(() => cachedPayload.data);
   const [total, setTotal] = useState(() => cachedPayload.total);
   const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload.hasMore || cachedPayload.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
+  const [loading, setLoading] = useState(false);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
   const load = useCallback(async (next = {}) => {
     const silent = next.silent === true;
@@ -120,8 +124,11 @@ function useGmLeads(filters = {}) {
     }
   }, [filters.search, filters.status, filters.salespersonId, cursorParamsForPage, rememberNextCursor]);
   useEffect(() => {
-    load({ silent: Boolean(cached) });
+    load({ silent: true });
   }, [load]);
+  useEffect(() => {
+    scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
+  }, [filters.search]);
   useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
   useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter });
   return { leads, total, hasMore, loading, load };

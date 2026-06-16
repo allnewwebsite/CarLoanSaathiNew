@@ -290,6 +290,29 @@ export function findCachedGetItem(url, matcher) {
   return null;
 }
 
+export function findCachedGetRows(url, matcher = null, { limit = 10 } = {}) {
+  hydrateGetCache();
+  const rows = [];
+  const seen = new Set();
+  const now = Date.now();
+  const accepts = typeof matcher === "function" ? matcher : () => true;
+
+  for (const entry of getCache.values()) {
+    if (!entry || (entry.expiresAt <= now && entry.staleUntil <= now) || entry.url !== url) continue;
+    const payload = entry.response?.data;
+    const candidates = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+    for (const item of candidates) {
+      if (!item || !accepts(item)) continue;
+      const key = String(item.id || item.caseId || item.leadId || JSON.stringify(item));
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(item);
+      if (rows.length >= limit) return rows;
+    }
+  }
+  return rows;
+}
+
 export function prefetchGet(url, params = null, options = {}) {
   if (getCachedGetData(url, params)) return Promise.resolve(null);
   return api.get(url, {

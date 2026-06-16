@@ -13,6 +13,7 @@ import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/us
 import { api, getCachedGetData, invalidateGetCache } from "../../services/api.js";
 import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
+import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
@@ -262,7 +263,7 @@ function useAdminEcosystem({ includeAudit = false } = {}) {
     ...cachedAdminState,
   });
   const [analytics, setAnalytics] = useState(cachedAnalytics);
-  const [loading, setLoading] = useState(() => !cachedEcosystem || !Object.keys(cachedEcosystem).length);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -279,7 +280,7 @@ function useAdminEcosystem({ includeAudit = false } = {}) {
     }
   }, [includeAudit]);
 
-  useEffect(() => { load({ silent: Boolean(cachedEcosystem && Object.keys(cachedEcosystem).length) }); }, [load]);
+  useEffect(() => { load({ silent: true }); }, [load]);
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
   return { ...state, analytics, loading, load };
 }
@@ -389,8 +390,11 @@ function adminPanelRequest(mode, search, leadFilter) {
 function useAdminPanelData(mode, search, leadFilter) {
   const initialRequest = adminPanelRequest(mode, search, leadFilter);
   const cached = getCachedGetData(initialRequest.url, initialRequest.params);
-  const [rows, setRows] = useState(() => responseRows({ data: cached }));
-  const [loading, setLoading] = useState(() => !cached);
+  const fallbackRows = !cached && initialRequest.url === "/admin/leads"
+    ? cachedLeadRows("/admin/leads", { status: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", search, limit: pageSize })
+    : [];
+  const [rows, setRows] = useState(() => (cached ? responseRows({ data: cached }) : fallbackRows));
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -420,7 +424,12 @@ function useAdminPanelData(mode, search, leadFilter) {
     }
   }, [leadFilter, mode, search]);
 
-  useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
+  useEffect(() => { load({ silent: true }); }, [load]);
+  useEffect(() => {
+    if (mode === "status" || mode === "leads") {
+      scheduleLeadPrefetch("/admin/leads", ADMIN_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
+    }
+  }, [mode, search]);
   useRealtimeLeadPatch({ setRows, statusFilter: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", enabled: mode === "status" || mode === "leads" });
   useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
   return { rows, loading, load };

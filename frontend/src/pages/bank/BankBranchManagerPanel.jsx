@@ -12,6 +12,7 @@ import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/us
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
+import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { bankDocumentRows, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 import {
   branchMatch,
@@ -274,11 +275,12 @@ function useBankLeads(search, status = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
   const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status });
-  const cachedRows = responseRows({ data: cached });
+  const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status, search, limit: pageSize });
+  const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
+  const [loading, setLoading] = useState(false);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
@@ -296,7 +298,10 @@ function useBankLeads(search, status = "") {
     }
   }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
 
-  useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
+  useEffect(() => { load(page, { silent: true }); }, [load, page]);
+  useEffect(() => {
+    scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
+  }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRealtimeLeadPatch({ setRows, statusFilter: status });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
