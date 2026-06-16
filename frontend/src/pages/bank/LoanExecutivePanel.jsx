@@ -12,6 +12,7 @@ import { mutationUrlMatches, useLeadDetailRealtime, useRoleLeadRealtime } from "
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
@@ -67,7 +68,7 @@ function workflowStatus(value) {
 }
 
 function responseRows(response) {
-  return Array.isArray(response?.data?.data) ? response.data.data : Array.isArray(response?.data) ? response.data : [];
+  return normalizeRows(response);
 }
 
 function PageTitle({ title }) {

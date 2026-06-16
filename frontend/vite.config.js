@@ -6,11 +6,22 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          firebase: ["firebase/app", "firebase/auth"],
-          axios: ["axios"],
-          charts: ["recharts"],
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/react-router-dom")) {
+            return "react";
+          }
+          if (id.includes("node_modules/firebase")) {
+            return "firebase";
+          }
+          if (id.includes("node_modules/axios")) {
+            return "axios";
+          }
+          if (id.includes("node_modules/recharts")) {
+            return "charts";
+          }
+          if (id.includes("/src/services/") || id.includes("/src/hooks/")) {
+            return "app-runtime";
+          }
         },
       },
     },

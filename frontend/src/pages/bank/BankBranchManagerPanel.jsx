@@ -11,6 +11,7 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
@@ -88,7 +89,7 @@ function leadStatusLabel(lead) {
 }
 
 function responseRows(response) {
-  return Array.isArray(response?.data?.data) ? response.data.data : Array.isArray(response?.data) ? response.data : [];
+  return normalizeRows(response);
 }
 
 function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {

@@ -11,6 +11,7 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
@@ -95,9 +96,10 @@ function sameSalesperson(person = {}, value = "") {
 function useGmLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/gm/leads", initialParams);
-  const [leads, setLeads] = useState(() => cached?.data || []);
-  const [total, setTotal] = useState(() => cached?.total || 0);
-  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
+  const cachedPayload = normalizePagedResponse(cached, { defaultLimit: pageSize });
+  const [leads, setLeads] = useState(() => cachedPayload.data);
+  const [total, setTotal] = useState(() => cachedPayload.total);
+  const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload.hasMore || cachedPayload.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
   const load = useCallback(async (next = {}) => {
@@ -107,11 +109,12 @@ function useGmLeads(filters = {}) {
       const { silent: _silent, ...params } = next;
       const targetPage = Math.max(Number(params.page || 1), 1);
       const response = await api.get("/gm/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
-      const rows = response.data?.data || [];
+      const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
+      const rows = payload.data || [];
       setLeads(rows);
-      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + rows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
+      setHasMore(Boolean(payload.hasMore || payload.nextCursor));
+      rememberNextCursor(targetPage, payload.nextCursor);
+      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (targetPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }

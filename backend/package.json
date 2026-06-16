@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "test": "node --test tests/*.test.js",
     "create-super-admin": "node scripts/createSuperAdmin.js",
     "maintenance": "node scripts/runMaintenance.js",
     "backfill:metrics": "node scripts/backfillMetrics.js",

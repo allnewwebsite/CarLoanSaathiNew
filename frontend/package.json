@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "bundle:report": "node scripts/reportBundleBudget.js",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
+    "test": "node --test tests/*.test.js",
     "verify:auth-isolation": "node scripts/verifyAuthIsolation.js"
   },
   "dependencies": {

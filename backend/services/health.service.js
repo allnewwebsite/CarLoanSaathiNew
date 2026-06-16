@@ -52,6 +52,33 @@ function cpuHealth() {
   };
 }
 
+function projectionHealth() {
+  const summary = workerState.projectionFreshnessLastSummary || null;
+  const lastRunAt = workerState.projectionFreshnessLastRunAt || null;
+  const scheduled = process.env.ENABLE_SCHEDULED_OPERATIONS === "true";
+  if (!scheduled) {
+    return {
+      status: "manual",
+      lastRunAt,
+      summary,
+    };
+  }
+  if (!lastRunAt) {
+    return {
+      status: "degraded",
+      lastRunAt: null,
+      summary: null,
+      message: "Projection freshness job has not completed yet.",
+    };
+  }
+  const stale = Number(summary?.stale || 0);
+  return {
+    status: stale > 0 ? "degraded" : "ok",
+    lastRunAt,
+    summary,
+  };
+}
+
 function scoreStatus(checks) {
   if (checks.some((item) => item?.status === "down")) return "down";
   if (checks.some((item) => item?.status === "degraded")) return "degraded";
@@ -97,12 +124,13 @@ async function productionHealthSnapshot({ deep = false } = {}) {
     archival: {
       status: process.env.ENABLE_SCHEDULED_OPERATIONS === "true" ? "scheduled" : "manual",
     },
+    projections: projectionHealth(),
     razorpayWebhook,
     paymentReconciliation,
   };
 
   return {
-    status: scoreStatus([base.memory, checks.firestore, checks.metricsEngine, queue, razorpayWebhook, paymentReconciliation]),
+    status: scoreStatus([base.memory, checks.firestore, checks.metricsEngine, checks.projections, queue, razorpayWebhook, paymentReconciliation]),
     ...base,
     checks,
   };

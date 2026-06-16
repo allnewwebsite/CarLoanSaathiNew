@@ -10,8 +10,10 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
-import { bankDocumentRows, formatPortalDate, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { cleanEmail, cleanText, dateTime, dateValue, digits10, display, moneyValue, numericAmount, validEmail } from "./financeDesk.helpers.js";
 
 const pageSize = 10;
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/bank/leads", "/gm/leads", "/documents"]);
@@ -36,11 +38,6 @@ const emptyLead = {
 const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
 const emptyFinanceManager = { name: "", mobile: "", employeeId: "", email: "" };
 const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "gm", branch: "", city: "" };
-const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
-
-function display(value) {
-  return value || "-";
-}
 
 function mergeBranchesByKey(...groups) {
   const merged = new Map();
@@ -51,39 +48,6 @@ function mergeBranchesByKey(...groups) {
     merged.set(key, { ...branch, ...existing });
   });
   return [...merged.values()];
-}
-
-function cleanText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function cleanEmail(value) {
-  return cleanText(value).toLowerCase();
-}
-
-function digits10(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 10);
-}
-
-function numericAmount(value) {
-  const clean = String(value || "").replace(/[^\d]/g, "");
-  return clean ? String(Number(clean)) : "";
-}
-
-function validEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
-}
-
-function moneyValue(value) {
-  return `Rs. ${money.format(Number(value || 0))}`;
-}
-
-function dateValue(value) {
-  return formatPortalDate(value);
-}
-
-function dateTime(value) {
-  return formatPortalDateTime(value);
 }
 
 function caseId(lead) {
@@ -154,11 +118,11 @@ function useFinanceManagers({ includeInactive = false } = {}) {
 function useDealerLeads(filters = {}) {
   const initialParams = { page: 1, limit: pageSize, ...filters };
   const cached = getCachedGetData("/dealer/leads", initialParams);
-  const cachedPayload = Array.isArray(cached) ? { data: cached, total: cached.length } : cached;
+  const cachedPayload = normalizePagedResponse(cached, { defaultLimit: pageSize });
   const [leads, setLeads] = useState(() => cachedPayload?.data || []);
   const [total, setTotal] = useState(() => cachedPayload?.total || 0);
   const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload?.hasMore || cachedPayload?.nextCursor));
-  const [loading, setLoading] = useState(() => !cachedPayload);
+  const [loading, setLoading] = useState(() => !cached);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.financeManagerId || "", filters.search || ""]);
   const loadLeads = useCallback(async (next = {}) => {
     const silent = next.silent === true;
@@ -167,7 +131,7 @@ function useDealerLeads(filters = {}) {
       const { silent: _silent, ...params } = next;
       const targetPage = Math.max(Number(params.page || 1), 1);
       const response = await api.get("/dealer/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
-      const payload = Array.isArray(response.data) ? { data: response.data, total: response.data.length } : response.data;
+      const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
       const rows = payload.data || [];
       setLeads(rows);
       setHasMore(Boolean(payload.hasMore || payload.nextCursor));
