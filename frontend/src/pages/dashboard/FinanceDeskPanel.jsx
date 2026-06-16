@@ -235,6 +235,7 @@ function StaffManagementScreen() {
   const [loading, setLoading] = useState(() => !cachedStaff);
   const [form, setForm] = useState(emptyStaff);
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -270,6 +271,7 @@ function StaffManagementScreen() {
 
   const submit = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     setMessage("");
     setError("");
     const nextForm = {
@@ -288,6 +290,7 @@ function StaffManagementScreen() {
     try {
       const response = await api.post("/dealer/staff", nextForm);
       setForm(emptyStaff);
+      setSubmittedOnce(false);
       setMessage("Employee created successfully.");
       setCredentials({
         name: response.data?.fullName || nextForm.fullName,
@@ -361,13 +364,13 @@ function StaffManagementScreen() {
           </div>
         </div>
       ) : null}
-      <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
+      <form noValidate onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Full Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5 h-10 rounded-md" value={form.fullName} onBlur={() => setErrors(validate(form))} onChange={(event) => update("fullName", event.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Official Email" error={errors.email}><input aria-invalid={Boolean(errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Role" error={errors.role}><select aria-invalid={Boolean(errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onBlur={() => setErrors(validate(form))} onChange={(event) => update("role", event.target.value)}><option value="gm">GM</option></select></Field>
+          <Field label="Full Name" error={submittedOnce ? errors.fullName : ""}><input aria-invalid={Boolean(submittedOnce && errors.fullName)} className="field mt-1.5 h-10 rounded-md" value={form.fullName} onChange={(event) => update("fullName", event.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Official Email" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
+          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
+          <Field label="Employee ID" error={submittedOnce ? errors.employeeId : ""}><input aria-invalid={Boolean(submittedOnce && errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Role" error={submittedOnce ? errors.role : ""}><select aria-invalid={Boolean(submittedOnce && errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onChange={(event) => update("role", event.target.value)}><option value="gm">GM</option></select></Field>
           <Field label="Branch / Location"><input className="field mt-1.5 h-10 rounded-md" value={form.branch} onChange={(event) => update("branch", event.target.value.replace(/[<>]/g, ""))} /></Field>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
@@ -514,6 +517,7 @@ function AddLeadOnlyScreen() {
   const [branchesError, setBranchesError] = useState("");
   const [form, setForm] = useState(emptyLead);
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -559,13 +563,9 @@ function AddLeadOnlyScreen() {
     return nextErrors;
   };
 
-  const validateField = (field) => {
-    const nextErrors = validate(form);
-    setErrors((current) => ({ ...current, [field]: nextErrors[field] || "" }));
-  };
-
   const submit = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     const nextForm = {
       ...form,
       fullName: cleanText(form.fullName),
@@ -598,37 +598,39 @@ function AddLeadOnlyScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="Add Lead" subtitle="Create a dealership case and route it to one tied-up bank branch." />
-      <form onSubmit={submit} className="card p-5">
+      <form noValidate onSubmit={submit} className="card overflow-hidden">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h3 className="text-sm font-semibold text-slate-900">Customer and routing details</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-500">Select the dealership team owner and one active bank branch before submitting the case.</p>
+        </div>
+        <div className="p-5">
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         {branchesError ? <p className="mb-4 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{branchesError}</p> : null}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Customer Name *" error={errors.fullName}><input required aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number *" error={errors.mobile}><MobileInput required value={form.mobile} error={errors.mobile} onBlur={() => validateField("mobile")} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Customer City *" error={errors.city}><input required aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Tied-up Bank Branch *" error={errors.branchId}>
-            <select required aria-invalid={Boolean(errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+        <div className="grid gap-x-4 gap-y-3 md:grid-cols-3">
+          <Field label="Customer Name *" error={submittedOnce ? errors.fullName : ""}><input required aria-invalid={Boolean(submittedOnce && errors.fullName)} className="field mt-1.5" value={form.fullName} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number *" error={submittedOnce ? errors.mobile : ""}><MobileInput required value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
+          <Field label="Customer City *" error={submittedOnce ? errors.city : ""}><input required aria-invalid={Boolean(submittedOnce && errors.city)} className="field mt-1.5" value={form.city} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Tied-up Bank Branch *" error={submittedOnce ? errors.branchId : ""}>
+            <select required aria-invalid={Boolean(submittedOnce && errors.branchId)} disabled={branchesLoading} className="field mt-1.5" value={form.branchId} onChange={(e) => update("branchId", e.target.value)}>
               <option value="">Select branch</option>
               {branches.map((branch) => <option key={bankKey(branch)} value={bankKey(branch)}>{branchLabel(branch)}</option>)}
             </select>
-            {!branchesLoading && branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Open Bank Tie-Ups from the sidebar first.</p> : null}
           </Field>
-          <Field label="Car On-Road Price *" error={errors.carPrice}><input required aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
-          <Field label="Required Loan Amount *" error={errors.loanAmount}><input required aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
-          <Field label="Select Salesperson *" error={errors.salespersonId}><select required aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">{salespersons.length ? "Select salesperson" : "No salesperson found"}</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
-          <Field label="Finance Manager *" error={errors.financeManagerId}>
-            <select required aria-invalid={Boolean(errors.financeManagerId)} className="field mt-1.5" value={form.financeManagerId} onBlur={() => validateField("financeManagerId")} onChange={(e) => update("financeManagerId", e.target.value)}>
+          <Field label="Car On-Road Price *" error={submittedOnce ? errors.carPrice : ""}><input required aria-invalid={Boolean(submittedOnce && errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
+          <Field label="Required Loan Amount *" error={submittedOnce ? errors.loanAmount : ""}><input required aria-invalid={Boolean(submittedOnce && errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
+          <Field label="Select Salesperson *" error={submittedOnce ? errors.salespersonId : ""}><select required aria-invalid={Boolean(submittedOnce && errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onChange={(e) => update("salespersonId", e.target.value)}><option value="">{salespersons.length ? "Select salesperson" : "No salesperson found"}</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <Field label="Finance Manager *" error={submittedOnce ? errors.financeManagerId : ""}>
+            <select required aria-invalid={Boolean(submittedOnce && errors.financeManagerId)} className="field mt-1.5" value={form.financeManagerId} onChange={(e) => update("financeManagerId", e.target.value)}>
               <option value="">{financeManagers.length ? "Select Finance Manager" : "No Finance Manager found"}</option>
               {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
             </select>
-            {!financeManagers.length ? (
-              <p className="validation-slot text-sm">No Finance Manager found. Please add one first.</p>
-            ) : null}
           </Field>
-          <div className="flex min-h-[4.375rem] items-end">
-            <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
-          </div>
         </div>
-        <p className="mt-4 text-sm text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
+        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm leading-5 text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
+          <button disabled={submitting} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white shadow-sm transition hover:bg-[#0b3f8c] disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
+        </div>
+        </div>
       </form>
     </div>
   );
@@ -1011,6 +1013,7 @@ function SalespersonManagementScreen() {
   const { salespersons, loading, loadSalespersons } = useSalespersons({ includeInactive: true });
   const [form, setForm] = useState(emptySalesperson);
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const update = (field, value) => {
@@ -1027,6 +1030,7 @@ function SalespersonManagementScreen() {
   };
   const add = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     setMessage("");
     const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), jobId: cleanText(form.jobId), email: cleanEmail(form.email) };
     const nextErrors = validate(nextForm);
@@ -1036,6 +1040,7 @@ function SalespersonManagementScreen() {
     try {
       await api.post("/dealer/salespersons", nextForm);
       setForm(emptySalesperson);
+      setSubmittedOnce(false);
       await loadSalespersons();
       setMessage("Salesperson added");
     } catch (error) {
@@ -1062,14 +1067,14 @@ function SalespersonManagementScreen() {
   }));
   return (
     <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-      <form onSubmit={add} className="card p-5">
+      <form noValidate onSubmit={add} className="card p-5">
         <h2 className="text-lg font-semibold text-slate-900">Add Salesperson</h2>
         {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="mt-4 grid gap-3">
-          <Field label="Salesperson Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Job ID" error={errors.jobId}><input aria-invalid={Boolean(errors.jobId)} className="field mt-1.5" value={form.jobId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mail ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
+          <Field label="Salesperson Name" error={submittedOnce ? errors.name : ""}><input aria-invalid={Boolean(submittedOnce && errors.name)} className="field mt-1.5" value={form.name} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
+          <Field label="Job ID" error={submittedOnce ? errors.jobId : ""}><input aria-invalid={Boolean(submittedOnce && errors.jobId)} className="field mt-1.5" value={form.jobId} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mail ID" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} className="field mt-1.5" type="email" value={form.email} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
           <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Salesperson"}</button>
         </div>
       </form>
@@ -1085,6 +1090,7 @@ function FinanceManagerManagementScreen() {
   const { financeManagers, loading, loadFinanceManagers } = useFinanceManagers({ includeInactive: true });
   const [form, setForm] = useState(emptyFinanceManager);
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const update = (field, value) => {
@@ -1101,6 +1107,7 @@ function FinanceManagerManagementScreen() {
   };
   const add = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     setMessage("");
     const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), employeeId: cleanText(form.employeeId), email: cleanEmail(form.email) };
     const nextErrors = validate(nextForm);
@@ -1110,6 +1117,7 @@ function FinanceManagerManagementScreen() {
     try {
       await api.post("/dealer/finance-managers", nextForm);
       setForm(emptyFinanceManager);
+      setSubmittedOnce(false);
       await loadFinanceManagers();
       setMessage("Finance Manager added");
     } catch (error) {
@@ -1136,14 +1144,14 @@ function FinanceManagerManagementScreen() {
   }));
   return (
     <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-      <form onSubmit={add} className="card p-5">
+      <form noValidate onSubmit={add} className="card p-5">
         <h2 className="text-lg font-semibold text-slate-900">Add Finance Manager</h2>
         {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="mt-4 grid gap-3">
-          <Field label="Finance Manager Name" error={errors.name}><input aria-invalid={Boolean(errors.name)} className="field mt-1.5" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => setErrors(validate(form))} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Employee ID" error={errors.employeeId}><input aria-invalid={Boolean(errors.employeeId)} className="field mt-1.5" value={form.employeeId} onBlur={() => setErrors(validate(form))} onChange={(e) => update("employeeId", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Email ID" error={errors.email}><input aria-invalid={Boolean(errors.email)} className="field mt-1.5" type="email" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
+          <Field label="Finance Manager Name" error={submittedOnce ? errors.name : ""}><input aria-invalid={Boolean(submittedOnce && errors.name)} className="field mt-1.5" value={form.name} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
+          <Field label="Employee ID" error={submittedOnce ? errors.employeeId : ""}><input aria-invalid={Boolean(submittedOnce && errors.employeeId)} className="field mt-1.5" value={form.employeeId} onChange={(e) => update("employeeId", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Email ID" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} className="field mt-1.5" type="email" value={form.email} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
           <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Finance Manager"}</button>
         </div>
       </form>
@@ -1246,18 +1254,25 @@ function SectionTitle({ title, subtitle }) {
   );
 }
 
-function Field({ label, children, error }) {
-  return <label className="text-sm font-medium text-slate-700">{label}{children}<span className={`validation-slot ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</span></label>;
+function Field({ label, children, error, help = "" }) {
+  const slotText = error || help || "No validation issue";
+  return (
+    <label className="block text-sm font-medium text-slate-700">
+      {label}
+      {children}
+      <span className={`validation-slot ${error ? "" : help ? "!text-slate-500" : "validation-slot-empty"}`}>{slotText}</span>
+    </label>
+  );
 }
 
 function MobileInput({ value, onChange, onBlur, error, required = false }) {
   return (
-    <div className={`mt-1.5 flex h-10 overflow-hidden rounded-md border bg-white ${error ? "border-red-300" : "border-slate-200"} focus-within:border-[#0d47a1]`}>
+    <div className={`mt-1.5 flex h-10 overflow-hidden rounded-md border bg-white ${error ? "border-red-300" : "border-slate-300"} focus-within:border-[#0d47a1] focus-within:ring-2 focus-within:ring-blue-100`}>
       <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
       <input
         required={required}
         aria-invalid={Boolean(error)}
-        className="h-full w-full px-3 outline-none"
+        className="h-full min-w-0 flex-1 px-3 text-sm font-normal text-slate-900 outline-none"
         inputMode="numeric"
         maxLength={10}
         value={value}
