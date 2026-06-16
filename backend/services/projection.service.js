@@ -4,12 +4,13 @@ import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { recordMonitoringSignal } from "./monitoringCenter.service.js";
-import { cached, clearCachedValue } from "./ttlCache.service.js";
+import { clearCachedValue, getCachedValue, setCachedValue } from "./ttlCache.service.js";
 
 export const PROJECTION_VERSION = Number(process.env.PROJECTION_VERSION || 2);
 const PROJECTION_VALIDATION_SAMPLE_LIMIT = Number(process.env.PROJECTION_VALIDATION_SAMPLE_LIMIT || 3);
 const LEAD_QUERY_CACHE_TTL_MS = Number(process.env.LEAD_QUERY_CACHE_TTL_MS || 8000);
 const rebuilding = new Set();
+const projectionMissBackfills = new Set();
 const LEAD_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"]);
 const NOTIFICATION_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews"]);
 
@@ -99,6 +100,14 @@ function stableCacheValue(value) {
 
 function cacheDigest(value) {
   return createHash("sha1").update(JSON.stringify(stableCacheValue(value))).digest("hex");
+}
+
+function projectionWhereSignature(where = []) {
+  return cacheDigest(where.map((clause) => ({
+    field: clause.field,
+    op: clause.op || "==",
+    value: clause.value,
+  })));
 }
 
 function scopeId(value) {
@@ -354,6 +363,79 @@ function leadTargets(lead = {}) {
   return targets;
 }
 
+function rawLeadWhereForProjectionMiss({ role, where = [] } = {}) {
+  const rawWhere = [];
+  const scope = where.find((clause) => clause.field === "scopeId")?.value;
+
+  if (role === "finance-desk" || role === "gm") {
+    if (scope) rawWhere.push({ field: "dealershipId", value: scope });
+  } else if (role === "bank-manager") {
+    if (scope) rawWhere.push({ field: "bankId", value: scope });
+  } else if (role === "loan-executive") {
+    if (scope) rawWhere.push({ field: "assignedExecutiveId", value: scope });
+  }
+
+  for (const clause of where) {
+    if (["viewType", "scopeId"].includes(clause.field)) continue;
+    if (["status", "dealershipId", "salespersonId", "financeManagerId", "assignedExecutiveId"].includes(clause.field)) {
+      rawWhere.push({ field: clause.field, op: clause.op, value: clause.value });
+    }
+  }
+  return rawWhere;
+}
+
+async function backfillLeadProjectionsFromMiss({ collection, role, where, limit, query, requestId }) {
+  const rawWhere = rawLeadWhereForProjectionMiss({ role, where });
+  const allowGlobal = role === "super-admin" && rawWhere.length === 0;
+  if (!allowGlobal && !rawWhere.length) return;
+  const key = `${collection}:${role}:${projectionWhereSignature(where)}`;
+  if (projectionMissBackfills.has(key)) return;
+  projectionMissBackfills.add(key);
+  try {
+    recordMonitoringSignal("PROJECTION-REBUILD", {
+      requestId,
+      collection,
+      role,
+      reason: "projection_miss_backfill_started",
+      queryScope: rawWhere.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+    });
+    const page = await queryRecords("leads", {
+      where: rawWhere,
+      orderBy: "createdAt",
+      direction: "desc",
+      limit: Math.min(Math.max(Number(limit || 20), 20), 50),
+      maxLimit: 50,
+      search: query.search,
+      searchFields: VIEW_SEARCH_FIELDS,
+      allowGlobal,
+    }).catch(() => ({ data: [] }));
+    const rows = Array.isArray(page.data) ? page.data.filter((lead) => lead?.id) : [];
+    await Promise.all(rows.map((lead) => syncLeadProjection(lead).catch(() => null)));
+    recordMonitoringSignal("PROJECTION-REBUILD", {
+      requestId,
+      collection,
+      role,
+      resultCount: rows.length,
+      reason: "projection_miss_backfill_completed",
+    });
+  } catch (error) {
+    recordMonitoringSignal("PROJECTION-REBUILD-SKIPPED", {
+      requestId,
+      collection,
+      role,
+      reason: error.code || error.message || "projection_miss_backfill_failed",
+    });
+    logWarn("Projection miss backfill failed", {
+      requestId,
+      collection,
+      role,
+      error: error.code || error.message,
+    });
+  } finally {
+    projectionMissBackfills.delete(key);
+  }
+}
+
 export async function syncLeadProjection(lead = {}) {
   if (!lead?.id) return null;
   if (lead.isArchived === true) return removeLeadProjections(lead);
@@ -492,7 +574,24 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
     fields: projectionFields,
   })}`;
   try {
-    return await cached(cacheKey, LEAD_QUERY_CACHE_TTL_MS, async () => {
+    const cachedResponse = getCachedValue(cacheKey);
+    if (cachedResponse !== null) {
+      recordMonitoringSignal("PROJECTION-CACHE-HIT", {
+        requestId,
+        collection,
+        role,
+        cacheKey: "projection:lead-query",
+        resultCount: Array.isArray(cachedResponse.data) ? cachedResponse.data.length : 0,
+      });
+      return cachedResponse;
+    }
+    recordMonitoringSignal("PROJECTION-CACHE-MISS", {
+      requestId,
+      collection,
+      role,
+      cacheKey: "projection:lead-query",
+    });
+    const response = await (async () => {
       const result = await queryRecords(collection, {
         where,
         orderBy: "createdAt",
@@ -525,6 +624,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       });
       if (!resultCount) {
         if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs, reason: "empty_projection_result" });
+        backfillLeadProjectionsFromMiss({ collection, role, where, limit, query, requestId }).catch(() => {});
         return null;
       }
       const freshRows = await freshProjectionRows(collection, result.data);
@@ -556,7 +656,8 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       });
       if (recordMetrics) recordProjectionMetric("PROJECTION-HIT", { requestId, collection, role, resultCount: data.length, durationMs: Date.now() - projectionStartedAt });
       return response;
-    });
+    })();
+    return response === null ? null : setCachedValue(cacheKey, response, LEAD_QUERY_CACHE_TTL_MS);
   } catch (error) {
     if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", {
       requestId,
