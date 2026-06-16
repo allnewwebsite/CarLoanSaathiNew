@@ -1,6 +1,16 @@
-# Staging E2E Playbook
+# Optional Staging E2E Playbook
 
-The browser E2E suite is intentionally staging-only. It will skip write flows unless explicit gates are set.
+The browser E2E suite is optional and intentionally staging-only. It is not part of the normal local checks or CI pipeline right now.
+
+Use it later when you have a dedicated staging frontend URL, real staging test accounts, and disposable staging data. Write flows skip unless explicit gates are set.
+
+For day-to-day development, use:
+
+```powershell
+npm test
+npm --prefix frontend run build
+npm --prefix frontend run bundle:report
+```
 
 ## Install
 
