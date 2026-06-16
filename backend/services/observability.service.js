@@ -2,6 +2,7 @@ import { createRecord, queryRecords } from "./firestore.service.js";
 import { logError, logInfo, logSecurity, logWarn } from "./logger.service.js";
 import { captureOperationalIncident, captureSecurityIncident } from "./monitoring.service.js";
 import { recordApiMetric } from "./monitoringCenter.service.js";
+import { cached } from "./ttlCache.service.js";
 
 export const ALERT_SEVERITY = Object.freeze({
   CRITICAL: "critical",
@@ -197,6 +198,11 @@ export async function observeQueueHealth(health) {
 }
 
 export async function getOperationalDashboard({ limit = 20 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  return cached(`operational:dashboard:${safeLimit}:v2`, 10_000, () => getOperationalDashboardSnapshot({ limit: safeLimit }));
+}
+
+async function getOperationalDashboardSnapshot({ limit = 20 } = {}) {
   const [alerts, events] = await Promise.all([
     queryRecords("operationalAlerts", { orderBy: "createdAt", direction: "desc", limit, maxLimit: 100 }).catch(() => ({ data: [] })),
     queryRecords("operationalEvents", { orderBy: "createdAt", direction: "desc", limit, maxLimit: 100 }).catch(() => ({ data: [] })),

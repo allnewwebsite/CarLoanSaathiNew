@@ -4,6 +4,11 @@ import { logInfo, logWarn } from "../services/logger.service.js";
 import { observeApiRequest } from "../services/observability.service.js";
 import { flushFirestoreReadReport, runRequestScope } from "../services/requestScope.service.js";
 
+function isLongLivedStream(req, res) {
+  const contentType = String(res.getHeader("content-type") || "").toLowerCase();
+  return req.path === "/api/realtime/events" || contentType.includes("text/event-stream");
+}
+
 export function requestContext(req, res, next) {
   const requestId = req.headers["x-request-id"] || crypto.randomUUID();
   res.locals.requestId = requestId;
@@ -44,8 +49,9 @@ export function requestContext(req, res, next) {
       const durationMs = Date.now() - res.locals.startedAt;
       const responseBytes = Number(res.getHeader("content-length") || 0) || res.locals.responseBytes || null;
       flushFirestoreReadReport({ statusCode: res.statusCode, durationMs, responseBytes });
-      observeApiRequest(req, res, durationMs).catch(() => {});
-      if (durationMs >= 500) {
+      const longLivedStream = isLongLivedStream(req, res);
+      if (!longLivedStream) observeApiRequest(req, res, durationMs).catch(() => {});
+      if (!longLivedStream && durationMs >= 500) {
         const tier = durationMs >= 2000 ? "2000ms" : durationMs >= 1000 ? "1000ms" : "500ms";
         logWarn("API performance threshold exceeded", {
           requestId,
@@ -59,7 +65,7 @@ export function requestContext(req, res, next) {
           role: req.user?.role || null,
         });
       }
-      if (durationMs >= GOVERNANCE_LIMITS.api.slowRequestMs) {
+      if (!longLivedStream && durationMs >= GOVERNANCE_LIMITS.api.slowRequestMs) {
         logWarn("Slow API request", {
           requestId,
           method: req.method,

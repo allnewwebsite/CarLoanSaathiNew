@@ -3,6 +3,7 @@ import IORedis from "ioredis";
 import { logError, logInfo, logWarn } from "./logger.service.js";
 import { createRecord } from "./firestore.service.js";
 import { captureBackendError, captureOperationalIncident } from "./monitoring.service.js";
+import { cached } from "./ttlCache.service.js";
 
 export const QUEUE_NAMES = Object.freeze({
   NOTIFICATIONS: "notifications",
@@ -262,6 +263,10 @@ export function registerWorker(name, processor, { concurrency = 5 } = {}) {
 }
 
 export async function queueHealth() {
+  return cached("queue:health:v2", Number(process.env.QUEUE_HEALTH_CACHE_TTL_MS || 10_000), queueHealthSnapshot);
+}
+
+async function queueHealthSnapshot() {
   if (!queueEnabled()) {
     return {
       enabled: false,
@@ -271,8 +276,7 @@ export async function queueHealth() {
       generatedAt: new Date().toISOString(),
     };
   }
-  const health = {};
-  for (const name of Object.values(QUEUE_NAMES)) {
+  const entries = await Promise.all(Object.values(QUEUE_NAMES).map(async (name) => {
     const queue = getQueue(name);
     const [counts, paused, lastSuccessfulJobTimestamp] = await Promise.all([
       queue.getJobCounts("waiting", "active", "failed", "delayed"),
@@ -282,7 +286,7 @@ export async function queueHealth() {
     const failedJobsTotal = Number(counts.failed || 0);
     const failureSummary = await getFailureSummary(queue, failedJobsTotal);
     const status = queueStatusForRecentFailures(failureSummary.failedJobsLast24Hours);
-    health[name] = {
+    return [name, {
       queueName: name,
       failedJobsTotal,
       failedJobsLastHour: failureSummary.failedJobsLastHour,
@@ -305,8 +309,9 @@ export async function queueHealth() {
       failureSampleSize: failureSummary.failureSampleSize,
       failureSampleLimited: failureSummary.failureSampleLimited,
       failureSampleError: failureSummary.failureSampleError || null,
-    };
-  }
+    }];
+  }));
+  const health = Object.fromEntries(entries);
   return {
     enabled: true,
     status: aggregateQueueStatus(Object.values(health)),

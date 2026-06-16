@@ -965,6 +965,7 @@ export async function registerDealerOnboarding(req, res, next) {
     if (pendingAccount.registrationSubmitted === true || pendingAccount.approvalStatus === "pending") {
       return res.status(409).json({ message: "Your dealership registration is already submitted and pending approval." });
     }
+    await assertNoActiveIdentityCollision({ uid: req.body.dealerUid || loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [] });
     const selectedPlan = normalizeOnboardingPlan(pendingAccount.selectedPlan || req.body.selectedPlan);
     const dealership = {
       dealershipName: required(req.body.dealershipName, "Dealership name"),
@@ -1091,7 +1092,7 @@ export async function registerDealerOnboarding(req, res, next) {
       approvalRequestId: approval.id,
       dealerApprovalQueueId: approvalQueue.id,
       selectedPlan,
-    });
+    }, { readback: false });
 
     await upsertRecord("dealerRegistrations", req.body.dealerUid || loginEmail, {
       dealerUid: req.body.dealerUid || pendingAccount.uid || loginEmail,
@@ -1106,9 +1107,8 @@ export async function registerDealerOnboarding(req, res, next) {
       registrationStatus: "pending-approval",
       submittedAt: now,
       selectedPlan,
-    });
+    }, { readback: false });
 
-    await assertNoActiveIdentityCollision({ uid: req.body.dealerUid || loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [] });
     await upsertCanonicalUser(req.body.dealerUid || loginEmail, {
       uid: req.body.dealerUid || loginEmail,
       email: loginEmail,
@@ -1126,8 +1126,8 @@ export async function registerDealerOnboarding(req, res, next) {
       selectedPlan,
     });
 
-    for (const document of documents) {
-      await createRecord("dealerDocuments", {
+    await Promise.all(documents.map(async (document) => {
+      const writes = [createRecord("dealerDocuments", {
         dealerEmail: loginEmail,
         approvalRequestId: approval.id,
         onboardingRequestId: onboardingRequest.id,
@@ -1135,9 +1135,9 @@ export async function registerDealerOnboarding(req, res, next) {
         fileName: document.fileName,
         size: document.size,
         status: "pending-verification",
-      });
+      })];
       if (document.documentType || document.storagePath || document.fileUrl) {
-        await upsertRecord("dealerRegistrationDocuments", `${req.body.dealerUid || loginEmail}:${document.documentType || document.type}`, {
+        writes.push(upsertRecord("dealerRegistrationDocuments", `${req.body.dealerUid || loginEmail}:${document.documentType || document.type}`, {
           dealerUid: req.body.dealerUid || pendingAccount.uid || loginEmail,
           documentType: document.documentType || document.type,
           fileName: document.fileName,
@@ -1145,9 +1145,10 @@ export async function registerDealerOnboarding(req, res, next) {
           storagePath: document.storagePath || "",
           uploadedAt: now,
           verified: false,
-        });
+        }, { readback: false }));
       }
-    }
+      await Promise.all(writes);
+    }));
 
     await incrementDealerCounters({ totalDealerships: 1, pendingDealerships: 1 });
     const dealerEvent = {

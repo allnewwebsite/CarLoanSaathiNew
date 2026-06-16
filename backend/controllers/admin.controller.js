@@ -286,6 +286,7 @@ async function firstAdminLookup(lookups = []) {
 }
 
 async function incrementPlatformCounters(increments = {}) {
+  clearCachedValue("metrics:global:v2");
   return incrementRecord("metrics", "global", increments, {
     activeDealerships: 0,
     approvedDealerships: 0,
@@ -364,7 +365,7 @@ function firestoreNotFound(error) {
     || /not[-_ ]found|no document to update/i.test(String(error?.message || ""));
 }
 
-async function updateRecordIfExists(collection, id, payload) {
+async function updateRecordIfExists(collection, id, payload, options = {}) {
   if (!id) return null;
   const existing = await getRecord(collection, id).catch((error) => {
     if (firestoreNotFound(error)) return null;
@@ -372,7 +373,7 @@ async function updateRecordIfExists(collection, id, payload) {
   });
   if (!existing) return null;
   try {
-    return await updateRecord(collection, existing.id, payload);
+    return await updateRecord(collection, existing.id, payload, options);
   } catch (error) {
     if (firestoreNotFound(error)) return null;
     throw error;
@@ -408,35 +409,45 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     location: dealerLocation,
     selectedPlan,
   };
-  await upsertRecord("dealerships", loginEmail, dealerFields);
-  await upsertRecord("approvedDealerships", loginEmail, dealerFields);
-  const financeUid = await firebaseUidForEmail(loginEmail);
+  const gmEmail = request.generalManager?.email ? normalizeEmail(request.generalManager.email) : "";
+  const [financeUid, gmUid] = await Promise.all([
+    firebaseUidForEmail(loginEmail),
+    gmEmail ? firebaseUidForEmail(gmEmail) : Promise.resolve(null),
+  ]);
   const financeCanonicalId = financeUid || loginEmail;
   await assertNoActiveIdentityCollision({ uid: financeCanonicalId, email: loginEmail, role: "finance-desk", excludeIds: [financeCanonicalId, loginEmail] });
-  await upsertCanonicalUser(financeCanonicalId, {
-    ...dealerIdentityProfile(dealerFields, request),
-    uid: financeCanonicalId,
-    email: loginEmail,
-    officialEmail: loginEmail,
-    mobile: dealerFields.officialDealershipMobile || request.owner?.mobile || "",
-    ownerName: request.owner?.fullName || "",
-    ownerMobile: request.owner?.mobile || "",
-    role: "finance-desk",
-    approved: true,
-    active: true,
-    accountApproved: true,
-    accountActive: true,
-    dealershipId: loginEmail,
-    status: "active",
-    accountStatus: "active",
-    selectedPlan,
-  });
-  if (request.generalManager?.email) {
-    const gmEmail = normalizeEmail(request.generalManager.email);
-    const gmUid = await firebaseUidForEmail(gmEmail);
-    const gmCanonicalId = gmUid || gmEmail;
+  let gmCanonicalId = "";
+  if (gmEmail) {
+    gmCanonicalId = gmUid || gmEmail;
     await assertNoActiveIdentityCollision({ uid: gmCanonicalId, email: gmEmail, role: "gm", excludeIds: [gmCanonicalId, gmEmail] });
-    await upsertCanonicalUser(gmCanonicalId, {
+  }
+  const writeTasks = [
+    () => upsertRecord("dealerships", loginEmail, dealerFields, { readback: false }),
+    () => upsertRecord("approvedDealerships", loginEmail, dealerFields, { readback: false }),
+    () => upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true }, { readback: false }),
+    () => upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true }, { readback: false }),
+    () => upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true }, { readback: false }),
+    () => upsertCanonicalUser(financeCanonicalId, {
+      ...dealerIdentityProfile(dealerFields, request),
+      uid: financeCanonicalId,
+      email: loginEmail,
+      officialEmail: loginEmail,
+      mobile: dealerFields.officialDealershipMobile || request.owner?.mobile || "",
+      ownerName: request.owner?.fullName || "",
+      ownerMobile: request.owner?.mobile || "",
+      role: "finance-desk",
+      approved: true,
+      active: true,
+      accountApproved: true,
+      accountActive: true,
+      dealershipId: loginEmail,
+      status: "active",
+      accountStatus: "active",
+      selectedPlan,
+    }),
+  ];
+  if (gmEmail) {
+    writeTasks.push(() => upsertCanonicalUser(gmCanonicalId, {
       ...dealerIdentityProfile(dealerFields, request),
       uid: gmCanonicalId,
       email: gmEmail,
@@ -455,12 +466,10 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
       status: "active",
       accountStatus: "active",
       selectedPlan,
-    });
+    }));
   }
-  await upsertRecord("dealers", loginEmail, { ...dealerFields, role: "finance-desk", accountActive: true });
-  await upsertRecord("dealershipManagers", `${loginEmail}:owner`, { dealershipEmail: loginEmail, role: "Owner", ...(request.owner || {}), status: "active", active: true });
-  if (request.generalManager?.name || request.generalManager?.mobile || request.generalManager?.email) {
-    await upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true });
+  if (request.generalManager?.name || request.generalManager?.mobile || gmEmail) {
+    writeTasks.push(() => upsertRecord("dealershipManagers", `${loginEmail}:gm`, { dealershipEmail: loginEmail, role: "General Manager", fullName: request.generalManager?.name, mobile: request.generalManager?.mobile, email: request.generalManager?.email, status: "active", active: true }, { readback: false }));
   }
   const financeDeskPayload = {
     ...(request.financeDesk || {}),
@@ -472,9 +481,11 @@ async function materializeApprovedDealership({ request, loginEmail, dealership }
     status: "active",
     active: true,
   };
-  await upsertRecord("financeDesk", loginEmail, financeDeskPayload);
-  await upsertRecord("financeDesks", loginEmail, financeDeskPayload);
-  await upsertRecord("cityMappings", `dealer:${request.city}:${loginEmail}`, { type: "dealer", city: request.city, dealershipEmail: loginEmail, dealershipName: request.dealershipName, status: "approved", active: true });
+  writeTasks.push(
+    () => upsertRecord("financeDesk", loginEmail, financeDeskPayload, { readback: false }),
+    () => upsertRecord("financeDesks", loginEmail, financeDeskPayload, { readback: false }),
+  );
+  await Promise.all(writeTasks.map((task) => task()));
 }
 
 async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy }) {
@@ -489,21 +500,23 @@ async function approveDealershipBackrefs({ request, loginEmail, now, approvedBy 
     selectedPlan,
     subscriptionAccessStatus,
   });
-  if (request.onboardingRequestId) await updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
+  const sideUpdates = [];
+  if (request.onboardingRequestId) sideUpdates.push(updateRecordIfExists("onboardingRequests", request.onboardingRequestId, { status: "Approved", active: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus }, { readback: false }));
   const pendingAccountId = request.pendingDealerAccountId || request.pendingDealerRegistrationId;
-  if (pendingAccountId) await updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
+  if (pendingAccountId) sideUpdates.push(updateRecordIfExists("pendingDealerAccounts", pendingAccountId, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus }, { readback: false }));
+  await Promise.all(sideUpdates);
   if (!pendingAccountId && loginEmail) {
     const pendingAccount = await firstAdminLookup([
       () => getRecord("pendingDealerAccounts", loginEmail),
       () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
     ]);
-    if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
+    if (pendingAccount) await updateRecordIfExists("pendingDealerAccounts", pendingAccount.id, { registrationSubmitted: true, approvalStatus: "approved", accountApproved: true, accountActive: true, approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus }, { readback: false });
   }
   const queueItem = await firstAdminLookup([
     () => findRecordsByField("dealerApprovalQueue", "pendingDealershipApprovalId", request.id, 5),
     () => findRecordsByField("dealerApprovalQueue", "pendingDealerAccountId", request.pendingDealerAccountId || request.pendingDealerRegistrationId, 5),
   ]);
-  if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus });
+  if (queueItem) await updateRecordIfExists("dealerApprovalQueue", queueItem.id, { status: "approved", approvalStatus: "approved", approvedAt: now, approvedBy, selectedPlan, subscriptionAccessStatus }, { readback: false });
   return updated;
 }
 

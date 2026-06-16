@@ -5,6 +5,7 @@ import { getOperationalDashboard, observeQueueHealth } from "./observability.ser
 import { queueEnabled, queueHealth } from "./queue.service.js";
 import { razorpayWebhookHealth } from "./razorpayWebhook.service.js";
 import { paymentReconciliationHealth } from "./paymentReconciliation.service.js";
+import { cached } from "./ttlCache.service.js";
 
 let workerState = {
   queueWorkersRegisteredAt: null,
@@ -58,6 +59,13 @@ function scoreStatus(checks) {
 }
 
 export async function productionHealth({ deep = false } = {}) {
+  if (!deep) {
+    return cached("health:production:shallow:v2", 10_000, () => productionHealthSnapshot({ deep: false }));
+  }
+  return productionHealthSnapshot({ deep: true });
+}
+
+async function productionHealthSnapshot({ deep = false } = {}) {
   const base = {
     service: "CarLoanSaathi API",
     environment: process.env.NODE_ENV || "development",

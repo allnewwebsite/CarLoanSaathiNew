@@ -3,6 +3,7 @@ import { logWarn } from "./logger.service.js";
 import { DOMAIN_EVENTS, emitDomainEvent, onDomainEvent } from "./eventBus.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
+import { cached, clearCachedValue } from "./ttlCache.service.js";
 
 export const ANALYTICS_EVENTS = Object.freeze({
   LEAD_CREATED: "analytics.lead-created",
@@ -74,6 +75,7 @@ async function incrementMetricTargets(lead, increments) {
     period: target.period || null,
     lastEventAt: baseTime,
   })));
+  clearCachedValue("metrics:global:v2");
 }
 
 export function queueAnalyticsEvent(type, payload = {}) {
@@ -149,7 +151,7 @@ export async function getMetric(collection, id) {
 }
 
 export async function getGlobalMetrics() {
-  return getMetric("metrics", "global");
+  return cached("metrics:global:v2", 10_000, () => getMetric("metrics", "global"));
 }
 
 export async function getTrendMetrics({ collection = "dailyMetrics", limit = 30, scopeType = "global", scopeId = "global" } = {}) {
