@@ -254,8 +254,15 @@ function clearAuthCacheForWrite(collection, id = "") {
     else clearCachedValue("auth:session:");
   }
   if (collection === "dealerships" || collection === "approvedDealerships") {
-    if (id) clearCachedValue(`auth:dealership:${String(id).trim().toLowerCase()}`);
-    else clearCachedValue("auth:dealership:");
+    if (id) {
+      const normalizedId = String(id).trim().toLowerCase();
+      clearCachedValue(`auth:dealership:${normalizedId}`);
+      clearCachedValue(`auth:approved-dealership:${normalizedId}`);
+      clearCachedValue("auth:approved-dealership:");
+    } else {
+      clearCachedValue("auth:dealership:");
+      clearCachedValue("auth:approved-dealership:");
+    }
   }
 }
 
@@ -1067,3 +1074,4 @@ export async function deleteRecordsByQuery(collection, {
   }
   return deleted;
 }
+

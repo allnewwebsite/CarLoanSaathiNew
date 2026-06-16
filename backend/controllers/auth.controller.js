@@ -805,25 +805,42 @@ function bankLoginGate(registration) {
 }
 
 async function approvedDealerAccess(email, account) {
-  const dealershipEmail = account?.dealershipId || email;
+  const dealershipEmail = String(account?.dealershipId || "").trim().toLowerCase();
+  const loginEmail = String(email || "").trim().toLowerCase();
+  const dealershipKeys = [...new Set([dealershipEmail, loginEmail].filter(Boolean))];
   const activeApprovedAccount = account?.approved === true
     && account?.active === true
     && account?.accountApproved === true
     && account?.accountActive === true;
   const [dealership, registration] = await Promise.all([
     cached(
-      `auth:approved-dealership:${dealershipEmail}`,
+      `auth:approved-dealership:${dealershipKeys.join("|")}`,
       AUTH_DEALERSHIP_ACCESS_CACHE_TTL_MS,
-      async () => await getRecord("dealerships", dealershipEmail).catch(() => null)
-        || await getRecord("approvedDealerships", dealershipEmail).catch(() => null)
-        || false
+      async () => {
+        for (const key of dealershipKeys) {
+          const direct = await getRecord("dealerships", key).catch(() => null)
+            || await getRecord("approvedDealerships", key).catch(() => null);
+          if (direct) return direct;
+        }
+        for (const key of dealershipKeys) {
+          const discovered = await firstLookup([
+            () => findRecordsByField("dealerships", "loginEmail", key, 5),
+            () => findRecordsByField("dealerships", "email", key, 5),
+            () => findRecordsByField("approvedDealerships", "loginEmail", key, 5),
+            () => findRecordsByField("approvedDealerships", "email", key, 5),
+            () => findRecordsByField("approvedDealerships", "officialEmail", key, 5),
+          ]).catch(() => null);
+          if (discovered) return discovered;
+        }
+        return false;
+      }
     ),
     activeApprovedAccount
       ? Promise.resolve(null)
       : firstLookup([
-        () => getRecord("pendingDealerAccounts", dealershipEmail),
-        () => findRecordsByField("pendingDealerAccounts", "email", dealershipEmail, 5),
-        () => findRecordsByField("pendingDealerAccounts", "email", email, 5),
+        () => getRecord("pendingDealerAccounts", dealershipEmail || loginEmail),
+        () => findRecordsByField("pendingDealerAccounts", "email", dealershipEmail || loginEmail, 5),
+        () => findRecordsByField("pendingDealerAccounts", "email", loginEmail, 5),
       ]).catch((error) => {
         logWarn("Auth pending dealer account lookup failed", { error: error.message });
         return null;
@@ -1663,3 +1680,4 @@ export async function rejectPendingGoogleAccount(req, res, next) {
     next(error);
   }
 }
+
