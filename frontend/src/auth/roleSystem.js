@@ -7,11 +7,11 @@ export const ROLES = {
 };
 
 export const ROLE_ROUTES = {
-  [ROLES.FINANCE_DESK]: "/finance/dashboard",
-  [ROLES.GM]: "/gm/dashboard",
-  [ROLES.BANK_MANAGER]: "/bank-manager/dashboard",
+  [ROLES.FINANCE_DESK]: "/finance/total-leads",
+  [ROLES.GM]: "/gm/total-leads",
+  [ROLES.BANK_MANAGER]: "/bank-manager/leads",
   [ROLES.LOAN_EXECUTIVE]: "/loan-executive/leads",
-  [ROLES.SUPER_ADMIN]: "/admin/dashboard",
+  [ROLES.SUPER_ADMIN]: "/admin/leads",
 };
 
 export const ROLE_LOGIN_ROUTES = {

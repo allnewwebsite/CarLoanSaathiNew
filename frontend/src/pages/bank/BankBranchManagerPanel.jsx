@@ -11,12 +11,30 @@ import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRol
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
-import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import {
+  branchMatch,
+  branchValue,
+  caseId,
+  cleanEmail,
+  cleanText,
+  currentExecutiveIdentity,
+  dateTime,
+  digits10,
+  display,
+  executiveDeleteId,
+  executiveIdentity,
+  generatedAt,
+  leadStatusLabel,
+  moneyValue,
+  numberValue,
+  reassignmentExecutiveId,
+  responseRows,
+  validEmail,
+} from "./bankManager.helpers.js";
 
 const pageSize = 10;
-const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
 const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks", "/bank/executives"]);
 const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
@@ -32,66 +50,6 @@ const customerDocumentTypes = [
   "Form 16",
 ];
 
-function display(value) {
-  return value || "-";
-}
-
-function cleanText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function cleanEmail(value) {
-  return cleanText(value).toLowerCase();
-}
-
-function digits10(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 10);
-}
-
-function validEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail(value));
-}
-
-function executiveDeleteId(executive = {}) {
-  return executive.sourceId || executive.executiveId || executive.email || executive.officialEmail || executive.id;
-}
-
-function caseId(lead) {
-  return lead.caseId || lead.id;
-}
-
-function moneyValue(value) {
-  return `Rs. ${money.format(Number(value || 0))}`;
-}
-
-function numberValue(value) {
-  return money.format(Number(value || 0));
-}
-
-function dateTime(value) {
-  return formatPortalDateTime(value);
-}
-
-function generatedAt(lead) {
-  return dateTime(lead.generatedAt || lead.createdAt);
-}
-
-function workflowStatus(value) {
-  const normalized = normalizeStatus(value);
-  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
-  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
-  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
-  return normalized;
-}
-
-function leadStatusLabel(lead) {
-  return portalLeadStatusLabel(lead);
-}
-
-function responseRows(response) {
-  return normalizeRows(response);
-}
-
 function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
   return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
@@ -105,54 +63,6 @@ function MetricCard({ label, value, subtext }) {
       {loading ? <div className="mt-3 h-3 w-36 animate-pulse rounded bg-slate-100" /> : subtext ? <p className="mt-1 text-xs font-medium text-slate-500">{subtext}</p> : null}
     </div>
   );
-}
-
-function sameValue(left, right) {
-  const a = String(left || "").trim().toLowerCase();
-  const b = String(right || "").trim().toLowerCase();
-  return Boolean(a && b && a === b);
-}
-
-function normalizedBranch(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\b(branch|br|city|district)\b/g, "")
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function branchValue(record = {}) {
-  return record.branchId || record.bankBranchLocation || record.branchCity || record.branchLocation || record.bankLocation || record.branch || record.city || "";
-}
-
-function branchMatch(lead = {}, executive = {}) {
-  const leadIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
-  const executiveIfsc = executive.bankIfsc || executive.ifsc || executive.ifscCode || executive.branchIfsc || executive.assignedBankIfsc || "";
-  if (leadIfsc && executiveIfsc) return sameValue(leadIfsc, executiveIfsc);
-  const leadBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
-  const executiveBranch = branchValue(executive);
-  const leadNormalized = normalizedBranch(leadBranch);
-  const executiveNormalized = normalizedBranch(executiveBranch);
-  if (!leadNormalized || !executiveNormalized) return true;
-  return leadNormalized === executiveNormalized
-    || leadNormalized.includes(executiveNormalized)
-    || executiveNormalized.includes(leadNormalized);
-}
-
-function executiveIdentity(executive = {}) {
-  return [executive.id, executive.sourceId, executive.executiveId, executive.email, executive.officialEmail, executive.mobile]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function currentExecutiveIdentity(lead = {}) {
-  return [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function reassignmentExecutiveId(executive = {}) {
-  return executive.sourceId || executive.executiveId || executive.email || executive.officialEmail || executive.id;
 }
 
 function reassignmentDiagnostics(lead = {}, rows = []) {

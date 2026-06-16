@@ -16,6 +16,8 @@ dist/
 .vercel/
 .firebase/
 coverage/
+playwright-report/
+test-results/
 uploads/
 *.log
 load-tests/results/*

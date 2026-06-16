@@ -5,13 +5,14 @@ export function paginationParams(query = {}, { defaultLimit = 20, maxLimit = 100
   return { limit, cursor, page };
 }
 
-export function pageResponse({ data, limit, nextCursor, total = undefined, extra = {} }) {
+export function pageResponse({ data, limit, nextCursor, hasMore = undefined, total = undefined, extra = {} }) {
+  const normalizedNextCursor = nextCursor || null;
   return {
-    data,
+    data: Array.isArray(data) ? data : [],
     limit,
-    nextCursor: nextCursor || null,
-    hasMore: Boolean(nextCursor),
-    ...(Number.isFinite(total) ? { total } : {}),
+    nextCursor: normalizedNextCursor,
+    hasMore: typeof hasMore === "boolean" ? hasMore : Boolean(normalizedNextCursor),
+    ...(Number.isFinite(Number(total)) ? { total: Number(total) } : {}),
     ...extra,
   };
 }

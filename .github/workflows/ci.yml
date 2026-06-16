@@ -44,8 +44,20 @@ jobs:
         run: node --check server.js
         working-directory: backend
 
+      - name: Backend tests
+        run: npm test
+        working-directory: backend
+
+      - name: Frontend tests
+        run: npm test
+        working-directory: frontend
+
       - name: Frontend build
         run: npm run build
+        working-directory: frontend
+
+      - name: Frontend bundle report
+        run: npm run bundle:report
         working-directory: frontend
 
       - name: Dependency security audit

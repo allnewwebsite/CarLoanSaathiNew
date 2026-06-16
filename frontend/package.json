@@ -7,6 +7,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "bundle:report": "node scripts/reportBundleBudget.js",
+    "e2e:install": "playwright install chromium",
+    "e2e:staging": "playwright test -c playwright.staging.config.js",
+    "e2e:staging:headed": "playwright test -c playwright.staging.config.js --headed",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
     "test": "node --test tests/*.test.js",
@@ -30,6 +33,7 @@
     "vite": "^6.0.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "postcss": "^8.4.49",
