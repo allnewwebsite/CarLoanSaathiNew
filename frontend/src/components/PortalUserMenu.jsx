@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CreditCard, LogOut, MoreVertical, UserRound, X } from "lucide-react";
+import { CreditCard, LogOut, MoreVertical, PlayCircle, UserRound, X } from "lucide-react";
 import { PlanBillingModal } from "./PlanBillingModal.jsx";
+import { useOnboarding } from "../context/OnboardingContext.jsx";
 
 const ROLE_LABELS = {
   "super-admin": "Super Admin",
@@ -182,7 +183,9 @@ export function PortalUserMenu({ user, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
+  const { replayProductTour } = useOnboarding();
   const rows = useMemo(() => profileRows(user), [user]);
+  const canReplayTour = ["finance-desk", "gm", "bank-manager", "loan-executive"].includes(user?.role);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -243,6 +246,20 @@ export function PortalUserMenu({ user, onLogout }) {
               >
                 <CreditCard className="h-4 w-4 text-slate-500" />
                 Plan & Billing
+              </button>
+            ) : null}
+            {canReplayTour ? (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  replayProductTour();
+                }}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <PlayCircle className="h-4 w-4 text-slate-500" />
+                Replay Product Tour
               </button>
             ) : null}
             <div className="my-1 border-t border-slate-100" />

@@ -72,6 +72,10 @@ function sessionFromResponse(response) {
     selectedPlan: sessionUser.selectedPlan || null,
     subscriptionStatus: sessionUser.subscriptionStatus || null,
     dashboardAccessAllowed: sessionUser.dashboardAccessAllowed !== false,
+    onboardingCompleted: sessionUser.onboardingCompleted === true,
+    onboardingCompletedAt: sessionUser.onboardingCompletedAt || null,
+    onboardingSkipped: sessionUser.onboardingSkipped === true,
+    showOnboarding: sessionUser.showOnboarding === true,
     redirectTo: response.data.redirectTo || ROLE_ROUTES[sessionUser.role],
   };
 }

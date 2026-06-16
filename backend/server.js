@@ -14,6 +14,7 @@ import bankRoutes from "./routes/bank.routes.js";
 import timelineRoutes from "./routes/timeline.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import realtimeRoutes from "./routes/realtime.routes.js";
+import onboardingRoutes from "./routes/onboarding.routes.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { processWhatsAppQueue, validateWhatsAppEnvironment } from "./services/whatsapp.service.js";
 import { processNotificationEvents } from "./services/notificationWorker.service.js";
@@ -167,6 +168,7 @@ app.use("/api/bank", bankRoutes);
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/realtime", realtimeRoutes);
+app.use("/api/onboarding", onboardingRoutes);
 app.use((_req, res) => res.status(404).json({
   success: false,
   errorCode: "ROUTE_NOT_FOUND",

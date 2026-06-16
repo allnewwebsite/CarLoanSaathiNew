@@ -15,6 +15,7 @@ import {
 } from "../services/identity.service.js";
 import { getDealershipSubscription } from "../services/subscription.service.js";
 import { cached } from "../services/ttlCache.service.js";
+import { onboardingStatusForUser } from "../services/onboarding.service.js";
 
 const ROLE_ROUTES = {
   "finance-desk": "/finance/dashboard",
@@ -662,7 +663,7 @@ function sessionUserFromAuthenticatedRequest(req, account = req.authAccount || {
       bankBranchLocation: claims.bankBranchLocation || req.user?.bankBranchLocation,
     }
     : { profile: registrationProfile({ ...claims, ...account, ...req.user }) };
-  return {
+  const user = {
     uid: account.uid || req.user?.uid || claims.uid || account.email || req.user?.email,
     email: account.email || req.user?.email || claims.email,
     role,
@@ -686,6 +687,10 @@ function sessionUserFromAuthenticatedRequest(req, account = req.authAccount || {
     subscriptionStatus: claims.subscriptionStatus || account.subscriptionStatus || undefined,
     dashboardAccessAllowed: claims.dashboardAccessAllowed ?? account.dashboardAccessAllowed,
     ...presentation,
+  };
+  return {
+    ...user,
+    ...onboardingStatusForUser(user, account),
   };
 }
 
@@ -1172,6 +1177,7 @@ export async function login(req, res, next) {
       profile: registrationProfile(account),
     };
     Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
+    Object.assign(user, onboardingStatusForUser(user, account));
     authPhase = "create-user-session";
     const sessionStartedAt = Date.now();
     const sessionId = await createUserSession({ req, user });
@@ -1316,6 +1322,7 @@ export async function restoreSession(req, res, next) {
       profile: registrationProfile(account),
     };
     Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
+    Object.assign(user, onboardingStatusForUser(user, account));
     const sessionId = await createUserSession({ req, user });
     user.sessionId = sessionId;
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
