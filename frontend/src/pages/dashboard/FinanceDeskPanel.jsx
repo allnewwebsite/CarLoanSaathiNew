@@ -799,6 +799,7 @@ function AddLeadScreen() {
   const [tieUpSaving, setTieUpSaving] = useState(false);
   const [form, setForm] = useState(emptyLead);
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -848,12 +849,9 @@ function AddLeadScreen() {
     if (!nextForm.salespersonId) nextErrors.salespersonId = "Field required";
     return nextErrors;
   };
-  const validateField = (field) => {
-    const nextErrors = validate(form);
-    setErrors((current) => ({ ...current, [field]: nextErrors[field] || "" }));
-  };
   const submit = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     const nextForm = {
       ...form,
       fullName: cleanText(form.fullName),
@@ -981,24 +979,23 @@ function AddLeadScreen() {
           )}
         </div>
       </section>
-      <form onSubmit={submit} className="card p-5">
+      <form noValidate onSubmit={submit} className="card p-5">
         {message ? <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Customer Name" error={errors.fullName}><input aria-invalid={Boolean(errors.fullName)} className="field mt-1.5" value={form.fullName} onBlur={() => validateField("fullName")} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={errors.mobile}><MobileInput value={form.mobile} error={errors.mobile} onBlur={() => validateField("mobile")} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Customer City" error={errors.city}><input aria-invalid={Boolean(errors.city)} className="field mt-1.5" value={form.city} onBlur={() => validateField("city")} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Tied-up Bank Branch" error={errors.branchId}>
-            <select aria-invalid={Boolean(errors.branchId)} className="field mt-1.5" value={form.branchId} onBlur={() => validateField("branchId")} onChange={(e) => update("branchId", e.target.value)}>
+          <Field label="Customer Name" error={submittedOnce ? errors.fullName : ""}><input aria-invalid={Boolean(submittedOnce && errors.fullName)} className="field mt-1.5" value={form.fullName} onChange={(e) => update("fullName", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
+          <Field label="Customer City" error={submittedOnce ? errors.city : ""}><input aria-invalid={Boolean(submittedOnce && errors.city)} className="field mt-1.5" value={form.city} onChange={(e) => update("city", e.target.value.replace(/[<>]/g, ""))} /></Field>
+          <Field label="Tied-up Bank Branch" error={submittedOnce ? errors.branchId : ""}>
+            <select aria-invalid={Boolean(submittedOnce && errors.branchId)} className="field mt-1.5" value={form.branchId} onChange={(e) => update("branchId", e.target.value)}>
               <option value="">Select branch</option>
               {branches.map((branch) => (
                 <option key={branch.id} value={branch.id}>{branch.bankName} — {branch.branchName}{branch.ifscCode ? ` (${branch.ifscCode})` : ""}</option>
               ))}
             </select>
-            {branches.length === 0 ? <p className="mt-2 text-sm text-rose-600">No tied-up bank branches found. Configure bank tie-ups in dealer profile first.</p> : null}
           </Field>
-          <Field label="Car On-Road Price" error={errors.carPrice}><input aria-invalid={Boolean(errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onBlur={() => validateField("carPrice")} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
-          <Field label="Required Loan Amount" error={errors.loanAmount}><input aria-invalid={Boolean(errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onBlur={() => validateField("loanAmount")} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
-          <Field label="Select Salesperson" error={errors.salespersonId}><select aria-invalid={Boolean(errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onBlur={() => validateField("salespersonId")} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
+          <Field label="Car On-Road Price" error={submittedOnce ? errors.carPrice : ""}><input aria-invalid={Boolean(submittedOnce && errors.carPrice)} className="field mt-1.5" inputMode="numeric" value={form.carPrice} onChange={(e) => update("carPrice", numericAmount(e.target.value))} /></Field>
+          <Field label="Required Loan Amount" error={submittedOnce ? errors.loanAmount : ""}><input aria-invalid={Boolean(submittedOnce && errors.loanAmount)} className="field mt-1.5" inputMode="numeric" value={form.loanAmount} onChange={(e) => update("loanAmount", numericAmount(e.target.value))} /></Field>
+          <Field label="Select Salesperson" error={submittedOnce ? errors.salespersonId : ""}><select aria-invalid={Boolean(submittedOnce && errors.salespersonId)} className="field mt-1.5" value={form.salespersonId} onChange={(e) => update("salespersonId", e.target.value)}><option value="">Select salesperson</option>{salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}</select></Field>
           <div className="flex items-end">
             <button disabled={submitting} className="inline-flex h-10 min-w-32 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-60">{submitting ? <ButtonSpinner /> : "Submit Lead"}</button>
           </div>

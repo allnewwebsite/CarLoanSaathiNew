@@ -618,6 +618,7 @@ function ManageExecutivePage() {
   const { rows, loading, load } = useExecutives();
   const [form, setForm] = useState({ name: "", mobile: "", email: "" });
   const [errors, setErrors] = useState({});
+  const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [credentials, setCredentials] = useState(null);
@@ -660,6 +661,7 @@ function ManageExecutivePage() {
 
   const submit = async (event) => {
     event.preventDefault();
+    setSubmittedOnce(true);
     setMessage("");
     setError("");
     const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), email: cleanEmail(form.email) };
@@ -670,6 +672,7 @@ function ManageExecutivePage() {
     try {
       const response = await api.post("/bank/executives", nextForm);
       setForm({ name: "", mobile: "", email: "" });
+      setSubmittedOnce(false);
       setMessage("Executive added successfully.");
       setCredentials({
         name: response.data?.name || response.data?.fullName || nextForm.name,
@@ -780,18 +783,18 @@ function ManageExecutivePage() {
           if (activeLeadBlock?.transferUrl) navigate(activeLeadBlock.transferUrl);
         }}
       />
-      <form onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
+      <form noValidate onSubmit={submit} className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm font-medium text-slate-700">Executive Name<input aria-invalid={Boolean(errors.name)} className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.name} onBlur={() => setErrors(validate(form))} onChange={(event) => update("name", event.target.value.replace(/[<>]/g, ""))} /><span className={`validation-slot ${errors.name ? "" : "validation-slot-empty"}`}>{errors.name || "No validation issue"}</span></label>
+          <label className="text-sm font-medium text-slate-700">Executive Name<input aria-invalid={Boolean(submittedOnce && errors.name)} className={`mt-2 h-10 w-full rounded-md border px-3 outline-none focus:border-[#0d47a1] ${submittedOnce && errors.name ? "border-red-300" : "border-slate-200"}`} value={form.name} onChange={(event) => update("name", event.target.value.replace(/[<>]/g, ""))} /><span className={`validation-slot ${submittedOnce && errors.name ? "" : "validation-slot-empty"}`}>{submittedOnce && errors.name ? errors.name : "No validation issue"}</span></label>
           <label className="text-sm font-medium text-slate-700">
             Mobile Number
-            <div className={`mt-2 flex h-10 overflow-hidden rounded-md border ${errors.mobile ? "border-red-300" : "border-slate-200"} focus-within:border-[#0d47a1]`}>
+            <div className={`mt-2 flex h-10 overflow-hidden rounded-md border ${submittedOnce && errors.mobile ? "border-red-300" : "border-slate-200"} focus-within:border-[#0d47a1]`}>
               <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
-              <input aria-invalid={Boolean(errors.mobile)} className="h-full w-full px-3 outline-none" value={form.mobile} maxLength={10} inputMode="numeric" onBlur={() => setErrors(validate(form))} onChange={(event) => update("mobile", digits10(event.target.value))} />
+              <input aria-invalid={Boolean(submittedOnce && errors.mobile)} className="h-full w-full px-3 outline-none" value={form.mobile} maxLength={10} inputMode="numeric" onChange={(event) => update("mobile", digits10(event.target.value))} />
             </div>
-            <span className={`validation-slot ${errors.mobile ? "" : "validation-slot-empty"}`}>{errors.mobile || "No validation issue"}</span>
+            <span className={`validation-slot ${submittedOnce && errors.mobile ? "" : "validation-slot-empty"}`}>{submittedOnce && errors.mobile ? errors.mobile : "No validation issue"}</span>
           </label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-2">Official Email<input aria-invalid={Boolean(errors.email)} type="email" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 outline-none focus:border-[#0d47a1]" value={form.email} onBlur={() => setErrors(validate(form))} onChange={(event) => update("email", event.target.value.trim().toLowerCase())} /><span className={`validation-slot ${errors.email ? "" : "validation-slot-empty"}`}>{errors.email || "No validation issue"}</span></label>
+          <label className="text-sm font-medium text-slate-700 md:col-span-2">Official Email<input aria-invalid={Boolean(submittedOnce && errors.email)} type="email" className={`mt-2 h-10 w-full rounded-md border px-3 outline-none focus:border-[#0d47a1] ${submittedOnce && errors.email ? "border-red-300" : "border-slate-200"}`} value={form.email} onChange={(event) => update("email", event.target.value.trim().toLowerCase())} /><span className={`validation-slot ${submittedOnce && errors.email ? "" : "validation-slot-empty"}`}>{submittedOnce && errors.email ? errors.email : "No validation issue"}</span></label>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
         {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
