@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, FileCheck2, Loader2, ShieldCheck, UploadCloud } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { bankLoanCapacityRanges, bankStates, locationsForState } from "../../data/bankLocationMaster.js";
+import { usePublicRegistrationStatusSync } from "../../hooks/usePublicRegistrationStatusSync.js";
 
 const banks = [
   "State Bank of India (SBI)",
@@ -176,6 +177,21 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
   const hasEmailAccount = Boolean(bankEmail && session.emailVerified === true);
   const locationOptions = useMemo(() => locationsForState(form.state), [form.state]);
 
+  const applyRegistrationStatus = (registration = {}) => {
+    const nextStatus = registration.status || registration.approvalStatus || "pending";
+    if (registration.status === "approved" || registration.approvalStatus === "approved") {
+      setApproved(true);
+    } else if (nextStatus === "not-submitted" || registration.accountState === "EMAIL_VERIFIED") {
+      navigate(registration.redirectTo || "/bank-registration/form", { replace: true });
+    } else if (["email-pending", "pending", "submitted", "rejected", "suspended"].includes(nextStatus)) {
+      setStatus(nextStatus);
+      setStatusMessage(registration.message || "");
+      if (registration.redirectTo) navigate(registration.redirectTo, { replace: true });
+    } else {
+      navigate(registration.redirectTo || "/bank-registration", { replace: true });
+    }
+  };
+
   const update = (field, value) => setForm((current) => {
     const next = { ...current, [field]: value };
     if (field === "state") next.branchLocation = "";
@@ -251,24 +267,20 @@ export function BankRegistration({ mode = "landing", audience = "bank" }) {
       setChecking(true);
       try {
         const registration = await checkBankRegistrationWithEmail({ silent: true });
-        const nextStatus = registration.status || registration.approvalStatus || "pending";
-        if (registration.status === "approved" || registration.approvalStatus === "approved") {
-          setApproved(true);
-        } else if (nextStatus === "not-submitted" || registration.accountState === "EMAIL_VERIFIED") {
-          navigate(registration.redirectTo || "/bank-registration/form", { replace: true });
-        } else if (["email-pending", "pending", "submitted", "rejected", "suspended"].includes(nextStatus)) {
-          setStatus(nextStatus);
-          setStatusMessage(registration.message || "");
-          if (registration.redirectTo) navigate(registration.redirectTo, { replace: true });
-        } else {
-          navigate(registration.redirectTo || "/bank-registration", { replace: true });
-        }
+        applyRegistrationStatus(registration);
       } finally {
         setChecking(false);
       }
     };
     check();
   }, [mode, navigate, checkBankRegistrationWithEmail]);
+  usePublicRegistrationStatusSync({
+    enabled: ["verify-email", "pending", "approved", "rejected", "suspended"].includes(mode) && ["email-pending", "pending", "submitted"].includes(status) && !approved,
+    checkStatus: async () => {
+      const registration = await checkBankRegistrationWithEmail({ silent: true });
+      applyRegistrationStatus(registration);
+    },
+  });
 
   if (["verify-email", "pending", "approved", "rejected", "suspended"].includes(mode)) {
     if (checking) return <main className="flex min-h-[calc(100vh-88px)] w-full items-center justify-center bg-slate-50 px-4 py-12"><section className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-600 shadow-sm">Checking bank registration status...</section></main>;

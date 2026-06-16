@@ -246,8 +246,8 @@ function canReceiveEvent(user = {}, event = {}) {
   const scopes = event.scopes || {};
   const userEmail = scope(user.email || user.uid);
   if (["finance-desk", "gm"].includes(user.role)) {
-    const dealershipId = scope(user.dealershipId || user.email || user.uid);
-    return dealershipId && scopes.dealershipIds?.includes(dealershipId);
+    const dealershipIds = unique([user.dealershipId, user.organizationId, user.email, user.uid]);
+    return dealershipIds.some((id) => scopes.dealershipIds?.includes(id) || scopes.recipientIds?.includes(id)) || scopes.recipientIds?.includes(userEmail);
   }
   if (user.role === "bank-manager") {
     const bankIds = unique([user.bankId, user.bankName, user.email, user.uid]);

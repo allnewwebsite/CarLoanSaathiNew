@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { deleteRecord, getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { recordMonitoringSignal } from "./monitoringCenter.service.js";
+import { cached, clearCachedValue } from "./ttlCache.service.js";
 
 export const PROJECTION_VERSION = Number(process.env.PROJECTION_VERSION || 2);
 const PROJECTION_VALIDATION_SAMPLE_LIMIT = Number(process.env.PROJECTION_VALIDATION_SAMPLE_LIMIT || 3);
+const LEAD_QUERY_CACHE_TTL_MS = Number(process.env.LEAD_QUERY_CACHE_TTL_MS || 8000);
 const rebuilding = new Set();
 const LEAD_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"]);
 const NOTIFICATION_VIEW_COLLECTIONS = new Set(["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews"]);
@@ -80,6 +83,22 @@ function pick(record = {}, fields = VIEW_LEAD_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(record, field)) next[field] = record[field];
     return next;
   }, { id: record.id });
+}
+
+function stableCacheValue(value) {
+  if (Array.isArray(value)) return value.map(stableCacheValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value)
+    .sort()
+    .reduce((next, key) => {
+      const current = value[key];
+      if (current !== undefined) next[key] = stableCacheValue(current);
+      return next;
+    }, {});
+}
+
+function cacheDigest(value) {
+  return createHash("sha1").update(JSON.stringify(stableCacheValue(value))).digest("hex");
 }
 
 function scopeId(value) {
@@ -338,6 +357,7 @@ function leadTargets(lead = {}) {
 export async function syncLeadProjection(lead = {}) {
   if (!lead?.id) return null;
   if (lead.isArchived === true) return removeLeadProjections(lead);
+  clearCachedValue("lead-query:");
   const targets = leadTargets(lead);
   await Promise.all(targets.map((target) => upsertRecord(
     target.collection,
@@ -353,6 +373,7 @@ export async function syncLeadProjection(lead = {}) {
 
 export async function removeLeadProjections(lead = {}) {
   if (!lead?.id) return { removed: 0, leadId: lead?.id || null };
+  clearCachedValue("lead-query:");
   const targets = leadTargets(lead);
   const detailTargets = [
     { collection: "leadDetailsProjection", docId: safeDocId(lead.id) },
@@ -373,6 +394,7 @@ export async function removeLeadExecutiveProjection({ leadId, executiveId }) {
   const cleanLeadId = scopeId(leadId);
   const cleanExecutiveId = scopeId(executiveId);
   if (!cleanLeadId || !cleanExecutiveId) return false;
+  clearCachedValue("lead-query:");
   return deleteRecord("executiveViews", safeDocId(`lead_${cleanLeadId}_${cleanExecutiveId}`)).catch(() => false);
 }
 
@@ -455,70 +477,86 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
   if (query.dealershipId) where.push({ field: "dealershipId", value: scopeId(query.dealershipId) });
   if (query.salespersonId) where.push({ field: "salespersonId", value: scopeId(query.salespersonId) });
   if (query.financeManagerId) where.push({ field: "financeManagerId", value: scopeId(query.financeManagerId) });
+  if (query.assignedExecutiveId) where.push({ field: "assignedExecutiveId", value: scopeId(query.assignedExecutiveId) });
+  const projectionFields = [...new Set(["sourceId", "viewType", "scopeId", "leadId", ...PROJECTION_META_FIELDS, ...fields])];
+  const cacheKey = `lead-query:projection:${collection}:${cacheDigest({
+    role,
+    where,
+    orderBy: "createdAt",
+    direction: "desc",
+    limit,
+    cursor,
+    page,
+    search: query.search || "",
+    searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
+    fields: projectionFields,
+  })}`;
   try {
-    const result = await queryRecords(collection, {
-      where,
-      orderBy: "createdAt",
-      direction: "desc",
-      limit,
-      cursor,
-      page,
-      search: query.search,
-      searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
-      fields: [...new Set(["sourceId", "viewType", "scopeId", "leadId", ...PROJECTION_META_FIELDS, ...fields])],
-      maxLimit: 100,
+    return await cached(cacheKey, LEAD_QUERY_CACHE_TTL_MS, async () => {
+      const result = await queryRecords(collection, {
+        where,
+        orderBy: "createdAt",
+        direction: "desc",
+        limit,
+        cursor,
+        page,
+        search: query.search,
+        searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
+        fields: projectionFields,
+        maxLimit: 100,
+      });
+      const durationMs = Date.now() - projectionStartedAt;
+      const resultCount = Array.isArray(result.data) ? result.data.length : 0;
+      logInfo("Lead projection lookup completed", {
+        tag: "PROJECTION-LATENCY",
+        requestId,
+        collection,
+        queryType: "lead-projection",
+        role,
+        durationMs,
+        resultCount,
+        returnedNull: resultCount === 0,
+        fallbackTriggered: resultCount === 0,
+        where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+        limit,
+        page: page || null,
+        cursor: Boolean(cursor),
+        search: Boolean(query.search),
+      });
+      if (!resultCount) {
+        if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs, reason: "empty_projection_result" });
+        return null;
+      }
+      const freshRows = await freshProjectionRows(collection, result.data);
+      if (!freshRows.length) {
+        if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs: Date.now() - projectionStartedAt, reason: "stale_projection_rows" });
+        return null;
+      }
+      const mapStartedAt = Date.now();
+      const data = freshRows
+        .filter((item) => item.isArchived !== true)
+        .map((item) => ({ ...item, id: item.sourceId || item.id }));
+      const mapEndedAt = Date.now();
+      const shapeStartedAt = Date.now();
+      const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
+      const shapeEndedAt = Date.now();
+      logInfo("Lead projection response shaping completed", {
+        tag: "SERIALIZATION-LATENCY",
+        requestId,
+        function: "queryLeadProjectionForUser",
+        collection,
+        projectionMapDurationMs: mapEndedAt - mapStartedAt,
+        responseShapeDurationMs: shapeEndedAt - shapeStartedAt,
+        inputCount: resultCount,
+        outputCount: data.length,
+        financeManagerLookupCount: 0,
+        executiveLookupCount: 0,
+        dealershipLookupCount: 0,
+        documentFormattingCount: 0,
+      });
+      if (recordMetrics) recordProjectionMetric("PROJECTION-HIT", { requestId, collection, role, resultCount: data.length, durationMs: Date.now() - projectionStartedAt });
+      return response;
     });
-    const durationMs = Date.now() - projectionStartedAt;
-    const resultCount = Array.isArray(result.data) ? result.data.length : 0;
-    logInfo("Lead projection lookup completed", {
-      tag: "PROJECTION-LATENCY",
-      requestId,
-      collection,
-      queryType: "lead-projection",
-      role,
-      durationMs,
-      resultCount,
-      returnedNull: resultCount === 0,
-      fallbackTriggered: resultCount === 0,
-      where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
-      limit,
-      page: page || null,
-      cursor: Boolean(cursor),
-      search: Boolean(query.search),
-    });
-    if (!resultCount) {
-      if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs, reason: "empty_projection_result" });
-      return null;
-    }
-    const freshRows = await freshProjectionRows(collection, result.data);
-    if (!freshRows.length) {
-      if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs: Date.now() - projectionStartedAt, reason: "stale_projection_rows" });
-      return null;
-    }
-    const mapStartedAt = Date.now();
-    const data = freshRows
-      .filter((item) => item.isArchived !== true)
-      .map((item) => ({ ...item, id: item.sourceId || item.id }));
-    const mapEndedAt = Date.now();
-    const shapeStartedAt = Date.now();
-    const response = pageResponse({ data, limit, nextCursor: result.nextCursor });
-    const shapeEndedAt = Date.now();
-    logInfo("Lead projection response shaping completed", {
-      tag: "SERIALIZATION-LATENCY",
-      requestId,
-      function: "queryLeadProjectionForUser",
-      collection,
-      projectionMapDurationMs: mapEndedAt - mapStartedAt,
-      responseShapeDurationMs: shapeEndedAt - shapeStartedAt,
-      inputCount: resultCount,
-      outputCount: data.length,
-      financeManagerLookupCount: 0,
-      executiveLookupCount: 0,
-      dealershipLookupCount: 0,
-      documentFormattingCount: 0,
-    });
-    if (recordMetrics) recordProjectionMetric("PROJECTION-HIT", { requestId, collection, role, resultCount: data.length, durationMs: Date.now() - projectionStartedAt });
-    return response;
   } catch (error) {
     if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", {
       requestId,

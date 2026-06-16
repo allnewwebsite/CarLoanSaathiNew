@@ -927,6 +927,25 @@
       ]
     },
     {
+      "collectionGroup": "adminViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "adminViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "financeViews",
       "queryScope": "COLLECTION",
       "fields": [
@@ -987,6 +1006,27 @@
       ]
     },
     {
+      "collectionGroup": "financeViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financeViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "gmViews",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1015,6 +1055,48 @@
       ]
     },
     {
+      "collectionGroup": "gmViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gmViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gmViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "financeManagerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "gmViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "financeManagerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "bankViews",
       "queryScope": "COLLECTION",
       "fields": [
@@ -1039,6 +1121,27 @@
         { "fieldPath": "viewType", "order": "ASCENDING" },
         { "fieldPath": "scopeId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bankViews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "viewType", "order": "ASCENDING" },
+        { "fieldPath": "scopeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },

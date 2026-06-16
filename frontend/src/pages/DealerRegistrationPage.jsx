@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Toast } from "../components/ui/Toast.jsx";
 import { brandLogos } from "../data/catalogFallback.js";
+import { usePublicRegistrationStatusSync } from "../hooks/usePublicRegistrationStatusSync.js";
 import { api } from "../services/api.js";
 import { CONVERSION_EVENTS, trackConversionEvent } from "../services/conversionAnalytics.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
@@ -344,16 +345,16 @@ export function DealerRegistrationPendingPage({ mode = "pending" }) {
     }
   };
 
-  const checkStatus = async () => {
-    setChecking(true);
+  const checkStatus = async ({ silent = false } = {}) => {
+    if (!silent) setChecking(true);
     setMessage("");
     try {
-      const registration = await checkDealerRegistrationWithEmail();
+      const registration = await checkDealerRegistrationWithEmail({ silent });
       applyRegistrationStatus(registration);
     } catch (err) {
-      setMessage(err.response?.data?.message || err.message || "Unable to check approval status.");
+      if (!silent) setMessage(err.response?.data?.message || err.message || "Unable to check approval status.");
     } finally {
-      setChecking(false);
+      if (!silent) setChecking(false);
     }
   };
 
@@ -369,6 +370,10 @@ export function DealerRegistrationPendingPage({ mode = "pending" }) {
     };
     checkSilently();
   }, []);
+  usePublicRegistrationStatusSync({
+    enabled: ["email-pending", "pending", "submitted"].includes(status) && !approved,
+    checkStatus,
+  });
 
   if (approved) {
     return (

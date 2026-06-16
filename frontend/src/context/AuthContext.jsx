@@ -395,6 +395,24 @@ export function AuthProvider({ children }) {
     clearLocalSession({ signOutFirebase: false, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
   }), []);
 
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    let refreshTimer = 0;
+    const onRealtimeMutation = (event) => {
+      const detail = event?.detail || {};
+      if (!detail.realtime || !["subscription", "dealer", "bank", "staff"].includes(detail.kind)) return;
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        validateSession({ silent: true, showLoading: false });
+      }, 400);
+    };
+    window.addEventListener("cls:data-mutated", onRealtimeMutation);
+    return () => {
+      window.clearTimeout(refreshTimer);
+      window.removeEventListener("cls:data-mutated", onRealtimeMutation);
+    };
+  }, [isAuthenticated]);
+
   const createRegistrationAccount = async ({ email, password, portal = "dealer" }) => {
     const { auth, createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } = await loadFirebaseAuth();
     const normalizedEmail = String(email || "").trim().toLowerCase();
