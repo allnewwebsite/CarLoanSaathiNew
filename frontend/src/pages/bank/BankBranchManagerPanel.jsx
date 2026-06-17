@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { DashboardDetailsModal } from "../../components/PortalUserMenu.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { mutationUrlMatches, useBackgroundRefresh, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { AllExecutivesPage } from "./BankExecutivesPage.jsx";
+import { BankDealershipDisbursedPage, BankDealershipsPage } from "./BankDealershipPages.jsx";
+import { AllExecutivesPage, ExecutiveCasesPage } from "./BankExecutivesPage.jsx";
 import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 import { BANK_MANAGER_PAGE_SIZE as pageSize, BankManagerTable as Table, DetailState, MetricCard, PageTitle, SearchBar } from "./BankManagerPanelParts.jsx";
 import { useExecutives } from "./bankManager.hooks.js";
@@ -70,71 +71,6 @@ function useBankLeads(search, status = "") {
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
-}
-
-function useBankDealerships() {
-  const [params, setParams] = useSearchParams();
-  const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/dealerships", { page, limit: pageSize });
-  const cachedRows = responseRows({ data: cached });
-  const [rows, setRows] = useState(() => cachedRows);
-  const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
-  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([]);
-
-  const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/dealerships", { params: { page: targetPage, limit: pageSize, ...cursorParamsForPage(targetPage) } });
-      const nextRows = responseRows(response);
-      setRows(nextRows);
-      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [page, cursorParamsForPage, rememberNextCursor]);
-
-  useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
-  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
-  const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, hasMore, loading, page, onPage };
-}
-
-function useBankDealershipDisbursedCases(dealershipId, search) {
-  const [params, setParams] = useSearchParams();
-  const page = Number(params.get("page") || 1);
-  const url = `/bank/dealerships/${encodeURIComponent(dealershipId)}/disbursed`;
-  const cached = getCachedGetData(url, { page, limit: pageSize, search });
-  const cachedRows = responseRows({ data: cached });
-  const [rows, setRows] = useState(() => cachedRows);
-  const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
-  const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
-  const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([dealershipId || "", search || ""]);
-
-  const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get(url, { params: { page: targetPage, limit: pageSize, search, ...cursorParamsForPage(targetPage) } });
-      const nextRows = responseRows(response);
-      setRows(nextRows);
-      setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [page, search, url, cursorParamsForPage, rememberNextCursor]);
-
-  useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
-  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
-  const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, hasMore, loading, page, onPage };
 }
 
 function TotalLeadsPage() {
@@ -555,125 +491,6 @@ function ManageExecutivePage() {
         </div>
       </form>
       <Table title="Executive List" headers={["Executive Name", "Mobile Number", "Official Email", "Status", "Actions"]} rows={tableRows} loading={loading} />
-    </section>
-  );
-}
-
-function ExecutiveCasesPage() {
-  const { executiveId } = useParams();
-  const navigate = useNavigate();
-  const [payload, setPayload] = useState({ data: [], executive: null });
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get(`/bank/executives/${executiveId}/cases`);
-      setPayload({ data: responseRows(response), executive: response.data?.executive || null });
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [executiveId]);
-  useEffect(() => { load(); }, [load]);
-  useBackgroundRefresh({ onRefresh: load, refreshKey: "bank-executive-cases", mutationFilter: leadMutationFilter });
-  const rows = useMemo(() => payload.data.map((lead) => ({
-    key: lead.id,
-    cells: [
-      caseId(lead),
-      display(lead.fullName || lead.customerName),
-      display(lead.mobile),
-      display(lead.city || lead.dealershipCity),
-      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      leadStatusLabel(lead),
-      dateTime(lead.assignmentTimestamp || lead.createdAt),
-      dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
-      <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
-    ],
-  })), [navigate, payload.data]);
-  return (
-    <section className="space-y-4">
-      <PageTitle title={payload.executive ? `${payload.executive.name || payload.executive.fullName} Cases` : "Executive Cases"} />
-      <Table title="Assigned Cases" headers={["Case ID", "Customer Name", "Customer Mobile", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Assigned Date", LEAD_TABLE_LABELS.lastUpdated, "Documents"]} rows={rows} loading={loading} />
-    </section>
-  );
-}
-
-function BankDealershipsPage() {
-  const navigate = useNavigate();
-  const { rows, total, hasMore, loading, page, onPage } = useBankDealerships();
-  const [dealershipFilter, setDealershipFilter] = useState("");
-  const dealershipOptions = useMemo(() => rows.map((dealership) => ({
-    id: String(dealership.dealershipId || dealership.id || "").trim(),
-    name: dealership.dealershipName || dealership.dealerName || dealership.dealershipEmail || dealership.id,
-  })).filter((dealership) => dealership.id).sort((left, right) => left.name.localeCompare(right.name)), [rows]);
-  const visibleDealerships = useMemo(() => rows.filter((dealership) => {
-    if (!dealershipFilter) return true;
-    return String(dealership.dealershipId || dealership.id || "").trim() === dealershipFilter;
-  }), [dealershipFilter, rows]);
-  const tableRows = useMemo(() => visibleDealerships.map((dealership) => ({
-    key: dealership.id || dealership.dealershipId,
-    cells: [
-      display(dealership.dealershipName || dealership.dealerName),
-      display(dealership.dealershipEmail),
-      display(dealership.city || dealership.dealershipCity),
-      display(dealership.dealerMobile),
-      numberValue(dealership.totalCases),
-      numberValue(dealership.activeCases),
-      <button
-        key="disbursed"
-        type="button"
-        onClick={() => navigate(`/bank-manager/dealerships/${encodeURIComponent(dealership.dealershipId || dealership.id)}/disbursed`)}
-        className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-[#0d47a1]"
-      >
-        {numberValue(dealership.totalDisbursedCases)}
-      </button>,
-      dateTime(dealership.lastLeadAt || dealership.updatedAt),
-    ],
-  })), [navigate, visibleDealerships]);
-  return (
-    <section className="space-y-4">
-      <PageTitle title="All Dealerships" />
-      <p className="text-sm text-slate-500">Dealerships actively sending business to this bank.</p>
-      <div className="flex justify-end">
-        <label htmlFor="bank-dealership-filter" className="sr-only">Filter dealership activity</label>
-        <select id="bank-dealership-filter" value={dealershipFilter} onChange={(event) => setDealershipFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-64">
-          <option value="">All Dealerships</option>
-          {dealershipOptions.map((dealership) => <option key={dealership.id} value={dealership.id}>{dealership.name}</option>)}
-        </select>
-      </div>
-      <Table title="Dealership Business Activity" headers={["Dealership", "Email", "City", "Mobile", "Total Cases", "Active Cases", "Total Disbursed Cases", "Last Activity"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
-    </section>
-  );
-}
-
-function BankDealershipDisbursedPage() {
-  const navigate = useNavigate();
-  const { dealershipId = "" } = useParams();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 180);
-  const { rows, total, hasMore, loading, page, onPage } = useBankDealershipDisbursedCases(dealershipId, debouncedSearch);
-  const dealershipName = rows[0]?.dealershipName || rows[0]?.dealerName || rows[0]?.dealershipEmail || "Dealership";
-  const tableRows = useMemo(() => rows.map((lead) => ({
-    key: lead.id,
-    cells: [
-      caseId(lead),
-      display(lead.fullName || lead.customerName),
-      display(lead.mobile),
-      display(lead.city || lead.dealershipCity),
-      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      display(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
-      display(lead.assignedExecutiveMobile || lead.executiveMobile),
-      leadStatusLabel(lead),
-      generatedAt(lead),
-      dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
-      <button key="view" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View</button>,
-    ],
-  })), [navigate, rows]);
-  return (
-    <section className="space-y-4">
-      <PageTitle title={`${dealershipName} Disbursed Cases`} />
-      <p className="text-sm text-slate-500">Disbursed cases for this dealership within the current bank scope.</p>
-      <SearchBar value={search} onChange={setSearch} />
-      <Table title="Disbursed Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.generatedDate, LEAD_TABLE_LABELS.lastUpdated, "Action"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
     </section>
   );
 }
