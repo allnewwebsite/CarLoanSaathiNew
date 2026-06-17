@@ -1,234 +1,41 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { BarChart3, Building2, ClipboardCheck, CreditCard, Download, Landmark, Loader2, Search, Shield, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, Building2, ClipboardCheck, Landmark, Search, Shield, Users } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
-import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel } from "../../constants/status.js";
+import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
-import { api, getCachedGetData, invalidateGetCache } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { bankDocumentRows, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { DataTable, MetricCard, PageTitle } from "./superAdmin/SuperAdminParts.jsx";
+import { AdminSubscriptionPanel } from "./superAdmin/SuperAdminSubscriptionPanel.jsx";
+import {
+  approvalRatio,
+  assignmentDisplay,
+  bankCapacityDisplay,
+  bankIfscDisplay,
+  canActOnApproval,
+  caseId,
+  customerDocumentTypes,
+  display,
+  downloadCsv,
+  enterpriseLeadStatus,
+  finalApprovalStatus,
+  formatDate,
+  generatedAt,
+  leadStatus,
+  superAdminMoney as money,
+  SUPER_ADMIN_PAGE_SIZE as pageSize,
+} from "./superAdmin/superAdmin.helpers.js";
 
-const pageSize = 10;
-const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
-const customerDocumentTypes = [
-  "Aadhaar",
-  "PAN",
-  "Salary Slip",
-  "ITR",
-  "Bank Statement",
-  "Electricity Bill",
-  "Rent Agreement",
-  "Form 16",
-];
-
-function display(value) {
-  return value || "-";
-}
-
-function bankCapacityDisplay(item) {
-  return display(item?.monthlyLoanCapacity || item?.monthlyCapacity || item?.approvalLimit);
-}
-
-function assignmentDisplay(value, fallback = "Not Assigned") {
-  return value === undefined || value === null || value === "" ? fallback : value;
-}
-
-function bankIfscDisplay(lead) {
-  return lead.assignedBankIfsc || lead.bankIfsc || lead.ifsc || "IFSC Pending";
-}
-
-function caseId(lead) {
-  return lead?.caseId || lead?.id || "-";
-}
-
-function formatDate(value) {
-  return formatPortalDateTime(value);
-}
-
-function billingDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function AdminSubscriptionPanel({ dealershipId }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState("");
-  const [days, setDays] = useState("30");
-  const [reason, setReason] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    if (!dealershipId) return;
-    setLoading(true);
-    try {
-      const endpoint = `/admin/subscriptions/${encodeURIComponent(dealershipId)}`;
-      invalidateGetCache({ prefix: endpoint, purge: true });
-      const response = await api.get(endpoint);
-      setData(response.data || null);
-      setError("");
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "Unable to load subscription.");
-    } finally {
-      setLoading(false);
-    }
-  }, [dealershipId]);
-
-  useEffect(() => {
-    load();
-    const onMutation = (event) => {
-      if (event.detail?.kind === "subscription") load();
-    };
-    window.addEventListener("cls:data-mutated", onMutation);
-    return () => window.removeEventListener("cls:data-mutated", onMutation);
-  }, [load]);
-
-  const act = async (action) => {
-    if (!reason.trim()) {
-      setError("Reason is required for subscription overrides.");
-      return;
-    }
-    setBusy(action);
-    setError("");
-    setMessage("");
-    try {
-      const body = action === "suspend" ? { reason } : { reason, days: Number(days) };
-      const response = await api.post(`/admin/subscriptions/${encodeURIComponent(dealershipId)}/${action}`, body);
-      setMessage(response.data?.message || "Subscription updated.");
-      setReason("");
-      await load();
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || "Unable to update subscription.");
-    } finally {
-      setBusy("");
-    }
-  };
-
-  if (loading && !data) return <section className="rounded-lg border border-slate-200 bg-white p-5"><Loader2 className="h-5 w-5 animate-spin text-[#0d47a1]" /></section>;
-  const subscription = data?.subscription || {};
-  const payments = data?.history?.payments || [];
-  return (
-    <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
-      <div className="flex items-center gap-3"><CreditCard className="h-5 w-5 text-[#0d47a1]" /><div><h2 className="text-base font-semibold text-slate-900">Subscription Administration</h2><p className="text-sm text-slate-500">Manual controls and payment history</p></div></div>
-      {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
-      {message ? <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Plan", subscription.planName],
-          ["Status", subscription.subscriptionStatus],
-          ["Trial End", billingDate(subscription.trialEndDate)],
-          ["Subscription End", billingDate(subscription.subscriptionEndDate)],
-          ["Days Remaining", subscription.daysRemaining],
-          ["Payment Status", subscription.paymentStatus],
-          ["Last Invoice", subscription.invoiceNumber],
-          ["Lead Creation", subscription.leadCreationAllowed ? "Allowed" : "Blocked"],
-        ].map(([label, value]) => <div key={label} className="rounded-md bg-slate-50 px-3 py-2"><dt className="text-xs uppercase text-slate-500">{label}</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{display(value)}</dd></div>)}
-      </dl>
-      <div className="grid gap-3 lg:grid-cols-[140px_1fr_auto_auto_auto]">
-        <input type="number" min="1" max="3650" className="field h-10" value={days} onChange={(event) => setDays(event.target.value)} aria-label="Number of days" />
-        <input className="field h-10" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required reason for admin override" />
-        <button disabled={Boolean(busy)} onClick={() => act("extend")} className="h-10 rounded-md bg-[#0d47a1] px-4 text-sm font-semibold text-white disabled:opacity-50">{busy === "extend" ? "Extending..." : "Extend"}</button>
-        <button disabled={Boolean(busy)} onClick={() => act("trial")} className="h-10 rounded-md border border-slate-300 px-4 text-sm font-semibold text-slate-700 disabled:opacity-50">{busy === "trial" ? "Activating..." : "Activate Trial"}</button>
-        <button disabled={Boolean(busy)} onClick={() => act("suspend")} className="h-10 rounded-md border border-red-300 px-4 text-sm font-semibold text-red-700 disabled:opacity-50">{busy === "suspend" ? "Suspending..." : "Suspend"}</button>
-      </div>
-      <DataTable title="Subscription Payments" headers={["Invoice", "Date", "Amount", "GST", "Status", "Payment ID"]} rows={payments.map((payment) => ({ key: payment.id, cells: [display(payment.invoiceNumber), billingDate(payment.paidAt), `Rs. ${money.format(Number(payment.finalAmount || 0))}`, `Rs. ${money.format(Number(payment.gstAmount || 0))}`, display(payment.paymentStatus || payment.status), display(payment.razorpayPaymentId)] }))} loading={false} />
-    </section>
-  );
-}
-
-function leadStatus(lead) {
-  return normalizeStatus(lead.status || LEAD_STATUSES.NEW);
-}
-
-function approvalStatusOf(item) {
-  return String(item?.status || item?.approvalStatus || "pending").trim().toLowerCase();
-}
-
-function finalApprovalStatus(item) {
-  return ["approved", "rejected", "suspended", "deleted", "disabled", "inactive"].includes(approvalStatusOf(item));
-}
-
-function canActOnApproval(item) {
-  if (!item) return false;
-  if (item.accountApproved === true || item.approved === true) return false;
-  return !finalApprovalStatus(item);
-}
-
-function workflowStatus(value) {
-  const normalized = normalizeStatus(value);
-  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
-  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
-  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
-  return normalized;
-}
-
-function approvalRatio(leads) {
-  if (!leads.length) return "0%";
-  const approved = leads.filter((lead) => [LEAD_STATUSES.APPROVED, LEAD_STATUSES.DISBURSED].includes(leadStatus(lead))).length;
-  return `${Math.round((approved / leads.length) * 100)}%`;
-}
-
-function enterpriseLeadStatus(lead) {
-  return portalLeadStatusLabel(lead);
-}
-
-function csvCell(value) {
-  return `"${String(value ?? "").replace(/"/g, '""')}"`;
-}
-
-function downloadCsv(name, headers, rows) {
-  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-const MetricCard = memo(function MetricCard({ label, value, icon: Icon, onClick }) {
-  return (
-    <button onClick={onClick} className="rounded-lg border border-slate-200 bg-white p-4 text-left hover:border-[#0d47a1]/40">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
-          <p className="mt-2 text-xl font-semibold text-slate-900">{value}</p>
-        </div>
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-50 text-[#0d47a1]">
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-    </button>
-  );
-});
-
-function Pagination({ page, total, onPage }) {
-  const pages = Math.max(Math.ceil(total / pageSize), 1);
-  return (
-    <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-4 py-3 text-sm">
-      <button disabled={page <= 1} onClick={() => onPage(page - 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 disabled:opacity-50">Prev</button>
-      <span className="text-slate-500">Page {page} of {pages}</span>
-      <button disabled={page >= pages} onClick={() => onPage(page + 1)} className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 disabled:opacity-50">Next</button>
-    </div>
-  );
-}
-
-function DataTable({ title, headers, rows, loading, page, total, onPage, onExport }) {
-  const action = onExport ? <button onClick={onExport} className="inline-flex items-center gap-2 rounded-md bg-[#0d47a1] px-3 py-2 text-xs font-medium text-white"><Download className="h-3.5 w-3.5" /> Export</button> : null;
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} action={action} />;
-}
 
 function useAdminEcosystem({ includeAudit = false } = {}) {
   const cachedEcosystem = getCachedGetData("/admin/ecosystem") || {};
@@ -362,18 +169,6 @@ function textMatch(item, search) {
 
 function responseRows(response) {
   return normalizeRows(response);
-}
-
-function generatedDate(value) {
-  return formatPortalDate(value);
-}
-
-function generatedTime(value) {
-  return formatPortalTime(value);
-}
-
-function generatedAt(value) {
-  return formatPortalDateTime(value);
 }
 
 const STATUS_FILTERS = BANK_STATUS_OPTIONS.map((value) => ({ label: statusLabel(value), value }));
@@ -600,18 +395,6 @@ function summarize(value) {
   if (value === undefined || value === null || value === "") return "-";
   if (typeof value === "string") return value;
   return JSON.stringify(value);
-}
-
-function PageTitle({ mode }) {
-  const title = {
-    dealerships: "Approved Dealerships",
-    "approval-dealerships": "Pending Approval Dealerships",
-    banks: "Approved Banks",
-    "approval-banks": "Pending Approval Banks",
-    status: "Status",
-    leads: "Total Leads",
-  }[mode] || `${mode.charAt(0).toUpperCase()}${mode.slice(1)}`;
-  return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Super Admin</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1></div>;
 }
 
 function SystemSettings({ data }) {
