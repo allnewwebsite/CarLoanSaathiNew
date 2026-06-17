@@ -19,7 +19,7 @@ export const GOVERNANCE_LIMITS = Object.freeze({
   },
   audit: {
     onlineRetentionDays: Number(process.env.AUDIT_ONLINE_RETENTION_DAYS || 365),
-    archiveRetentionDays: Number(process.env.AUDIT_ARCHIVE_RETENTION_DAYS || 2555),
+    longTermRetentionDays: Number(process.env.AUDIT_LONG_TERM_RETENTION_DAYS || 2555),
   },
 });
 

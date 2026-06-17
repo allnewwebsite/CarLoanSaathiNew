@@ -1,6 +1,6 @@
 import { firestore } from "../firebase/admin.js";
 import { assertNonEmptyFirestoreData } from "../utils/firestoreSanitizer.js";
-import { assertLeadMutable } from "../utils/archive.js";
+import { assertLeadMutable } from "../utils/deadCase.js";
 import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { clearRequestCachedValue, getRequestCachedValue, recordFirestoreRead, recordFirestoreWrite, setRequestCachedValue } from "./requestScope.service.js";
@@ -56,10 +56,8 @@ const memoryStore = {
   operationalMetrics: [],
   operationalEvents: [],
   operationalAlerts: [],
-  archivalLogs: [],
   systemCounters: [],
   workflowLogViews: [],
-  workflowLogArchives: [],
   bankBranchCatalog: [],
 };
 
@@ -273,7 +271,7 @@ export async function createRecord(collection, payload) {
   const cleanPayload = assertNonEmptyFirestoreData(payload);
   const record = {
     id: `${collection}-${Date.now()}`,
-    ...(collection === "leads" ? { isArchived: false } : {}),
+    ...(collection === "leads" ? { isDeadCase: false } : {}),
     ...cleanPayload,
     createdAt: new Date().toISOString(),
   };
@@ -818,7 +816,7 @@ export async function getRecord(collection, id) {
   }
 }
 
-export async function updateRecord(collection, id, payload, { readback = true } = {}) {
+export async function updateRecord(collection, id, payload, { readback = true, mutationRole = "" } = {}) {
   const startedAt = Date.now();
   clearCollectionReadCache(collection);
   clearAuthCacheForWrite(collection, id);
@@ -827,7 +825,7 @@ export async function updateRecord(collection, id, payload, { readback = true } 
   if (!firestore) {
     if (collection === "leads") {
       const existing = (memoryStore[collection] || []).find((item) => item.id === id);
-      if (existing) assertLeadMutable(existing);
+      if (existing) assertLeadMutable(existing, { role: mutationRole });
     }
     let updated = { id, ...update };
     memoryStore[collection] = (memoryStore[collection] || []).map((item) => {
@@ -845,7 +843,7 @@ export async function updateRecord(collection, id, payload, { readback = true } 
     const existing = await ref.get();
     if (existing.exists) {
       existingRecord = { id: existing.id, ...existing.data() };
-      assertLeadMutable(existingRecord);
+      assertLeadMutable(existingRecord, { role: mutationRole });
     }
   }
   await ref.update(update);

@@ -68,7 +68,7 @@
       "fields": [
         { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "isArchived", "order": "ASCENDING" }
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" }
       ]
     },
     {
@@ -1215,8 +1215,8 @@
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "isArchived", "order": "ASCENDING" },
-        { "fieldPath": "archivedAt", "order": "DESCENDING" }
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
       ]
     },
     {
@@ -1224,8 +1224,8 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "dealershipId", "order": "ASCENDING" },
-        { "fieldPath": "isArchived", "order": "ASCENDING" },
-        { "fieldPath": "archivedAt", "order": "DESCENDING" }
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
       ]
     },
     {

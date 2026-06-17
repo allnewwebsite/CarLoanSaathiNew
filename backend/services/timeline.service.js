@@ -22,6 +22,9 @@ export const TIMELINE_EVENTS = {
   INTERNAL_REMARKS_ADDED: "internal-remarks-added",
   ESCALATION_TRIGGERED: "escalation-triggered",
   STATUS_CHANGED: "status-changed",
+  DEAD_CASE_MARKED: "dead-case-marked",
+  DEAD_CASE_RESTORED: "dead-case-restored",
+  DEAD_CASE_UPDATED: "dead-case-updated",
 };
 
 function asList(value) {

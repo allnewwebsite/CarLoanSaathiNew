@@ -31,7 +31,9 @@ export const REALTIME_EVENTS = {
   DOCUMENT_REQUESTED: "DOCUMENT_REQUESTED",
   LEAD_APPROVED: "LEAD_APPROVED",
   LEAD_DISBURSED: "LEAD_DISBURSED",
-  LEAD_ARCHIVED: "LEAD_ARCHIVED",
+  LEAD_MARKED_DEAD: "LEAD_MARKED_DEAD",
+  LEAD_RESTORED_FROM_DEAD: "LEAD_RESTORED_FROM_DEAD",
+  DEAD_CASE_UPDATED: "DEAD_CASE_UPDATED",
   BANK_CREATED: "BANK_CREATED",
   BANK_UPDATED: "BANK_UPDATED",
   BANK_DISABLED: "BANK_DISABLED",
@@ -193,9 +195,12 @@ function lightweightLeadPatch(lead = {}, data = {}) {
     assignedSalesperson: lead.assignedSalesperson || lead.salespersonName || "",
     createdAt: lead.createdAt || data.timestamp || new Date().toISOString(),
     timestamp: data.timestamp || lead.statusUpdatedAt || lead.updatedAt || new Date().toISOString(),
-    isArchived: lead.isArchived === true,
-    archivedAt: lead.archivedAt || "",
-    archiveReason: lead.archiveReason || "",
+    isDeadCase: lead.isDeadCase === true,
+    deadCaseDate: lead.deadCaseDate || "",
+    deadCaseBy: lead.deadCaseBy || "",
+    deadCaseReason: lead.deadCaseReason || "",
+    deadCaseNotes: lead.deadCaseNotes || "",
+    deadCaseUpdatedAt: lead.deadCaseUpdatedAt || "",
   };
 }
 

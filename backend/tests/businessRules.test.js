@@ -7,11 +7,7 @@ import {
   LEAD_STATUSES,
   normalizeStatus,
 } from "../utils/status.constants.js";
-import {
-  archiveEligibleAt,
-  assertLeadMutable,
-  shouldArchiveLead,
-} from "../utils/archive.js";
+import { assertLeadMutable } from "../utils/deadCase.js";
 import {
   isProfessionalPlan,
   normalizeOnboardingPlan,
@@ -69,26 +65,11 @@ test("allows only configured document workflow transitions", () => {
   );
 });
 
-test("archives rejected and disbursed leads only after their retention windows", () => {
-  const rejected = {
-    status: LEAD_STATUSES.REJECTED,
-    statusUpdatedAt: "2026-01-01T00:00:00.000Z",
-  };
-  const disbursed = {
-    status: LEAD_STATUSES.DISBURSED,
-    statusUpdatedAt: "2026-01-01T00:00:00.000Z",
-  };
-
-  assert.equal(archiveEligibleAt(rejected).toISOString(), "2026-04-01T00:00:00.000Z");
-  assert.equal(archiveEligibleAt(disbursed).toISOString(), "2026-06-30T00:00:00.000Z");
-  assert.equal(shouldArchiveLead(rejected, new Date("2026-03-31T23:59:59.000Z")), false);
-  assert.equal(shouldArchiveLead(rejected, new Date("2026-04-01T00:00:00.000Z")), true);
-});
-
-test("blocks mutation of archived leads", () => {
-  assert.doesNotThrow(() => assertLeadMutable({ isArchived: false }));
-  assert.throws(() => assertLeadMutable({ isArchived: true }), (error) => {
-    assert.equal(error.code, "ARCHIVED_LEAD_IMMUTABLE");
+test("blocks mutation of dead cases outside Finance Desk", () => {
+  assert.doesNotThrow(() => assertLeadMutable({ isDeadCase: false }));
+  assert.doesNotThrow(() => assertLeadMutable({ isDeadCase: true }, { role: "finance-desk" }));
+  assert.throws(() => assertLeadMutable({ isDeadCase: true }), (error) => {
+    assert.equal(error.code, "DEAD_CASE_IMMUTABLE");
     assert.equal(error.status, 409);
     return true;
   });

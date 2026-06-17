@@ -1,4 +1,4 @@
-import { Download, Search } from "lucide-react";
+import { Download, RotateCcw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
@@ -13,9 +13,11 @@ const HEADERS = [
   "Vehicle Number",
   "Executive Name",
   "Status",
-  "Archived Date",
-  "Archive Reason",
+  "Dead Date",
+  "Dead Reason",
+  "Actions",
 ];
+const CSV_HEADERS = HEADERS.filter((header) => header !== "Actions");
 
 function value(input) {
   return String(input || "").trim() || "-";
@@ -34,25 +36,26 @@ function downloadCsv(rows, audience) {
     lead.vehicleNumber || lead.registrationNumber,
     lead.assignedExecutiveName || lead.assignedExecutiveEmail,
     portalLeadStatusLabel(lead),
-    formatPortalDateTime(lead.archivedAt),
-    lead.archiveReason,
+    formatPortalDateTime(lead.deadCaseDate),
+    lead.deadCaseReason,
   ]);
-  const csv = [HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
+  const csv = [CSV_HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${audience}-archived-cases.csv`;
+  link.download = `${audience}-dead-cases.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-export function ArchivedCasesPage({ audience = "finance" }) {
-  const endpoint = audience === "admin" ? "/admin/archived-leads" : "/dealer/archived-leads";
+export function DeadCasesPage({ audience = "finance" }) {
+  const endpoint = audience === "admin" ? "/admin/dead-cases" : "/dealer/dead-cases";
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([endpoint, debouncedSearch]);
@@ -91,13 +94,25 @@ export function ArchivedCasesPage({ audience = "finance" }) {
   }, [load]);
 
   useEffect(() => {
-    const refreshOnArchive = (event) => {
+    const refreshOnDeadCase = (event) => {
       const type = event.detail?.eventType || event.detail?.event;
-      if (type === "LEAD_ARCHIVED") load({ silent: true });
+      if (["LEAD_MARKED_DEAD", "LEAD_RESTORED_FROM_DEAD", "DEAD_CASE_UPDATED"].includes(type)) load({ silent: true });
     };
-    window.addEventListener("cls:realtime-event", refreshOnArchive);
-    return () => window.removeEventListener("cls:realtime-event", refreshOnArchive);
+    window.addEventListener("cls:realtime-event", refreshOnDeadCase);
+    return () => window.removeEventListener("cls:realtime-event", refreshOnDeadCase);
   }, [load]);
+
+  const restoreCase = useCallback(async (lead) => {
+    if (audience !== "finance" || !lead?.id) return;
+    setActionId(lead.id);
+    try {
+      await api.post(`/dealer/dead-cases/${lead.id}/restore`);
+      setRows((current) => current.filter((item) => item.id !== lead.id));
+    } finally {
+      setActionId("");
+      load({ silent: true });
+    }
+  }, [audience, load]);
 
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
@@ -108,10 +123,21 @@ export function ArchivedCasesPage({ audience = "finance" }) {
       value(lead.vehicleNumber || lead.registrationNumber),
       value(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
       portalLeadStatusLabel(lead),
-      formatPortalDateTime(lead.archivedAt),
-      value(lead.archiveReason),
+      formatPortalDateTime(lead.deadCaseDate),
+      value(lead.deadCaseReason),
+      audience === "finance" ? (
+        <button
+          type="button"
+          onClick={() => restoreCase(lead)}
+          disabled={actionId === lead.id}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restore
+        </button>
+      ) : "Read only",
     ],
-  })), [rows]);
+  })), [actionId, audience, restoreCase, rows]);
 
   return (
     <section className="space-y-4">
@@ -119,8 +145,8 @@ export function ArchivedCasesPage({ audience = "finance" }) {
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
           {audience === "admin" ? "Super Admin" : "Finance Desk"}
         </p>
-        <h1 className="mt-1 text-xl font-semibold text-slate-900">Archived Cases</h1>
-        <p className="mt-1 text-sm text-slate-500">Historical rejected and disbursed cases. These records are read-only.</p>
+        <h1 className="mt-1 text-xl font-semibold text-slate-900">Dead Cases</h1>
+        <p className="mt-1 text-sm text-slate-500">Cases manually moved out of active workflow by Finance Desk.</p>
       </div>
 
       <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -129,7 +155,7 @@ export function ArchivedCasesPage({ audience = "finance" }) {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search case ID, customer, mobile, vehicle, or executive"
+            placeholder="Search case ID, customer, mobile, reason, or executive"
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </label>
@@ -145,7 +171,7 @@ export function ArchivedCasesPage({ audience = "finance" }) {
       </div>
 
       <OperationalTable
-        title="Archived Cases"
+        title="Dead Cases"
         headers={HEADERS}
         rows={tableRows}
         loading={loading}

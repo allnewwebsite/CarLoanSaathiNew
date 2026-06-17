@@ -1058,7 +1058,7 @@ export async function getAdminLead(req, res, next) {
       });
       lead = page.data?.[0] || null;
     }
-    if (!lead || lead.isArchived === true) return res.status(404).json({ message: "Lead not found" });
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
 
     const [documentsPage, bankDocumentsPage] = await Promise.all([
       queryRecords("documents", {

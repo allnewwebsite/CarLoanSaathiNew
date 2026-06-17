@@ -11,7 +11,7 @@ import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLead
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
-import { assertLeadMutable } from "../utils/archive.js";
+import { assertLeadMutable } from "../utils/deadCase.js";
 import { clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";

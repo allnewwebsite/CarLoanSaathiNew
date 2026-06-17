@@ -7,7 +7,6 @@ import { cached } from "./ttlCache.service.js";
 
 export const QUEUE_NAMES = Object.freeze({
   NOTIFICATIONS: "notifications",
-  ARCHIVAL: "archival-jobs",
   METRICS: "metrics-aggregation",
   EMAIL: "email-jobs",
   WHATSAPP: "whatsapp-jobs",

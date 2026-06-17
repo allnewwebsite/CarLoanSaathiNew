@@ -68,7 +68,7 @@ export async function rebuildHistoricalMetrics({ limit = 250, dryRun = true, run
       const createdAt = lead.createdAt || new Date().toISOString();
       bump(map, "dailyMetrics", `global:${dayKey(createdAt)}`, { id: `global:${dayKey(createdAt)}`, scopeType: "global", scopeId: "global", period: dayKey(createdAt) }, lead);
       bump(map, "monthlyMetrics", `global:${monthKey(createdAt)}`, { id: `global:${monthKey(createdAt)}`, scopeType: "global", scopeId: "global", period: monthKey(createdAt) }, lead);
-      if (lead.isArchived === true) {
+      if (lead.isDeadCase === true) {
         processed += 1;
         continue;
       }

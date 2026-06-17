@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, BarChart3, CreditCard, Database, Radio, RefreshCw, Server, ShieldCheck, Zap } from "lucide-react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, getCachedGetData, invalidateGetCache } from "../../services/api.js";
 import { useRenderDiagnostics } from "../../services/frontendLatency.js";
 
 const statusStyles = {
@@ -109,7 +109,10 @@ export function AdminMonitoringCenter() {
 
   useEffect(() => {
     load({ silent: Boolean(initialCachedRef.current) });
-    const refreshFromEvent = () => load({ silent: true });
+    const refreshFromEvent = () => {
+      invalidateGetCache({ url: "/admin/monitoring", purge: true });
+      load({ silent: true, force: true });
+    };
     const refreshWhenVisible = () => {
       if (!document.hidden) refreshFromEvent();
     };

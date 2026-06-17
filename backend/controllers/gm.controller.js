@@ -254,7 +254,7 @@ export async function getGmLead(req, res, next) {
     });
     logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", leadId: req.params.id });
     const lead = await getRecord("leads", req.params.id);
-    const allowed = lead && lead.isArchived !== true && (lead.dealershipId === dealershipEmail || belongsToDealership(lead, dealershipEmail));
+    const allowed = lead && (lead.dealershipId === dealershipEmail || belongsToDealership(lead, dealershipEmail));
     if (!allowed) return res.status(404).json({ message: "Lead not found" });
     const [documentsPage, bankDocumentsPage] = await Promise.all([
       queryRecords("documents", {

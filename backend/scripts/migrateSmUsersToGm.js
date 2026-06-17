@@ -24,7 +24,6 @@ const ROLE_COLLECTIONS = [
   "staffViewProjection",
   "gmViews",
   "workflowLogViews",
-  "workflowLogArchives",
 ];
 const NOTIFICATION_COLLECTIONS = ["notifications", "notificationEvents", "notificationLogs"];
 const REPORT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../migration-reports");

@@ -66,7 +66,6 @@ async function upsertSuperAdminRecord(authUser, email, emailVerified = false) {
     emailVerified,
     dealershipId: null,
     bankId: null,
-    archivedAt: firebaseAdmin.firestore.FieldValue.delete(),
     deletedAt: firebaseAdmin.firestore.FieldValue.delete(),
     disabledAt: firebaseAdmin.firestore.FieldValue.delete(),
     removedAt: firebaseAdmin.firestore.FieldValue.delete(),

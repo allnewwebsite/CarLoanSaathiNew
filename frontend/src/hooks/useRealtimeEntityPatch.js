@@ -65,9 +65,12 @@ function patchedLeadFromEvent(event = {}) {
     realtimeUpdatedAt: updatedAt,
     documentUpdatedAt: (event.eventType || event.event) === "DOCUMENT_UPLOADED" ? updatedAt : lead.documentUpdatedAt,
     remarksUpdatedAt: (event.eventType || event.event) === "LEAD_REMARK_ADDED" ? updatedAt : lead.remarksUpdatedAt,
-    isArchived: lead.isArchived === true || event.isArchived === true || event.data?.isArchived === true,
-    archivedAt: lead.archivedAt || event.archivedAt || event.data?.archivedAt || "",
-    archiveReason: lead.archiveReason || event.archiveReason || event.data?.archiveReason || "",
+    isDeadCase: lead.isDeadCase === true || event.isDeadCase === true || event.data?.isDeadCase === true,
+    deadCaseDate: lead.deadCaseDate || event.deadCaseDate || event.data?.deadCaseDate || "",
+    deadCaseBy: lead.deadCaseBy || event.deadCaseBy || event.data?.deadCaseBy || "",
+    deadCaseReason: lead.deadCaseReason || event.deadCaseReason || event.data?.deadCaseReason || "",
+    deadCaseNotes: lead.deadCaseNotes || event.deadCaseNotes || event.data?.deadCaseNotes || "",
+    deadCaseUpdatedAt: lead.deadCaseUpdatedAt || event.deadCaseUpdatedAt || event.data?.deadCaseUpdatedAt || "",
   };
 }
 
@@ -109,7 +112,7 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
             changed = true;
             return { ...row, ...patch };
           })
-          .filter((row) => !sameLead(row, patch) || (row.isArchived !== true && statusMatchesFilter(row, statusFilter)));
+          .filter((row) => !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter)));
         if (!changed && canInsertCreatedRow && statusMatchesFilter(patch, statusFilter)) {
           return [patch, ...current].slice(0, Math.max(current.length || 10, 10));
         }

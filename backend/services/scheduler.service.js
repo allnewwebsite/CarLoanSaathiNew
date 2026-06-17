@@ -1,5 +1,5 @@
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
-import { archiveClosedLeads, cleanupExpiredNotifications } from "./archival.service.js";
+import { cleanupExpiredNotifications } from "./cleanup.service.js";
 import { validateMetricsIntegrity } from "./metricsBackfill.service.js";
 import { validateProjectionFreshness } from "./projection.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
@@ -45,10 +45,6 @@ export function registerScheduledOperations() {
 
   schedule("notification-cleanup", Number(process.env.NOTIFICATION_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000), () => (
     addQueueJob(QUEUE_NAMES.CLEANUP, "notification-cleanup", {}, { fallback: cleanupExpiredNotifications })
-  ));
-
-  schedule("lead-archival", Number(process.env.ARCHIVAL_INTERVAL_MS || 24 * 60 * 60 * 1000), () => (
-    addQueueJob(QUEUE_NAMES.ARCHIVAL, "lead-archival", {}, { priority: "low", fallback: archiveClosedLeads })
   ));
 
   schedule("metrics-integrity", Number(process.env.METRICS_INTEGRITY_INTERVAL_MS || 60 * 60 * 1000), validateMetricsIntegrity);

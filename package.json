@@ -30,7 +30,6 @@
     "bundle:report": "npm --prefix frontend run bundle:report",
     "verify:subscriptions": "npm --prefix backend run verify:subscriptions",
     "verify:razorpay-webhook": "npm --prefix backend run verify:razorpay-webhook",
-    "verify:archive": "npm --prefix backend run verify:archive",
     "load:smoke": "k6 run load-tests/k6/api-smoke.js",
     "load:auth": "k6 run load-tests/k6/auth-load.js",
     "load:dashboard": "k6 run load-tests/k6/dashboard-load.js",

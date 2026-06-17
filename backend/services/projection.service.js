@@ -64,6 +64,12 @@ const VIEW_LEAD_FIELDS = [
   "bankRemarks",
   "sanctionLetterDocumentId",
   "sanctionLetterUploadedAt",
+  "isDeadCase",
+  "deadCaseDate",
+  "deadCaseBy",
+  "deadCaseReason",
+  "deadCaseNotes",
+  "deadCaseUpdatedAt",
 ];
 
 const VIEW_SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "city", "bankName", "assignedBankName", "assignedExecutiveName", "salespersonName", "salespersonJobId", "salespersonEmail", "assignedSalesperson", "financeManagerName", "financeManagerEmployeeId", "financeManagerEmail", "assignedFinanceManager"];
@@ -438,7 +444,6 @@ async function backfillLeadProjectionsFromMiss({ collection, role, where, limit,
 
 export async function syncLeadProjection(lead = {}) {
   if (!lead?.id) return null;
-  if (lead.isArchived === true) return removeLeadProjections(lead);
   clearCachedValue("lead-query:");
   const targets = leadTargets(lead);
   await Promise.all(targets.map((target) => upsertRecord(
@@ -634,7 +639,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       }
       const mapStartedAt = Date.now();
       const data = freshRows
-        .filter((item) => item.isArchived !== true)
+        .filter((item) => item.isDeadCase !== true)
         .map((item) => ({ ...item, id: item.sourceId || item.id }));
       const mapEndedAt = Date.now();
       const shapeStartedAt = Date.now();

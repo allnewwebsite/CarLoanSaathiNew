@@ -2,7 +2,7 @@ import { QUEUE_NAMES, registerWorker } from "./queue.service.js";
 import { createNotification } from "./notification.service.js";
 import { processNotificationEvents } from "./notificationWorker.service.js";
 import { processWhatsAppQueue } from "./whatsapp.service.js";
-import { archiveClosedLeads, cleanupExpiredNotifications } from "./archival.service.js";
+import { cleanupExpiredNotifications } from "./cleanup.service.js";
 import { applyLeadCreatedMetrics, applyLeadAssignedMetrics, applyStatusChangedMetrics } from "./analyticsEngine.service.js";
 import { markWorkerHealth } from "./health.service.js";
 import { reconcileSubscriptionPayments } from "./paymentReconciliation.service.js";
@@ -16,7 +16,6 @@ export function registerQueueWorkers() {
     return createNotification(payload);
   }, { concurrency: 1 });
   registerWorker(QUEUE_NAMES.WHATSAPP, async (payload) => processWhatsAppQueue({ queueId: payload?.queueId }), { concurrency: 2 });
-  registerWorker(QUEUE_NAMES.ARCHIVAL, async (payload) => archiveClosedLeads(payload), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.CLEANUP, async () => cleanupExpiredNotifications(), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.BILLING, async (payload) => reconcileSubscriptionPayments(payload), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.METRICS, async (payload) => {

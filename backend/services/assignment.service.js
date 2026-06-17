@@ -1,5 +1,5 @@
 import { countRecords, createRecord, getRecord, queryRecords, runRecordTransaction, updateRecord, upsertRecord } from "./firestore.service.js";
-import { assertLeadMutable } from "../utils/archive.js";
+import { assertLeadMutable } from "../utils/deadCase.js";
 import { createNotification } from "./notification.service.js";
 import { getEligiblePartners } from "./partner.service.js";
 import { getWorkflowSettings } from "./settings.service.js";

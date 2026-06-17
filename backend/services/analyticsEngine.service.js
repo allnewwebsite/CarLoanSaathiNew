@@ -118,24 +118,6 @@ export async function applyLeadAssignedMetrics(lead) {
   await incrementMetricTargets(lead, { assignedLeads: 1 });
 }
 
-export async function applyLeadArchivedMetrics(lead) {
-  const field = statusField(lead.status);
-  const increments = {
-    totalLeads: -1,
-    [field]: -1,
-    completedLeads: -1,
-    processingTimeTotalMinutes: -processingTimeMinutes(lead),
-  };
-  if (lead.assignedExecutiveId) increments.assignedLeads = -1;
-  await Promise.all(activeMetricTargets(lead).map((target) => incrementRecord(target.collection, target.id, increments, {
-    ...zeroMetrics,
-    scopeType: target.scopeType,
-    scopeId: target.scopeId,
-    period: target.period || null,
-    lastEventAt: new Date().toISOString(),
-  })));
-}
-
 export function decorateMetric(record = {}) {
   const metrics = { ...zeroMetrics, ...record };
   return {

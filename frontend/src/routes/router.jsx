@@ -33,7 +33,7 @@ const pageModules = {
   gmTracking: () => import("../pages/dashboard/GmTrackingPanel.jsx"),
   superAdmin: () => import("../pages/dashboard/SuperAdminDashboard.jsx"),
   adminMonitoring: () => import("../pages/dashboard/AdminMonitoringCenter.jsx"),
-  archivedCases: () => import("../pages/dashboard/ArchivedCasesPage.jsx"),
+  deadCases: () => import("../pages/dashboard/DeadCasesPage.jsx"),
   legal: () => import("../pages/legal/LegalPages.jsx"),
 };
 
@@ -64,7 +64,7 @@ const SuperAdminDealershipDetailPage = lazyPage(pageModules.superAdmin, "SuperAd
 const SuperAdminApprovalDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminApprovalDetailPage");
 const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLeadDetailPage");
 const AdminMonitoringCenter = lazyPage(pageModules.adminMonitoring, "AdminMonitoringCenter");
-const ArchivedCasesPage = lazyPage(pageModules.archivedCases, "ArchivedCasesPage");
+const DeadCasesPage = lazyPage(pageModules.deadCases, "DeadCasesPage");
 const LegalPage = lazyPage(pageModules.legal, "LegalPage");
 const DashboardLayout = lazy(() => import("../layouts/DashboardLayout.jsx").then((module) => ({ default: module.DashboardLayout })));
 
@@ -159,7 +159,7 @@ export const router = createBrowserRouter([
           { path: "cases", element: <FinanceDeskPanel mode="cases" /> },
           { path: "status", element: <FinanceDeskPanel mode="status" /> },
           { path: "bank-tieups", element: <FinanceDeskPanel mode="bank-tieups" /> },
-          { path: "archived-cases", element: <ArchivedCasesPage audience="finance" /> },
+          { path: "dead-cases", element: <DeadCasesPage audience="finance" /> },
           { path: "leads/:leadId/documents", element: <FinanceLeadDocumentsPage /> },
           { path: "leads/:leadId", element: <FinanceLeadDetailPage /> },
           { path: "salespersons", element: <FinanceDeskPanel mode="salespersons" /> },
@@ -257,7 +257,7 @@ export const router = createBrowserRouter([
           { path: "banks", element: <SuperAdminDashboard mode="banks" /> },
           { path: "status", element: <SuperAdminDashboard mode="status" /> },
           { path: "leads", element: <SuperAdminDashboard mode="leads" /> },
-          { path: "archived-cases", element: <ArchivedCasesPage audience="admin" /> },
+          { path: "dead-cases", element: <DeadCasesPage audience="admin" /> },
           { path: "leads/:leadId", element: <SuperAdminLeadDetailPage /> },
           { path: "monitoring", element: <AdminMonitoringCenter /> },
           { path: "approvals/dealerships", element: <SuperAdminDashboard mode="approval-dealerships" /> },

@@ -66,13 +66,15 @@ const LEAD_FIELDS = [
   "bankId",
   "vehicleNumber",
   "registrationNumber",
-  "isArchived",
-  "archivedAt",
-  "archiveReason",
-  "archivedBy",
+  "isDeadCase",
+  "deadCaseDate",
+  "deadCaseBy",
+  "deadCaseReason",
+  "deadCaseNotes",
+  "deadCaseUpdatedAt",
 ];
 
-const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "vehicleNumber", "registrationNumber", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedExecutiveName", "assignedExecutiveEmail", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager"];
+const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "vehicleNumber", "registrationNumber", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedExecutiveName", "assignedExecutiveEmail", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager", "deadCaseReason"];
 
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
@@ -120,7 +122,7 @@ function localFilters(leads, query = {}) {
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
   return leads.filter((lead) => {
-    if (lead.isArchived === true) return false;
+    if (lead.isDeadCase === true) return false;
     const normalizedQueryStatus = normalizeStatus(status);
     const financeStatus = normalizeFinanceStatus(lead.status);
     const leadStatus = normalizeStatus(lead.status);
@@ -301,20 +303,21 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     allowGlobal: true,
   });
   return pageResponse({
-    data: result.data.filter((lead) => lead.isArchived !== true),
+    data: result.data.filter((lead) => lead.isDeadCase !== true),
     limit,
     nextCursor: result.nextCursor,
   });
 }
 
-export async function queryArchivedLeads({ dealershipId = "", query = {}, fields = LEAD_FIELDS } = {}) {
+export async function queryDeadCases({ dealershipId = "", query = {}, fields = LEAD_FIELDS } = {}) {
   const { limit, cursor, page } = paginationParams(query);
-  const where = [{ field: "isArchived", value: true }];
+  const where = [{ field: "isDeadCase", value: true }];
   if (dealershipId) where.push({ field: "dealershipId", value: dealershipId });
   if (query.status) where.push({ field: "status", value: normalizeStatus(query.status) });
+  if (query.deadCaseReason) where.push({ field: "deadCaseReason", value: String(query.deadCaseReason).trim() });
   const result = await queryRecords("leads", {
     where,
-    orderBy: "archivedAt",
+    orderBy: "deadCaseDate",
     direction: "desc",
     limit,
     cursor,
@@ -326,7 +329,7 @@ export async function queryArchivedLeads({ dealershipId = "", query = {}, fields
     allowGlobal: !dealershipId,
   });
   return pageResponse({
-    data: result.data.filter((lead) => lead.isArchived === true),
+    data: result.data.filter((lead) => lead.isDeadCase === true),
     limit,
     nextCursor: result.nextCursor,
   });
@@ -355,7 +358,7 @@ export async function countOpenExecutiveLeads(executiveId) {
     where: [
       { field: "assignedExecutiveId", value: executiveId },
       { field: "status", op: "in", value: statuses },
-      { field: "isArchived", value: false },
+      { field: "isDeadCase", value: false },
     ],
   })));
   return counts.reduce((sum, count) => sum + Number(count || 0), 0);

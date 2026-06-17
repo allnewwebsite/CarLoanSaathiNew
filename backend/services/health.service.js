@@ -121,8 +121,8 @@ async function productionHealthSnapshot({ deep = false } = {}) {
       status: process.env.DISABLE_NOTIFICATION_WORKER === "true" ? "disabled" : "enabled",
       lastRunAt: workerState.notificationWorkerLastRunAt,
     },
-    archival: {
-      status: process.env.ENABLE_SCHEDULED_OPERATIONS === "true" ? "scheduled" : "manual",
+    deadCaseManagement: {
+      status: "manual-finance-desk",
     },
     projections: projectionHealth(),
     razorpayWebhook,

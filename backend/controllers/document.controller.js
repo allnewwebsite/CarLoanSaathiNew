@@ -9,7 +9,7 @@ import { syncLeadProjectionSoon } from "../services/projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { logError } from "../services/logger.service.js";
 import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "../services/whatsapp.service.js";
-import { assertLeadMutable } from "../utils/archive.js";
+import { assertLeadMutable } from "../utils/deadCase.js";
 
 function runDocumentSideEffect(label, task) {
   Promise.resolve()
@@ -26,7 +26,7 @@ function canUploadCustomerDocument(req, lead) {
 
 async function canReadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
-  if (lead?.isArchived === true && !["finance-desk", "super-admin"].includes(req.user?.role)) return false;
+  if (lead?.isDeadCase === true && req.user?.role !== "finance-desk") return false;
   const email = req.user?.email || req.user?.uid;
   if (["finance-desk", "gm"].includes(req.user?.role)) {
     return lead?.dealershipId === req.user?.dealershipId || lead?.dealerEmail === email || lead?.dealershipEmail === email || lead?.createdBy === email;

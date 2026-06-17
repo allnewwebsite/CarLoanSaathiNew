@@ -31,7 +31,6 @@ const [
   leadQueryModule,
   analyticsModule,
   notificationModule,
-  archiveModule,
   realtimeModule,
   statusModule,
 ] = await Promise.all([
@@ -39,7 +38,6 @@ const [
   import("../services/leadQuery.service.js"),
   import("../services/analytics.service.js"),
   import("../services/notification.service.js"),
-  import("../services/archival.service.js"),
   import("../services/realtime.service.js"),
   import("../utils/status.constants.js"),
 ]);
@@ -48,7 +46,6 @@ const { bulkUpsertRecords, createRecord } = firestoreModule;
 const { queryAllLeads, queryDealershipLeads } = leadQueryModule;
 const { scopedAnalytics } = analyticsModule;
 const { getNotifications } = notificationModule;
-const { archiveClosedLeads } = archiveModule;
 const { connectRealtimeClient, publishRealtimeEvent, REALTIME_EVENTS } = realtimeModule;
 const { LEAD_STATUSES } = statusModule;
 
@@ -121,7 +118,7 @@ function leadRecord(index) {
     statusUpdatedAt: timestamp,
     createdAt: timestamp,
     updatedAt: timestamp,
-    isArchived: false,
+    isDeadCase: false,
     loadTest: true,
   };
 }
@@ -226,7 +223,7 @@ async function startBenchmarkServer() {
           id: `created-load-lead-${index}-${Date.now()}`,
           caseId: `CLS-CREATED-${index}-${Date.now()}`,
           status: LEAD_STATUSES.NEW,
-          isArchived: false,
+          isDeadCase: false,
         });
       } else {
         res.writeHead(404).end();
@@ -334,13 +331,6 @@ const apiLeadCreation = await benchmarkHttp({
 });
 await new Promise((resolve) => server.close(resolve));
 
-const archiveStartedAt = performance.now();
-const archiveBatch = await archiveClosedLeads({ limit: 100 });
-const archiveDurationMs = performance.now() - archiveStartedAt;
-const archiveThroughput = archiveBatch.archived / (archiveDurationMs / 1000);
-const eligibleLeads = 20_000;
-const estimatedFullArchiveSeconds = eligibleLeads / Math.max(archiveThroughput, 0.001);
-
 const sse = await benchmarkSse();
 const logicalReads = {
   exactCaseSearch: { estimatedReads: 1, returned: 1, amplification: 1 },
@@ -364,12 +354,6 @@ const bottlenecks = [
     area: "Local fallback query complexity",
     finding: `Memory fallback examines up to ${LEAD_COUNT.toLocaleString()} leads for scoped sorting/search, producing a ${logicalReads.localMemoryScan.amplification.toLocaleString()}x examined-to-returned ratio for an 8-row dashboard page.`,
     recommendation: "Never use memory fallback for production capacity. Require Firestore indexes and fail readiness checks when the backend reports memory-fallback.",
-  },
-  {
-    severity: "high",
-    area: "Archive batch ceiling",
-    finding: `A limit=100 archival run processed ${archiveBatch.archived} records while ${eligibleLeads.toLocaleString()} were eligible. Full backlog clearance is estimated at ${estimatedFullArchiveSeconds.toFixed(1)} seconds under this local profile.`,
-    recommendation: "Run archival continuously in bounded queue jobs, expose backlog depth, and alert when eligible backlog exceeds one day of configured throughput.",
   },
   {
     severity: "medium",
@@ -401,7 +385,6 @@ const result = {
     dealerships: DEALERSHIP_COUNT,
     executives: EXECUTIVE_COUNT,
     leads: LEAD_COUNT,
-    eligibleForArchive: eligibleLeads,
     seed,
   },
   measurements: {
@@ -412,13 +395,6 @@ const result = {
     directServiceDashboard: directDashboard,
     apiP95Ms: Number(Math.max(...combinedApiDurations).toFixed(3)),
     firestoreReadAmplification: logicalReads,
-    archiveExecution: {
-      batchLimit: 100,
-      archived: archiveBatch.archived,
-      durationMs: Number(archiveDurationMs.toFixed(3)),
-      throughputPerSecond: Number(archiveThroughput.toFixed(3)),
-      estimatedFullBacklogSeconds: Number(estimatedFullArchiveSeconds.toFixed(3)),
-    },
     ssePropagation: sse,
   },
   bottlenecks,
@@ -438,7 +414,6 @@ await fs.writeFile(path.join(artifactDir, "production-scale-results.log"), [
   `Lead search p95: ${apiSearch.p95Ms} ms`,
   `Dashboard p95: ${apiDashboard.p95Ms} ms`,
   `Overall API p95 ceiling: ${result.measurements.apiP95Ms} ms`,
-  `Archive: ${archiveBatch.archived} leads in ${archiveDurationMs.toFixed(3)} ms`,
   `SSE p95: ${sse.p95Ms} ms to ${SSE_CLIENTS} clients`,
   `Verdict: benchmark completed`,
   "",
@@ -462,7 +437,6 @@ ${metricCard("SSE propagation p95", `${sse.p95Ms} ms`, `${SSE_CLIENTS} clients, 
 <h2>Capacity Evidence</h2><table><thead><tr><th>Measurement</th><th>Result</th><th>Context</th></tr></thead><tbody>
 <tr><td>Dataset seed</td><td>${seed.durationMs} ms</td><td>${seed.heapUsedMb} MB heap after seed</td></tr>
 <tr><td>Overall API p95 ceiling</td><td>${result.measurements.apiP95Ms} ms</td><td>Worst p95 of create/search/dashboard</td></tr>
-<tr><td>Archive execution</td><td>${archiveBatch.archived} in ${archiveDurationMs.toFixed(2)} ms</td><td>${archiveThroughput.toFixed(2)} records/sec</td></tr>
 <tr><td>Indexed search read amplification</td><td>1.00x expected</td><td>Exact caseId equality query</td></tr>
 <tr><td>Dashboard page read amplification</td><td>1.125x expected</td><td>9 reads for 8 returned rows</td></tr>
 <tr><td>Local fallback scan amplification</td><td>${logicalReads.localMemoryScan.amplification.toLocaleString()}x</td><td>100,000 examined for 8 returned</td></tr>
