@@ -1,7 +1,5 @@
 import axios from "axios";
-import { getToken } from "firebase/app-check";
 import { clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
-import { appCheck } from "./firebase.js";
 import { markApiRequestStart, markApiResponseEnd } from "./frontendLatency.js";
 
 const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:8080/api";
@@ -75,6 +73,7 @@ let refreshPromise = null;
 const getCache = new Map();
 const pendingGetRequests = new Map();
 let appCheckCache = { token: "", expiresAt: 0, promise: null };
+let appCheckModulePromise = null;
 let getCacheHydrated = false;
 let getCachePersistTimer = null;
 let dataMutationChannel = null;
@@ -471,13 +470,16 @@ setupDataMutationListeners();
 
 async function appCheckHeaderToken() {
   if (!import.meta.env.VITE_FIREBASE_APPCHECK_RECAPTCHA_SITE_KEY) return "";
-  if (!appCheck) return "";
   if (appCheckCache.token && appCheckCache.expiresAt > Date.now()) return appCheckCache.token;
   if (!appCheckCache.promise) {
-    appCheckCache.promise = getToken(appCheck, false)
+    appCheckCache.promise = loadAppCheck()
+      .then(({ appCheck, getToken }) => {
+        if (!appCheck || typeof getToken !== "function") return "";
+        return getToken(appCheck, false);
+      })
       .then((token) => {
         appCheckCache = {
-          token: token?.token || "",
+          token: typeof token === "string" ? token : token?.token || "",
           expiresAt: Date.now() + APP_CHECK_CACHE_TTL_MS,
           promise: null,
         };
@@ -489,6 +491,21 @@ async function appCheckHeaderToken() {
       });
   }
   return appCheckCache.promise;
+}
+
+async function loadAppCheck() {
+  if (!appCheckModulePromise) {
+    appCheckModulePromise = Promise.all([
+      import("firebase/app-check"),
+      import("./firebaseAppCheck.js"),
+    ])
+      .then(([appCheckModule, firebaseModule]) => ({
+        getToken: appCheckModule.getToken,
+        appCheck: firebaseModule.appCheck,
+      }))
+      .catch(() => ({ getToken: null, appCheck: null }));
+  }
+  return appCheckModulePromise;
 }
 
 function jwtPayload(token) {

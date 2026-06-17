@@ -2,35 +2,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
-import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
 import { DashboardDetailsModal } from "../../components/PortalUserMenu.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
+import { mutationUrlMatches, useBackgroundRefresh, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
-import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { bankDocumentRows, loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 import {
-  branchMatch,
-  branchValue,
   caseId,
   cleanEmail,
   cleanText,
-  currentExecutiveIdentity,
   dateTime,
   digits10,
   display,
   executiveDeleteId,
-  executiveIdentity,
   generatedAt,
   leadStatusLabel,
   moneyValue,
   numberValue,
-  reassignmentExecutiveId,
   responseRows,
   validEmail,
 } from "./bankManager.helpers.js";
@@ -39,17 +33,6 @@ const pageSize = 10;
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
 const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks", "/bank/executives"]);
 const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
-
-const customerDocumentTypes = [
-  "Aadhaar",
-  "PAN",
-  "Salary Slip",
-  "ITR",
-  "Bank Statement",
-  "Electricity Bill",
-  "Rent Agreement",
-  "Form 16",
-];
 
 function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
   return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
@@ -66,173 +49,6 @@ function MetricCard({ label, value, subtext }) {
   );
 }
 
-function reassignmentDiagnostics(lead = {}, rows = []) {
-  const currentIds = new Set(currentExecutiveIdentity(lead));
-  const caseBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
-  const caseIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
-  const diagnostics = rows.map((executive) => {
-    const status = String(executive.status || "").trim().toLowerCase();
-    const active = executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
-    const current = executiveIdentity(executive).some((key) => currentIds.has(key));
-    const sameBranch = branchMatch(lead, executive);
-    const reasons = [];
-    if (!active) reasons.push("inactive/deleted/suspended");
-    if (current) reasons.push("current owner");
-    if (!sameBranch) reasons.push(`branch mismatch (${branchValue(executive) || "missing branch"} / ${executive.bankIfsc || executive.ifsc || executive.ifscCode || "missing IFSC"})`);
-    return {
-      name: executive.name || executive.fullName || executive.email || executive.officialEmail || executive.id,
-      active,
-      current,
-      sameBranch,
-      eligibleStrict: active && !current && sameBranch,
-      eligibleFallback: active && !current,
-      reason: reasons.join(", ") || "eligible",
-    };
-  });
-  console.info("CASE_REASSIGNMENT_EXECUTIVE_FILTER", {
-    caseId: caseId(lead),
-    caseBranch,
-    caseIfsc,
-    currentExecutive: lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || "",
-    foundExecutives: rows.length,
-    filteredExecutives: diagnostics,
-    eligibleStrict: diagnostics.filter((item) => item.eligibleStrict).map((item) => item.name),
-    eligibleFallback: diagnostics.filter((item) => item.eligibleFallback).map((item) => item.name),
-  });
-  return diagnostics;
-}
-
-async function performLeadReassignment(lead, reason, newExecutiveId, onDone) {
-  await api.patch(`/bank/leads/${lead.id}/reassign`, { reason, newExecutiveId });
-  await onDone?.();
-}
-
-function ReassignLeadDialog({ lead, onCancel, onDone }) {
-  const [reason, setReason] = useState("manager-reassignment");
-  const [executives, setExecutives] = useState([]);
-  const [selectedExecutiveId, setSelectedExecutiveId] = useState("");
-  const [loadingExecutives, setLoadingExecutives] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setReason("manager-reassignment");
-    setExecutives([]);
-    setSelectedExecutiveId("");
-    setError("");
-    setBusy(false);
-  }, [lead?.id]);
-
-  useEffect(() => {
-    if (!lead) return undefined;
-    let cancelled = false;
-    setLoadingExecutives(true);
-    api.get("/bank/executives", { params: { limit: 100 } })
-      .then((response) => {
-        if (cancelled) return;
-        const rows = responseRows(response);
-        const diagnostics = reassignmentDiagnostics(lead, rows);
-        const strictEligible = rows.filter((_executive, index) => diagnostics[index]?.eligibleStrict);
-        const fallbackEligible = rows.filter((_executive, index) => diagnostics[index]?.eligibleFallback);
-        const eligible = strictEligible.length ? strictEligible : fallbackEligible;
-        setExecutives(eligible);
-        setSelectedExecutiveId(reassignmentExecutiveId(eligible[0]) || "");
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.response?.data?.message || err.message || "Unable to load executives");
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingExecutives(false);
-      });
-    return () => { cancelled = true; };
-  }, [lead]);
-
-  if (!lead) return null;
-
-  const submit = async (event) => {
-    event.preventDefault();
-    const cleanReason = cleanText(reason);
-    if (!cleanReason) {
-      setError("Reassignment reason is required.");
-      return;
-    }
-    if (!selectedExecutiveId) {
-      setError("Select a new executive.");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      await performLeadReassignment(lead, cleanReason, selectedExecutiveId, onDone);
-      onCancel();
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || "Unable to reassign lead");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6">
-      <form onSubmit={submit} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-slate-950">Reassign Case</h2>
-            <p className="mt-1 text-sm text-slate-600">Move {caseId(lead)} to another same-branch executive.</p>
-          </div>
-          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-60">Close</button>
-        </div>
-        <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          <p><span className="font-semibold">Case ID:</span> {caseId(lead)}</p>
-          <p className="mt-1"><span className="font-semibold">Customer:</span> {display(lead.fullName || lead.customerName)}</p>
-          <p><span className="font-semibold">Current executive:</span> {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}</p>
-          {(lead.assignedExecutiveMobile || lead.executiveMobile) ? <p className="mt-1"><span className="font-semibold">Mobile:</span> {lead.assignedExecutiveMobile || lead.executiveMobile}</p> : null}
-          <p className="mt-1"><span className="font-semibold">Status:</span> {leadStatusLabel(lead)}</p>
-          <p className="mt-1"><span className="font-semibold">Branch:</span> {display(lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode)}</p>
-        </div>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
-          Select New Executive
-          <select
-            value={selectedExecutiveId}
-            disabled={loadingExecutives || busy}
-            onChange={(event) => {
-              setSelectedExecutiveId(event.target.value);
-              setError("");
-            }}
-            className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1] disabled:bg-slate-50 disabled:text-slate-400"
-          >
-            {loadingExecutives ? <option value="">Loading executives...</option> : null}
-            {!loadingExecutives && !executives.length ? <option value="">No eligible executives found.</option> : null}
-            {!loadingExecutives && executives.map((executive) => (
-              <option key={reassignmentExecutiveId(executive)} value={reassignmentExecutiveId(executive)}>
-                {executive.name || executive.fullName || executive.email || executive.officialEmail} {executive.mobile ? `- ${executive.mobile}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mt-4 block text-sm font-medium text-slate-700">
-          Reason
-          <textarea
-            value={reason}
-            onChange={(event) => {
-              setReason(event.target.value.replace(/[<>]/g, ""));
-              setError("");
-            }}
-            rows={3}
-            className="mt-2 w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#0d47a1]"
-          />
-        </label>
-        {error ? <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} disabled={busy} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={busy || loadingExecutives || !selectedExecutiveId} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {busy ? "Reassigning..." : "Reassign"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 function DetailState({ title, message, requestId, onRetry, tone = "slate" }) {
   const tones = {
@@ -246,18 +62,6 @@ function DetailState({ title, message, requestId, onRetry, tone = "slate" }) {
       <p className="mt-1">{message}</p>
       {requestId ? <p className="mt-2 text-xs opacity-80">Request ID: {requestId}</p> : null}
       {onRetry ? <button onClick={onRetry} className="mt-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700">Retry</button> : null}
-    </section>
-  );
-}
-
-function DetailSkeleton() {
-  return (
-    <section className="space-y-4">
-      <div className="h-20 animate-pulse rounded-lg border border-slate-200 bg-white" />
-      <div className="grid gap-3 md:grid-cols-4">
-        {[0, 1, 2, 3].map((item) => <div key={item} className="h-20 animate-pulse rounded-lg border border-slate-200 bg-white" />)}
-      </div>
-      <div className="h-64 animate-pulse rounded-lg border border-slate-200 bg-white" />
     </section>
   );
 }
@@ -1029,107 +833,4 @@ export function BankBranchManagerPanel({ mode = "leads" }) {
   if (mode === "dealerships") return <BankDealershipsPage />;
   if (mode === "dealership-disbursed") return <BankDealershipDisbursedPage />;
   return <TotalLeadsPage />;
-}
-
-export function BankManagerLeadDetailPage() {
-  const { leadId } = useParams();
-  const cachedLead = getCachedGetData(`/bank/leads/${leadId}`)
-    || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId)
-    || findCachedGetItem("/bank/analytics", (item) => item.id === leadId || item.caseId === leadId);
-  const [lead, setLead] = useState(() => cachedLead);
-  const [error, setError] = useState(null);
-  const [actionError, setActionError] = useState("");
-  const [pendingReassign, setPendingReassign] = useState(null);
-  const [loading, setLoading] = useState(() => !cachedLead);
-
-  const loadLead = useCallback(async ({ silent = false } = {}) => {
-    setError(null);
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get(`/bank/leads/${leadId}`);
-      setLead(response.data);
-    } catch (err) {
-      setLead((current) => current || null);
-      setError({
-        status: err.response?.status || 0,
-        message: err.response?.data?.message || err.message || "Unable to load this lead.",
-        requestId: err.response?.data?.requestId || err.response?.headers?.["x-request-id"] || "",
-      });
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [leadId]);
-
-  useEffect(() => { loadLead(); }, [loadLead]);
-  useRealtimeLeadDetailPatch({ leadId, setLead });
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
-
-  if (loading && !lead) return <DetailSkeleton />;
-  if (!lead) {
-    if (error?.status === 403) return <DetailState title="Access denied" message="This lead is outside your authorized bank or branch scope." requestId={error.requestId} onRetry={() => loadLead()} tone="amber" />;
-    if (error?.status === 404) return <DetailState title="Lead not found" message="This lead may have been removed or the link is no longer valid." requestId={error.requestId} onRetry={() => loadLead()} />;
-    return <DetailState title="Documents could not be loaded" message={error?.message || "Unexpected server error while loading this lead."} requestId={error?.requestId} onRetry={() => loadLead()} tone="red" />;
-  }
-
-  const documents = [...(lead.documents || [])];
-  const bankDocs = bankDocumentRows(lead);
-  const rows = customerDocumentTypes.map((type) => {
-    const doc = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
-    const url = doc?.url || doc?.fileUrl || doc?.downloadUrl;
-    return {
-      key: type,
-      cells: [
-        type,
-        url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded",
-        dateTime(doc?.createdAt || doc?.uploadedAt),
-        url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-",
-      ],
-    };
-  });
-
-  return (
-    <section className="space-y-4">
-      <PageTitle title="Customer Documents" />
-      {actionError ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</p> : null}
-      <ReassignLeadDialog lead={pendingReassign} onCancel={() => setPendingReassign(null)} onDone={() => loadLead({ silent: true })} />
-      <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], ["Finance Manager Mobile", lead.financeManagerMobile], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, leadStatusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
-      </div>
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
-      </section>
-      <PendingDocumentsPanel lead={lead} />
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Case Assignment</p>
-            <p className="mt-1 text-sm text-slate-500">Current executive: {display(lead.assignedExecutiveName || lead.assignedExecutiveEmail)}{lead.assignedExecutiveMobile || lead.executiveMobile ? ` - ${lead.assignedExecutiveMobile || lead.executiveMobile}` : ""}</p>
-          </div>
-          <button
-            onClick={() => {
-              setActionError("");
-              setPendingReassign(lead);
-            }}
-            className="w-full rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-[#0d47a1] sm:w-auto"
-          >
-            {lead.assignedExecutiveId || lead.assignedExecutiveEmail ? "Reassign to Next Executive" : "Assign to Executive"}
-          </button>
-        </div>
-      </div>
-      <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={rows} loading={false} />
-      <Table title="Bank Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={bankDocs.map((document) => {
-        const url = document?.url || document?.fileUrl || document?.downloadUrl;
-        return {
-          key: document.id || document.documentType || document.type,
-          cells: [
-            display(document.documentType || document.type),
-            url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application",
-            dateTime(document?.createdAt || document?.uploadedAt),
-            url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-",
-          ],
-        };
-      })} loading={false} />
-    </section>
-  );
 }

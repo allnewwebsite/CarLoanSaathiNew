@@ -22,9 +22,32 @@ import {
   Workflow,
   XCircle,
 } from "lucide-react";
-import { motion, MotionConfig, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { useEffect, useRef } from "react";
 import { PublicConversionCtas } from "../components/PublicConversionCtas.jsx";
+
+const motionProps = new Set(["initial", "whileInView", "viewport", "transition", "animate"]);
+function motionTag(Tag) {
+  return function MotionTag(props) {
+    const passthrough = {};
+    Object.entries(props).forEach(([key, value]) => {
+      if (!motionProps.has(key)) passthrough[key] = value;
+    });
+    return <Tag {...passthrough} />;
+  };
+}
+
+const motion = {
+  article: motionTag("article"),
+  div: motionTag("div"),
+  p: motionTag("p"),
+  path: motionTag("path"),
+  span: motionTag("span"),
+  svg: motionTag("svg"),
+};
+
+function MotionConfig({ children }) {
+  return <>{children}</>;
+}
 
 const ease = [0.22, 1, 0.36, 1];
 const reveal = {
@@ -247,10 +270,8 @@ function NetworkSection() {
 }
 
 export function HowItWorksPage() {
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = true;
   const heroRef = useRef(null);
-  const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroY = useTransform(scrollYProgress, [0, 1], [0, reducedMotion ? 0 : 90]);
 
   useEffect(() => {
     const oldTitle = document.title;
@@ -275,7 +296,7 @@ export function HowItWorksPage() {
     <MotionConfig reducedMotion="user">
       <main className="bg-white text-slate-700">
       <section ref={heroRef} className="relative flex min-h-[calc(100vh-4rem)] items-center overflow-hidden bg-[linear-gradient(135deg,#f8fbff_0%,#eef6ff_45%,#ffffff_100%)] px-4 py-20 sm:px-6 lg:px-8">
-        <motion.div style={{ y: heroY }} className="absolute -left-32 top-20 h-80 w-80 rounded-full bg-blue-200/35 blur-3xl" />
+        <motion.div className="absolute -left-32 top-20 h-80 w-80 rounded-full bg-blue-200/35 blur-3xl" />
         <motion.div className="absolute -right-28 bottom-10 h-96 w-96 rounded-full bg-cyan-200/30 blur-3xl" animate={reducedMotion ? undefined : { scale: [1, 1.12, 1], x: [0, -24, 0] }} transition={{ duration: 9, repeat: Infinity }} />
         <div className="relative mx-auto grid w-full max-w-7xl gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <div className="min-w-0">

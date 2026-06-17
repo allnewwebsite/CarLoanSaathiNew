@@ -10,8 +10,11 @@ export default defineConfig({
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/react-router-dom")) {
             return "react";
           }
-          if (id.includes("node_modules/firebase")) {
-            return "firebase";
+          if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase")) {
+            if (id.includes("app-check")) return "firebase-app-check";
+            if (id.includes("/auth") || id.includes("\\auth")) return "firebase-auth";
+            if (id.includes("/storage") || id.includes("\\storage")) return "firebase-storage";
+            return "firebase-core";
           }
           if (id.includes("node_modules/axios")) {
             return "axios";
