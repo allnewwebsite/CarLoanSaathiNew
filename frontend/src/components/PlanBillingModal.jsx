@@ -38,8 +38,8 @@ function money(value) {
 }
 
 function statusTone(status) {
-  if (status === "EXPIRED") return "border-red-200 bg-red-50 text-red-700";
-  if (status === "EXPIRING_SOON") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (["EXPIRED", "EXPIRING"].includes(status)) return "border-red-200 bg-red-50 text-red-700";
+  if (["EXPIRING_SOON", "WARNING"].includes(status)) return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
@@ -171,6 +171,7 @@ export function PlanBillingModal({ open, onClose, user }) {
   const visibleInvoices = invoices.slice((invoicePage - 1) * HISTORY_PAGE_SIZE, invoicePage * HISTORY_PAGE_SIZE);
   const showRenew = Number(subscription.daysRemaining ?? 0) <= 15;
   const activeTrial = subscription.entitlementType === "TRIAL" && subscription.subscriptionStatus !== "EXPIRED";
+  const statusToneValue = activeTrial ? subscription.trialStatus : subscription.subscriptionStatus;
   const nextBillingDate = subscription.nextBillingDate || subscription.entitlementEndDate || subscription.trialEndDate;
   const details = useMemo(() => [
     ["Current Plan", subscription.planName || plan.name],
@@ -207,10 +208,10 @@ export function PlanBillingModal({ open, onClose, user }) {
           {message ? <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{message}</p> : null}
           {data ? (
             <div className="space-y-6">
-              <div className={`flex flex-col gap-4 rounded-md border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${statusTone(subscription.subscriptionStatus)}`}>
+              <div className={`flex flex-col gap-4 rounded-md border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${statusTone(statusToneValue)}`}>
                 {activeTrial ? (
                   <div>
-                    <p className="text-base font-bold">FREE TRIAL ACTIVE</p>
+                    <p className="text-base font-bold">{subscription.trialStatus === "EXPIRING" ? "FREE TRIAL EXPIRING" : subscription.trialStatus === "WARNING" ? "FREE TRIAL WARNING" : "FREE TRIAL ACTIVE"}</p>
                     <p className="mt-1 text-xl font-semibold">{subscription.daysRemaining} {Number(subscription.daysRemaining) === 1 ? "Day" : "Days"} Remaining</p>
                     <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
                       <span><strong>Trial Ends:</strong> {dateValue(subscription.trialEndDate)}</span>

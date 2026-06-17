@@ -1,13 +1,11 @@
 export const DEAD_CASE_REASONS = Object.freeze([
   "Customer Not Interested",
-  "Customer Not Reachable",
-  "Customer Purchased Elsewhere",
-  "Duplicate Case",
-  "Loan Rejected Permanently",
-  "Cancelled By Customer",
-  "Wrong Information",
-  "Documents Never Submitted",
-  "Finance Desk Decision",
+  "Customer Unreachable",
+  "Duplicate Lead",
+  "Rejected By Customer",
+  "Rejected By Bank",
+  "Vehicle Purchase Cancelled",
+  "Documentation Issue",
   "Other",
 ]);
 

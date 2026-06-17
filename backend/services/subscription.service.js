@@ -104,7 +104,7 @@ export function subscriptionSnapshot(record = {}, nowValue = new Date()) {
     entitlementType: activeEntitlement ? "PAID" : professionalPlan ? "PROFESSIONAL" : "TRIAL",
     entitlementEndDate,
     daysRemaining,
-    trialStatus: professionalPlan ? "NOT_APPLICABLE" : !trialEndDate ? "NOT_STARTED" : trialRemaining > 0 ? "ACTIVE" : "EXPIRED",
+    trialStatus: trialState({ trialEndDate, professionalPlan, trialRemainingMs: trialRemaining }),
     dashboardAccessAllowed: !expired && !paymentPending,
     leadCreationAllowed: !expired && !paymentPending,
     nextBillingDate: subscriptionEndDate,
@@ -120,6 +120,21 @@ function nextLifecycleCheckAt(snapshot, nowValue = new Date()) {
     .filter((date) => date > now)
     .sort((left, right) => left - right);
   return (warningTargets[0] || end).toISOString();
+}
+
+function trialState({ trialEndDate, professionalPlan, trialRemainingMs }) {
+  if (professionalPlan) return "NOT_APPLICABLE";
+  if (!trialEndDate) return "NOT_STARTED";
+  const days = Math.max(0, Math.ceil(trialRemainingMs / DAY_MS));
+  if (days <= 0) return "EXPIRED";
+  if (days <= 6) return "EXPIRING";
+  if (days <= 29) return "WARNING";
+  return "ACTIVE";
+}
+
+function storedSubscriptionRecord(record = {}) {
+  const { daysRemaining, ...stored } = record;
+  return stored;
 }
 
 function baseSubscription({ dealershipId, dealership = {}, trialStartDate, trialDays = SUBSCRIPTION_PLAN.trialDays }) {
@@ -185,7 +200,6 @@ async function syncSubscriptionSummary(snapshot) {
     trialEndDate: snapshot.trialEndDate || null,
     subscriptionStartDate: snapshot.subscriptionStartDate || null,
     subscriptionEndDate: snapshot.subscriptionEndDate || null,
-    daysRemaining: snapshot.daysRemaining,
     monthlyAmount: snapshot.monthlyAmount,
     gstAmount: snapshot.gstAmount,
     finalAmount: snapshot.finalAmount,
@@ -242,7 +256,7 @@ export async function initializeDealershipTrial({
       trialStartDate: approvedAt,
       trialDays,
     });
-    transaction.set(COLLECTION, id, subscription, { merge: true });
+    transaction.set(COLLECTION, id, storedSubscriptionRecord(subscription), { merge: true });
     return subscription;
   });
   await syncSubscriptionSummary(created);
@@ -276,7 +290,7 @@ export async function initializeProfessionalSubscriptionPending({
     const existing = await transaction.get(COLLECTION, id);
     if (existing?.subscriptionEndDate || existing?.paymentStatus === "PAID") return subscriptionSnapshot(existing);
     const subscription = professionalPendingSubscription({ dealershipId: id, dealership: profile, approvedAt });
-    transaction.set(COLLECTION, id, subscription, { merge: true });
+    transaction.set(COLLECTION, id, storedSubscriptionRecord(subscription), { merge: true });
     return subscription;
   });
   await syncSubscriptionSummary(created);
@@ -690,7 +704,7 @@ export async function finalizeSubscriptionPayment({
       footerPolicy: "Subscription fees are non-refundable once payment is captured and subscription access is activated.",
     };
     transaction.set("systemCounters", "subscriptionInvoices", { value: sequence, updatedAt: paidAt }, { merge: true });
-    transaction.set(COLLECTION, id, next, { merge: true });
+    transaction.set(COLLECTION, id, storedSubscriptionRecord(next), { merge: true });
     transaction.set("subscriptionOrders", razorpayOrderId, {
       status: "PAID",
       paymentId: razorpayPaymentId,
@@ -822,7 +836,7 @@ async function applyAdminSubscriptionPatch(dealershipId, patch, actor = null, ev
   }
   const next = subscriptionSnapshot({ ...current, ...patch, updatedAt: new Date().toISOString() });
   next.nextLifecycleCheckAt = nextLifecycleCheckAt(next);
-  await upsertRecord(COLLECTION, id, next);
+  await upsertRecord(COLLECTION, id, storedSubscriptionRecord(next));
   await syncSubscriptionSummary(next);
   publishSubscription(next, actor, eventType);
   return next;
@@ -950,7 +964,7 @@ export async function processSubscriptionLifecycle({ limit = 100 } = {}) {
       }
       snapshot.nextLifecycleCheckAt = nextLifecycleCheckAt(snapshot, now);
       snapshot.lifecycleCheckedAt = now.toISOString();
-      await upsertRecord(COLLECTION, snapshot.dealershipId, snapshot);
+      await upsertRecord(COLLECTION, snapshot.dealershipId, storedSubscriptionRecord(snapshot));
       if (snapshot.subscriptionStatus !== previousStatus) {
         result.updated += 1;
         if (snapshot.subscriptionStatus === SUBSCRIPTION_STATUSES.EXPIRED) result.expired += 1;

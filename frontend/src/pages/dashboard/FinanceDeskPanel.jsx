@@ -26,14 +26,12 @@ const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement",
 const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 const DEAD_CASE_REASONS = [
   "Customer Not Interested",
-  "Customer Not Reachable",
-  "Customer Purchased Elsewhere",
-  "Duplicate Case",
-  "Loan Rejected Permanently",
-  "Cancelled By Customer",
-  "Wrong Information",
-  "Documents Never Submitted",
-  "Finance Desk Decision",
+  "Customer Unreachable",
+  "Duplicate Lead",
+  "Rejected By Customer",
+  "Rejected By Bank",
+  "Vehicle Purchase Cancelled",
+  "Documentation Issue",
   "Other",
 ];
 

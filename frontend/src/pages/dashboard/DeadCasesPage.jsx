@@ -8,13 +8,14 @@ import { formatPortalDateTime, portalLeadStatusLabel } from "../../utils/portalD
 const PAGE_SIZE = 20;
 const HEADERS = [
   "Case ID",
-  "Customer Name",
-  "Mobile Number",
-  "Vehicle Number",
-  "Executive Name",
-  "Status",
-  "Dead Date",
+  "Customer",
+  "Bank",
+  "Executive",
+  "Current Status",
   "Dead Reason",
+  "Dead Date",
+  "Marked By",
+  "Created Date",
   "Actions",
 ];
 const CSV_HEADERS = HEADERS.filter((header) => header !== "Actions");
@@ -32,12 +33,13 @@ function downloadCsv(rows, audience) {
   const data = rows.map((lead) => [
     lead.caseId || lead.id,
     lead.fullName || lead.customerName,
-    lead.mobile,
-    lead.vehicleNumber || lead.registrationNumber,
+    lead.assignedBankName || lead.bankName,
     lead.assignedExecutiveName || lead.assignedExecutiveEmail,
     portalLeadStatusLabel(lead),
-    formatPortalDateTime(lead.deadCaseDate),
     lead.deadCaseReason,
+    formatPortalDateTime(lead.deadCaseDate),
+    lead.deadCaseBy,
+    formatPortalDateTime(lead.createdAt),
   ]);
   const csv = [CSV_HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -119,12 +121,13 @@ export function DeadCasesPage({ audience = "finance" }) {
     cells: [
       value(lead.caseId || lead.id),
       value(lead.fullName || lead.customerName),
-      value(lead.mobile),
-      value(lead.vehicleNumber || lead.registrationNumber),
+      value(lead.assignedBankName || lead.bankName),
       value(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
       portalLeadStatusLabel(lead),
-      formatPortalDateTime(lead.deadCaseDate),
       value(lead.deadCaseReason),
+      formatPortalDateTime(lead.deadCaseDate),
+      value(lead.deadCaseBy),
+      formatPortalDateTime(lead.createdAt),
       audience === "finance" ? (
         <button
           type="button"

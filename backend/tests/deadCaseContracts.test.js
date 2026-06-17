@@ -17,17 +17,20 @@ const [
   leadQueryModule,
   deadCaseModule,
   realtimeModule,
+  subscriptionModule,
 ] = await Promise.all([
   import("../services/firestore.service.js"),
   import("../services/leadQuery.service.js"),
   import("../services/deadCase.service.js"),
   import("../services/realtime.service.js"),
+  import("../services/subscription.service.js"),
 ]);
 
-const { createRecord, getRecord, updateRecord } = firestoreModule;
+const { createRecord, getRecord, queryRecords, updateRecord } = firestoreModule;
 const { queryAllLeads, queryDeadCases } = leadQueryModule;
 const { moveLeadToDeadCase, restoreDeadCase } = deadCaseModule;
 const { publishRealtimeEvent, REALTIME_EVENTS } = realtimeModule;
+const { initializeDealershipTrial, subscriptionSnapshot } = subscriptionModule;
 
 function financeReq(dealershipId) {
   return {
@@ -119,10 +122,10 @@ test("dead cases leave active lists, enter dead-case lists, search by reason, an
   const activeLead = await fixtureLead({ dealershipId, caseId: `CLS-ACTIVE-${Date.now()}` });
   const deadLead = await fixtureLead({ dealershipId, caseId: `CLS-DEAD-LIST-${Date.now()}` });
 
-  await moveLeadToDeadCase({
+  const moved = await moveLeadToDeadCase({
     req,
     leadId: deadLead.id,
-    reason: "Duplicate Case",
+    reason: "Duplicate Lead",
     notes: "Same customer already has an active case.",
   });
 
@@ -137,8 +140,38 @@ test("dead cases leave active lists, enter dead-case lists, search by reason, an
   const searchResults = await queryDeadCases({ dealershipId, query: { search: "Duplicate", limit: 50 } });
   assert.equal(searchResults.data.some((lead) => lead.id === deadLead.id), true);
 
+  const markedTimeline = await queryRecords("leadTimeline", {
+    where: [{ field: "leadId", value: deadLead.id }],
+    search: "dead-case-marked",
+    searchFields: ["eventType"],
+    limit: 20,
+  });
+  assert.equal(markedTimeline.data.some((event) => event.eventType === "dead-case-marked"), true);
+
+  const markedNotifications = await queryRecords("notifications", {
+    search: moved.caseId,
+    searchFields: ["caseId", "title", "message"],
+    limit: 20,
+  });
+  assert.equal(markedNotifications.data.some((item) => item.type === "dead-case" && item.read === false), true);
+
   const restored = await restoreDeadCase({ req, leadId: deadLead.id });
   assert.equal(restored.isDeadCase, false);
+
+  const restoredTimeline = await queryRecords("leadTimeline", {
+    where: [{ field: "leadId", value: deadLead.id }],
+    search: "dead-case-restored",
+    searchFields: ["eventType"],
+    limit: 20,
+  });
+  assert.equal(restoredTimeline.data.some((event) => event.eventType === "dead-case-restored"), true);
+
+  const restoredNotifications = await queryRecords("notifications", {
+    search: restored.caseId,
+    searchFields: ["caseId", "title", "message"],
+    limit: 20,
+  });
+  assert.equal(restoredNotifications.data.some((item) => item.type === "dead-case-restored" && item.read === false), true);
 
   const afterRestoreActive = await queryAllLeads({ query: { caseId: deadLead.caseId, limit: 10 } });
   assert.equal(afterRestoreActive.data.some((lead) => lead.id === deadLead.id), true);
@@ -153,7 +186,7 @@ test("GM, bank, and executive users cannot mutate dead cases", async () => {
   const deadLead = await moveLeadToDeadCase({
     req,
     leadId: lead.id,
-    reason: "Customer Not Reachable",
+    reason: "Customer Unreachable",
     notes: "No answer after repeated follow ups.",
   });
 
@@ -225,4 +258,25 @@ test("Firestore indexes include dead-case query contracts", () => {
   assert.equal(signatures.includes("isDeadCase|deadCaseDate"), true);
   assert.equal(signatures.includes("dealershipId|isDeadCase|deadCaseDate"), true);
   assert.equal(signatures.includes("assignedExecutiveId|status|isDeadCase"), true);
+});
+
+test("subscription trial days are dynamic and not stored as a static counter", async () => {
+  const dealershipId = `dealer-trial-dynamic-${Date.now()}`;
+  const trialStartDate = "2026-06-01T00:00:00.000Z";
+  await initializeDealershipTrial({
+    dealershipId,
+    dealership: { dealershipName: "Dynamic Trial Motors", loginEmail: `${dealershipId}@dealer.test` },
+    approvedAt: trialStartDate,
+    trialDays: 60,
+  });
+
+  const stored = await getRecord("dealershipSubscriptions", dealershipId);
+  assert.equal(Object.hasOwn(stored, "daysRemaining"), false);
+  assert.equal(Object.hasOwn(stored, "trialEndDate"), true);
+
+  assert.equal(subscriptionSnapshot(stored, "2026-06-01T00:00:00.000Z").daysRemaining, 60);
+  assert.equal(subscriptionSnapshot(stored, "2026-06-03T00:00:00.000Z").daysRemaining, 58);
+  assert.equal(subscriptionSnapshot(stored, "2026-07-04T00:00:00.000Z").trialStatus, "WARNING");
+  assert.equal(subscriptionSnapshot(stored, "2026-07-29T00:00:00.000Z").trialStatus, "EXPIRING");
+  assert.equal(subscriptionSnapshot(stored, "2026-08-01T00:00:00.000Z").trialStatus, "EXPIRED");
 });

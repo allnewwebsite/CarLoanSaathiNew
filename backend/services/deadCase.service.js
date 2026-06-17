@@ -1,6 +1,7 @@
 import { getRecord, updateRecord } from "./firestore.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
+import { createNotification } from "./notification.service.js";
 import { syncLeadProjection } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { clearCachedValue } from "./ttlCache.service.js";
@@ -56,6 +57,37 @@ function clearLeadCaches(leadId) {
   ["admin:", "bank:", "dealer:", "finance:", "gm:", "lead-query:"].forEach(clearCachedValue);
 }
 
+async function notifyDeadCaseChange({ lead, eventType, title, message, req }) {
+  const isMarkedDead = eventType === REALTIME_EVENTS.LEAD_MARKED_DEAD;
+  return createNotification({
+    type: isMarkedDead ? "dead-case" : eventType === REALTIME_EVENTS.LEAD_RESTORED_FROM_DEAD ? "dead-case-restored" : "dead-case-updated",
+    title,
+    message,
+    leadId: lead.id,
+    dealerEmail: lead.dealerEmail || lead.dealershipEmail || req.user?.email || null,
+    admin: true,
+    recipientRole: "finance-desk",
+    recipientId: lead.dealerEmail || lead.dealershipEmail || req.user?.email || lead.dealershipId || null,
+    phoneNumber: lead.mobile || lead.customerMobile || lead.dealerMobile || null,
+    priority: isMarkedDead ? "high" : "normal",
+    dealershipId: lead.dealershipId || lead.dealershipEmail || null,
+    bankId: lead.bankId || lead.assignedBankId || null,
+    assignedExecutiveId: lead.assignedExecutiveId || lead.assignedExecutiveEmail || null,
+    entityType: "lead",
+    entityId: lead.id,
+    source: "dead-case",
+    leadSnapshot: lead,
+    meta: {
+      caseId: lead.caseId,
+      customerName: lead.fullName || lead.customerName,
+      deadCaseReason: lead.deadCaseReason || null,
+      deadCaseDate: lead.deadCaseDate || null,
+      navigateTo: "/finance/dead-cases",
+      actor: req.user?.email || req.user?.uid || "finance-desk",
+    },
+  });
+}
+
 async function persistDeadCaseChange({ req, lead, patch, actionType, timelineEventType, timelineTitle, timelineDescription, eventType }) {
   const updated = await updateRecord("leads", lead.id, patch, { mutationRole: "finance-desk" });
   clearLeadCaches(lead.id);
@@ -97,6 +129,13 @@ async function persistDeadCaseChange({ req, lead, patch, actionType, timelineEve
       bankId: updated.bankId,
       deadCaseReason: updated.deadCaseReason || null,
     },
+  });
+  await notifyDeadCaseChange({
+    lead: updated,
+    eventType,
+    title: timelineTitle,
+    message: `${updated.caseId || updated.id}: ${timelineDescription}`,
+    req,
   });
   publishRealtimeEvent({
     eventType,
