@@ -14,13 +14,13 @@ import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstant
 import { portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 import { AddLeadOnlyScreen } from "./finance/AddLeadOnlyScreen.jsx";
 import { BankTieUpsScreen } from "./finance/BankTieUpsScreen.jsx";
+import { FinanceManagerManagementScreen, SalespersonManagementScreen } from "./finance/FinanceStaffManagementScreens.jsx";
 import { FINANCE_PAGE_SIZE as pageSize, Field, FinanceTable as Table, MobileInput, SectionTitle } from "./finance/FinanceDeskPanelParts.jsx";
-import { cleanEmail, cleanText, dateTime, dateValue, display, moneyValue, numericAmount, validEmail } from "./financeDesk.helpers.js";
+import { useFinanceManagers, useSalespersons } from "./finance/financeStaff.hooks.js";
+import { StaffManagementScreen } from "./finance/StaffManagementScreen.jsx";
+import { cleanText, dateTime, display, moneyValue, numericAmount } from "./financeDesk.helpers.js";
 
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/dealer/dead-cases", "/bank/leads", "/gm/leads", "/documents"]);
-const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/salespersons"]);
-const financeManagerMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/finance-managers"]);
-const staffMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/staff"]);
 const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 const emptyLead = {
@@ -33,10 +33,6 @@ const emptyLead = {
   financeManagerId: "",
   branchId: "",
 };
-
-const emptySalesperson = { name: "", mobile: "", jobId: "", email: "" };
-const emptyFinanceManager = { name: "", mobile: "", employeeId: "", email: "" };
-const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "gm", branch: "", city: "" };
 
 function caseId(lead) {
   return lead.caseId || lead.id;
@@ -61,42 +57,6 @@ function financeStatus(lead) {
 function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   return <span className="text-xs font-normal text-slate-700">{label}</span>;
-}
-
-function useSalespersons({ includeInactive = false } = {}) {
-  const cachedSalespersons = getCachedGetData("/dealer/salespersons", { includeInactive }) || getCachedGetData("/dealer/salespersons");
-  const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
-  const [loading, setLoading] = useState(() => !cachedSalespersons);
-  const loadSalespersons = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/dealer/salespersons", { params: { includeInactive } });
-      setSalespersons(response.data || []);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [includeInactive]);
-  useEffect(() => { loadSalespersons({ silent: Boolean(cachedSalespersons) }); }, [loadSalespersons]);
-  useBackgroundRefresh({ onRefresh: loadSalespersons, refreshKey: "finance-salespersons", mutationFilter: salespersonMutationFilter });
-  return { salespersons, loading, loadSalespersons };
-}
-
-function useFinanceManagers({ includeInactive = false } = {}) {
-  const cachedManagers = getCachedGetData("/dealer/finance-managers", { includeInactive }) || getCachedGetData("/dealer/finance-managers");
-  const [financeManagers, setFinanceManagers] = useState(() => cachedManagers || []);
-  const [loading, setLoading] = useState(() => !cachedManagers);
-  const loadFinanceManagers = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/dealer/finance-managers", { params: { includeInactive } });
-      setFinanceManagers(response.data || []);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [includeInactive]);
-  useEffect(() => { loadFinanceManagers({ silent: Boolean(cachedManagers) }); }, [loadFinanceManagers]);
-  useBackgroundRefresh({ onRefresh: loadFinanceManagers, refreshKey: "finance-managers", mutationFilter: financeManagerMutationFilter });
-  return { financeManagers, loading, loadFinanceManagers };
 }
 
 function useDealerLeads(filters = {}) {
@@ -606,160 +566,6 @@ function AddLeadScreen() {
         </div>
         <p className="mt-4 text-sm text-slate-500">Documents are optional and can be uploaded on the next screen.</p>
       </form>
-    </div>
-  );
-}
-
-function SalespersonManagementScreen() {
-  const { salespersons, loading, loadSalespersons } = useSalespersons({ includeInactive: true });
-  const [form, setForm] = useState(emptySalesperson);
-  const [errors, setErrors] = useState({});
-  const [submittedOnce, setSubmittedOnce] = useState(false);
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const update = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: "" }));
-  };
-  const validate = (nextForm = form) => {
-    const nextErrors = {};
-    if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
-    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
-    if (!cleanText(nextForm.jobId)) nextErrors.jobId = "Field required";
-    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
-    return nextErrors;
-  };
-  const add = async (event) => {
-    event.preventDefault();
-    setSubmittedOnce(true);
-    setMessage("");
-    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), jobId: cleanText(form.jobId), email: cleanEmail(form.email) };
-    const nextErrors = validate(nextForm);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-    setSaving(true);
-    try {
-      await api.post("/dealer/salespersons", nextForm);
-      setForm(emptySalesperson);
-      setSubmittedOnce(false);
-      await loadSalespersons();
-      setMessage("Salesperson added");
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Failed to add salesperson");
-    } finally {
-      setSaving(false);
-    }
-  };
-  const remove = async (person) => {
-    const confirmed = window.confirm(`Delete ${person.name || person.email || "this salesperson"} permanently? Existing cases will keep their copied history.`);
-    if (!confirmed) return;
-    await api.delete(`/dealer/salespersons/${person.id}`);
-    await loadSalespersons();
-  };
-  const rows = salespersons.map((person) => ({
-    key: person.id,
-    cells: [
-      person.name,
-      person.mobile,
-      person.jobId,
-      person.email,
-      <button key="delete" onClick={() => remove(person)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
-    ],
-  }));
-  return (
-    <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-      <form noValidate onSubmit={add} className="card p-5">
-        <h2 className="text-lg font-semibold text-slate-900">Add Salesperson</h2>
-        {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
-        <div className="mt-4 grid gap-3">
-          <Field label="Salesperson Name" error={submittedOnce ? errors.name : ""}><input aria-invalid={Boolean(submittedOnce && errors.name)} className="field mt-1.5" value={form.name} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Job ID" error={submittedOnce ? errors.jobId : ""}><input aria-invalid={Boolean(submittedOnce && errors.jobId)} className="field mt-1.5" value={form.jobId} onChange={(e) => update("jobId", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mail ID" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} className="field mt-1.5" type="email" value={form.email} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
-          <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Salesperson"}</button>
-        </div>
-      </form>
-      <div className="space-y-4">
-        <SectionTitle title="Add / Remove Salesperson" subtitle="Delete removes the salesperson master record. Existing cases keep copied history." />
-        <Table headers={["Salesperson Name", "Mobile Number", "Job ID", "Mail ID", "Action"]} rows={rows} loading={loading} />
-      </div>
-    </div>
-  );
-}
-
-function FinanceManagerManagementScreen() {
-  const { financeManagers, loading, loadFinanceManagers } = useFinanceManagers({ includeInactive: true });
-  const [form, setForm] = useState(emptyFinanceManager);
-  const [errors, setErrors] = useState({});
-  const [submittedOnce, setSubmittedOnce] = useState(false);
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const update = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
-    setErrors((current) => ({ ...current, [field]: "" }));
-  };
-  const validate = (nextForm = form) => {
-    const nextErrors = {};
-    if (!cleanText(nextForm.name)) nextErrors.name = "Field required";
-    if (!/^\d{10}$/.test(nextForm.mobile)) nextErrors.mobile = "Enter valid 10-digit mobile number";
-    if (!cleanText(nextForm.employeeId)) nextErrors.employeeId = "Field required";
-    if (!validEmail(nextForm.email)) nextErrors.email = "Enter valid email address";
-    return nextErrors;
-  };
-  const add = async (event) => {
-    event.preventDefault();
-    setSubmittedOnce(true);
-    setMessage("");
-    const nextForm = { name: cleanText(form.name), mobile: digits10(form.mobile), employeeId: cleanText(form.employeeId), email: cleanEmail(form.email) };
-    const nextErrors = validate(nextForm);
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
-    setSaving(true);
-    try {
-      await api.post("/dealer/finance-managers", nextForm);
-      setForm(emptyFinanceManager);
-      setSubmittedOnce(false);
-      await loadFinanceManagers();
-      setMessage("Finance Manager added");
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Failed to add Finance Manager");
-    } finally {
-      setSaving(false);
-    }
-  };
-  const deleteManager = async (manager) => {
-    const confirmed = window.confirm(`Delete ${manager.name || manager.email || "this Finance Manager"} permanently? Existing cases will keep their copied history.`);
-    if (!confirmed) return;
-    await api.delete(`/dealer/finance-managers/${manager.id}`);
-    await loadFinanceManagers();
-  };
-  const rows = financeManagers.map((manager) => ({
-    key: manager.id,
-    cells: [
-      manager.name,
-      manager.mobile,
-      manager.employeeId,
-      manager.email,
-      <button key="delete" onClick={() => deleteManager(manager)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
-    ],
-  }));
-  return (
-    <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-      <form noValidate onSubmit={add} className="card p-5">
-        <h2 className="text-lg font-semibold text-slate-900">Add Finance Manager</h2>
-        {message ? <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">{message}</p> : null}
-        <div className="mt-4 grid gap-3">
-          <Field label="Finance Manager Name" error={submittedOnce ? errors.name : ""}><input aria-invalid={Boolean(submittedOnce && errors.name)} className="field mt-1.5" value={form.name} onChange={(e) => update("name", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
-          <Field label="Employee ID" error={submittedOnce ? errors.employeeId : ""}><input aria-invalid={Boolean(submittedOnce && errors.employeeId)} className="field mt-1.5" value={form.employeeId} onChange={(e) => update("employeeId", e.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Email ID" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} className="field mt-1.5" type="email" value={form.email} onChange={(e) => update("email", e.target.value.trim().toLowerCase())} /></Field>
-          <button disabled={saving} className="inline-flex h-10 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 text-sm font-medium text-white disabled:opacity-60">{saving ? <ButtonSpinner /> : "Add Finance Manager"}</button>
-        </div>
-      </form>
-      <div className="space-y-4">
-        <SectionTitle title="Finance Managers" subtitle="Dealership-scoped ownership master for loan processing responsibility." />
-        <Table headers={["Finance Manager Name", "Mobile Number", "Employee ID", "Email ID", "Action"]} rows={rows} loading={loading} />
-      </div>
     </div>
   );
 }

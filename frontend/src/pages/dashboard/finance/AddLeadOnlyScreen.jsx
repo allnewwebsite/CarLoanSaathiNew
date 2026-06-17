@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ButtonSpinner } from "../../../components/ui/Loading.jsx";
 import { LEAD_STATUSES } from "../../../constants/status.js";
-import { mutationUrlMatches, useBackgroundRefresh } from "../../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../../services/api.js";
+import { api } from "../../../services/api.js";
 import { cleanText, numericAmount } from "../financeDesk.helpers.js";
 import { Field, MobileInput, SectionTitle } from "./FinanceDeskPanelParts.jsx";
+import { useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
 
 const emptyLead = {
   fullName: "",
@@ -18,51 +18,12 @@ const emptyLead = {
   branchId: "",
 };
 
-const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/salespersons"]);
-const financeManagerMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/finance-managers"]);
-
 function bankKey(branch) {
   return branch.ifscCode || branch.id || "";
 }
 
 function branchLabel(branch) {
   return `${branch.bankName || "Bank"} - ${branch.branchName || "Branch"}${branch.ifscCode ? ` (${branch.ifscCode})` : ""}`;
-}
-
-function useSalespersons({ includeInactive = false } = {}) {
-  const cachedSalespersons = getCachedGetData("/dealer/salespersons", { includeInactive }) || getCachedGetData("/dealer/salespersons");
-  const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
-  const [loading, setLoading] = useState(() => !cachedSalespersons);
-  const loadSalespersons = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/dealer/salespersons", { params: { includeInactive } });
-      setSalespersons(response.data || []);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [includeInactive]);
-  useEffect(() => { loadSalespersons({ silent: Boolean(cachedSalespersons) }); }, [loadSalespersons]);
-  useBackgroundRefresh({ onRefresh: loadSalespersons, refreshKey: "finance-salespersons", mutationFilter: salespersonMutationFilter });
-  return { salespersons, loading, loadSalespersons };
-}
-
-function useFinanceManagers({ includeInactive = false } = {}) {
-  const cachedManagers = getCachedGetData("/dealer/finance-managers", { includeInactive }) || getCachedGetData("/dealer/finance-managers");
-  const [financeManagers, setFinanceManagers] = useState(() => cachedManagers || []);
-  const [loading, setLoading] = useState(() => !cachedManagers);
-  const loadFinanceManagers = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/dealer/finance-managers", { params: { includeInactive } });
-      setFinanceManagers(response.data || []);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [includeInactive]);
-  useEffect(() => { loadFinanceManagers({ silent: Boolean(cachedManagers) }); }, [loadFinanceManagers]);
-  useBackgroundRefresh({ onRefresh: loadFinanceManagers, refreshKey: "finance-managers", mutationFilter: financeManagerMutationFilter });
-  return { financeManagers, loading, loadFinanceManagers };
 }
 
 export function AddLeadOnlyScreen() {
