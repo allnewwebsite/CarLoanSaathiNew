@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { ButtonSpinner } from "../../components/ui/Loading.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
@@ -13,9 +12,9 @@ import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { portalLeadStatusLabel } from "../../utils/portalDisplay.js";
-import { cleanEmail, cleanText, dateTime, dateValue, digits10, display, moneyValue, numericAmount, validEmail } from "./financeDesk.helpers.js";
+import { FINANCE_PAGE_SIZE as pageSize, Field, FinanceTable as Table, MobileInput, SectionTitle } from "./finance/FinanceDeskPanelParts.jsx";
+import { cleanEmail, cleanText, dateTime, dateValue, display, moneyValue, numericAmount, validEmail } from "./financeDesk.helpers.js";
 
-const pageSize = 10;
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/dealer/dead-cases", "/bank/leads", "/gm/leads", "/documents"]);
 const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/salespersons"]);
 const financeManagerMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/finance-managers"]);
@@ -72,10 +71,6 @@ function financeStatus(lead) {
 function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   return <span className="text-xs font-normal text-slate-700">{label}</span>;
-}
-
-function Table({ headers, rows, loading, page, total, hasMore, onPage }) {
-  return <OperationalTable headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
 }
 
 function useSalespersons({ includeInactive = false } = {}) {
@@ -1159,44 +1154,6 @@ function StatusScreen() {
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
       <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Documents"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Documents"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
-    </div>
-  );
-}
-
-function SectionTitle({ title, subtitle }) {
-  return (
-    <div>
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
-    </div>
-  );
-}
-
-function Field({ label, children, error, help = "" }) {
-  const slotText = error || help || "No validation issue";
-  return (
-    <label className="block text-sm font-medium text-slate-700">
-      {label}
-      {children}
-      <span className={`validation-slot ${error ? "" : help ? "!text-slate-500" : "validation-slot-empty"}`}>{slotText}</span>
-    </label>
-  );
-}
-
-function MobileInput({ value, onChange, onBlur, error, required = false }) {
-  return (
-    <div className={`mt-1.5 flex h-10 overflow-hidden rounded-md border bg-white ${error ? "border-red-300" : "border-slate-300"} focus-within:border-[#0d47a1] focus-within:ring-2 focus-within:ring-blue-100`}>
-      <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">+91</span>
-      <input
-        required={required}
-        aria-invalid={Boolean(error)}
-        className="h-full min-w-0 flex-1 px-3 text-sm font-normal text-slate-900 outline-none"
-        inputMode="numeric"
-        maxLength={10}
-        value={value}
-        onBlur={onBlur}
-        onChange={(event) => onChange(digits10(event.target.value))}
-      />
     </div>
   );
 }
