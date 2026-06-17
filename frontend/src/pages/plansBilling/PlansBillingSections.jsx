@@ -60,7 +60,7 @@ export function PlansBillingPricingSection() {
           <article className="rounded-2xl border border-emerald-300 bg-emerald-50/50 p-7 shadow-sm sm:p-8">
             <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-800">Ready To Launch</span>
             <p className="mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Get Professional Plan</p>
-            <h3 className="mt-2 text-3xl font-semibold text-slate-950">â‚¹15,000 + GST</h3>
+            <h3 className="mt-2 text-3xl font-semibold text-slate-950">{"\u20B9"}15,000 + GST</h3>
             <ul className="mt-6 space-y-3 text-sm text-slate-700">
               {["Immediate paid subscription after approval", "No waiting after approval", "Best for ready-to-use dealerships"].map((item) => (
                 <li key={item} className="flex items-center gap-3"><CheckCircle2 className="h-4 w-4 text-emerald-700" />{item}</li>
