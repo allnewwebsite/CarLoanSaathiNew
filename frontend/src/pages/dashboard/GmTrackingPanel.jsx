@@ -1,26 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileText, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
-import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
-import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { mutationUrlMatches, useBackgroundRefresh, useLeadDetailRealtime, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
+import { mutationUrlMatches, useBackgroundRefresh, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
-import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { bankDocumentRows, formatPortalDate, formatPortalDateTime, formatPortalTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { formatPortalDate, formatPortalDateTime, formatPortalTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 const pageSize = 10;
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/leads", "/dealer/leads", "/bank/leads", "/documents"]);
 const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/salespersons", "/dealer/salespersons"]);
-const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 const statusCards = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 function display(value) {
@@ -346,54 +343,5 @@ export function GmTrackingPanel({ mode = "total" }) {
   return <TotalLeadsScreen />;
 }
 
-export function GmLeadDetailPage() {
-  const { leadId } = useParams();
-  const cachedLead = getCachedGetData(`/gm/leads/${leadId}`)
-    || findCachedGetItem("/gm/leads", (item) => item.id === leadId || item.caseId === leadId);
-  const [lead, setLead] = useState(() => cachedLead);
-  const [loading, setLoading] = useState(() => !cachedLead);
+export { GmLeadDetailPage } from './gm/GmLeadDetailPage.jsx';
 
-  const loadLead = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get(`/gm/leads/${leadId}`);
-      setLead(response.data);
-    } catch {
-      setLead((current) => current || null);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [leadId]);
-
-  useEffect(() => {
-    loadLead();
-  }, [loadLead]);
-  useRealtimeLeadDetailPatch({ leadId, setLead });
-  useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
-
-  if (loading && !lead) return <DetailPageSkeleton />;
-  if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
-
-  return (
-    <section className="space-y-4">
-      <SectionTitle title="Customer Documents" subtitle={`Case ID: ${caseId(lead)}`} />
-      <div className="grid gap-3 md:grid-cols-4">
-        {[["Customer", lead.fullName || lead.customerName], ["Mobile", lead.mobile], ["Salesperson", lead.assignedSalesperson || lead.salespersonName], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, statusLabel(lead)]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
-      </div>
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
-      </section>
-      <PendingDocumentsPanel lead={lead} />
-      <Table title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={docs.map((type) => {
-        const document = (lead.documents || []).find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
-        const url = document?.url || document?.fileUrl || document?.downloadUrl;
-        return { key: type, cells: [type, url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", formatPortalDateTime(document?.createdAt || document?.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
-      })} loading={false} />
-      <Table title="Bank Uploaded Documents" headers={["Document", "Preview", "Uploaded Timestamp", "Download"]} rows={bankDocumentRows(lead).map((document) => {
-        const url = document?.url || document?.fileUrl || document?.downloadUrl;
-        return { key: document.id || document.documentType || document.type, cells: [display(document.documentType || document.type), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application", formatPortalDateTime(document?.createdAt || document?.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
-      })} loading={false} />
-    </section>
-  );
-}
