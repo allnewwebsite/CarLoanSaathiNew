@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api, getCachedGetData } from "../../services/api.js";
+import { filterAvailableBanks, uniqueBankValues } from "./bankTieUps.helpers.js";
 
 /**
  * Bank Tie-Up Settings Component
@@ -39,16 +40,8 @@ export default function BankTieUpSettings() {
   const [removingIfsc, setRemovingIfsc] = useState(null);
   const [addingIfsc, setAddingIfsc] = useState(null);
 
-  // Get unique cities and states for filters
-  const uniqueCities = React.useMemo(() => {
-    const cities = new Set(availableBanks.map((b) => b.city).filter(Boolean));
-    return ["All", ...Array.from(cities).sort()];
-  }, [availableBanks]);
-
-  const uniqueStates = React.useMemo(() => {
-    const states = new Set(availableBanks.map((b) => b.state).filter(Boolean));
-    return ["All", ...Array.from(states).sort()];
-  }, [availableBanks]);
+  const uniqueCities = React.useMemo(() => uniqueBankValues(availableBanks, "city"), [availableBanks]);
+  const uniqueStates = React.useMemo(() => uniqueBankValues(availableBanks, "state"), [availableBanks]);
 
   /**
    * Fetch current tie-ups and available banks from API
@@ -138,34 +131,10 @@ export default function BankTieUpSettings() {
     [user, currentTieUps]
   );
 
-  /**
-   * Filter available banks based on search and filters
-   */
-  const filteredAvailableBanks = React.useMemo(() => {
-    return availableBanks.filter((bank) => {
-      // Check if already tied up
-      if (currentTieUps.some((t) => t.ifscCode === bank.ifscCode)) {
-        return false;
-      }
-
-      // Search filter
-      const query = searchQuery.toLowerCase();
-      const matchesSearch =
-        !query ||
-        bank.bankName.toLowerCase().includes(query) ||
-        bank.branchName.toLowerCase().includes(query) ||
-        bank.ifscCode.toLowerCase().includes(query) ||
-        bank.city.toLowerCase().includes(query);
-
-      // City filter
-      const matchesCity = filterCity === "All" || bank.city === filterCity;
-
-      // State filter
-      const matchesState = filterState === "All" || bank.state === filterState;
-
-      return matchesSearch && matchesCity && matchesState;
-    });
-  }, [availableBanks, currentTieUps, searchQuery, filterCity, filterState]);
+  const filteredAvailableBanks = React.useMemo(
+    () => filterAvailableBanks({ availableBanks, currentTieUps, searchQuery, filterCity, filterState }),
+    [availableBanks, currentTieUps, searchQuery, filterCity, filterState]
+  );
 
   // Load data on mount
   useEffect(() => {

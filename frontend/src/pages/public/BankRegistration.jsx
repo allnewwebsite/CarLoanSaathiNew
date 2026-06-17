@@ -1,70 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CheckCircle2, FileCheck2, Loader2, ShieldCheck, UploadCloud } from "lucide-react";
+import { CheckCircle2, FileCheck2, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { bankLoanCapacityRanges, bankStates, locationsForState } from "../../data/bankLocationMaster.js";
 import { usePublicRegistrationStatusSync } from "../../hooks/usePublicRegistrationStatusSync.js";
-
-const banks = [
-  "State Bank of India (SBI)",
-  "HDFC Bank",
-  "ICICI Bank",
-  "Axis Bank",
-  "Kotak Mahindra Bank",
-  "IndusInd Bank",
-  "Punjab National Bank (PNB)",
-  "Bank of Baroda",
-  "Canara Bank",
-  "Union Bank of India",
-  "Bank of India",
-  "Indian Bank",
-  "Central Bank of India",
-  "Bank of Maharashtra",
-  "Indian Overseas Bank",
-  "UCO Bank",
-  "Punjab & Sind Bank",
-  "IDFC FIRST Bank",
-  "Federal Bank",
-  "South Indian Bank",
-  "Karnataka Bank",
-  "Karur Vysya Bank",
-  "Tamilnad Mercantile Bank",
-  "RBL Bank",
-  "DCB Bank",
-  "CSB Bank",
-  "AU Small Finance Bank",
-  "Equitas Small Finance Bank",
-  "Ujjivan Small Finance Bank",
-  "Jana Small Finance Bank",
-  "Suryoday Small Finance Bank",
-  "ESAF Small Finance Bank",
-  "Utkarsh Small Finance Bank",
-  "Capital Small Finance Bank",
-  "Yes Bank",
-  "Other",
-];
-const executiveCounts = ["1", "2", "3", "5", "10", "15", "20", "25+", "50+"];
-const benefits = ["Verified dealership leads", "Branch-wise assignment", "Executive dashboards", "Real-time approvals", "Faster disbursement"];
-const workflow = ["Bank Registration", "Super Admin Verification", "Branch Activation", "Executive Mapping", "Lead Assignment", "Loan Processing", "Disbursement"];
-const documents = [
-  { label: "Branch Authorization Letter", type: "authorization", folder: "authorization" },
-  { label: "Address Proof", type: "address-proof", folder: "address-proof" },
-  { label: "Manager Identity Card", type: "manager-id", folder: "manager-id" },
-];
-const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
-const maxSize = 10 * 1024 * 1024;
-
-const initialForm = {
-  bankName: "",
-  ifsc: "",
-  branchLocation: "",
-  state: "Haryana",
-  managerName: "",
-  managerMobile: "",
-  email: "",
-  executiveCount: "",
-  monthlyLoanCapacity: "",
-};
+import { banks, benefits, documents, executiveCounts, initialForm, workflow } from "./bankRegistration.constants.js";
+import { UploadBox } from "./BankRegistrationParts.jsx";
 
 function fieldError(form) {
   if (!form.bankName) return "Select a bank.";
@@ -75,80 +16,6 @@ function fieldError(form) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Enter a valid official bank email.";
   if (!bankLoanCapacityRanges.includes(form.monthlyLoanCapacity)) return "Select monthly loan capacity.";
   return "";
-}
-
-function UploadBox({ doc, bankUid, value, onChange }) {
-  const [error, setError] = useState("");
-
-  const upload = async (file) => {
-    setError("");
-    if (!file) return;
-    if (!allowedTypes.includes(file.type)) {
-      setError("Only PDF, JPG, JPEG, and PNG files are allowed.");
-      return;
-    }
-    if (file.size > maxSize) {
-      setError("Maximum file size is 10MB.");
-      return;
-    }
-    const storagePath = `bank-registration/${bankUid}/${doc.folder}/${Date.now()}-${file.name}`;
-    onChange({ status: "uploading", progress: 0, fileName: file.name, storagePath, fileUrl: "" });
-    try {
-      const { uploadStorageFile } = await import("../../services/firebaseUpload.js");
-      const { fileUrl } = await uploadStorageFile({
-        file,
-        storagePath,
-        contentType: file.type,
-        onProgress: (progress) => onChange((current) => ({ ...current, progress })),
-      });
-      onChange({ status: "uploaded", progress: 100, fileName: file.name, storagePath, fileUrl, documentType: doc.type, label: doc.label, size: file.size });
-    } catch (uploadError) {
-      setError(uploadError.message || "Upload failed.");
-      onChange((current) => ({ ...current, status: "error" }));
-    }
-  };
-
-  const remove = async () => {
-    if (value?.storagePath) {
-      try {
-        const { deleteStoragePath } = await import("../../services/firebaseUpload.js");
-        await deleteStoragePath(value.storagePath);
-      } catch {
-        // File may already be gone; UI state should still clear.
-      }
-    }
-    onChange(null);
-  };
-
-  return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-50 text-[#0d47a1]"><UploadCloud className="h-4 w-4" /></span>
-          <div>
-            <p className="text-sm font-semibold text-slate-900">{doc.label}</p>
-            <p className="mt-1 text-xs text-slate-500">Optional for now. PDF, JPG, JPEG, PNG up to 10MB</p>
-          </div>
-        </div>
-        {value?.status === "uploaded" && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
-      </div>
-      <input className="mt-4 block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border file:border-slate-200 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(event) => upload(event.target.files?.[0])} />
-      {value && (
-        <div className="mt-3 rounded-md bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-3 text-xs text-slate-600">
-            <span className="truncate">{value.fileName}</span>
-            <span>{value.progress || 0}%</span>
-          </div>
-          <div className="mt-2 h-1.5 rounded-full bg-slate-200"><div className="h-1.5 rounded-full bg-[#0d47a1]" style={{ width: `${value.progress || 0}%` }} /></div>
-          <div className="mt-3 flex gap-2">
-            {value.fileUrl && <a href={value.fileUrl} target="_blank" rel="noreferrer" className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">Preview</a>}
-            <button type="button" onClick={remove} className="rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">Remove</button>
-          </div>
-        </div>
-      )}
-      <p className={`validation-slot mt-2 ${error ? "" : "validation-slot-empty"}`}>{error || "No validation issue"}</p>
-    </div>
-  );
 }
 
 export function BankRegistration({ mode = "landing", audience = "bank" }) {

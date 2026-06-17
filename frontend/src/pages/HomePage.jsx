@@ -1,143 +1,27 @@
 import {
-  ArrowRight,
   BadgeCheck,
   Bell,
   Building2,
   CheckCircle2,
-  FileCheck2,
-  FileText,
   Landmark,
-  LayoutDashboard,
-  LockKeyhole,
-  MessageCircle,
   Network,
   Phone,
-  PhoneCall,
-  ShieldCheck,
-  Sparkles,
-  Table2,
-  Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-
-const heroMetrics = [
-  ["1,284", "Active cases", "+18% flow"],
-  ["Live", "Realtime updates", "No refresh"],
-  ["86", "Bank branches", "Coordinated"],
-  ["99.2%", "Visibility", "Audit ready"],
-];
-
-const workflowCards = [
-  ["Dealer", "Creates and tracks dealership finance cases", Building2],
-  ["Finance", "Validates documents and coordinates bank movement", Users],
-  ["Bank", "Receives assigned cases with branch ownership", Landmark],
-  ["Executive", "Updates field status and document requirements", BadgeCheck],
-  ["Disbursement", "Keeps final movement visible to permitted roles", FileCheck2],
-];
-
-const showcaseCards = [
-  {
-    title: "Finance Dashboard",
-    description: "A live finance desk for cases, teams, documents, and bank tie-ups.",
-    icon: LayoutDashboard,
-    accent: "from-sky-500 to-blue-600",
-    stats: ["247 cases", "18 pending docs", "12 bank tie-ups"],
-  },
-  {
-    title: "Bank Dashboard",
-    description: "Branch-level case queues, executive assignment, and status oversight.",
-    icon: Landmark,
-    accent: "from-blue-600 to-indigo-600",
-    stats: ["96 assigned", "31 in review", "14 decisions"],
-  },
-  {
-    title: "Executive Dashboard",
-    description: "Focused case lists for loan executives with clear next actions.",
-    icon: Users,
-    accent: "from-cyan-500 to-sky-600",
-    stats: ["38 active", "9 follow-ups", "6 uploads"],
-  },
-  {
-    title: "Operations Dashboard",
-    description: "Governance visibility across approvals, status movement, and operations.",
-    icon: ShieldCheck,
-    accent: "from-slate-700 to-blue-700",
-    stats: ["Role checks", "Audit logs", "Portal isolation"],
-  },
-];
-
-const trustSignals = [
-  ["Role Based Access", "Every portal opens only the role scope assigned to that user.", LockKeyhole],
-  ["Portal Isolation", "Dealer, bank, executive, and finance surfaces stay separated.", ShieldCheck],
-  ["Audit Logs", "Operational movement remains traceable for governance review.", FileCheck2],
-  ["Workflow Visibility", "Teams see case movement without changing the underlying process.", Network],
-  ["Secure Operations", "Access, approvals, and status handling remain controlled end to end.", CheckCircle2],
-];
-
-const platformRows = [
-  ["CLS-2048", "Verna SX", "Bank review", "HDFC - Pune", "18 min"],
-  ["CLS-2054", "Creta", "Docs requested", "SBI - Jaipur", "32 min"],
-  ["CLS-2061", "Baleno", "Disbursal queued", "Axis - Delhi", "8 min"],
-];
-
-const dealershipBenefits = [
-  ["Track every case easily", "See all active, pending, approved, rejected, and disbursed cases from one secure dashboard."],
-  ["No more manual status chasing", "Finance teams no longer need repeated calls or WhatsApp follow-ups to know where a case stands."],
-  ["Manage salespersons and finance staff", "Add, remove, and monitor salespersons and finance staff with clear role-based visibility."],
-  ["Move beyond Excel sheets", "Keep dealership finance data organized in one platform instead of scattered files and manual registers."],
-  ["Meeting-ready case status", "Open the dashboard during reviews and immediately see every case status, team workload, and bank movement."],
-  ["Secure dealership data", "Customer case data, documents, status, and workflow history stay protected inside controlled portals."],
-];
-
-const bankBenefits = [
-  ["All car loan cases in one place", "Receive dealership cases through one platform instead of depending on scattered branch or field follow-ups."],
-  ["Know every executive's workload", "Track loan executive details, assigned cases, pending actions, and status movement from the bank portal."],
-  ["Continuous case inflow", "Keep receiving cases even when a specific executive is not physically present at a dealership."],
-  ["No more manual status calls", "Branch managers can see case progress directly instead of asking teams for repeated updates."],
-  ["Reduce dealership dependency", "Executives do not need to sit across different dealerships just to collect or follow up on cases."],
-  ["Clear branch performance view", "See case volume, movement, and outcomes in one place for faster operational decisions."],
-];
-
-const journeyStages = [
-  ["Customer", "Case created"],
-  ["Dealership", "Finance desk reviews"],
-  ["Bank Branch", "Branch receives"],
-  ["Loan Executive", "Field action"],
-  ["Disbursed", "Journey complete"],
-];
-
-const lifecycleStatuses = ["Created", "Assigned", "Documents Pending", "Approved", "Disbursed"];
-
-const animatedKpis = [
-  ["Total Cases", 1284, "from all dealerships"],
-  ["Approved", 418, "ready for next action"],
-  ["Pending", 173, "needs attention"],
-  ["Disbursed", 296, "completed cases"],
-  ["Finance Managers", 42, "active users"],
-  ["Bank Branches", 86, "connected partners"],
-];
-
-const notificationFeed = [
-  ["Case Assigned", "CLS-1024 moved to HDFC Pune"],
-  ["Document Uploaded", "Bank statement received"],
-  ["Status Updated", "Documents pending review"],
-  ["Approved", "CLS-1024 approved by branch"],
-  ["Disbursed", "Final disbursement marked"],
-];
-
-const comparisonBefore = [
-  ["Excel", Table2],
-  ["WhatsApp", MessageCircle],
-  ["Phone Calls", PhoneCall],
-  ["Manual Tracking", FileText],
-];
-
-const comparisonAfter = [
-  ["Centralized Platform", LayoutDashboard],
-  ["Case Visibility", Network],
-  ["Role-Based Access", LockKeyhole],
-  ["Workflow Management", CheckCircle2],
-];
+import {
+  animatedKpis,
+  bankBenefits,
+  comparisonAfter,
+  comparisonBefore,
+  dealershipBenefits,
+  journeyStages,
+  lifecycleStatuses,
+  notificationFeed,
+  showcaseCards,
+  trustSignals,
+  workflowCards,
+} from "./home/home.data.js";
+import { HomeHero, PortalLink } from "./home/HomeHero.jsx";
 
 function SectionHeader({ eyebrow, title, text }) {
   return (
@@ -147,95 +31,6 @@ function SectionHeader({ eyebrow, title, text }) {
         {title}
       </h2>
       {text && <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-600">{text}</p>}
-    </div>
-  );
-}
-
-function PortalLink({ to, label, variant = "primary" }) {
-  const styles = {
-    dealer: "border-blue-100 bg-blue-50 text-blue-800 hover:border-blue-200 hover:bg-blue-100",
-    bank: "border-emerald-100 bg-emerald-50 text-emerald-800 hover:border-emerald-200 hover:bg-emerald-100",
-    head: "border-amber-100 bg-amber-50 text-amber-800 hover:border-amber-200 hover:bg-amber-100",
-    executive: "border-violet-100 bg-violet-50 text-violet-800 hover:border-violet-200 hover:bg-violet-100",
-    primary: "border-blue-100 bg-blue-50 text-blue-800 hover:border-blue-200 hover:bg-blue-100",
-  };
-  const className = `group inline-flex h-12 min-w-[11rem] items-center justify-center whitespace-nowrap rounded-full border px-5 text-sm font-semibold leading-none transition hover:-translate-y-0.5 public-soft-shadow ${styles[variant] || styles.primary}`;
-
-  return (
-    <Link to={to} className={className}>
-      {label}
-      <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5" />
-    </Link>
-  );
-}
-
-function DashboardMockup() {
-  return (
-    <div className="relative mx-auto w-full max-w-2xl public-fade-in">
-      <div className="absolute -left-8 top-12 hidden rounded-2xl bg-white/80 p-4 public-glass public-float lg:block">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Realtime</p>
-        <p className="mt-1 text-2xl font-semibold text-slate-950">Live</p>
-        <p className="text-xs text-emerald-600">Case updates synced</p>
-      </div>
-      <div className="absolute -right-6 bottom-10 hidden rounded-2xl bg-white/85 p-4 public-glass public-float-delayed lg:block">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Queue</p>
-        <p className="mt-1 text-2xl font-semibold text-slate-950">247</p>
-        <p className="text-xs text-blue-700">Cases in motion</p>
-      </div>
-
-      <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-white/85 public-premium-shadow">
-        <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/80 px-5 py-4">
-          <span className="h-3 w-3 rounded-full bg-red-400" />
-          <span className="h-3 w-3 rounded-full bg-amber-400" />
-          <span className="h-3 w-3 rounded-full bg-emerald-400" />
-          <span className="ml-3 rounded-full bg-white px-4 py-1 text-xs font-medium text-slate-500">platform.carloansaathi</span>
-        </div>
-        <div className="grid gap-0 md:grid-cols-[170px_1fr]">
-          <aside className="hidden border-r border-slate-100 bg-slate-950 p-4 text-white md:block">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-200">Workspace</p>
-            {["Cases", "Bank Routing", "Documents", "Status", "Analytics"].map((item, index) => (
-              <div
-                key={item}
-                className={`mt-3 rounded-xl px-3 py-2 text-sm ${index === 0 ? "bg-white text-slate-950" : "text-slate-300"}`}
-              >
-                {item}
-              </div>
-            ))}
-          </aside>
-          <div className="p-5 sm:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">Live workflow</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-950">Dealer to bank coordination</h3>
-              </div>
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Operational</div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              {["New cases", "Bank review", "Disbursed"].map((label, index) => (
-                <div key={label} className="rounded-2xl border border-slate-100 bg-gradient-to-br from-white to-blue-50 p-4">
-                  <p className="text-xs font-medium text-slate-500">{label}</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-950">{[48, 126, 73][index]}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 overflow-hidden rounded-2xl border border-slate-100">
-              {platformRows.map(([id, vehicle, status, branch, time]) => (
-                <div key={id} className="grid grid-cols-[1fr_auto] gap-3 border-b border-slate-100 bg-white px-4 py-3 last:border-b-0 sm:grid-cols-[0.8fr_0.9fr_1fr_auto]">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400">{id}</p>
-                    <p className="text-sm font-semibold text-slate-900">{vehicle}</p>
-                  </div>
-                  <p className="hidden text-sm font-medium text-slate-600 sm:block">{status}</p>
-                  <p className="hidden text-sm text-slate-500 sm:block">{branch}</p>
-                  <p className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{time}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -483,43 +278,7 @@ function EnterpriseAutomationSection() {
 export function HomePage() {
   return (
     <main id="home" className="w-full overflow-x-hidden bg-white text-slate-950">
-      <section className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,#dbeafe_0%,#ffffff_34%,#f8fafc_100%)] px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
-        <div className="public-gradient-orb absolute -left-28 top-16 h-72 w-72 rounded-full bg-blue-300/30 blur-3xl" />
-        <div className="public-gradient-orb absolute right-0 top-0 h-96 w-96 rounded-full bg-cyan-200/40 blur-3xl" />
-
-        <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 lg:grid-cols-[1fr_1.05fr]">
-          <div className="public-fade-in">
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/80 px-4 py-2 text-sm font-semibold text-blue-700 public-glass">
-              <Sparkles className="h-4 w-4" />
-              Enterprise dealer-bank connectivity platform
-            </div>
-            <h1 className="mt-6 max-w-4xl text-4xl font-semibold leading-[1.05] tracking-[-0.055em] text-slate-950 sm:text-6xl lg:text-7xl">
-              Loan workflow management built for modern dealership operations.
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              CarLoanSaathi connects dealerships, finance teams, bank branches, and executives through a controlled platform for case tracking, bank coordination, and operational visibility.
-            </p>
-            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Existing users</p>
-            <div className="mt-8 flex max-w-4xl flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <PortalLink to="/dealer/login" label="Dealer Login" variant="dealer" />
-              <PortalLink to="/bank/login" label="Bank Login" variant="bank" />
-              <PortalLink to="/finance/login" label="Dealership Head Login" variant="head" />
-              <PortalLink to="/executive/login" label="Loan Executive Login" variant="executive" />
-            </div>
-            <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {heroMetrics.map(([value, label, note]) => (
-                <div key={label} className="rounded-2xl border border-white bg-white/80 p-4 public-soft-shadow">
-                  <p className="public-counter text-2xl font-semibold tracking-[-0.03em] text-slate-950">{value}</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{label}</p>
-                  <p className="mt-2 text-[11px] font-semibold text-blue-700">{note}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <DashboardMockup />
-        </div>
-      </section>
+      <HomeHero />
 
       <section id="about" className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
         <div className="mx-auto grid w-full max-w-7xl gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
