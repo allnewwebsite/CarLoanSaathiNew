@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
-import { api, getCachedGetData } from "../services/api.js";
+import { api, getCachedGetData, patchCachedGetData } from "../services/api.js";
 import { logNotificationRefresh, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const NOTIFICATION_REFRESH_COOLDOWN_MS = 10000;
 const NOTIFICATION_REFRESH_DEBOUNCE_MS = 700;
+const NOTIFICATION_PANEL_FRESH_MS = 30000;
 
 function formatDate(value) {
   if (!value) return "";
@@ -29,6 +30,27 @@ function mutationCanAffectNotifications(detail = {}) {
   ].some((prefix) => url.startsWith(prefix));
 }
 
+function rowsFromPayload(payload) {
+  return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+}
+
+function patchNotificationPayload(payload, notification, params = null) {
+  if (!notification?.id || !payload || typeof payload !== "object") return payload;
+  const unreadOnly = String(params?.unread || "") === "true";
+  const currentRows = rowsFromPayload(payload);
+  const existing = currentRows.find((item) => item.id === notification.id);
+  const nextItem = { ...(existing || {}), ...notification, read: notification.read === true };
+  const nextRows = unreadOnly && nextItem.read
+    ? currentRows.filter((item) => item.id !== notification.id)
+    : unreadOnly && !existing && nextItem.read
+      ? currentRows
+      : existing
+    ? currentRows.map((item) => item.id === notification.id ? nextItem : item)
+    : [nextItem, ...currentRows].slice(0, 20);
+  const unread = nextRows.filter((item) => item.read !== true).length;
+  return Array.isArray(payload) ? nextRows : { ...payload, data: nextRows, unread };
+}
+
 export function NotificationCenter() {
   useRenderDiagnostics("NotificationCenter", { open: false });
   const initialPayload = getCachedGetData("/notifications", { limit: 20 });
@@ -41,6 +63,7 @@ export function NotificationCenter() {
   const loadRef = useRef(null);
   const inFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
+  const lastLocalPatchAtRef = useRef(initialPayload?.data?.length ? Date.now() : 0);
   const mutationTimerRef = useRef(0);
   const toastTimerRef = useRef(0);
 
@@ -103,6 +126,8 @@ export function NotificationCenter() {
           : [{ ...notification, read: notification.read === true }, ...current].slice(0, 20);
         return next;
       });
+      patchCachedGetData("/notifications", (payload, params) => patchNotificationPayload(payload, notification, params), { matchPrefix: true });
+      lastLocalPatchAtRef.current = Date.now();
       if (shouldIncrementUnread) {
         setUnread((current) => current + 1);
         setToast(notification.title || "New notification");
@@ -119,6 +144,7 @@ export function NotificationCenter() {
       const detail = event?.detail || {};
       if (detail.realtime && detail.notification?.id) return;
       if (!mutationCanAffectNotifications(detail)) return;
+      if (detail.kind === "notification") return;
       logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: detail.kind || "data-mutated", url: detail.url || "" });
       window.clearTimeout(mutationTimerRef.current);
       mutationTimerRef.current = window.setTimeout(() => {
@@ -135,15 +161,17 @@ export function NotificationCenter() {
 
   useEffect(() => {
     if (!open) return undefined;
+    if (items.length && Date.now() - Math.max(lastLocalPatchAtRef.current, lastRefreshAtRef.current) < NOTIFICATION_PANEL_FRESH_MS) return undefined;
     logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: "panel-open" });
     refreshNotifications({ force: true }).catch(() => {});
     return undefined;
-  }, [open, refreshNotifications]);
+  }, [items.length, open, refreshNotifications]);
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);
     setItems((current) => current.map((item) => item.id === id ? { ...item, read: true, readAt: new Date().toISOString() } : item));
     setUnread((current) => Math.max(0, current - 1));
+    patchCachedGetData("/notifications", (payload, params) => patchNotificationPayload(payload, { id, read: true, readAt: new Date().toISOString() }, params), { matchPrefix: true });
   };
 
   return (

@@ -270,6 +270,31 @@ export function getCachedGetData(url, params = null, { includeStale = true } = {
   return entry.response.data;
 }
 
+export function patchCachedGetData(url, patcher, { params = null, matchPrefix = false } = {}) {
+  hydrateGetCache();
+  if (typeof patcher !== "function") return;
+  const now = Date.now();
+  for (const [key, entry] of getCache.entries()) {
+    if (!entry || !entry.response) continue;
+    const matches = matchPrefix
+      ? String(entry.url || "").startsWith(url)
+      : entry.url === url && (!params || stableParams(entry.params) === stableParams(params));
+    if (!matches) continue;
+    const nextData = patcher(entry.response.data, entry.params || null);
+    if (nextData === undefined) continue;
+    getCache.set(key, {
+      ...entry,
+      expiresAt: Math.max(entry.expiresAt || 0, now + cacheTtlForUrl(entry.url || url)),
+      stale: false,
+      response: {
+        ...entry.response,
+        data: nextData,
+      },
+    });
+  }
+  scheduleGetCachePersist();
+}
+
 export function findCachedGetItem(url, matcher) {
   hydrateGetCache();
   if (typeof matcher !== "function") return null;

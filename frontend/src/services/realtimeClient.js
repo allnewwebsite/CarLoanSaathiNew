@@ -25,6 +25,7 @@ const LEADER_TTL_MS = 15_000;
 const REALTIME_EVENT_CHANNEL = "cls_realtime_event_v1";
 const REALTIME_EVENT_STORAGE_KEY = "cls_realtime_event_v1";
 const REALTIME_LEADER_PREFIX = "cls_realtime_leader_v1";
+const REALTIME_OWNER_KEY = "__CLS_REALTIME_CLIENT_OWNER";
 const TAB_ID = (() => {
   if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -118,6 +119,29 @@ function dispatchConnectionState(connected, detail = {}) {
   window.dispatchEvent(new CustomEvent("cls:realtime-connection", { detail: { connected: connected === true, ...detail } }));
 }
 
+function hasBrowserSingletonOwner() {
+  if (typeof window === "undefined") return true;
+  const owner = window[REALTIME_OWNER_KEY];
+  if (!owner || owner.tabId === TAB_ID || Number(owner.expiresAt || 0) <= Date.now()) {
+    window[REALTIME_OWNER_KEY] = { tabId: TAB_ID, identity: activeIdentity, expiresAt: Date.now() + LEADER_TTL_MS };
+    return true;
+  }
+  return false;
+}
+
+function refreshBrowserSingletonOwner() {
+  if (typeof window === "undefined" || !active || !activeIdentity) return;
+  if (window[REALTIME_OWNER_KEY]?.tabId === TAB_ID) {
+    window[REALTIME_OWNER_KEY] = { tabId: TAB_ID, identity: activeIdentity, expiresAt: Date.now() + LEADER_TTL_MS };
+  }
+}
+
+function releaseBrowserSingletonOwner() {
+  if (typeof window !== "undefined" && window[REALTIME_OWNER_KEY]?.tabId === TAB_ID) {
+    delete window[REALTIME_OWNER_KEY];
+  }
+}
+
 function broadcastRealtimeEvent(event = {}) {
   if (typeof window === "undefined" || !event?.id) return;
   const payload = { source: TAB_ID, identity: activeIdentity, event };
@@ -186,6 +210,7 @@ function scheduleLeaderHeartbeat() {
   window.clearInterval(leaderTimer);
   leaderTimer = window.setInterval(() => {
     if (!active || !activeIdentity) return;
+    refreshBrowserSingletonOwner();
     if (isLeaderTab) {
       writeLeader(activeIdentity);
       return;
@@ -224,7 +249,6 @@ function mutationPayload(event = {}) {
 
 function invalidateRealtimeCaches(event = {}) {
   if (event.kind === "notification") {
-    invalidateGetCache({ prefix: "/notifications", purge: true });
     return;
   }
   if (event.kind === "staff") {
@@ -340,6 +364,10 @@ function queueAck(id) {
 
 async function connect() {
   if (typeof window === "undefined" || source || connectPromise || !active) return connectPromise;
+  if (!hasBrowserSingletonOwner()) {
+    dispatchConnectionState(true, { shared: true, ownerTab: false });
+    return null;
+  }
   if (!ensureLeader()) return null;
   const expectedGeneration = connectionGeneration;
   const expectedIdentity = activeIdentity;
@@ -411,9 +439,13 @@ async function connect() {
 
 export function startRealtimeClient(identity = "") {
   const nextIdentity = String(identity || "").trim();
-  if (active && activeIdentity && nextIdentity && activeIdentity === nextIdentity && (source || connectPromise)) return;
+  if (active && activeIdentity && nextIdentity && activeIdentity === nextIdentity) {
+    refreshBrowserSingletonOwner();
+    if (source || connectPromise) return;
+  }
   if (active && activeIdentity && nextIdentity && activeIdentity !== nextIdentity) {
     releaseLeader(activeIdentity);
+    releaseBrowserSingletonOwner();
     isLeaderTab = false;
     connectionGeneration += 1;
     resetReconnectTimers();
@@ -432,6 +464,7 @@ export function stopRealtimeClient(identity = "") {
   const nextIdentity = String(identity || "").trim();
   if (nextIdentity && activeIdentity && nextIdentity !== activeIdentity) return;
   releaseLeader(activeIdentity);
+  releaseBrowserSingletonOwner();
   isLeaderTab = false;
   active = false;
   activeIdentity = "";
@@ -443,4 +476,16 @@ export function stopRealtimeClient(identity = "") {
   flushAcks();
   closeSource({ forceNotify: true });
   connectPromise = null;
+}
+
+export function realtimeDebugState() {
+  return {
+    active,
+    activeIdentity,
+    hasSource: Boolean(source),
+    hasConnectPromise: Boolean(connectPromise),
+    isLeaderTab,
+    tabId: TAB_ID,
+    pendingAckCount: pendingAckIds.size,
+  };
 }
