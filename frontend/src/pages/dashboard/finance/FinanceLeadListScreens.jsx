@@ -1,20 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../../constants/status.js";
-import { mutationUrlMatches, useRoleLeadRealtime } from "../../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadPatch } from "../../../hooks/useRealtimeEntityPatch.js";
-import { useCursorPager } from "../../../hooks/useCursorPager.js";
-import { api, getCachedGetData } from "../../../services/api.js";
-import { normalizePagedResponse } from "../../../services/apiResponse.js";
-import { cachedLeadRows, scheduleLeadPrefetch } from "../../../services/leadInstantData.js";
 import { portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 import { dateTime, display, moneyValue } from "../financeDesk.helpers.js";
-import { FINANCE_PAGE_SIZE as pageSize, FinanceTable as Table, SectionTitle } from "./FinanceDeskPanelParts.jsx";
+import { FinanceTable as Table, SectionTitle } from "./FinanceDeskPanelParts.jsx";
+import { useDealerLeads } from "./financeLeadList.data.js";
 import { useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
 
-const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/dealer/dead-cases", "/bank/leads", "/gm/leads", "/documents"]);
 const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
 function caseId(lead) {
@@ -32,47 +26,6 @@ function financeStatus(lead) {
 function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   return <span className="text-xs font-normal text-slate-700">{label}</span>;
-}
-
-function useDealerLeads(filters = {}) {
-  const initialParams = { page: 1, limit: pageSize, ...filters };
-  const cached = getCachedGetData("/dealer/leads", initialParams);
-  const fallbackRows = cached ? [] : cachedLeadRows("/dealer/leads", { status: filters.status, search: filters.search, limit: pageSize });
-  const cachedPayload = cached
-    ? normalizePagedResponse(cached, { defaultLimit: pageSize })
-    : { data: fallbackRows, total: fallbackRows.length, hasMore: false, nextCursor: "" };
-  const [leads, setLeads] = useState(() => cachedPayload?.data || []);
-  const [total, setTotal] = useState(() => cachedPayload?.total || 0);
-  const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload?.hasMore || cachedPayload?.nextCursor));
-  const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.status || "", filters.salespersonId || "", filters.financeManagerId || "", filters.search || ""]);
-  const loadLeads = useCallback(async (next = {}) => {
-    const silent = next.silent === true;
-    if (!silent) setLoading(true);
-    try {
-      const { silent: _silent, ...params } = next;
-      const targetPage = Math.max(Number(params.page || 1), 1);
-      const response = await api.get("/dealer/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
-      const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
-      const rows = payload.data || [];
-      setLeads(rows);
-      setHasMore(Boolean(payload.hasMore || payload.nextCursor));
-      rememberNextCursor(targetPage, payload.nextCursor);
-      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (targetPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [filters.status, filters.salespersonId, filters.financeManagerId, filters.search, cursorParamsForPage, rememberNextCursor]);
-
-  useEffect(() => {
-    loadLeads({ silent: true });
-  }, [loadLeads]);
-  useEffect(() => {
-    scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
-  }, [filters.search]);
-  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
-  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter });
-  return { leads, total, hasMore, loading, loadLeads };
 }
 
 function DocumentsButton({ lead }) {

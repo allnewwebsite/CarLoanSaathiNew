@@ -1,211 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { mutationUrlMatches, useBackgroundRefresh, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
-import { useCursorPager } from "../../hooks/useCursorPager.js";
-import { api, getCachedGetData } from "../../services/api.js";
-import { normalizePagedResponse } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
-import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { formatPortalDate, formatPortalDateTime, formatPortalTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { SectionTitle, Table } from "./gm/GmTrackingParts.jsx";
+import { useGmLeads, useSalespersons } from "./gm/gmTracking.data.js";
+import { allCaseHeaders, caseRows, statusRows, totalLeadHeaders, totalRows } from "./gm/gmTracking.rows.jsx";
+import {
+  display,
+  salespersonFilterValue,
+  sameSalesperson,
+} from "./gm/gmTracking.helpers.js";
 
-const pageSize = 10;
-const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
-const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/leads", "/dealer/leads", "/bank/leads", "/documents"]);
-const salespersonMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/salespersons", "/dealer/salespersons"]);
 const statusCards = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
-
-function display(value) {
-  return value || "-";
-}
-
-function caseId(lead) {
-  return lead.caseId || lead.id;
-}
-
-function moneyValue(value) {
-  return `Rs. ${money.format(Number(value || 0))}`;
-}
-
-function dateValue(value) {
-  return formatPortalDate(value);
-}
-
-function timeValue(value) {
-  return formatPortalTime(value);
-}
-
-function dateTime(value) {
-  return formatPortalDateTime(value);
-}
-
-function generatedAt(lead) {
-  return dateTime(lead.generatedAt || lead.createdAt);
-}
-
-function workflowStatus(value) {
-  const normalized = normalizeStatus(value);
-  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
-  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) return LEAD_STATUSES.UNDER_BANK_PROCESS;
-  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
-  return normalized;
-}
-
-function statusLabel(lead) {
-  return portalLeadStatusLabel(lead);
-}
-
-function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
-}
-
-function SectionTitle({ title, subtitle }) {
-  return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">General Manager</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1>{subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}</div>;
-}
-
-function DocumentsButton({ lead }) {
-  const navigate = useNavigate();
-  return <button onClick={() => navigate(`/gm/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>;
-}
-
-function salespersonFilterValue(person = {}) {
-  return person.sourceId || person.salespersonId || person.id || person.email || person.mobile || "";
-}
-
-function sameSalesperson(person = {}, value = "") {
-  const requested = String(value || "").trim();
-  if (!requested) return false;
-  return [
-    person.id,
-    person.sourceId,
-    person.salespersonId,
-    person.jobId,
-    person.email,
-    person.mobile,
-    salespersonFilterValue(person),
-  ].some((item) => String(item || "").trim() === requested);
-}
-
-function useGmLeads(filters = {}) {
-  const initialParams = { page: 1, limit: pageSize, ...filters };
-  const cached = getCachedGetData("/gm/leads", initialParams);
-  const fallbackRows = cached ? [] : cachedLeadRows("/gm/leads", { status: filters.status, search: filters.search, limit: pageSize });
-  const cachedPayload = cached
-    ? normalizePagedResponse(cached, { defaultLimit: pageSize })
-    : { data: fallbackRows, total: fallbackRows.length, hasMore: false, nextCursor: "" };
-  const [leads, setLeads] = useState(() => cachedPayload.data);
-  const [total, setTotal] = useState(() => cachedPayload.total);
-  const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload.hasMore || cachedPayload.nextCursor));
-  const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
-  const load = useCallback(async (next = {}) => {
-    const silent = next.silent === true;
-    if (!silent) setLoading(true);
-    try {
-      const { silent: _silent, ...params } = next;
-      const targetPage = Math.max(Number(params.page || 1), 1);
-      const response = await api.get("/gm/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
-      const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
-      const rows = payload.data || [];
-      setLeads(rows);
-      setHasMore(Boolean(payload.hasMore || payload.nextCursor));
-      rememberNextCursor(targetPage, payload.nextCursor);
-      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (targetPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [filters.search, filters.status, filters.salespersonId, cursorParamsForPage, rememberNextCursor]);
-  useEffect(() => {
-    load({ silent: true });
-  }, [load]);
-  useEffect(() => {
-    scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
-  }, [filters.search]);
-  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
-  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter });
-  return { leads, total, hasMore, loading, load };
-}
-
-function useSalespersons() {
-  const cachedSalespersons = getCachedGetData("/gm/salespersons");
-  const [salespersons, setSalespersons] = useState(() => cachedSalespersons || []);
-  const [loading, setLoading] = useState(() => !cachedSalespersons);
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/gm/salespersons");
-      setSalespersons(response.data || []);
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-  useEffect(() => { load({ silent: Boolean(cachedSalespersons) }); }, [load]);
-  useBackgroundRefresh({ onRefresh: load, refreshKey: "gm-salespersons", mutationFilter: salespersonMutationFilter });
-  return { salespersons, loading };
-}
-
-function totalRows(leads) {
-  return leads.map((lead) => ({
-    key: lead.id,
-    cells: [
-      caseId(lead),
-      display(lead.fullName || lead.customerName),
-      display(lead.mobile),
-      display(lead.city || lead.dealershipCity),
-      moneyValue(lead.carPrice || lead.carOnRoadPrice || lead.onRoadPrice),
-      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      display(lead.assignedSalesperson || lead.salespersonName),
-      display(lead.assignedExecutiveName),
-      display(lead.assignedExecutiveMobile || lead.executiveMobile),
-      statusLabel(lead),
-      generatedAt(lead),
-      <DocumentsButton key="docs" lead={lead} />,
-    ],
-  }));
-}
-
-function caseRows(leads) {
-  return leads.map((lead) => ({
-    key: lead.id,
-    cells: [
-      caseId(lead),
-      display(lead.fullName || lead.customerName),
-      display(lead.mobile),
-      display(lead.city || lead.dealershipCity),
-      moneyValue(lead.carPrice || lead.carOnRoadPrice || lead.onRoadPrice),
-      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      display(lead.assignedSalesperson || lead.salespersonName),
-      display(lead.bankPartner || lead.assignedBankName),
-      display(lead.assignedExecutiveName),
-      display(lead.assignedExecutiveMobile || lead.executiveMobile),
-      statusLabel(lead),
-      generatedAt(lead),
-      <DocumentsButton key="docs" lead={lead} />,
-    ],
-  }));
-}
-
-function statusRows(leads, rejected) {
-  return leads.map((lead) => {
-    const cells = [
-      caseId(lead),
-      display(lead.fullName || lead.customerName),
-      display(lead.assignedSalesperson || lead.salespersonName),
-      moneyValue(lead.loanAmount || lead.requiredLoanAmount),
-      statusLabel(lead),
-    ];
-    if (rejected) cells.push(display(lead.rejectionReason || lead.loanRejectionReason));
-    cells.push(dateValue(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt));
-    cells.push(timeValue(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt));
-    cells.push(<DocumentsButton key="docs" lead={lead} />);
-    return { key: lead.id, cells };
-  });
-}
 
 function TotalLeadsScreen() {
   const [params, setParams] = useSearchParams();
@@ -228,7 +37,7 @@ function TotalLeadsScreen() {
     <section className="space-y-4">
       <SectionTitle title="Total Leads" subtitle="All leads created by this dealership." />
       <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search Case ID, customer, mobile" value={search} onChange={(event) => updateSearch(event.target.value)} /></div>
-      <Table title="Total Leads" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.generatedDate, "Documents"]} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="Total Leads" headers={totalLeadHeaders} rows={totalRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -311,7 +120,7 @@ function AllCasesScreen() {
           {salespersons.map((person) => <option key={person.id} value={salespersonFilterValue(person)}>{person.name} - {person.jobId}</option>)}
         </select>
       </div>
-      <Table title="All Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.generatedDate, "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="All Cases" headers={allCaseHeaders} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -329,7 +138,7 @@ function SalespersonCasesScreen() {
   return (
     <section className="space-y-4">
       <SectionTitle title={salesperson ? `${salesperson.name} Cases` : "Salesperson Cases"} subtitle="Only cases linked to this salesperson." />
-      <Table title="Salesperson Cases" headers={["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Assigned Salesperson", "Assigned Bank", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.generatedDate, "Documents"]} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="Salesperson Cases" headers={allCaseHeaders} rows={caseRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
