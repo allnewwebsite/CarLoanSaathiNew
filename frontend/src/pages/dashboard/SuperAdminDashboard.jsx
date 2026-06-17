@@ -1,96 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, Building2, ClipboardCheck, Landmark, Search, Shield, Users } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.jsx";
-import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { ADMIN_STATUS_OPTIONS, BANK_STATUS_OPTIONS, LEAD_STATUSES, statusLabel } from "../../constants/status.js";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { mutationUrlMatches, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { useRealtimeLeadDetailPatch, useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
+import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
+import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { normalizeRows } from "../../services/apiResponse.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
-import { bankDocumentRows, loanExecutiveRemark } from "../../utils/portalDisplay.js";
 import { DataTable, MetricCard, PageTitle } from "./superAdmin/SuperAdminParts.jsx";
-import { AdminSubscriptionPanel } from "./superAdmin/SuperAdminSubscriptionPanel.jsx";
+export { SuperAdminApprovalDetailPage } from "./superAdmin/SuperAdminApprovalDetailPage.jsx";
+export { SuperAdminDealershipDetailPage } from "./superAdmin/SuperAdminDealershipDetailPage.jsx";
+export { SuperAdminLeadDetailPage } from "./superAdmin/SuperAdminLeadDetailPage.jsx";
+import { SystemSettings } from "./superAdmin/SuperAdminSettings.jsx";
+import { adminLeadMutationFilter, useAdminEcosystem } from "./superAdmin/superAdmin.hooks.js";
 import {
   approvalRatio,
   assignmentDisplay,
   bankCapacityDisplay,
   bankIfscDisplay,
-  canActOnApproval,
   caseId,
-  customerDocumentTypes,
   display,
   downloadCsv,
   enterpriseLeadStatus,
-  finalApprovalStatus,
   formatDate,
   generatedAt,
   leadStatus,
   superAdminMoney as money,
   SUPER_ADMIN_PAGE_SIZE as pageSize,
 } from "./superAdmin/superAdmin.helpers.js";
-
-const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
-
-function useAdminEcosystem({ includeAudit = false } = {}) {
-  const cachedEcosystem = getCachedGetData("/admin/ecosystem") || {};
-  const cachedAnalytics = getCachedGetData("/admin/analytics") || {};
-  const cachedAuditLogs = includeAudit ? getCachedGetData("/admin/audit-logs") || [] : [];
-  const cachedAdminState = {
-    ...cachedEcosystem,
-    auditLogs: includeAudit && cachedAuditLogs.length ? cachedAuditLogs : cachedEcosystem.auditLogs || [],
-  };
-  const [state, setState] = useState({
-    leads: [],
-    onboardingRequests: [],
-    dealerships: [],
-    financeDesks: [],
-    dealershipManagers: [],
-    bankPartners: [],
-    banks: [],
-    branches: [],
-    branchManagers: [],
-    loanExecutives: [],
-    assignments: [],
-    reassignmentLogs: [],
-    documents: [],
-    bankDocuments: [],
-    pendingDealershipApprovals: [],
-    pendingBankApprovals: [],
-    approvalLogs: [],
-    pendingGoogleAccounts: [],
-    loginActivity: [],
-    users: [],
-    auditLogs: [],
-    ...cachedAdminState,
-  });
-  const [analytics, setAnalytics] = useState(cachedAnalytics);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const [ecosystem, analyticsResponse, auditResponse] = await Promise.all([
-        api.get("/admin/ecosystem"),
-        api.get("/admin/analytics"),
-        includeAudit ? api.get("/admin/audit-logs") : Promise.resolve({ data: [] }),
-      ]);
-      setState((current) => ({ ...current, ...(ecosystem.data || {}), ...(includeAudit ? { auditLogs: auditResponse.data || [] } : {}) }));
-      setAnalytics(analyticsResponse.data || {});
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [includeAudit]);
-
-  useEffect(() => { load({ silent: true }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
-  return { ...state, analytics, loading, load };
-}
 
 function Filters({ search, setSearch, status, setStatus, options = [] }) {
   return (
@@ -397,239 +338,8 @@ function summarize(value) {
   return JSON.stringify(value);
 }
 
-function SystemSettings({ data }) {
-  const cachedSettings = getCachedGetData("/admin/workflow/settings");
-  const [settings, setSettings] = useState(() => cachedSettings || null);
-  const [message, setMessage] = useState("");
-  useEffect(() => {
-    api.get("/admin/workflow/settings").then((response) => setSettings(response.data || {})).catch(() => setSettings({}));
-  }, []);
-  const update = async (patch) => {
-    const next = { ...(settings || {}), ...patch };
-    setSettings(next);
-    const response = await api.patch("/admin/workflow/settings", next);
-    setMessage(response.data.message || "Settings updated");
-  };
-  if (!settings) return <DetailPageSkeleton cards={3} />;
-  return (
-    <section className="grid gap-4 lg:grid-cols-3">
-      {message && <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 lg:col-span-3">{message}</div>}
-      <SettingCard title="Routing Logic" text="City match, fallback routing, and assignment engine.">
-        <button onClick={() => update({ routingEngineEnabled: !settings.routingEngineEnabled })} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white">{settings.routingEngineEnabled === false ? "Enable Routing" : "Pause Routing"}</button>
-      </SettingCard>
-      <SettingCard title="WhatsApp Provider" text="Dry-run mode and notification provider controls.">
-        <button onClick={() => update({ whatsappDryRun: !settings.whatsappDryRun })} className="rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">{settings.whatsappDryRun ? "Disable Dry Run" : "Enable Dry Run"}</button>
-      </SettingCard>
-      <SettingCard title="Supported Cities" text={`${data.onboardingRequests.map((item) => item.city).filter(Boolean).length} dealership city mappings tracked.`} />
-      <SettingCard title="Active Banks" text={`${data.bankPartners.length + data.banks.length} bank records available.`} />
-      <SettingCard title="Audit Records" text={`${data.auditLogs.length} platform audit records available.`} />
-    </section>
-  );
-}
-
-function SettingCard({ title, text, children }) {
-  return <div className="rounded-lg border border-slate-200 bg-white p-4"><h2 className="text-base font-semibold text-slate-900">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>{children && <div className="mt-3">{children}</div>}</div>;
-}
-
 export function SuperAdminDashboard({ mode = "dashboard" }) {
   usePageLatency("SuperAdmin", { mode });
   if (mode === "dashboard") return <AdminListPage mode="leads" />;
   return <AdminListPage mode={mode} />;
-}
-
-export function SuperAdminLeadDetailPage() {
-  const { leadId } = useParams();
-  const data = useAdminEcosystem({ includeAudit: true });
-  const cachedLead = getCachedGetData(`/admin/leads/${leadId}`)
-    || data.leads.find((item) => item.id === leadId || item.caseId === leadId);
-  const [detailLead, setDetailLead] = useState(() => cachedLead || null);
-  const lead = detailLead || cachedLead;
-  const loadLead = useCallback(async ({ silent = false } = {}) => {
-    try {
-      const response = await api.get(`/admin/leads/${leadId}`);
-      setDetailLead(response.data);
-    } catch {
-      if (!silent) setDetailLead((current) => current || null);
-    }
-  }, [leadId]);
-  useEffect(() => {
-    loadLead();
-  }, [loadLead]);
-  useRealtimeLeadDetailPatch({ leadId, setLead: setDetailLead });
-  const customerDocuments = useMemo(() => (Array.isArray(lead?.documents) ? lead.documents : []), [lead]);
-  const bankDocuments = useMemo(() => bankDocumentRows(lead), [lead]);
-  if (data.loading && !lead) return <DetailPageSkeleton />;
-  if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
-  return (
-    <section className="space-y-5">
-      <PageTitle mode="lead details" />
-      <div className="grid gap-3 md:grid-cols-4">
-        {[["Case ID", caseId(lead)], ["Customer", lead.fullName || lead.customerName], ["Dealership", lead.dealershipName || lead.dealerEmail], ["Branch", lead.bankBranchCity || lead.branchCity || lead.city], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName || lead.assignedExecutiveEmail], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], ["Loan Amount", `Rs. ${money.format(Number(lead.loanAmount || 0))}`], [LEAD_TABLE_LABELS.currentStatus, statusLabel(leadStatus(lead))]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
-      </div>
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <p className="text-sm font-semibold text-slate-900">Loan Executive Remark</p>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
-      </section>
-      <PendingDocumentsPanel lead={lead} />
-      <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={(customerDocuments.length ? customerDocuments : customerDocumentTypes.map((type) => ({ id: type.toLowerCase().replace(/\s+/g, "-"), type }))).map((document) => {
-        const url = document.fileUrl || document.url || document.downloadUrl;
-        return { key: document.id, cells: [display(document.label || document.type || document.documentType), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
-      })} loading={false} />
-      <DataTable title="Bank Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={bankDocuments.map((document) => {
-        const url = document.fileUrl || document.url || document.downloadUrl;
-        return { key: document.id || document.documentType || document.type, cells: [display(document.label || document.documentType || document.type || "Bank Document"), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Stored in application", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
-      })} loading={false} />
-      <DataTable title="Audit History" headers={["Type", "Detail", "Time"]} rows={data.auditLogs.filter((item) => item.leadId === lead.id).map((item) => ({ key: `audit-${item.id}`, cells: ["Audit", display(item.actionType), formatDate(item.createdAt || item.timestamp)] }))} loading={false} />
-    </section>
-  );
-}
-
-export function SuperAdminDealershipDetailPage() {
-  const { id } = useParams();
-  const data = useAdminEcosystem();
-  const dealer = data.pendingDealershipApprovals.find((item) => item.id === id)
-    || data.onboardingRequests.find((item) => item.id === id)
-    || data.dealerships.find((item) => item.id === id || item.loginEmail === id);
-  if (data.loading && !dealer) return <DetailPageSkeleton />;
-  if (!dealer) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Dealership not found.</section>;
-  const email = dealer.loginEmail || dealer.id;
-  const leads = data.leads.filter((lead) => [lead.dealerEmail, lead.dealershipEmail, lead.createdBy].includes(email));
-  return (
-    <section className="space-y-5">
-      <PageTitle mode="dealership details" />
-      <div className="grid gap-3 md:grid-cols-4">
-        {[["Dealership", dealer.dealershipName], ["Brand", dealer.dealershipBrand], ["GSTIN", dealer.gstinNumber || dealer.dealership?.gstinNumber], ["City", dealer.city], ["Login Email", dealer.loginEmail || dealer.email || email], ["Salesperson Count", dealer.salespersonCount || "-"], ["Total Leads", leads.length], ["Approval Ratio", approvalRatio(leads)], ["Status", dealer.status]].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-white p-4"><p className="text-xs uppercase text-slate-500">{label}</p><p className="mt-1 font-medium text-slate-900">{display(value)}</p></div>)}
-      </div>
-      <AdminSubscriptionPanel dealershipId={dealer.loginEmail || dealer.email || email} />
-      <DataTable title="Dealership Leads" headers={["Customer", "Bank", "Amount", LEAD_TABLE_LABELS.currentStatus, "Updated"]} rows={leads.slice(0, 10).map((lead) => ({ key: lead.id, cells: [display(lead.fullName || lead.customerName), display(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), `Rs. ${money.format(Number(lead.loanAmount || 0))}`, <StatusBadge key="status" lead={lead} />, formatDate(lead.updatedAt || lead.createdAt)] }))} loading={false} />
-    </section>
-  );
-}
-
-export function SuperAdminApprovalDetailPage({ type }) {
-  const { id } = useParams();
-  const data = useAdminEcosystem();
-  const [directItem, setDirectItem] = useState(null);
-  const [directLoading, setDirectLoading] = useState(true);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState("");
-  const navigate = useNavigate();
-  const item = type === "banks"
-    ? directItem || data.pendingBankApprovals.find((entry) => entry.id === id)
-    : directItem || data.pendingDealershipApprovals.find((entry) => entry.id === id);
-  useEffect(() => {
-    let active = true;
-    const loadDirectItem = async () => {
-      setDirectLoading(true);
-      try {
-        const endpoint = type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships";
-        const [pendingResponse, approvedResponse] = await Promise.all([
-          api.get(endpoint, { params: { status: "pending", search: id, limit: 25 } }),
-          api.get(endpoint, { params: { status: "approved", search: id, limit: 25 } }),
-        ]);
-        const rows = [...responseRows(pendingResponse), ...responseRows(approvedResponse)];
-        const match = rows.find((entry) => entry.id === id || entry.ifsc === id || entry.ifscCode === id || entry.loginEmail === id);
-        if (active) setDirectItem(match || null);
-      } catch {
-        if (active) setDirectItem(null);
-      } finally {
-        if (active) setDirectLoading(false);
-      }
-    };
-    if (!item) loadDirectItem();
-    else setDirectLoading(false);
-    return () => { active = false; };
-  }, [id, item, type]);
-  const approve = async () => {
-    setBusy(true);
-    setActionError("");
-    try {
-      await api.post(`/admin/approvals/${type}/${id}/approve`);
-      navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
-    } catch (error) {
-      setActionError(error.response?.data?.message || error.message || "Unable to approve application");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const reject = async () => {
-    if (!reason.trim()) return;
-    setBusy(true);
-    setActionError("");
-    try {
-      await api.post(`/admin/approvals/${type}/${id}/reject`, { reason });
-      navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
-    } catch (error) {
-      setActionError(error.response?.data?.message || error.message || "Unable to reject application");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const suspend = async () => {
-    const suspensionReason = reason.trim() || "Suspended by Super Admin";
-    setBusy(true);
-    setActionError("");
-    try {
-      await api.post(`/admin/approvals/${type}/${id}/suspend`, { reason: suspensionReason });
-      navigate(type === "banks" ? "/admin/approvals/banks" : "/admin/approvals/dealerships");
-    } catch (error) {
-      setActionError(error.response?.data?.message || error.message || "Unable to suspend application");
-    } finally {
-      setBusy(false);
-    }
-  };
-  if ((data.loading || directLoading) && !item) return <DetailPageSkeleton />;
-  if (!item) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Application not found.</section>;
-  const canAct = canActOnApproval(item);
-  const sections = type === "banks"
-    ? [
-      ["Bank Details", [["Bank Name", item.bankName || item.companyName], ["Email", item.email], ["Mobile", item.mobile]]],
-      ["Branch Details", [["Bank Branch Location", item.bankBranchLocation || item.branchLocation || item.city], ["State", item.state || "Haryana"], ["IFSC", item.ifsc]]],
-      ["Branch Manager Details", [["Manager", item.managerName || item.contactPerson], ["Email", item.officialEmail || item.email], ["Mobile", item.mobile]]],
-      ["Executive List", (item.executives || []).map((exec, index) => [`Executive ${index + 1}`, exec.name || exec.fullName || exec.email])],
-      ["Branch Capacity", [["Monthly Loan Capacity", bankCapacityDisplay(item)], ["Number Of Executives", item.executiveCount]]],
-    ]
-    : [
-      ["Dealership Information", [["Dealership", item.dealershipName], ["Brand", item.dealershipBrand], ["GSTIN", item.gstinNumber || item.dealership?.gstinNumber], ["City", item.city], ["Selected Plan", item.selectedPlan || item.dealership?.selectedPlan || "TRIAL"], ["Address", item.dealership?.address]]],
-      ["Business Capacity", [["Monthly Sales", item.dealership?.monthlyCarSalesCapacity]]],
-    ];
-  return (
-    <section className="space-y-5">
-      <PageTitle mode={type === "banks" ? "bank approval details" : "dealership approval details"} />
-      <div className="grid gap-4 lg:grid-cols-2">
-        {sections.map(([title, rows]) => (
-          <section key={title} className="rounded-lg border border-slate-200 bg-white p-4">
-            <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-            <div className="mt-3 grid gap-2">
-              {(rows.length ? rows : [["No records", "-"]]).map(([label, value]) => <div key={label} className="grid grid-cols-[150px_1fr] gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm"><span className="text-slate-500">{label}</span><span className="font-medium text-slate-900">{display(value)}</span></div>)}
-            </div>
-          </section>
-        ))}
-      </div>
-      <DataTable title="Uploaded Verification Files" headers={["Document", "File", "Status", "Actions"]} rows={((item.documents || []).length ? item.documents : type === "banks" ? [
-        { type: "Authorization Letter" },
-        { type: "Branch Address Proof" },
-        { type: "Manager ID" },
-      ] : [
-        { type: "GST Certificate" },
-        { type: "Dealership License" },
-        { type: "Office Exterior" },
-        { type: "Office Interior" },
-      ]).map((doc) => {
-        const url = doc.fileUrl || doc.url;
-        return { key: doc.fileName || doc.type || doc.documentType, cells: [display(doc.label || doc.type || doc.documentType), display(doc.fileName), display(doc.status || "Submitted"), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview / Download</a> : "Stored in application"] };
-      })} loading={false} />
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-base font-semibold text-slate-900">Approval Action</h2>
-        {actionError ? <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{actionError}</div> : null}
-        <textarea className="mt-3 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Rejection reason required only when rejecting" value={reason} onChange={(event) => setReason(event.target.value)} />
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button disabled={busy || !canAct} onClick={approve} className="rounded-md bg-[#0d47a1] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Approve</button>
-          <button disabled={busy || !canAct || !reason.trim()} onClick={reject} className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50">Reject</button>
-          <button disabled={busy || finalApprovalStatus(item)} onClick={suspend} className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 disabled:opacity-50">Suspend</button>
-        </div>
-      </section>
-    </section>
-  );
 }
