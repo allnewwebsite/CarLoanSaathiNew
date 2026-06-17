@@ -11,8 +11,10 @@ import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
+import { AllExecutivesPage } from "./BankExecutivesPage.jsx";
 import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 import { BANK_MANAGER_PAGE_SIZE as pageSize, BankManagerTable as Table, DetailState, MetricCard, PageTitle, SearchBar } from "./BankManagerPanelParts.jsx";
+import { useExecutives } from "./bankManager.hooks.js";
 import {
   caseId,
   cleanEmail,
@@ -31,7 +33,6 @@ import {
 
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
 const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks", "/bank/executives"]);
-const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
 
 function useBankLeads(search, status = "") {
   const [params, setParams] = useSearchParams();
@@ -134,24 +135,6 @@ function useBankDealershipDisbursedCases(dealershipId, search) {
   useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage };
-}
-
-function useExecutives() {
-  const cached = getCachedGetData("/bank/executives");
-  const [rows, setRows] = useState(() => responseRows({ data: cached }));
-  const [loading, setLoading] = useState(() => !cached);
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await api.get("/bank/executives");
-      setRows(responseRows(response));
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-  useEffect(() => { load({ silent: Boolean(cached) }); }, [load]);
-  useBackgroundRefresh({ onRefresh: load, refreshKey: "bank-executives", mutationFilter: bankExecutiveMutationFilter });
-  return { rows, loading, load };
 }
 
 function TotalLeadsPage() {
@@ -572,29 +555,6 @@ function ManageExecutivePage() {
         </div>
       </form>
       <Table title="Executive List" headers={["Executive Name", "Mobile Number", "Official Email", "Status", "Actions"]} rows={tableRows} loading={loading} />
-    </section>
-  );
-}
-
-function AllExecutivesPage() {
-  const navigate = useNavigate();
-  const { rows, loading } = useExecutives();
-  const tableRows = useMemo(() => rows.map((executive) => ({
-    key: executive.id,
-    cells: [
-      display(executive.name || executive.fullName),
-      display(executive.mobile),
-      display(executive.email || executive.officialEmail),
-      executive.totalAssignedCases || 0,
-      executive.currentActiveCases || 0,
-      display(executive.status),
-      <button key="cases" onClick={() => navigate(`/bank-manager/executives/${executive.id}/cases`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">All Cases</button>,
-    ],
-  })), [navigate, rows]);
-  return (
-    <section className="space-y-4">
-      <PageTitle title="All Executives" />
-      <Table title="Bank Executives" headers={["Executive Name", "Mobile Number", "Official Email", "Total Assigned Cases", "Current Active Cases", "Status", "All Cases"]} rows={tableRows} loading={loading} />
     </section>
   );
 }
