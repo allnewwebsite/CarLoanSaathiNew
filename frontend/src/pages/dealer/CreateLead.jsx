@@ -3,6 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../services/api.js";
+import {
+  buildDealerLeadPayload,
+  dealerLeadCreateErrorMessage,
+  initialDealerLeadForm,
+  normalizeBrandRows,
+  normalizeModelRows,
+  validateDealerLeadForm,
+} from "./createLead.helpers.js";
 
 /**
  * Lead Creation Component with Dynamic Bank Branch Selection
@@ -20,20 +28,7 @@ export default function CreateDealerLead() {
   const { user } = useAuth();
 
   // Form State
-  const [formData, setFormData] = useState({
-    fullName: "",
-    mobile: "",
-    email: "",
-    city: "",
-    selectedBrand: "",
-    selectedModel: "",
-    carPrice: "",
-    loanAmount: "",
-    employmentType: "",
-    ifscCode: "", // NEW: Mandatory bank branch selection
-    salespersonId: "",
-    remarks: "",
-  });
+  const [formData, setFormData] = useState(initialDealerLeadForm);
 
   // UI State
   const [loading, setLoading] = useState(false);
@@ -96,11 +91,7 @@ export default function CreateDealerLead() {
     try {
       setLoadingCars(true);
       const response = await api.get("/brands");
-      const brands = Array.isArray(response.data) ? response.data : [];
-      setCars(brands.map((brand) => ({
-        name: brand.name || brand.slug || "",
-        slug: brand.slug || "",
-      })).filter((brand) => brand.name && brand.slug));
+      setCars(normalizeBrandRows(response.data));
     } catch (err) {
       console.error("Error fetching cars:", err);
       // Fall back to empty list
@@ -126,8 +117,7 @@ export default function CreateDealerLead() {
           return;
         }
         const response = await api.get(`/cars/${brandSlug}`);
-        const carsForBrand = Array.isArray(response.data) ? response.data : [];
-        setModels(carsForBrand.map((model) => model.name || model.model || "").filter(Boolean));
+        setModels(normalizeModelRows(response.data));
       } catch (err) {
         console.error("Error fetching models:", err);
         setModels([]);
@@ -153,65 +143,6 @@ export default function CreateDealerLead() {
   };
 
   /**
-   * Validate form data
-   */
-  const validateForm = () => {
-    const errors = [];
-
-    // Required fields
-    if (!formData.fullName || formData.fullName.trim().length < 2) {
-      errors.push("Customer name must be at least 2 characters");
-    }
-
-    if (!formData.mobile || !/^[6-9]\d{9}$/.test(formData.mobile)) {
-      errors.push("Invalid mobile number");
-    }
-
-    if (!formData.city || formData.city.trim().length < 2) {
-      errors.push("City is required");
-    }
-
-    if (!formData.selectedBrand) {
-      errors.push("Car brand is required");
-    }
-
-    if (!formData.selectedModel) {
-      errors.push("Car model is required");
-    }
-
-    if (!formData.carPrice || parseFloat(formData.carPrice) <= 0) {
-      errors.push("Car price must be greater than 0");
-    }
-
-    if (!formData.loanAmount || parseFloat(formData.loanAmount) <= 0) {
-      errors.push("Loan amount must be greater than 0");
-    }
-
-    if (parseFloat(formData.loanAmount) > parseFloat(formData.carPrice)) {
-      errors.push("Loan amount cannot exceed car price");
-    }
-
-    if (!formData.employmentType) {
-      errors.push("Employment type is required");
-    }
-
-    // NEW: Mandatory bank branch selection
-    if (!formData.ifscCode) {
-      errors.push("Bank branch selection is required");
-    }
-
-    if (!formData.salespersonId) {
-      errors.push("Salesperson is required");
-    }
-
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.push("Invalid email address");
-    }
-
-    return errors;
-  };
-
-  /**
    * Submit lead creation form
    */
   const handleSubmit = async (e) => {
@@ -220,7 +151,7 @@ export default function CreateDealerLead() {
     setSuccess(null);
 
     // Validate form
-    const validationErrors = validateForm();
+    const validationErrors = validateDealerLeadForm(formData);
     if (validationErrors.length > 0) {
       setError(validationErrors[0]);
       return;
@@ -229,20 +160,7 @@ export default function CreateDealerLead() {
     try {
       setLoading(true);
 
-      // Find selected bank details
-      const selectedBank = banks.find((b) => b.ifscCode === formData.ifscCode);
-      if (!selectedBank) {
-        throw new Error("Selected bank not found");
-      }
-
-      const payload = {
-        ...formData,
-        bankId: selectedBank.bankId,
-        bankName: selectedBank.bankName,
-        branchName: selectedBank.branchName,
-        carPrice: parseFloat(formData.carPrice),
-        loanAmount: parseFloat(formData.loanAmount),
-      };
+      const payload = buildDealerLeadPayload(formData, banks);
 
       const response = await api.post("/dealer/leads", payload);
 
@@ -256,18 +174,7 @@ export default function CreateDealerLead() {
       }, 2000);
     } catch (err) {
       console.error("Error creating lead:", err);
-      const errorMsg = err.response?.data?.message || "Failed to create lead";
-
-      // Handle specific error codes
-      if (err.response?.data?.code === "BRANCH_NOT_TIEDUP") {
-        setError(
-          "Selected bank branch is not available for your dealership. Please select from your tied-up banks only."
-        );
-      } else if (err.response?.data?.code === "IFSC_CODE_REQUIRED") {
-        setError("Bank branch selection is required");
-      } else {
-        setError(errorMsg);
-      }
+      setError(dealerLeadCreateErrorMessage(err));
     } finally {
       setLoading(false);
     }
