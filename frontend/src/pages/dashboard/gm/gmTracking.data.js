@@ -22,7 +22,7 @@ export function useGmLeads(filters = {}) {
   const [total, setTotal] = useState(() => cachedPayload.total);
   const [hasMore, setHasMore] = useState(() => Boolean(cachedPayload.hasMore || cachedPayload.nextCursor));
   const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([filters.search || "", filters.status || "", filters.salespersonId || ""]);
 
   const load = useCallback(async (next = {}) => {
     const silent = next.silent === true;
@@ -30,17 +30,18 @@ export function useGmLeads(filters = {}) {
     try {
       const { silent: _silent, ...params } = next;
       const targetPage = Math.max(Number(params.page || filters.page || 1), 1);
-      const response = await api.get("/gm/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
+      const requestPage = requestPageForPage(targetPage);
+      const response = await api.get("/gm/leads", { params: { page: requestPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(requestPage) } });
       const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
       const rows = payload.data || [];
       setLeads(rows);
       setHasMore(Boolean(payload.hasMore || payload.nextCursor));
-      rememberNextCursor(targetPage, payload.nextCursor);
-      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (targetPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
+      rememberNextCursor(requestPage, payload.nextCursor);
+      setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : (requestPage - 1) * pageSize + rows.length + (payload.hasMore || payload.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.search, filters.status, filters.salespersonId, filters.page, cursorParamsForPage, rememberNextCursor]);
+  }, [filters.search, filters.status, filters.salespersonId, filters.page, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     load({ silent: true });

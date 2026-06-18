@@ -23,22 +23,23 @@ export function useBankLeads(search, status = "") {
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status, ...cursorParamsForPage(targetPage) } });
+      const requestPage = requestPageForPage(targetPage);
+      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, status, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
+      rememberNextCursor(requestPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (requestPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status, cursorParamsForPage, rememberNextCursor]);
+  }, [page, search, status, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {
@@ -131,22 +132,23 @@ export function useBankDealerships() {
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/dealerships", { params: { page: targetPage, limit: pageSize, ...cursorParamsForPage(targetPage) } });
+      const requestPage = requestPageForPage(targetPage);
+      const response = await api.get("/bank/dealerships", { params: { page: requestPage, limit: pageSize, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
+      rememberNextCursor(requestPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (requestPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, cursorParamsForPage, rememberNextCursor]);
+  }, [page, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
@@ -164,22 +166,23 @@ export function useBankDealershipDisbursedCases(dealershipId, search) {
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(() => !cached);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([dealershipId || "", search || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([dealershipId || "", search || ""]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get(url, { params: { page: targetPage, limit: pageSize, search, ...cursorParamsForPage(targetPage) } });
+      const requestPage = requestPageForPage(targetPage);
+      const response = await api.get(url, { params: { page: requestPage, limit: pageSize, search, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
+      rememberNextCursor(requestPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (requestPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, url, cursorParamsForPage, rememberNextCursor]);
+  }, [page, search, url, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
   useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });

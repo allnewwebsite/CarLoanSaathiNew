@@ -8,16 +8,25 @@ export function useCursorPager(dependencies = []) {
     cursorsRef.current = { 1: null };
   }, [key]);
 
-  const cursorParamsForPage = useCallback((page) => {
+  const cursorForPage = useCallback((page) => {
     const pageNumber = Math.max(Number(page || 1), 1);
-    const cursor = cursorsRef.current[pageNumber];
-    return pageNumber > 1 && cursor ? { cursor } : {};
+    return pageNumber > 1 ? cursorsRef.current[pageNumber] || "" : "";
   }, []);
+
+  const cursorParamsForPage = useCallback((page) => {
+    const cursor = cursorForPage(page);
+    return cursor ? { cursor } : {};
+  }, [cursorForPage]);
+
+  const requestPageForPage = useCallback((page) => {
+    const pageNumber = Math.max(Number(page || 1), 1);
+    return pageNumber <= 1 || cursorForPage(pageNumber) ? pageNumber : 1;
+  }, [cursorForPage]);
 
   const rememberNextCursor = useCallback((page, nextCursor) => {
     const pageNumber = Math.max(Number(page || 1), 1);
     if (nextCursor) cursorsRef.current[pageNumber + 1] = nextCursor;
   }, []);
 
-  return { cursorParamsForPage, rememberNextCursor };
+  return { cursorParamsForPage, rememberNextCursor, requestPageForPage };
 }

@@ -19,21 +19,22 @@ export function useExecutiveLeads({ search, status }) {
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([search || "", status || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || ""]);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
-      const response = await api.get("/bank/leads", { params: { page: targetPage, limit: pageSize, search, status: apiFilterStatus, ...cursorParamsForPage(targetPage) } });
+      const requestPage = requestPageForPage(targetPage);
+      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, status: apiFilterStatus, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
-      rememberNextCursor(targetPage, response.data?.nextCursor);
-      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (targetPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
+      rememberNextCursor(requestPage, response.data?.nextCursor);
+      setTotal(Number.isFinite(Number(response.data?.total)) ? Number(response.data.total) : (requestPage - 1) * pageSize + nextRows.length + (response.data?.hasMore || response.data?.nextCursor ? 1 : 0));
     } finally {
       if (!options.silent) setLoading(false);
     }
-  }, [page, search, apiFilterStatus, cursorParamsForPage, rememberNextCursor]);
+  }, [page, search, apiFilterStatus, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {
     scheduleLeadPrefetch("/bank/leads", BANK_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });

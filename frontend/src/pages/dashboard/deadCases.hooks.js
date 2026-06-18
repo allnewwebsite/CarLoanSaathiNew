@@ -32,7 +32,7 @@ export function useDeadCasesPageState(audience = "finance") {
   const [addNotes, setAddNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor } = useCursorPager([endpoint, debouncedSearch, reasonFilter]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, debouncedSearch, reasonFilter]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -45,10 +45,11 @@ export function useDeadCasesPageState(audience = "finance") {
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
-      const cursor = cursorParamsForPage(page);
+      const requestPage = requestPageForPage(page);
+      const cursor = cursorParamsForPage(requestPage);
       const response = await api.get(endpoint, {
         params: {
-          page,
+          page: requestPage,
           limit: PAGE_SIZE,
           search: debouncedSearch || undefined,
           deadCaseReason: reasonFilter || undefined,
@@ -58,11 +59,11 @@ export function useDeadCasesPageState(audience = "finance") {
       const payload = Array.isArray(response.data) ? { data: response.data } : response.data || {};
       setRows(payload.data || []);
       setHasMore(Boolean(payload.hasMore || payload.nextCursor));
-      rememberNextCursor(page, payload.nextCursor);
+      rememberNextCursor(requestPage, payload.nextCursor);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [cursorParamsForPage, debouncedSearch, endpoint, page, reasonFilter, rememberNextCursor]);
+  }, [cursorParamsForPage, debouncedSearch, endpoint, page, reasonFilter, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     load();
