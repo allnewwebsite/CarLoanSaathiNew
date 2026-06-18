@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
+import { hasLoadedFirebaseAuth, loadApiClient, loadFirebaseAuth, loadRealtimeClient, stopRealtimeIfLoaded } from "./AuthContext.loaders.js";
 import {
   LOGIN_PORTAL_ROLES,
   ROLE_LOGIN_PORTALS,
@@ -13,36 +14,14 @@ import {
   shouldClearSessionForError,
   wrongPortalError,
 } from "./AuthContext.helpers.js";
+import {
+  bankRegistrationFromResponse,
+  bankRegistrationStatusFromResponse,
+  dealerRegistrationFromResponse,
+  dealerRegistrationStatusFromResponse,
+} from "./AuthContext.registration.js";
 
 const AuthContext = createContext(null);
-let firebaseAuthLoaded = false;
-let realtimeClientLoaded = false;
-let apiClientPromise = null;
-
-async function loadApiClient() {
-  if (!apiClientPromise) apiClientPromise = import("../services/api.js").then((module) => module.api);
-  return apiClientPromise;
-}
-
-async function loadFirebaseAuth() {
-  const [firebaseAuth, authModule] = await Promise.all([
-    import("firebase/auth"),
-    import("../services/firebaseAuth.js"),
-  ]);
-  firebaseAuthLoaded = true;
-  return { ...firebaseAuth, auth: authModule.auth };
-}
-
-async function loadRealtimeClient() {
-  const realtimeClient = await import("../services/realtimeClient.js");
-  realtimeClientLoaded = true;
-  return realtimeClient;
-}
-
-function stopRealtimeIfLoaded(identity) {
-  if (!realtimeClientLoaded) return;
-  loadRealtimeClient().then(({ stopRealtimeClient }) => stopRealtimeClient(identity));
-}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
@@ -78,7 +57,7 @@ export function AuthProvider({ children }) {
 
   const detachFirebaseCredentialSession = async () => {
     setFirebaseUser(null);
-    if (!firebaseAuthLoaded) return;
+    if (!hasLoadedFirebaseAuth()) return;
     try {
       const { auth, signOut } = await loadFirebaseAuth();
       if (auth.currentUser) await signOut(auth);
@@ -341,19 +320,7 @@ export function AuthProvider({ children }) {
     const idToken = await credential.user.getIdToken(true);
     const api = await loadApiClient();
     const response = await api.post("/dealer/register/email-start", { idToken, selectedPlan });
-    const registration = {
-      registrationId: response.data.registrationId || null,
-      uid: credential.user.uid,
-      email: response.data.email || credential.user.email,
-      status: response.data.status,
-      approvalStatus: response.data.approvalStatus || response.data.status,
-      accountState: response.data.accountState || null,
-      emailVerified: response.data.emailVerified === true,
-      registrationSubmitted: response.data.registrationSubmitted,
-      message: response.data.message,
-      redirectTo: response.data.redirectTo || "/dealer-registration/form",
-      selectedPlan: response.data.selectedPlan || selectedPlan,
-    };
+    const registration = dealerRegistrationFromResponse(response, credential, selectedPlan);
     sessionStorage.setItem("cls_dealer_registration", JSON.stringify(registration));
     return registration;
   };
@@ -367,20 +334,7 @@ export function AuthProvider({ children }) {
     const idToken = await currentUser.getIdToken(true);
     const api = await loadApiClient();
     const response = await api.post("/dealer/register/status", { idToken });
-    const registration = {
-      registrationId: response.data.registrationId || null,
-      uid: currentUser.uid,
-      email: response.data.email || currentUser.email,
-      status: response.data.status,
-      approvalStatus: response.data.approvalStatus || response.data.status,
-      accountState: response.data.accountState || null,
-      emailVerified: response.data.emailVerified === true,
-      registrationSubmitted: response.data.registrationSubmitted,
-      accountApproved: response.data.accountApproved === true,
-      accountActive: response.data.accountActive === true,
-      message: response.data.message,
-      redirectTo: response.data.redirectTo || "/dealer-registration/form",
-    };
+    const registration = dealerRegistrationStatusFromResponse(response, currentUser);
     sessionStorage.setItem("cls_dealer_registration", JSON.stringify(registration));
     return registration;
   };
@@ -398,18 +352,7 @@ export function AuthProvider({ children }) {
     const idToken = await credential.user.getIdToken(true);
     const api = await loadApiClient();
     const response = await api.post("/bank/register/email-start", { idToken });
-    const registration = {
-      registrationId: response.data.registrationId || null,
-      uid: credential.user.uid,
-      email: response.data.email || credential.user.email,
-      status: response.data.status,
-      approvalStatus: response.data.approvalStatus || response.data.status,
-      accountState: response.data.accountState || null,
-      emailVerified: response.data.emailVerified === true,
-      registrationSubmitted: response.data.registrationSubmitted,
-      message: response.data.message,
-      redirectTo: response.data.redirectTo || "/bank-registration/form",
-    };
+    const registration = bankRegistrationFromResponse(response, credential);
     sessionStorage.setItem("cls_bank_registration", JSON.stringify(registration));
     return registration;
   };
@@ -423,20 +366,7 @@ export function AuthProvider({ children }) {
     const idToken = await currentUser.getIdToken(true);
     const api = await loadApiClient();
     const response = await api.post("/bank/register/status", { idToken });
-    const registration = {
-      registrationId: response.data.registrationId || null,
-      uid: currentUser.uid,
-      email: response.data.email || currentUser.email,
-      status: response.data.status,
-      approvalStatus: response.data.approvalStatus || response.data.status,
-      accountState: response.data.accountState || null,
-      emailVerified: response.data.emailVerified === true,
-      registrationSubmitted: response.data.registrationSubmitted,
-      accountApproved: response.data.accountApproved === true,
-      accountActive: response.data.accountActive === true,
-      message: response.data.message,
-      redirectTo: response.data.redirectTo || "/bank-registration",
-    };
+    const registration = bankRegistrationStatusFromResponse(response, currentUser);
     sessionStorage.setItem("cls_bank_registration", JSON.stringify(registration));
     return registration;
   };
