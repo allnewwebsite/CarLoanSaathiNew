@@ -10,7 +10,6 @@ import {
   getRequestReadCache,
   hashValue,
   memoryStore,
-  PRODUCTION_FULL_SCAN_DENYLIST,
   readCacheKey,
   readSignature,
   setRequestReadCache,
@@ -19,7 +18,7 @@ import {
 } from "./firestoreShared.service.js";
 
 export async function listRecords(collection) {
-  if (process.env.NODE_ENV === "production" && (collection === "leads" || PRODUCTION_FULL_SCAN_DENYLIST.has(collection)) && process.env.ALLOW_FIRESTORE_FULL_SCAN !== "true") {
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_FIRESTORE_FULL_SCAN !== "true") {
     const error = new Error(`Unbounded ${collection} reads are disabled in production`);
     error.status = 400;
     error.code = "UNBOUNDED_FIRESTORE_READ_DISABLED";
