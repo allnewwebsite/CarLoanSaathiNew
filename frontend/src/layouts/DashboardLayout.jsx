@@ -1,11 +1,11 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, FileX2, Landmark, Menu, PanelLeftClose, PanelLeftOpen, Search, Users, X } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, FileX2, Landmark, Menu, PanelLeftClose, PanelLeftOpen, Users, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
 import { SubscriptionBanner } from "../components/PlanBillingModal.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { api, getCachedGetData, prefetchGet } from "../services/api.js";
+import { prefetchGet } from "../services/api.js";
 import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const navByRole = {
@@ -123,97 +123,6 @@ function DashboardContentFallback() {
         </div>
       </div>
     </section>
-  );
-}
-
-function leadPathForRole(role, leadId) {
-  if (!leadId) return "";
-  if (role === "finance-desk") return `/finance/leads/${encodeURIComponent(leadId)}`;
-  if (role === "gm") return `/gm/leads/${encodeURIComponent(leadId)}`;
-  if (role === "bank-manager") return `/bank-manager/leads/${encodeURIComponent(leadId)}`;
-  if (role === "loan-executive") return `/loan-executive/leads/${encodeURIComponent(leadId)}`;
-  if (role === "super-admin") return `/admin/leads/${encodeURIComponent(leadId)}`;
-  return "";
-}
-
-function GlobalDashboardSearch({ user }) {
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [rows, setRows] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const boxRef = useRef(null);
-  const trimmed = query.trim();
-
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, []);
-
-  useEffect(() => {
-    if (trimmed.length < 2) {
-      setRows([]);
-      setLoading(false);
-      return undefined;
-    }
-    const params = { q: trimmed, limit: 8 };
-    const cached = getCachedGetData("/dashboard/search", params);
-    if (cached?.data) setRows(cached.data);
-    setLoading(!cached?.data);
-    const handle = window.setTimeout(async () => {
-      try {
-        const response = await api.get("/dashboard/search", { params, silent: true });
-        setRows(response.data?.data || []);
-        setOpen(true);
-      } catch {
-        setRows([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 220);
-    return () => window.clearTimeout(handle);
-  }, [trimmed]);
-
-  const choose = (row) => {
-    const path = leadPathForRole(user?.role, row.leadId || row.id);
-    if (!path) return;
-    setOpen(false);
-    setQuery("");
-    navigate(path);
-  };
-
-  return (
-    <div ref={boxRef} className="relative hidden min-w-[14rem] max-w-md flex-1 xl:block">
-      <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 focus-within:border-[#0d47a1] focus-within:ring-2 focus-within:ring-blue-100">
-        <Search className="h-4 w-4 shrink-0 text-slate-400" />
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder="Search case, customer, mobile"
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-        />
-      </label>
-      {open && trimmed.length >= 2 ? (
-        <div className="absolute left-0 right-0 top-12 z-50 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
-          {loading ? <p className="px-3 py-3 text-sm text-slate-500">Searching...</p> : null}
-          {!loading && !rows.length ? <p className="px-3 py-3 text-sm text-slate-500">No matching cases.</p> : null}
-          {rows.map((row) => (
-            <button key={row.id || row.leadId} type="button" onClick={() => choose(row)} className="block w-full border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50">
-              <span className="block text-sm font-semibold text-slate-900">{row.caseId || row.leadId}</span>
-              <span className="mt-0.5 block truncate text-xs text-slate-500">{row.customerName || "Customer"} {row.mobile ? `- ${row.mobile}` : ""}</span>
-              <span className="mt-0.5 block truncate text-xs text-slate-400">{row.bankName || row.executiveName || row.dealershipName || row.status || "Case"}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -383,7 +292,6 @@ export function DashboardLayout() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <GlobalDashboardSearch user={user} />
               <NotificationCenter />
               <PortalUserMenu user={user} onLogout={handleLogout} />
             </div>

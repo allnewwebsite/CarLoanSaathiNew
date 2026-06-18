@@ -52,16 +52,6 @@ const RECENT_LEAD_FIELDS = [
   "salespersonName",
 ];
 
-const SEARCH_RESULT_FIELDS = [
-  ...RECENT_LEAD_FIELDS,
-  "mobile",
-  "assignedExecutiveEmail",
-  "assignedBankIfsc",
-  "dealerEmail",
-  "deadCaseReason",
-  "isDeadCase",
-];
-
 async function recentLeadsForUser(user = {}) {
   const query = { page: 1, limit: 8 };
   const projected = await queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null);
@@ -120,59 +110,6 @@ export async function getFastDashboard(req, res, next) {
       recentRecords,
       notifications: notificationRows.slice(0, 5),
       nextCursor: recent?.nextCursor || null,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function searchDashboard(req, res, next) {
-  try {
-    const q = String(req.query.q || req.query.search || "").trim();
-    if (q.length < 2) {
-      return res.json({ data: [], query: q, limit: 0, source: "empty" });
-    }
-    const query = { search: q, page: 1, limit: Math.min(Math.max(Number(req.query.limit || 8), 1), 12) };
-    const projected = await queryLeadProjectionForUser({
-      user: req.user,
-      query,
-      fields: SEARCH_RESULT_FIELDS,
-      requestId: req.requestId,
-    }).catch(() => null);
-    let result = projected;
-    let source = "projection";
-    if (!result) {
-      source = "fallback";
-      if (req.user.role === ROLES.SUPER_ADMIN) result = await queryAllLeads({ query, fields: SEARCH_RESULT_FIELDS });
-      else if ([ROLES.FINANCE_DESK, ROLES.GM].includes(req.user.role)) result = await queryDealershipLeads({ dealershipId: req.user.dealershipId, query, fields: SEARCH_RESULT_FIELDS, requestId: req.requestId });
-      else if (req.user.role === ROLES.BANK_MANAGER) result = await queryBankLeads({ bankId: req.user.bankId, query, fields: SEARCH_RESULT_FIELDS });
-      else if (req.user.role === ROLES.LOAN_EXECUTIVE) result = await queryExecutiveLeads({ executiveId: req.user.uid, executiveEmail: req.user.email, query, fields: SEARCH_RESULT_FIELDS });
-      else {
-        const error = new Error("Dashboard role is not allowed");
-        error.status = 403;
-        throw error;
-      }
-    }
-    const rows = (result?.data || []).slice(0, query.limit).map((lead) => ({
-      id: lead.id || lead.leadId || lead.sourceId,
-      leadId: lead.leadId || lead.id || lead.sourceId,
-      caseId: lead.caseId || "",
-      customerName: lead.fullName || lead.customerName || "",
-      mobile: lead.mobile || "",
-      status: lead.status || "",
-      bankName: lead.assignedBankName || lead.bankName || "",
-      executiveName: lead.assignedExecutiveName || lead.assignedExecutiveEmail || "",
-      dealershipName: lead.dealershipName || lead.dealerEmail || lead.dealershipId || "",
-      isDeadCase: lead.isDeadCase === true,
-      createdAt: lead.createdAt || null,
-      updatedAt: lead.updatedAt || null,
-    }));
-    res.set("Cache-Control", "private, max-age=20, stale-while-revalidate=120").json({
-      data: rows,
-      query: q,
-      limit: query.limit,
-      nextCursor: result?.nextCursor || null,
-      source,
     });
   } catch (error) {
     next(error);

@@ -1,9 +1,9 @@
-import { Download, Pencil, Plus, RotateCcw, Search, X } from "lucide-react";
+import { Download, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api } from "../../services/api.js";
-import { formatPortalDateTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { formatPortalDateTime } from "../../utils/portalDisplay.js";
 import { DEAD_CASE_REASONS } from "./finance/financeLeadPage.helpers.js";
 
 const PAGE_SIZE = 20;
@@ -12,14 +12,12 @@ const HEADERS = [
   "Customer",
   "Bank",
   "Executive",
-  "Current Status",
   "Dead Reason",
   "Dead Notes",
   "Dead Date",
-  "Marked By",
-  "Actions",
 ];
-const CSV_HEADERS = HEADERS.filter((header) => header !== "Actions");
+const CSV_HEADERS = HEADERS;
+const DEAD_CASE_COLUMN_TEMPLATE = "minmax(92px,0.8fr) minmax(120px,1fr) minmax(110px,0.9fr) minmax(120px,0.95fr) minmax(130px,1.1fr) minmax(170px,1.5fr) minmax(120px,0.9fr)";
 const DEAD_CASE_ENDPOINTS = {
   finance: "/dealer/dead-cases",
   gm: "/gm/dead-cases",
@@ -37,6 +35,11 @@ const AUDIENCE_LABELS = {
 
 function value(input) {
   return String(input || "").trim() || "-";
+}
+
+function clipped(input, className = "") {
+  const text = value(input);
+  return <span className={`block max-w-full truncate ${className}`} title={text}>{text}</span>;
 }
 
 function leadIds(lead = {}) {
@@ -59,11 +62,9 @@ function downloadCsv(rows, audience) {
     lead.fullName || lead.customerName,
     lead.assignedBankName || lead.bankName,
     lead.assignedExecutiveName || lead.assignedExecutiveEmail,
-    portalLeadStatusLabel(lead),
     lead.deadCaseReason,
     lead.deadCaseNotes,
     formatPortalDateTime(lead.deadCaseDate),
-    lead.deadCaseBy,
   ]);
   const csv = [CSV_HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -158,6 +159,7 @@ export function DeadCasesPage({ audience = "finance" }) {
     try {
       await api.post(`/dealer/dead-cases/${lead.id}/restore`);
       setRows((current) => current.filter((item) => item.id !== lead.id));
+      setEditLead(null);
     } finally {
       setActionId("");
       load({ silent: true });
@@ -238,39 +240,19 @@ export function DeadCasesPage({ audience = "finance" }) {
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
-      value(lead.caseId || lead.id),
-      value(lead.fullName || lead.customerName),
-      value(lead.assignedBankName || lead.bankName),
-      value(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
-      portalLeadStatusLabel(lead),
-      value(lead.deadCaseReason),
-      value(lead.deadCaseNotes),
-      formatPortalDateTime(lead.deadCaseDate),
-      value(lead.deadCaseBy),
       canModify ? (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => openEdit(lead)}
-            disabled={actionId === lead.id}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={() => restoreCase(lead)}
-            disabled={actionId === lead.id}
-            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Restore
-          </button>
-        </div>
-      ) : "Read only",
+        <button type="button" onClick={() => openEdit(lead)} className="block max-w-full truncate text-left font-semibold text-[#0d47a1]" title={value(lead.caseId || lead.id)}>
+          {value(lead.caseId || lead.id)}
+        </button>
+      ) : clipped(lead.caseId || lead.id, "font-semibold text-slate-800"),
+      clipped(lead.fullName || lead.customerName),
+      clipped(lead.assignedBankName || lead.bankName),
+      clipped(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
+      clipped(lead.deadCaseReason),
+      clipped(lead.deadCaseNotes),
+      formatPortalDateTime(lead.deadCaseDate),
     ],
-  })), [actionId, canModify, openEdit, restoreCase, rows]);
+  })), [canModify, openEdit, rows]);
 
   return (
     <section className="space-y-4">
@@ -338,6 +320,10 @@ export function DeadCasesPage({ audience = "finance" }) {
         hasMore={hasMore}
         onPage={setPage}
         pageSize={PAGE_SIZE}
+        gridTemplateColumns={DEAD_CASE_COLUMN_TEMPLATE}
+        tableMinWidth="0"
+        fitToWidth
+        rowHeight={36}
       />
       {addOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
@@ -411,6 +397,10 @@ export function DeadCasesPage({ audience = "finance" }) {
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
               <button type="button" onClick={() => setEditLead(null)} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700">Cancel</button>
+              <button type="button" onClick={() => restoreCase(editLead)} disabled={actionId === editLead.id} className="inline-flex h-9 items-center gap-1 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700 disabled:opacity-50">
+                <RotateCcw className="h-3.5 w-3.5" />
+                {actionId === editLead.id ? "Restoring..." : "Restore"}
+              </button>
               <button type="button" onClick={saveEdit} disabled={actionId === editLead.id} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white disabled:opacity-50">
                 {actionId === editLead.id ? "Saving..." : "Confirm"}
               </button>

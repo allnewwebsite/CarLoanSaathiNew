@@ -124,6 +124,9 @@ export const OperationalTable = memo(function OperationalTable({
   height = 520,
   rowHeight = 32,
   action = null,
+  gridTemplateColumns: gridTemplateColumnsOverride = "",
+  tableMinWidth: tableMinWidthOverride = "",
+  fitToWidth = false,
 }) {
   const renderInfo = useMemo(() => markTableRenderStart({ component: "OperationalTable", title }), [title, rows?.length]);
   useRenderDiagnostics("OperationalTable", { title: title || "", rowCount: rows?.length || 0 });
@@ -132,8 +135,8 @@ export const OperationalTable = memo(function OperationalTable({
   const visibleRows = rows;
   const hasRows = visibleRows.length > 0;
   const useVirtual = hasRows && visibleRows.length >= virtualizeAt;
-  const gridTemplateColumns = useMemo(() => headers.map(columnTemplate).join(" "), [headers]);
-  const tableMinWidth = useMemo(() => `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`, [headers]);
+  const gridTemplateColumns = useMemo(() => gridTemplateColumnsOverride || headers.map(columnTemplate).join(" "), [gridTemplateColumnsOverride, headers]);
+  const tableMinWidth = useMemo(() => tableMinWidthOverride || `${Math.max(headers.reduce((sum, head) => sum + columnWidth(head), 0), 720)}px`, [headers, tableMinWidthOverride]);
   const mobileRows = useMemo(() => visibleRows.slice(0, Math.min(Math.max(pageSize, 20), 30)), [pageSize, visibleRows]);
 
   useEffect(() => {
@@ -152,8 +155,8 @@ export const OperationalTable = memo(function OperationalTable({
           {action}
         </div>
       )}
-      <div className="overflow-x-auto overscroll-x-contain">
-        <div role="table" className="hidden min-w-full text-left text-xs md:block" style={{ minWidth: tableMinWidth, width: tableMinWidth }}>
+      <div className={fitToWidth ? "overflow-x-hidden" : "overflow-x-auto overscroll-x-contain"}>
+        <div role="table" className="hidden min-w-full text-left text-xs md:block" style={{ minWidth: tableMinWidth, width: fitToWidth ? "100%" : tableMinWidth }}>
           <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
               {headers.map((head) => <div role="columnheader" key={head} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1.5 leading-4" title={head}>{head}</div>)}

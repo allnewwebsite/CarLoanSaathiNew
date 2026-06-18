@@ -127,8 +127,8 @@ function unique(values = []) {
 
 function leadRealtimeScopes(lead = {}) {
   const dealershipIds = unique([lead.dealershipId, lead.dealershipEmail, lead.dealerEmail, lead.createdBy]);
-  const bankIds = unique([lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.assignedBankName]);
-  const executiveIds = unique([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.updatedByExecutiveId]);
+  const bankIds = unique([lead.bankId, lead.assignedBankId, lead.assignedPartnerId, lead.bankPartner, lead.bankName, lead.assignedBankName, lead.bankEmail, lead.assignedBankEmail]);
+  const executiveIds = unique([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.updatedByExecutiveId, lead.executiveEmail, lead.loanExecutiveId, lead.assignedExecutiveName, lead.assignedExecutiveMobile, lead.executiveMobile]);
   const branchIds = unique([
     lead.branchId,
     lead.bankBranchId,
@@ -274,7 +274,7 @@ function canReceiveEvent(user = {}, event = {}) {
     return sameBank && sameBranch;
   }
   if (user.role === "loan-executive") {
-    const executiveIds = unique([user.uid, user.email]);
+    const executiveIds = unique([user.uid, user.email, user.assignedExecutiveId, user.executiveId, user.name, user.mobile]);
     return executiveIds.some((id) => scopes.executiveIds?.includes(id) || scopes.recipientIds?.includes(id)) || scopes.recipientIds?.includes(userEmail);
   }
   return false;
