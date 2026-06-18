@@ -25,6 +25,13 @@ const ROLE_LOGIN_PORTALS = {
   "loan-executive": "loan-executive",
   "super-admin": "admin",
 };
+const ROLE_LOGIN_PATHS = {
+  "finance-desk": "/finance/login",
+  "gm": "/gm/login",
+  "bank-manager": "/bank/login",
+  "loan-executive": "/executive/login",
+  "super-admin": "/admin/login",
+};
 
 const FIREBASE_CONTINUE_PATHS = {
   dealer: "/dealer-registration/verify-email",
@@ -87,14 +94,19 @@ function registrationAccountError(message, code) {
   return error;
 }
 
-function wrongPortalError() {
+function wrongPortalError(role = "") {
   const error = new Error("You are not authorized to access this portal.");
   error.code = "WRONG_PORTAL";
+  const loginPortal = ROLE_LOGIN_PORTALS[role] || "";
   error.response = {
     status: 403,
     data: {
       code: "WRONG_PORTAL",
       message: error.message,
+      role,
+      correctPortal: loginPortal,
+      redirectTo: ROLE_LOGIN_PATHS[role] || "",
+      actionLabel: "Go to Correct Login",
     },
   };
   return error;
@@ -245,7 +257,7 @@ export function AuthProvider({ children }) {
     const allowedRoles = LOGIN_PORTAL_ROLES[String(targetPortal || portal || "").trim().toLowerCase()] || [];
     const expectedLoginPortal = ROLE_LOGIN_PORTALS[session.role] || "";
     if (!allowedRoles.includes(session.role) || (session.loginPortal && session.loginPortal !== expectedLoginPortal)) {
-      throw wrongPortalError();
+      throw wrongPortalError(session.role);
     }
     applySession(session, response.data.token);
     detachFirebaseCredentialSession();

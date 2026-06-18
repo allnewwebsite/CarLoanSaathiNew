@@ -1,9 +1,13 @@
 const PORTAL_LOGIN_PATHS = {
   dealer: "/dealer/login",
   finance: "/finance/login",
+  gm: "/gm/login",
   bank: "/bank/login",
+  "bank-manager": "/bank/login",
   executive: "/executive/login",
+  "loan-executive": "/executive/login",
   admin: "/admin/login",
+  "super-admin": "/admin/login",
 };
 
 const CREATE_ACCOUNT_PATHS = {

@@ -149,10 +149,15 @@ function organizationIdForAccount(account = {}) {
   return account.dealershipId || account.bankId || null;
 }
 
-function wrongLoginPortalPayload() {
+function wrongLoginPortalPayload(role = "") {
+  const guidance = roleGuidance(role);
   return {
     code: "WRONG_PORTAL",
     message: "You are not authorized to access this portal.",
+    role,
+    correctPortal: loginPortalForRole(role) || portalForRole(role),
+    redirectTo: guidance.redirectTo,
+    actionLabel: guidance.actionLabel,
   };
 }
 
@@ -1101,14 +1106,14 @@ export async function login(req, res, next) {
     timings.identityMs = Date.now() - identityStartedAt;
     if (account?.role && !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "wrong-login-portal", req });
-      return res.status(403).json(wrongLoginPortalPayload());
+      return res.status(403).json(wrongLoginPortalPayload(account.role));
     }
     if (!account || !ROLE_ROUTES[account.role]) {
       authPhase = "resolve-known-account";
       const knownAccount = await accountForAnyPortal(normalizedEmail, firebaseUid, { identityContext, skipPortals: [portal] });
       if (knownAccount?.role && (!portalAllowsRole(portal, knownAccount.role) || !loginPortalAllowsRole(requestedLoginPortal, knownAccount.role))) {
         await writeLoginActivity({ email: normalizedEmail, role: knownAccount.role, status: "denied", reason: "wrong-portal", req });
-        return res.status(403).json(wrongLoginPortalPayload());
+        return res.status(403).json(wrongLoginPortalPayload(knownAccount.role));
       }
       if (knownAccount?.role && portalAllowsRole(portal, knownAccount.role) && !accountActive(knownAccount)) {
         const inactive = inactiveAccountMessage(knownAccount);
@@ -1335,7 +1340,7 @@ export async function restoreSession(req, res, next) {
     }
     if (!portalAllowsRole(requestedPortal, account.role) || !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
       await writeLoginActivity({ email: normalizedEmail, role: account.role, status: "denied", reason: "restore-wrong-portal", req });
-      return res.status(403).json(wrongLoginPortalPayload());
+      return res.status(403).json(wrongLoginPortalPayload(account.role));
     }
     if (!accountActive(account)) {
       const inactive = inactiveAccountMessage(account);
@@ -1502,7 +1507,7 @@ export async function lookupAccountForLogin(req, res, next) {
     if (account?.role) {
       const accountPortal = portalForRole(account.role);
       if (!portalAllowsRole(portal, account.role) || !loginPortalAllowsRole(requestedLoginPortal, account.role)) {
-        return res.json({ exists: true, ...wrongLoginPortalPayload() });
+        return res.json({ exists: true, ...wrongLoginPortalPayload(account.role) });
       }
       if (!firebaseUser) {
         return res.json({
