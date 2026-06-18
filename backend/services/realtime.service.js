@@ -9,6 +9,7 @@ const EVENT_BUFFER_LIMIT = 500;
 const REALTIME_REDIS_CHANNEL = "cls:realtime:events:v1";
 const clients = new Map();
 const clientsByIdentity = new Map();
+const clientsByDispatchKey = new Map();
 const eventBuffer = [];
 const instanceId = crypto.randomUUID();
 let redisPublisher = null;
@@ -219,6 +220,85 @@ function realtimeClientIdentity(user = {}) {
   ].map(scope).filter(Boolean).join(":");
 }
 
+function dispatchKey(type, value) {
+  const normalized = scope(value);
+  return normalized ? `${type}:${normalized}` : "";
+}
+
+function dispatchKeysForClient(user = {}) {
+  const keys = new Set([dispatchKey("role", user.role)]);
+  unique([user.uid, user.email]).forEach((id) => keys.add(dispatchKey("recipient", id)));
+  if (["finance-desk", "gm"].includes(user.role)) {
+    unique([user.dealershipId, user.organizationId, user.email, user.uid]).forEach((id) => {
+      keys.add(dispatchKey("dealership", id));
+    });
+  }
+  if (user.role === "bank-manager") {
+    unique([user.bankId, user.bankName, user.email, user.uid]).forEach((id) => {
+      keys.add(dispatchKey("bank", id));
+    });
+  }
+  if (user.role === "loan-executive") {
+    unique([user.uid, user.email, user.assignedExecutiveId, user.executiveId, user.name, user.mobile]).forEach((id) => {
+      keys.add(dispatchKey("executive", id));
+      keys.add(dispatchKey("recipient", id));
+    });
+  }
+  return [...keys].filter(Boolean);
+}
+
+function candidateKeysForEvent(event = {}) {
+  const keys = new Set([dispatchKey("role", "super-admin")]);
+  const scopes = event.scopes || {};
+  if (event.kind === "bank" && event.publicCatalog === true) {
+    ["finance-desk", "gm"].forEach((role) => keys.add(dispatchKey("role", role)));
+  }
+  if (event.kind === "dealer" && event.publicDealerCatalog === true) {
+    ["finance-desk", "gm", "bank-manager", "loan-executive"].forEach((role) => keys.add(dispatchKey("role", role)));
+  }
+  unique(scopes.dealershipIds).forEach((id) => keys.add(dispatchKey("dealership", id)));
+  unique(scopes.bankIds).forEach((id) => keys.add(dispatchKey("bank", id)));
+  unique(scopes.executiveIds).forEach((id) => keys.add(dispatchKey("executive", id)));
+  unique(scopes.recipientIds).forEach((id) => {
+    keys.add(dispatchKey("recipient", id));
+    keys.add(dispatchKey("dealership", id));
+    keys.add(dispatchKey("executive", id));
+  });
+  return [...keys].filter(Boolean);
+}
+
+function addClientToDispatchIndex(client) {
+  const keys = dispatchKeysForClient(client.user);
+  client.dispatchKeys = keys;
+  keys.forEach((key) => {
+    if (!clientsByDispatchKey.has(key)) clientsByDispatchKey.set(key, new Set());
+    clientsByDispatchKey.get(key).add(client.id);
+  });
+}
+
+function removeClient(clientOrId) {
+  const client = typeof clientOrId === "string" ? clients.get(clientOrId) : clientOrId;
+  if (!client) return;
+  if (client.heartbeat) clearInterval(client.heartbeat);
+  clients.delete(client.id);
+  if (client.identity && clientsByIdentity.get(client.identity) === client.id) clientsByIdentity.delete(client.identity);
+  (client.dispatchKeys || []).forEach((key) => {
+    const bucket = clientsByDispatchKey.get(key);
+    if (!bucket) return;
+    bucket.delete(client.id);
+    if (!bucket.size) clientsByDispatchKey.delete(key);
+  });
+}
+
+function clientsForEvent(event = {}) {
+  const candidateIds = new Set();
+  candidateKeysForEvent(event).forEach((key) => {
+    clientsByDispatchKey.get(key)?.forEach((clientId) => candidateIds.add(clientId));
+  });
+  if (!candidateIds.size) return [];
+  return [...candidateIds].map((clientId) => clients.get(clientId)).filter(Boolean);
+}
+
 function closeDuplicateClient(identity = "", nextClientId = "") {
   if (!identity) return;
   const existingClientId = clientsByIdentity.get(identity);
@@ -234,9 +314,7 @@ function closeDuplicateClient(identity = "", nextClientId = "") {
   } catch {
     // Existing socket is already gone.
   }
-  if (existing.heartbeat) clearInterval(existing.heartbeat);
-  clients.delete(existingClientId);
-  clientsByIdentity.delete(identity);
+  removeClient(existing);
 }
 
 export function connectRealtimeClient({ user, req, res }) {
@@ -264,6 +342,7 @@ export function connectRealtimeClient({ user, req, res }) {
   const client = { id: clientId, identity, user, res, heartbeat };
   clients.set(clientId, client);
   if (identity) clientsByIdentity.set(identity, clientId);
+  addClientToDispatchIndex(client);
   recordRealtimeMetric({ eventType: "SSE_CONNECTED", activeClients: clients.size });
 
   const lastEventId = Number(req.headers["last-event-id"] || req.query.lastEventId || 0);
@@ -274,9 +353,7 @@ export function connectRealtimeClient({ user, req, res }) {
   }
 
   req.on("close", () => {
-    clients.delete(clientId);
-    if (identity && clientsByIdentity.get(identity) === clientId) clientsByIdentity.delete(identity);
-    clearInterval(heartbeat);
+    removeClient(clientId);
     recordRealtimeMetric({ eventType: "SSE_DISCONNECTED", activeClients: clients.size, disconnected: 1 });
   });
 }
@@ -289,7 +366,9 @@ function dispatchLocalEvent(event) {
   let delivered = 0;
   let errors = 0;
   let ignored = 0;
-  for (const client of clients.values()) {
+  let candidateCount = 0;
+  for (const client of clientsForEvent(event)) {
+    candidateCount += 1;
     if (!canReceiveEvent(client.user, event)) {
       ignored += 1;
       continue;
@@ -299,9 +378,7 @@ function dispatchLocalEvent(event) {
       delivered += 1;
     } catch {
       errors += 1;
-      if (client.heartbeat) clearInterval(client.heartbeat);
-      clients.delete(client.id);
-      if (client.identity && clientsByIdentity.get(client.identity) === client.id) clientsByIdentity.delete(client.identity);
+      removeClient(client);
     }
   }
   recordRealtimeMetric({
@@ -309,6 +386,7 @@ function dispatchLocalEvent(event) {
     delivered,
     errors,
     activeClients: clients.size,
+    candidateClients: candidateCount,
     durationMs: Date.now() - startedAt,
   });
   logInfo("SSE_EVENT_DELIVERED", {
@@ -316,6 +394,7 @@ function dispatchLocalEvent(event) {
     eventType: event.eventType,
     delivered,
     errors,
+    candidateClients: candidateCount,
     activeClients: clients.size,
     eventId: event.id,
   });
@@ -489,5 +568,5 @@ export function acknowledgeRealtimeEvents({ user = {}, eventIds = [], lastEventI
 }
 
 export function realtimeStats() {
-  return { clients: clients.size, bufferedEvents: eventBuffer.length, pendingTickets: pendingRealtimeTickets(), redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
+  return { clients: clients.size, dispatchBuckets: clientsByDispatchKey.size, bufferedEvents: eventBuffer.length, pendingTickets: pendingRealtimeTickets(), redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
 }

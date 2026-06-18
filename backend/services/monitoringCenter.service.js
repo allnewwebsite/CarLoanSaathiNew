@@ -133,6 +133,7 @@ export function recordRealtimeMetric(meta = {}) {
     delivered: Number(meta.delivered || 0),
     errors: Number(meta.errors || 0),
     activeClients: Number(meta.activeClients || 0),
+    candidateClients: Number(meta.candidateClients || 0),
     durationMs: Number(meta.durationMs || 0),
     disconnected: Number(meta.disconnected || 0),
   });
@@ -303,6 +304,7 @@ function realtimeSummary(realtimeItems, currentStats = {}) {
     disconnectedClients,
     disconnectStormThreshold: REALTIME_DISCONNECT_STORM_THRESHOLD,
     disconnectStormDetected: disconnectedClients >= REALTIME_DISCONNECT_STORM_THRESHOLD,
+    averageCandidateClients: average(realtimeItems.map((item) => item.candidateClients)),
     averageEventDeliveryMs: average(realtimeItems.map((item) => item.durationMs)),
   };
 }

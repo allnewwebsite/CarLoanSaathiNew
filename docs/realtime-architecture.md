@@ -32,7 +32,11 @@ to reload their authorized API scope.
 - There are no dashboard or session polling intervals.
 - Existing paginated APIs remain the source of truth.
 - Event bursts are debounced before API refresh.
+- Backend SSE connections are indexed by role and tenant scope so each event
+  evaluates only matching dispatch buckets before the final RBAC check.
 - Monitoring reports repeated API failures and SSE disconnect storms.
+- Realtime monitoring records average candidate clients and delivery duration to
+  expose fanout pressure before it becomes a user-facing issue.
 
 ## Operational Behavior
 
