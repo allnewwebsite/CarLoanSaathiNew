@@ -7,7 +7,7 @@ function isDateTimeHeader(header = "") {
 }
 
 function cellClassName(header = "") {
-  return `flex min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1 text-xs leading-4 text-slate-600 ${isDateTimeHeader(header) ? "whitespace-nowrap" : ""}`;
+  return `flex min-w-0 items-center overflow-hidden text-ellipsis px-3 py-2 text-[0.8125rem] leading-5 text-slate-600 lg:px-4 ${isDateTimeHeader(header) ? "whitespace-nowrap" : ""}`;
 }
 
 const VirtualRow = memo(function VirtualRow({ index, style, rows, headers, gridTemplateColumns }) {
@@ -28,22 +28,26 @@ function isPriorityHeader(header = "") {
 }
 
 function columnWidth(header = "") {
-  if (/action/i.test(header)) return 460;
-  if (/official email|email/i.test(header)) return 220;
-  if (/document/i.test(header)) return 130;
-  if (/status/i.test(header)) return 145;
-  if (/mobile/i.test(header)) return 145;
-  if (/amount|price/i.test(header)) return 150;
-  if (isDateTimeHeader(header)) return 190;
-  if (/ifsc/i.test(header)) return 140;
-  if (/case/i.test(header)) return 125;
-  return 150;
+  if (/action/i.test(header)) return 340;
+  if (/dead notes|notes|remark|description|reason/i.test(header)) return 240;
+  if (/customer|employee|executive|manager|dealership|bank name|branch name/i.test(header)) return 190;
+  if (/official email|email/i.test(header)) return 230;
+  if (/document/i.test(header)) return 160;
+  if (/status/i.test(header)) return 165;
+  if (/mobile|phone/i.test(header)) return 155;
+  if (/amount|price|payout|total|gst/i.test(header)) return 165;
+  if (isDateTimeHeader(header)) return 175;
+  if (/ifsc/i.test(header)) return 150;
+  if (/case|invoice|id$/i.test(header)) return 135;
+  if (/city|state|location/i.test(header)) return 150;
+  return 170;
 }
 
 function columnTemplate(header = "") {
   const width = columnWidth(header);
-  if (/action/i.test(header)) return `minmax(${width}px, 1.35fr)`;
-  if (/official email|email/i.test(header)) return `minmax(${width}px, 1.2fr)`;
+  if (/dead notes|notes|remark|description|reason/i.test(header)) return `minmax(${width}px, 1.35fr)`;
+  if (/action/i.test(header)) return `minmax(${width}px, 1.2fr)`;
+  if (/customer|employee|executive|manager|dealership|bank name|branch name|official email|email/i.test(header)) return `minmax(${width}px, 1.15fr)`;
   return `minmax(${width}px, 1fr)`;
 }
 
@@ -54,7 +58,7 @@ function MobileRows({ headers, rows }) {
         <article key={row.key} className="space-y-3 p-4">
           <div className="grid gap-2">
             {row.cells.map((cell, index) => (
-              <div key={`${row.key}-mobile-${index}`} className={index > 0 && !isPriorityHeader(headers[index]) ? "hidden" : ""}>
+            <div key={`${row.key}-mobile-${index}`} className={index > 0 && !isPriorityHeader(headers[index]) ? "hidden" : ""}>
                 <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">{headers[index]}</p>
                 <div className="mt-1 min-w-0 break-words text-sm text-slate-700">{cell}</div>
               </div>
@@ -84,9 +88,9 @@ function TableSkeletonRows({ headers, rows = 8, gridTemplateColumns }) {
   return (
     <div role="rowgroup" className="divide-y divide-slate-100 bg-white" aria-hidden="true">
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div role="row" key={rowIndex} className="grid w-full" style={{ gridTemplateColumns }}>
+            <div role="row" key={rowIndex} className="grid w-full" style={{ gridTemplateColumns }}>
           {headers.map((header, cellIndex) => (
-            <div key={`${header}-${cellIndex}`} role="cell" className="flex min-h-8 min-w-0 items-center px-2 py-1">
+            <div key={`${header}-${cellIndex}`} role="cell" className="flex min-h-11 min-w-0 items-center px-3 py-2 lg:px-4">
               <div className={`h-3 animate-pulse rounded bg-slate-200/85 ${cellIndex === 0 ? "w-3/4" : cellIndex % 3 === 0 ? "w-1/2" : "w-2/3"}`} />
             </div>
           ))}
@@ -122,7 +126,7 @@ export const OperationalTable = memo(function OperationalTable({
   pageSize = 10,
   virtualizeAt = 15,
   height = 520,
-  rowHeight = 32,
+  rowHeight = 44,
   action = null,
   gridTemplateColumns: gridTemplateColumnsOverride = "",
   tableMinWidth: tableMinWidthOverride = "",
@@ -155,11 +159,11 @@ export const OperationalTable = memo(function OperationalTable({
           {action}
         </div>
       )}
-      <div className={fitToWidth ? "overflow-x-hidden" : "overflow-x-auto overscroll-x-contain"}>
+      <div className={fitToWidth ? "overflow-x-hidden" : "enterprise-table-scroll overflow-x-auto overscroll-x-contain"}>
         <div role="table" className="hidden min-w-full text-left text-xs md:block" style={{ minWidth: tableMinWidth, width: fitToWidth ? "100%" : tableMinWidth }}>
-          <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+          <div role="rowgroup" className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 shadow-[0_1px_0_rgba(148,163,184,0.28)]">
             <div role="row" className="grid w-full bg-slate-50" style={{ gridTemplateColumns }}>
-              {headers.map((head) => <div role="columnheader" key={head} className="flex min-h-8 min-w-0 items-center overflow-hidden text-ellipsis px-2 py-1.5 leading-4" title={head}>{head}</div>)}
+              {headers.map((head) => <div role="columnheader" key={head} className="flex min-h-10 min-w-0 items-center overflow-hidden text-ellipsis px-3 py-2 font-semibold leading-4 tracking-[0.04em] lg:px-4" title={head}>{head}</div>)}
             </div>
           </div>
 
@@ -181,8 +185,8 @@ export const OperationalTable = memo(function OperationalTable({
           {hasRows && !useVirtual && (
             <div role="rowgroup" className="divide-y divide-slate-100 bg-white">
               {visibleRows.map((row) => (
-                <div role="row" key={row.key} className="grid w-full hover:bg-slate-50" style={{ gridTemplateColumns }}>
-                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className={`min-h-8 ${cellClassName(headers[index])}`} title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
+                <div role="row" key={row.key} className="grid w-full hover:bg-slate-50/80" style={{ gridTemplateColumns }}>
+                  {row.cells.map((cell, index) => <div role="cell" key={`${row.key}-${index}`} className={`min-h-11 ${cellClassName(headers[index])}`} title={typeof cell === "string" || typeof cell === "number" ? String(cell) : undefined}>{cell}</div>)}
                 </div>
               ))}
             </div>

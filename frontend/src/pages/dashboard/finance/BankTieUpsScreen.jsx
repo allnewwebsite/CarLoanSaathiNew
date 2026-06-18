@@ -27,7 +27,7 @@ function BranchListSkeleton({ rows = 6 }) {
   return (
     <div aria-hidden="true">
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div key={rowIndex} className="grid min-w-[900px] grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0">
+        <div key={rowIndex} className="grid min-w-[1040px] grid-cols-[52px_minmax(210px,1.3fr)_minmax(150px,1fr)_minmax(190px,1fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)] gap-4 border-b border-slate-100 px-4 py-3.5 last:border-b-0">
           <span className="h-4 w-4 animate-pulse rounded bg-slate-200" />
           <span className="h-4 w-2/3 animate-pulse rounded bg-slate-200" />
           <span className="h-4 w-3/4 animate-pulse rounded bg-slate-200/85" />
@@ -149,16 +149,16 @@ export function BankTieUpsScreen() {
         {error ? <p className="mt-3 rounded-md border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
         {message ? <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
         <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
-          <div className="grid min-w-[900px] grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium uppercase text-slate-500">
-            <span />
-            <span>Bank Name</span>
-            <span>IFSC Code</span>
-            <span>Branch Name</span>
-            <span>City</span>
-            <span>State</span>
-            <span>Approval Status</span>
-          </div>
-          <div className="overflow-x-auto">
+          <div className="enterprise-table-scroll overflow-x-auto">
+            <div className="grid min-w-[1040px] grid-cols-[52px_minmax(210px,1.3fr)_minmax(150px,1fr)_minmax(190px,1fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-slate-500">
+              <span />
+              <span>Bank Name</span>
+              <span>IFSC Code</span>
+              <span>Branch Name</span>
+              <span>City</span>
+              <span>State</span>
+              <span>Approval Status</span>
+            </div>
             {loading && !availableBranches.length ? (
               <BranchListSkeleton />
             ) : !availableBranches.length ? (
@@ -170,14 +170,14 @@ export function BankTieUpsScreen() {
                 const id = bankKey(branch);
                 const checked = selectedBranchIds.includes(id);
                 return (
-                  <label key={id} className="grid min-w-[900px] cursor-pointer grid-cols-[44px_1.3fr_1fr_1fr_1fr_1fr_130px] gap-3 border-b border-slate-100 px-3 py-3 text-sm text-slate-700 last:border-b-0 hover:bg-slate-50">
+                  <label key={id} className="grid min-w-[1040px] cursor-pointer grid-cols-[52px_minmax(210px,1.3fr)_minmax(150px,1fr)_minmax(190px,1fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)_minmax(150px,0.9fr)] gap-4 border-b border-slate-100 px-4 py-3.5 text-sm text-slate-700 last:border-b-0 hover:bg-slate-50">
                     <input type="checkbox" className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0d47a1] focus:ring-[#0d47a1]" checked={checked} onChange={() => toggleBranch(id)} />
-                    <span className="font-medium text-slate-900">{display(branch.bankName)}</span>
-                    <span>{display(branch.ifscCode)}</span>
-                    <span>{display(branch.branchName)}</span>
-                    <span>{display(branch.city)}</span>
-                    <span>{display(branch.state)}</span>
-                    <span className={branch.catalogMissing ? "text-amber-700" : "text-emerald-700"}>{branch.catalogMissing ? "tie-up saved" : branch.approvalStatus || "approved"}</span>
+                    <span className="truncate font-medium text-slate-900" title={display(branch.bankName)}>{display(branch.bankName)}</span>
+                    <span className="truncate" title={display(branch.ifscCode)}>{display(branch.ifscCode)}</span>
+                    <span className="truncate" title={display(branch.branchName)}>{display(branch.branchName)}</span>
+                    <span className="truncate" title={display(branch.city)}>{display(branch.city)}</span>
+                    <span className="truncate" title={display(branch.state)}>{display(branch.state)}</span>
+                    <span className={branch.catalogMissing ? "truncate text-amber-700" : "truncate text-emerald-700"} title={branch.catalogMissing ? "tie-up saved" : branch.approvalStatus || "approved"}>{branch.catalogMissing ? "tie-up saved" : branch.approvalStatus || "approved"}</span>
                   </label>
                 );
               })

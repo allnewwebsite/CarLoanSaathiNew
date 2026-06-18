@@ -24,13 +24,6 @@ const AUDIENCE_LABELS = {
   salesperson: "Salesperson",
   admin: "Super Admin",
 };
-const ROLE_COLUMN_TEMPLATES = {
-  finance: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
-  gm: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
-  bank: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
-  executive: "minmax(0,0.85fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,1.05fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.45fr) minmax(0,0.95fr)",
-  salesperson: "minmax(0,0.9fr) minmax(0,1.15fr) minmax(0,0.95fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.95fr) minmax(0,0.95fr) minmax(0,1.1fr) minmax(0,1.45fr) minmax(0,0.95fr)",
-};
 
 function value(input) {
   return String(input || "").trim() || "-";
@@ -245,7 +238,6 @@ export function DeadCasesPage({ audience = "finance" }) {
 
   const columns = useMemo(() => roleColumns(audience, canModify, openEdit), [audience, canModify, openEdit]);
   const headers = useMemo(() => columns.map((column) => column.header), [columns]);
-  const gridTemplateColumns = ROLE_COLUMN_TEMPLATES[audience] || ROLE_COLUMN_TEMPLATES.finance;
 
   const openAdd = useCallback(() => {
     if (!canModify) return;
@@ -381,10 +373,6 @@ export function DeadCasesPage({ audience = "finance" }) {
         hasMore={hasMore}
         onPage={setPage}
         pageSize={PAGE_SIZE}
-        gridTemplateColumns={gridTemplateColumns}
-        tableMinWidth="0"
-        fitToWidth
-        rowHeight={36}
       />
       {addOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
