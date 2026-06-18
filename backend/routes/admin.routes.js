@@ -13,9 +13,9 @@ import {
 import { getAdminLead, getAdminLeads, updateAdminLeadStatus } from "../controllers/adminLead.controller.js";
 import { deleteDealershipPermanently } from "../controllers/adminDealer.controller.js";
 import { deleteBankPermanently } from "../controllers/adminBank.controller.js";
-import { freezeAdminPartner, getAdminOnboardingRequests, getAdminPartners, getAdminWorkflowLogs, getAdminWorkflowSettings, updateAdminOnboardingRequest, updateAdminWorkflowSettings } from "../controllers/adminWorkflow.controller.js";
+import { freezeAdminPartner, getAdminOnboardingRequests, getAdminWorkflowLogs, getAdminWorkflowSettings, updateAdminOnboardingRequest, updateAdminWorkflowSettings } from "../controllers/adminWorkflow.controller.js";
 import { getAdminAuditLogs } from "../controllers/adminAudit.controller.js";
-import { getAdminAnalytics, getAdminEcosystem } from "../controllers/adminEcosystem.controller.js";
+import { getAdminAnalytics, getAdminEcosystem, getAdminPartners } from "../controllers/adminEcosystem.controller.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
