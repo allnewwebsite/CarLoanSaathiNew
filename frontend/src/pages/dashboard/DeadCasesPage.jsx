@@ -4,25 +4,16 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api } from "../../services/api.js";
 import { formatPortalDateTime } from "../../utils/portalDisplay.js";
+import { moneyValue } from "./financeDesk.helpers.js";
 import { DEAD_CASE_REASONS } from "./finance/financeLeadPage.helpers.js";
 
 const PAGE_SIZE = 20;
-const HEADERS = [
-  "Case ID",
-  "Customer",
-  "Bank",
-  "Executive",
-  "Dead Reason",
-  "Dead Notes",
-  "Dead Date",
-];
-const CSV_HEADERS = HEADERS;
-const DEAD_CASE_COLUMN_TEMPLATE = "minmax(92px,0.8fr) minmax(120px,1fr) minmax(110px,0.9fr) minmax(120px,0.95fr) minmax(130px,1.1fr) minmax(170px,1.5fr) minmax(120px,0.9fr)";
 const DEAD_CASE_ENDPOINTS = {
   finance: "/dealer/dead-cases",
   gm: "/gm/dead-cases",
   bank: "/bank/dead-cases",
   executive: "/bank/dead-cases",
+  salesperson: "/dealer/dead-cases",
   admin: "/admin/dead-cases",
 };
 const AUDIENCE_LABELS = {
@@ -30,7 +21,15 @@ const AUDIENCE_LABELS = {
   gm: "General Manager",
   bank: "Bank Manager",
   executive: "Loan Executive",
+  salesperson: "Salesperson",
   admin: "Super Admin",
+};
+const ROLE_COLUMN_TEMPLATES = {
+  finance: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
+  gm: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.95fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
+  bank: "minmax(0,0.8fr) minmax(0,1.05fr) minmax(0,0.85fr) minmax(0,0.8fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1fr) minmax(0,0.85fr) minmax(0,1.05fr) minmax(0,1.35fr) minmax(0,0.9fr)",
+  executive: "minmax(0,0.85fr) minmax(0,1.1fr) minmax(0,0.9fr) minmax(0,0.85fr) minmax(0,0.95fr) minmax(0,0.9fr) minmax(0,0.95fr) minmax(0,1.05fr) minmax(0,0.9fr) minmax(0,1.1fr) minmax(0,1.45fr) minmax(0,0.95fr)",
+  salesperson: "minmax(0,0.9fr) minmax(0,1.15fr) minmax(0,0.95fr) minmax(0,0.9fr) minmax(0,1fr) minmax(0,0.95fr) minmax(0,0.95fr) minmax(0,1.1fr) minmax(0,1.45fr) minmax(0,0.95fr)",
 };
 
 function value(input) {
@@ -40,6 +39,84 @@ function value(input) {
 function clipped(input, className = "") {
   const text = value(input);
   return <span className={`block max-w-full truncate ${className}`} title={text}>{text}</span>;
+}
+
+function displayDate(input) {
+  return formatPortalDateTime(input);
+}
+
+function customerName(lead = {}) {
+  return lead.fullName || lead.customerName;
+}
+
+function customerCity(lead = {}) {
+  return lead.city || lead.customerCity || lead.dealershipCity;
+}
+
+function assignedBank(lead = {}) {
+  return lead.assignedBankName || lead.bankName || lead.selectedBankName || lead.bankPartner;
+}
+
+function requiredLoan(lead = {}) {
+  return lead.requiredLoanAmount || lead.loanAmount;
+}
+
+function carPrice(lead = {}) {
+  return lead.carOnRoadPrice || lead.onRoadPrice || lead.carPrice;
+}
+
+function generatedDate(lead = {}) {
+  return lead.generatedAt || lead.createdAt;
+}
+
+function financeManager(lead = {}) {
+  return lead.financeManagerName || lead.assignedFinanceManager || lead.financeManagerEmail;
+}
+
+function financeManagerMobile(lead = {}) {
+  return lead.financeManagerMobile || lead.assignedFinanceManagerMobile;
+}
+
+function assignedExecutive(lead = {}) {
+  return lead.assignedExecutiveName || lead.assignedExecutiveEmail;
+}
+
+function executiveMobile(lead = {}) {
+  return lead.assignedExecutiveMobile || lead.executiveMobile;
+}
+
+function roleColumns(audience, canModify, openEdit) {
+  const caseColumn = {
+    header: "Case ID",
+    csv: (lead) => lead.caseId || lead.id,
+    cell: (lead) => canModify ? (
+      <button type="button" onClick={() => openEdit(lead)} className="block max-w-full truncate text-left font-semibold text-[#0d47a1]" title={value(lead.caseId || lead.id)}>
+        {value(lead.caseId || lead.id)}
+      </button>
+    ) : clipped(lead.caseId || lead.id, "font-semibold text-slate-800"),
+  };
+  const common = {
+    customer: { header: "Customer Name", csv: customerName, cell: (lead) => clipped(customerName(lead)) },
+    mobile: { header: "Mobile Number", csv: (lead) => lead.mobile || lead.customerMobile, cell: (lead) => clipped(lead.mobile || lead.customerMobile) },
+    city: { header: "Customer City", csv: customerCity, cell: (lead) => clipped(customerCity(lead)) },
+    assignedBank: { header: "Assigned Bank", csv: assignedBank, cell: (lead) => clipped(assignedBank(lead)) },
+    loanAmount: { header: "Loan Amount", csv: requiredLoan, cell: (lead) => clipped(moneyValue(requiredLoan(lead))) },
+    requiredLoan: { header: "Required Loan Amount", csv: requiredLoan, cell: (lead) => clipped(moneyValue(requiredLoan(lead))) },
+    carPrice: { header: "Car On-Road Price", csv: carPrice, cell: (lead) => clipped(moneyValue(carPrice(lead))) },
+    generatedDate: { header: "Generated Date", csv: (lead) => displayDate(generatedDate(lead)), cell: (lead) => clipped(displayDate(generatedDate(lead))) },
+    financeManager: { header: "Finance Manager", csv: financeManager, cell: (lead) => clipped(financeManager(lead)) },
+    financeManagerMobile: { header: "Finance Manager Mobile", csv: financeManagerMobile, cell: (lead) => clipped(financeManagerMobile(lead)) },
+    executive: { header: "Assigned Executive", csv: assignedExecutive, cell: (lead) => clipped(assignedExecutive(lead)) },
+    executiveMobile: { header: "Executive Mobile", csv: executiveMobile, cell: (lead) => clipped(executiveMobile(lead)) },
+    reason: { header: "Dead Reason", csv: (lead) => lead.deadCaseReason, cell: (lead) => clipped(lead.deadCaseReason) },
+    notes: { header: "Dead Notes", csv: (lead) => lead.deadCaseNotes, cell: (lead) => clipped(lead.deadCaseNotes) },
+    deadDate: { header: "Dead Date", csv: (lead) => displayDate(lead.deadCaseDate), cell: (lead) => clipped(displayDate(lead.deadCaseDate)) },
+  };
+  const financeGm = [caseColumn, common.customer, common.mobile, common.city, common.assignedBank, common.loanAmount, common.generatedDate, common.financeManager, common.executive, common.executiveMobile, common.reason, common.notes, common.deadDate];
+  if (audience === "bank") return [caseColumn, common.customer, common.mobile, common.city, common.carPrice, common.requiredLoan, common.generatedDate, common.financeManager, common.financeManagerMobile, common.executive, common.executiveMobile, common.reason, common.notes, common.deadDate];
+  if (audience === "executive") return [caseColumn, common.customer, common.mobile, common.city, common.carPrice, common.requiredLoan, common.generatedDate, common.financeManager, common.financeManagerMobile, common.reason, common.notes, common.deadDate];
+  if (audience === "salesperson") return [caseColumn, common.customer, common.mobile, common.city, common.assignedBank, common.requiredLoan, common.generatedDate, common.reason, common.notes, common.deadDate];
+  return financeGm;
 }
 
 function leadIds(lead = {}) {
@@ -56,17 +133,9 @@ function escapeCsv(input) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function downloadCsv(rows, audience) {
-  const data = rows.map((lead) => [
-    lead.caseId || lead.id,
-    lead.fullName || lead.customerName,
-    lead.assignedBankName || lead.bankName,
-    lead.assignedExecutiveName || lead.assignedExecutiveEmail,
-    lead.deadCaseReason,
-    lead.deadCaseNotes,
-    formatPortalDateTime(lead.deadCaseDate),
-  ]);
-  const csv = [CSV_HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
+function downloadCsv(rows, audience, columns) {
+  const data = rows.map((lead) => columns.map((column) => column.csv(lead)));
+  const csv = [columns.map((column) => column.header), ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -174,6 +243,10 @@ export function DeadCasesPage({ audience = "finance" }) {
     setEditError("");
   }, [canModify]);
 
+  const columns = useMemo(() => roleColumns(audience, canModify, openEdit), [audience, canModify, openEdit]);
+  const headers = useMemo(() => columns.map((column) => column.header), [columns]);
+  const gridTemplateColumns = ROLE_COLUMN_TEMPLATES[audience] || ROLE_COLUMN_TEMPLATES.finance;
+
   const openAdd = useCallback(() => {
     if (!canModify) return;
     setCaseNumber("");
@@ -239,20 +312,8 @@ export function DeadCasesPage({ audience = "finance" }) {
 
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
-    cells: [
-      canModify ? (
-        <button type="button" onClick={() => openEdit(lead)} className="block max-w-full truncate text-left font-semibold text-[#0d47a1]" title={value(lead.caseId || lead.id)}>
-          {value(lead.caseId || lead.id)}
-        </button>
-      ) : clipped(lead.caseId || lead.id, "font-semibold text-slate-800"),
-      clipped(lead.fullName || lead.customerName),
-      clipped(lead.assignedBankName || lead.bankName),
-      clipped(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
-      clipped(lead.deadCaseReason),
-      clipped(lead.deadCaseNotes),
-      formatPortalDateTime(lead.deadCaseDate),
-    ],
-  })), [canModify, openEdit, rows]);
+    cells: columns.map((column) => column.cell(lead)),
+  })), [columns, rows]);
 
   return (
     <section className="space-y-4">
@@ -301,7 +362,7 @@ export function DeadCasesPage({ audience = "finance" }) {
         </select>
         <button
           type="button"
-          onClick={() => downloadCsv(rows, audience)}
+          onClick={() => downloadCsv(rows, audience, columns)}
           disabled={!rows.length}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 px-4 text-sm font-medium text-slate-700 disabled:opacity-50"
         >
@@ -312,7 +373,7 @@ export function DeadCasesPage({ audience = "finance" }) {
 
       <OperationalTable
         title="Dead Cases"
-        headers={HEADERS}
+        headers={headers}
         rows={tableRows}
         loading={loading}
         page={page}
@@ -320,7 +381,7 @@ export function DeadCasesPage({ audience = "finance" }) {
         hasMore={hasMore}
         onPage={setPage}
         pageSize={PAGE_SIZE}
-        gridTemplateColumns={DEAD_CASE_COLUMN_TEMPLATE}
+        gridTemplateColumns={gridTemplateColumns}
         tableMinWidth="0"
         fitToWidth
         rowHeight={36}
