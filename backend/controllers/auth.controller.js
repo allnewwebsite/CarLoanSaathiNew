@@ -14,6 +14,7 @@ import {
   upsertCanonicalUser,
 } from "../services/identity.service.js";
 import { getDealershipSubscription } from "../services/subscription.service.js";
+import { verifyTemporaryPassword } from "../services/temporaryPassword.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { onboardingStatusForUser } from "../services/onboarding.service.js";
 
@@ -992,11 +993,39 @@ async function signInWithFirebasePassword(email, password) {
   throw lastError;
 }
 
+async function signInWithTemporaryPasswordFallback(email, password) {
+  if (!firebaseAdmin) return null;
+  const candidates = await findIdentityCandidates({ email });
+  const activeCandidates = candidates.filter(activeIdentity);
+  if (activeCandidates.length > 1) {
+    const error = new Error("Multiple active identities exist for this email. Contact support.");
+    error.status = 409;
+    error.code = "IDENTITY_COLLISION";
+    throw error;
+  }
+  const account = activeCandidates.find((item) => (
+    ["finance-desk", "gm", "loan-executive"].includes(item.role)
+    && item.firstLoginRequired === true
+    && !item.passwordChangedAt
+    && item.temporaryPasswordHash
+  ));
+  if (!account || !verifyTemporaryPassword(password, account.temporaryPasswordHash)) return null;
+  const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email).catch(() => null);
+  if (!firebaseUser || firebaseUser.disabled === true) return null;
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || email,
+    email_verified: firebaseUser.emailVerified === true,
+    temporaryPasswordFallback: true,
+  };
+}
+
 export async function login(req, res, next) {
   const loginStartedAt = Date.now();
   const timings = {};
   let authPhase = "start";
   let normalizedEmail = "";
+  let passwordFallbackDecoded = null;
   try {
     let { idToken } = req.body;
     const requestedLoginPortal = normalizeLoginPortal(req.body.targetPortal || req.body.portal);
@@ -1016,6 +1045,22 @@ export async function login(req, res, next) {
         idToken = await signInWithFirebasePassword(normalizedEmail, password);
         timings.firebasePasswordMs = Date.now() - startedAt;
       } catch (error) {
+        const fallbackStartedAt = Date.now();
+        passwordFallbackDecoded = await signInWithTemporaryPasswordFallback(normalizedEmail, password).catch((fallbackError) => {
+          if (fallbackError.code === "IDENTITY_COLLISION") throw fallbackError;
+          logWarn("Temporary password fallback failed", {
+            requestId: req.requestId,
+            message: fallbackError.message,
+          });
+          return null;
+        });
+        timings.temporaryPasswordFallbackMs = Date.now() - fallbackStartedAt;
+        if (passwordFallbackDecoded) {
+          logWarn("Firebase password sign-in failed; accepted temporary password fallback", {
+            requestId: req.requestId,
+            code: error.code || "firebase-auth-failed",
+          });
+        } else
         if (error.status === 401) {
           const result = await incrementFailedLogin(normalizedEmail, req, error.code || "firebase-auth-failed");
           if (result.locked) return res.status(423).json(accountLockedPayload({ lockedUntil: result.lockedUntil }));
@@ -1028,13 +1073,15 @@ export async function login(req, res, next) {
           });
           await writeLoginActivity({ email: normalizedEmail, status: "denied", reason: error.code || "firebase-auth-failed", req });
         }
-        return res.status(error.status || 500).json({ code: error.code, message: error.message });
+        if (!passwordFallbackDecoded) {
+          return res.status(error.status || 500).json({ code: error.code, message: error.message });
+        }
       }
     }
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     authPhase = "verify-firebase-token";
     const verifyStartedAt = Date.now();
-    const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+    const decoded = passwordFallbackDecoded || await firebaseAdmin.auth().verifyIdToken(idToken);
     timings.firebaseVerifyMs = Date.now() - verifyStartedAt;
     normalizedEmail = String(decoded.email || "").trim().toLowerCase();
     const firebaseUid = String(decoded.uid || "").trim();
@@ -1565,6 +1612,8 @@ export async function completeForcedPasswordChange(req, res, next) {
       firstLoginRequired: false,
       forcePasswordReset: false,
       temporaryPasswordRequired: false,
+      temporaryPasswordHash: null,
+      temporaryPasswordIssuedAt: null,
       firstLoginCompleted: true,
       passwordChangedAt: now,
       passwordExpiresAt,

@@ -27,6 +27,7 @@ import { paginationParams, pageResponse } from "../utils/pagination.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { hashTemporaryPassword } from "../services/temporaryPassword.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { queueDocumentsRequiredWhatsApp, queueLeadAssignedWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
@@ -1325,6 +1326,7 @@ export async function getBankExecutives(req, res, next) {
     const rows = executives
       .filter((executive) => executiveBelongsToBank(executive, identity))
       .map((executive) => {
+        const { temporaryPasswordHash: _temporaryPasswordHash, ...safeExecutive } = executive;
         const executiveId = executive.id || executive.email || executive.mobile;
         const cases = leads.filter((lead) =>
           lead.assignedExecutiveId === executiveId
@@ -1336,7 +1338,7 @@ export async function getBankExecutives(req, res, next) {
         );
         const activeCases = cases.filter((lead) => ![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED].includes(normalizeStatus(lead.status)));
         return {
-          ...executive,
+          ...safeExecutive,
           executiveId,
           totalAssignedCases: cases.length,
           currentActiveCases: activeCases.length,
@@ -1384,6 +1386,7 @@ export async function createBankExecutive(req, res, next) {
 
     const now = new Date().toISOString();
     const temporaryPassword = generateTemporaryPassword();
+    const temporaryPasswordHash = hashTemporaryPassword(temporaryPassword);
     if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
     let firebaseUser;
     let reusedExistingAuthUser = false;
@@ -1433,6 +1436,9 @@ export async function createBankExecutive(req, res, next) {
       createdByManagerId: partner.email || partner.id,
       createdByManager: true,
       firstLoginRequired: true,
+      temporaryPasswordRequired: true,
+      temporaryPasswordHash,
+      temporaryPasswordIssuedAt: now,
       passwordChangedAt: null,
       status: "active",
       active: true,
@@ -1464,6 +1470,9 @@ export async function createBankExecutive(req, res, next) {
       employeeId: req.body.employeeId || req.body.employeeCode || "",
       createdAt: now,
       firstLoginRequired: true,
+      temporaryPasswordRequired: true,
+      temporaryPasswordHash,
+      temporaryPasswordIssuedAt: now,
       passwordChangedAt: null,
       createdByManager: true,
       createdByManagerId: partner.email || partner.id,
@@ -1497,8 +1506,9 @@ export async function createBankExecutive(req, res, next) {
         },
       },
     });
+    const { temporaryPasswordHash: _temporaryPasswordHash, ...safeExecutive } = executive;
     res.status(201).json({
-      ...executive,
+      ...safeExecutive,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/executive/login`,
       temporaryPassword,
     });

@@ -14,6 +14,7 @@ import {
   ONBOARDING_PLANS,
 } from "../utils/onboardingPlan.js";
 import { errorResponse, successResponse } from "../utils/apiResponse.js";
+import { hashTemporaryPassword, verifyTemporaryPassword } from "../services/temporaryPassword.service.js";
 
 function mockResponse() {
   return {
@@ -97,4 +98,12 @@ test("standard API response helpers include request metadata", () => {
   assert.equal(failed.body.success, false);
   assert.equal(failed.body.errorCode, "NOPE");
   assert.equal(failed.body.requestId, "req-test");
+});
+
+test("temporary staff passwords are stored as verifiable non-plaintext hashes", () => {
+  const password = "CLS@1234x";
+  const hash = hashTemporaryPassword(password);
+  assert.notEqual(hash, password);
+  assert.equal(verifyTemporaryPassword(password, hash), true);
+  assert.equal(verifyTemporaryPassword("CLS@9999x", hash), false);
 });

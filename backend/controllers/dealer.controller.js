@@ -21,6 +21,7 @@ import {
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { hashTemporaryPassword } from "../services/temporaryPassword.service.js";
 import { cached, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { paginationParams } from "../utils/pagination.js";
@@ -1830,6 +1831,7 @@ export async function createDealerStaff(req, res, next) {
     const branch = String(req.body.branch || city || dealership.dealershipName || "").trim();
     const dealershipName = dealership.dealershipName || dealership.name || "";
     const temporaryPassword = generateTemporaryPassword();
+    const temporaryPasswordHash = hashTemporaryPassword(temporaryPassword);
     let firebaseUser;
     try {
       firebaseUser = await firebaseAdmin.auth().createUser({
@@ -1880,6 +1882,9 @@ export async function createDealerStaff(req, res, next) {
       createdByDealerAdmin: true,
       createdByDealerAdminId: dealerEmail(req),
       firstLoginRequired: true,
+      temporaryPasswordRequired: true,
+      temporaryPasswordHash,
+      temporaryPasswordIssuedAt: now,
       passwordChangedAt: null,
       status: "active",
       active: true,
@@ -1925,6 +1930,9 @@ export async function createDealerStaff(req, res, next) {
       address: dealership.address || "",
       createdAt: now,
       firstLoginRequired: true,
+      temporaryPasswordRequired: true,
+      temporaryPasswordHash,
+      temporaryPasswordIssuedAt: now,
       passwordChangedAt: null,
       createdByDealerAdmin: true,
       createdByDealerAdminId: dealerEmail(req),
@@ -1940,8 +1948,9 @@ export async function createDealerStaff(req, res, next) {
     });
     await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
     syncStaffViewProjectionSoon(staffPayload);
+    const { temporaryPasswordHash: _temporaryPasswordHash, ...safeStaffPayload } = staffPayload;
     res.status(201).json({
-      ...staffPayload,
+      ...safeStaffPayload,
       portalLogin: `${process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://carloansaathi.com"}/gm/login`,
       temporaryPassword,
     });
