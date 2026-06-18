@@ -1,5 +1,5 @@
 import { createRecord, incrementRecord, listRecentRecords } from "../services/firestore.service.js";
-import { clearCachedValue } from "../services/ttlCache.service.js";
+import { clearCachedTags, clearCachedValue } from "../services/ttlCache.service.js";
 import { logError } from "../services/logger.service.js";
 
 export async function approvalLog({ req, entityType, entityId, previousStatus, newStatus, rejectionReason = "" }) {
@@ -84,9 +84,7 @@ export const APPROVAL_LIST_FIELDS = [
 export const APPROVAL_LIST_PROJECTION_FIELDS = APPROVAL_LIST_FIELDS;
 
 export function clearAdminApprovalCaches() {
-  clearCachedValue("admin:approvals:");
-  clearCachedValue("admin:ecosystem:");
-  clearCachedValue("admin:partners:");
+  clearCachedTags(["admin:approvals", "admin:ecosystem", "admin:partners", "admin:summary"]);
 }
 
 export function runAdminSideEffects(label, tasks = []) {
@@ -96,14 +94,7 @@ export function runAdminSideEffects(label, tasks = []) {
 }
 
 export function clearLeadMutationCaches(leadId) {
-  clearCachedValue(`lead-detail:${leadId}:`);
-  clearCachedValue(`timeline:lead:${leadId}:`);
-  clearCachedValue("admin:");
-  clearCachedValue("bank:");
-  clearCachedValue("dealer:");
-  clearCachedValue("finance:");
-  clearCachedValue("gm:");
-  clearCachedValue("lead-query:");
+  clearCachedTags(["lead:list", "admin:summary", "bank:summary", ...(leadId ? [`lead:${leadId}`] : [])]);
 }
 
 export function safeAdminUser(user = {}) {

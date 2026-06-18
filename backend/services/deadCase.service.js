@@ -4,7 +4,7 @@ import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { createNotification } from "./notification.service.js";
 import { syncLeadProjection } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
-import { clearCachedValue } from "./ttlCache.service.js";
+import { clearCachedTags } from "./ttlCache.service.js";
 import { DEAD_CASE_REASONS } from "../utils/deadCase.js";
 
 function clean(value = "") {
@@ -63,9 +63,7 @@ function assertDealershipAccess(req, lead = {}) {
 }
 
 function clearLeadCaches(leadId) {
-  clearCachedValue(`lead-detail:${leadId}:`);
-  clearCachedValue(`timeline:lead:${leadId}:`);
-  ["admin:", "bank:", "dealer:", "finance:", "gm:", "lead-query:"].forEach(clearCachedValue);
+  clearCachedTags(["lead:list", "admin:summary", "bank:summary", ...(leadId ? [`lead:${leadId}`] : [])]);
 }
 
 async function notifyDeadCaseChange({ lead, eventType, title, message, req }) {

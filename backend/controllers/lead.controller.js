@@ -12,7 +12,7 @@ import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "..
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
-import { clearCachedValue } from "../services/ttlCache.service.js";
+import { clearCachedTags } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 
@@ -44,14 +44,7 @@ function runLeadSideEffects(label, tasks = []) {
 }
 
 function clearLeadMutationCaches(leadId) {
-  clearCachedValue(`lead-detail:${leadId}:`);
-  clearCachedValue(`timeline:lead:${leadId}:`);
-  clearCachedValue("admin:");
-  clearCachedValue("bank:");
-  clearCachedValue("dealer:");
-  clearCachedValue("finance:");
-  clearCachedValue("gm:");
-  clearCachedValue("lead-query:");
+  clearCachedTags(["lead:list", "admin:summary", "bank:summary", ...(leadId ? [`lead:${leadId}`] : [])]);
 }
 
 function authenticatedDealershipId(req, fallbackEmail) {

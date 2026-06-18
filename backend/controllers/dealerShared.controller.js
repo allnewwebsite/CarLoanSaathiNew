@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { hashTemporaryPassword } from "../services/temporaryPassword.service.js";
-import { cached, clearCachedValue } from "../services/ttlCache.service.js";
+import { cached, clearCachedTags, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { paginationParams } from "../utils/pagination.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
@@ -72,6 +72,7 @@ export {
   upsertCanonicalUser,
   hashTemporaryPassword,
   cached,
+  clearCachedTags,
   clearCachedValue,
   publishRealtimeEvent,
   REALTIME_EVENTS,
@@ -183,16 +184,17 @@ export async function validateDealerLeadAssignees({ salespersonId, financeManage
 }
 
 export function clearLeadSyncCaches(leadId = "") {
-  clearCachedValue("gm:salespersons:");
-  clearCachedValue("gm:notifications:");
-  clearCachedValue("bank:notifications:");
-  clearCachedValue("bank:executives:");
-  clearCachedValue("bank:executive-cases:");
-  clearCachedValue("dealer:finance-managers:");
-  if (leadId) {
-    clearCachedValue(`lead-detail:${leadId}:`);
-    clearCachedValue(`timeline:lead:${leadId}:`);
-  }
+  clearCachedTags([
+    "lead:list",
+    "bank:summary",
+    "gm:salespersons",
+    "gm:notifications",
+    "bank:notifications",
+    "bank:executives",
+    "bank:executive-cases",
+    "dealer:finance-managers",
+    ...(leadId ? [`lead:${leadId}`] : []),
+  ]);
 }
 
 export function branchIdsFromRequest(value) {

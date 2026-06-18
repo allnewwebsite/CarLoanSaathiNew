@@ -28,7 +28,7 @@ import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
 import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
 import { hashTemporaryPassword } from "../services/temporaryPassword.service.js";
-import { cached, clearCachedValue } from "../services/ttlCache.service.js";
+import { cached, clearCachedTags, clearCachedValue } from "../services/ttlCache.service.js";
 import { queueDocumentsRequiredWhatsApp, queueLeadAssignedWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
@@ -116,6 +116,7 @@ export {
   upsertCanonicalUser,
   hashTemporaryPassword,
   cached,
+  clearCachedTags,
   clearCachedValue,
   queueDocumentsRequiredWhatsApp,
   queueLeadAssignedWhatsApp,
@@ -351,25 +352,23 @@ export async function requireAssignedLead(req) {
 }
 
 export function clearLeadDetailCaches(leadId) {
-  clearCachedValue(`lead-detail:${leadId}:`);
-  clearCachedValue(`timeline:lead:${leadId}:`);
+  clearCachedTags(`lead:${leadId}`);
 }
 
 export function clearBankSummaryCaches() {
-  clearCachedValue("admin:");
-  clearCachedValue("bank:");
-  clearCachedValue("dealer:");
-  clearCachedValue("finance:");
-  clearCachedValue("gm:");
-  clearCachedValue("bank:analytics:");
-  clearCachedValue("bank:notifications:");
-  clearCachedValue("bank:executives:");
-  clearCachedValue("bank:executive-cases:");
-  clearCachedValue("bank:dealerships:");
-  clearCachedValue("bank:leads:");
-  clearCachedValue("gm:notifications:");
-  clearCachedValue("gm:salespersons:");
-  clearCachedValue("lead-query:");
+  clearCachedTags([
+    "lead:list",
+    "bank:summary",
+    "admin:summary",
+    "bank:analytics",
+    "bank:notifications",
+    "bank:executives",
+    "bank:executive-cases",
+    "bank:dealerships",
+    "bank:leads",
+    "gm:notifications",
+    "gm:salespersons",
+  ]);
 }
 
 export function safeProjectionDocId(value) {
