@@ -180,6 +180,7 @@ service cloud.firestore {
         "isDeadCase",
         "deadCaseDate",
         "deadCaseBy",
+        "deadCaseByRole",
         "deadCaseReason",
         "deadCaseNotes",
         "deadCaseUpdatedAt",

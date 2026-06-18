@@ -33,6 +33,17 @@ export function assertDeadNotes(notes = "") {
   return value;
 }
 
+function assertCaseNumber(caseNumber = "") {
+  const value = clean(caseNumber).toUpperCase();
+  if (!value || !/^CLS-[A-Z0-9-]+$/i.test(value)) {
+    const error = new Error("Invalid Case Number");
+    error.status = 400;
+    error.code = "INVALID_CASE_NUMBER";
+    throw error;
+  }
+  return value;
+}
+
 function assertFinanceDesk(req) {
   if (req.user?.role === "finance-desk") return;
   const error = new Error("Only Finance Desk can modify dead cases.");
@@ -154,21 +165,30 @@ export async function moveLeadToDeadCase({ req, leadId, reason, notes }) {
   assertFinanceDesk(req);
   const lead = await getRecord("leads", leadId);
   if (!lead) {
-    const error = new Error("Lead not found.");
+    const error = new Error("Case Not Found");
     error.status = 404;
+    error.code = "CASE_NOT_FOUND";
     throw error;
   }
   assertDealershipAccess(req, lead);
+  if (lead.isDeadCase === true) {
+    const error = new Error("Case Already In Dead Cases");
+    error.status = 409;
+    error.code = "CASE_ALREADY_DEAD";
+    throw error;
+  }
   const now = new Date().toISOString();
+  const actor = req.user?.email || req.user?.uid || "finance-desk";
   return persistDeadCaseChange({
     req,
     lead,
     patch: {
       isDeadCase: true,
       deadCaseDate: lead.deadCaseDate || now,
-        deadCaseBy: req.user?.email || req.user?.uid || "finance-desk",
-        deadCaseReason: assertDeadReason(reason),
-        deadCaseNotes: assertDeadNotes(notes),
+      deadCaseBy: actor,
+      deadCaseByRole: req.user?.role || "finance-desk",
+      deadCaseReason: assertDeadReason(reason),
+      deadCaseNotes: assertDeadNotes(notes),
       deadCaseUpdatedAt: now,
     },
     actionType: AUDIT_ACTIONS.LEAD_MARKED_DEAD,
@@ -176,6 +196,16 @@ export async function moveLeadToDeadCase({ req, leadId, reason, notes }) {
     timelineTitle: "Moved To Dead Cases",
     timelineDescription: "Finance Desk marked this case as no longer actively pursued.",
     eventType: REALTIME_EVENTS.DEAD_CASE_CREATED,
+  });
+}
+
+export async function moveCaseNumberToDeadCase({ req, caseNumber, reason, notes }) {
+  const validCaseNumber = assertCaseNumber(caseNumber);
+  return moveLeadToDeadCase({
+    req,
+    leadId: validCaseNumber,
+    reason,
+    notes,
   });
 }
 

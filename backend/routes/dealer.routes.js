@@ -13,9 +13,9 @@ import {
   verifyFinanceSubscriptionPayment,
 } from "../controllers/subscription.controller.js";
 import {
+  createFinanceDeadCase,
   getFinanceDeadCase,
   getFinanceDeadCases,
-  markFinanceLeadDead,
   restoreFinanceDeadCase,
   updateFinanceDeadCase,
 } from "../controllers/deadCase.controller.js";
@@ -33,12 +33,12 @@ router.post("/billing/verify", billingRateLimit, verifyFinanceSubscriptionPaymen
 router.use(requireDashboardSubscription);
 router.get("/leads", getDealerLeads);
 router.get("/dead-cases", getFinanceDeadCases);
+router.post("/dead-cases", createFinanceDeadCase);
 router.get("/dead-cases/:id", getFinanceDeadCase);
 router.post("/dead-cases/:id/restore", restoreFinanceDeadCase);
 router.patch("/dead-cases/:id", updateFinanceDeadCase);
 router.get("/leads/:id", getDealerLead);
 router.post("/leads", requireLeadCreationSubscription, createDealerLead);
-router.post("/leads/:id/dead-case", markFinanceLeadDead);
 router.get("/salespersons", getDealerSalespersons);
 router.post("/salespersons", createDealerSalesperson);
 router.delete("/salespersons/:id", removeDealerSalesperson);

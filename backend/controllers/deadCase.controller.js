@@ -1,6 +1,6 @@
 import { getRecord, queryRecords } from "../services/firestore.service.js";
 import { getAuditLogs } from "../services/audit.service.js";
-import { moveLeadToDeadCase, restoreDeadCase, updateDeadCaseMetadata } from "../services/deadCase.service.js";
+import { moveCaseNumberToDeadCase, moveLeadToDeadCase, restoreDeadCase, updateDeadCaseMetadata } from "../services/deadCase.service.js";
 import { queryDeadCases } from "../services/leadQuery.service.js";
 
 function dealershipIdFromUser(user = {}) {
@@ -110,6 +110,20 @@ export async function markFinanceLeadDead(req, res, next) {
       notes: req.body?.notes || req.body?.deadCaseNotes,
     });
     return res.json(updated);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function createFinanceDeadCase(req, res, next) {
+  try {
+    const updated = await moveCaseNumberToDeadCase({
+      req,
+      caseNumber: req.body?.caseNumber || req.body?.caseId,
+      reason: req.body?.reason || req.body?.deadCaseReason,
+      notes: req.body?.notes || req.body?.deadCaseNotes,
+    });
+    return res.status(201).json(updated);
   } catch (error) {
     return next(error);
   }

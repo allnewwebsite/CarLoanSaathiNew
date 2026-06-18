@@ -28,7 +28,7 @@ const [
 
 const { createRecord, getRecord, queryRecords, updateRecord } = firestoreModule;
 const { queryAllLeads, queryDeadCases } = leadQueryModule;
-const { moveLeadToDeadCase, restoreDeadCase } = deadCaseModule;
+const { moveCaseNumberToDeadCase, moveLeadToDeadCase, restoreDeadCase } = deadCaseModule;
 const { publishRealtimeEvent, REALTIME_EVENTS } = realtimeModule;
 const { initializeDealershipTrial, subscriptionSnapshot } = subscriptionModule;
 
@@ -177,6 +177,55 @@ test("dead cases leave active lists, enter dead-case lists, search by reason, an
   assert.equal(afterRestoreActive.data.some((lead) => lead.id === deadLead.id), true);
   const afterRestoreDead = await queryDeadCases({ dealershipId, query: { limit: 50 } });
   assert.equal(afterRestoreDead.data.some((lead) => lead.id === deadLead.id), false);
+});
+
+test("Finance Desk can add a dead case by case number only when the case is valid and active", async () => {
+  const dealershipId = `dealer-dead-case-number-${Date.now()}`;
+  const req = financeReq(dealershipId);
+  const lead = await fixtureLead({ dealershipId, caseId: `CLS-NUMBER-${Date.now()}` });
+
+  await assert.rejects(
+    () => moveCaseNumberToDeadCase({
+      req,
+      caseNumber: "bad-number",
+      reason: "Customer Not Interested",
+      notes: "Customer declined.",
+    }),
+    (error) => {
+      assert.equal(error.code, "INVALID_CASE_NUMBER");
+      assert.equal(error.message, "Invalid Case Number");
+      assert.equal(error.status, 400);
+      return true;
+    },
+  );
+
+  const moved = await moveCaseNumberToDeadCase({
+    req,
+    caseNumber: lead.caseId,
+    reason: "Customer Not Interested",
+    notes: "Customer purchased elsewhere.",
+  });
+
+  assert.equal(moved.id, lead.id);
+  assert.equal(moved.isDeadCase, true);
+  assert.equal(moved.status, lead.status);
+  assert.equal(moved.assignedExecutiveId, lead.assignedExecutiveId);
+  assert.equal(moved.deadCaseByRole, "finance-desk");
+
+  await assert.rejects(
+    () => moveCaseNumberToDeadCase({
+      req,
+      caseNumber: lead.caseId,
+      reason: "Customer Not Interested",
+      notes: "Duplicate attempt.",
+    }),
+    (error) => {
+      assert.equal(error.code, "CASE_ALREADY_DEAD");
+      assert.equal(error.message, "Case Already In Dead Cases");
+      assert.equal(error.status, 409);
+      return true;
+    },
+  );
 });
 
 test("GM, bank, and executive users cannot mutate dead cases", async () => {
