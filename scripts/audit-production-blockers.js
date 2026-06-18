@@ -26,9 +26,9 @@ function assertCheck(name, condition) {
 const checks = [];
 const catalogRoutes = read("backend/routes/catalog.routes.js");
 const catalogService = read("backend/services/catalog.service.js");
-const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminApprovals.controller.js");
-const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
-const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerStaff.controller.js");
+const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminShared.controller.js", "backend/controllers/adminApprovals.controller.js");
+const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankExecutive.controller.js");
+const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerShared.controller.js", "backend/controllers/dealerStaff.controller.js");
 const financeDeskPanel = readCombined(
   "frontend/src/pages/dashboard/FinanceDeskPanel.jsx",
   "frontend/src/pages/dashboard/finance/StaffManagementScreen.jsx",

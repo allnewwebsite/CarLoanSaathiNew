@@ -59,7 +59,7 @@ check("uploads directory is created before Multer writes", () => {
 
 check("production auth logging does not expose token or session details", () => {
   const authContext = readAuthContext();
-  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js");
+  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authShared.controller.js", "backend/controllers/authLogin.controller.js");
   assert(!authContext.includes("[CLS auth]"), "frontend auth decision logging must remain disabled");
   assert(!authContext.includes("logAuthDecision"), "frontend auth session details must not be written to console");
   const backendLogStatements = [...authController.matchAll(/log(?:Info|Warn|Error)\([^;]+?\);/gs)].map((match) => match[0]).join("\n");
@@ -104,7 +104,7 @@ check("SSE is the only dashboard realtime transport", () => {
 });
 
 check("executive lifecycle propagates over SSE", () => {
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankExecutive.controller.js");
   const realtimeService = read("backend/services/realtime.service.js");
   includesAll(realtimeService, ["BANK_EXECUTIVE_CREATED", "BANK_EXECUTIVE_DELETED"], "realtime executive events");
   includesAll(bankController, [
@@ -311,7 +311,7 @@ check("bank executive management exposes only view and permanent delete", () => 
     "frontend/src/pages/bank/BankExecutiveManagementPage.jsx",
     "frontend/src/pages/bank/BankExecutiveManagementParts.jsx",
   );
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankExecutive.controller.js");
   includesAll(bankRoutes, ["router.delete(\"/executives/:executiveId\""], "bank executive routes");
   assert(!bankRoutes.includes("/executives/:executiveId/lifecycle"), "bank executive lifecycle route must be removed");
   assert(!bankRoutes.includes("/executives/:executiveId/reset-password"), "bank executive reset-password route must be removed");
@@ -345,7 +345,7 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
     "frontend/src/pages/bank/ReassignLeadDialog.jsx",
     "frontend/src/pages/bank/bankManager.hooks.js",
   );
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankLeadWorkflow.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankLeadWorkflow.controller.js");
   const assignmentService = read("backend/services/assignment.service.js");
   const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js", "backend/services/firestoreTransaction.service.js");
   const projectionService = readCombined("backend/services/projection.service.js", "backend/services/projectionCore.service.js", "backend/services/projectionLead.service.js");
@@ -379,7 +379,7 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
 });
 
 check("bank analytics uses maintained aggregate data", () => {
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankAnalytics.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankAnalytics.controller.js");
   const aggregateService = read("backend/services/bankAnalyticsAggregate.service.js");
   const firestoreService = readCombined(
     "backend/services/firestore.service.js",
@@ -493,8 +493,8 @@ check("Redis queues and realtime pubsub are explicit opt-in", () => {
 
 check("registration email verification gates remain enforced", () => {
   const authContext = readAuthContext();
-  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerRegistration.controller.js");
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankRegistration.controller.js");
+  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerShared.controller.js", "backend/controllers/dealerRegistration.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankRegistration.controller.js");
   const router = read("frontend/src/routes/router.jsx");
   includesAll(authContext, [
     "dealer: \"/dealer-registration/verify-email\"",
@@ -555,9 +555,9 @@ check("dealership GSTIN is restored while bank GSTIN stays removed", () => {
     "frontend/src/pages/public/BankRegistration.jsx",
     "frontend/src/pages/public/BankRegistrationParts.jsx",
   );
-  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerRegistration.controller.js");
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankRegistration.controller.js");
-  const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminApprovals.controller.js");
+  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerShared.controller.js", "backend/controllers/dealerRegistration.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankRegistration.controller.js");
+  const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminShared.controller.js", "backend/controllers/adminApprovals.controller.js");
   const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
   const superAdminDealership = readCombined(
     "frontend/src/pages/dashboard/SuperAdminDashboard.jsx",
@@ -625,7 +625,7 @@ check("dashboard Firestore cost optimizations stay in place", () => {
 });
 
 check("auth hot path avoids avoidable Firestore reads and writes", () => {
-  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js");
+  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authShared.controller.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js");
   includesAll(authController, [
     "AUTH_ENTITLEMENT_CACHE_TTL_MS",
     "auth:dealership-entitlement:",
