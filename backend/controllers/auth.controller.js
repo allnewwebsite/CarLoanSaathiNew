@@ -32,7 +32,7 @@ const PORTAL_ROLES = {
   admin: ["super-admin"],
 };
 const LOGIN_PORTAL_ROLES = {
-  finance: ["finance-desk"],
+  finance: ["finance-desk", "gm"],
   gm: ["gm"],
   "bank-manager": ["bank-manager"],
   "loan-executive": ["loan-executive"],

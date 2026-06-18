@@ -9,7 +9,7 @@ const SESSION_VALIDATE_FRESHNESS_MS = 5 * 60 * 1000;
 const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
 const LOGIN_PORTAL_ROLES = {
   dealer: ["finance-desk"],
-  finance: ["finance-desk"],
+  finance: ["finance-desk", "gm"],
   gm: ["gm"],
   bank: ["bank-manager"],
   "bank-manager": ["bank-manager"],
