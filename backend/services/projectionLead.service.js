@@ -1,4 +1,4 @@
-import { PROJECTION_VERSION } from "./projectionCore.service.js";
+import { PROJECTION_VERSION } from "./projectionShared.service.js";
 import * as core from "./projectionCore.service.js";
 
 export { PROJECTION_VERSION };
