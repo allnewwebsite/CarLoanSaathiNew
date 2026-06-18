@@ -29,7 +29,11 @@ function between(text, start, end) {
 }
 
 const frontendGuard = read("frontend/src/routes/RoleProtectedRoute.jsx");
-const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+const authContext = readCombined(
+  "frontend/src/context/AuthContext.jsx",
+  "frontend/src/context/AuthContextCore.jsx",
+  "frontend/src/context/AuthContext.helpers.js",
+);
 const authSessionManager = read("frontend/src/services/authSessionManager.js");
 const apiClient = readCombined(
   "frontend/src/services/api.js",
@@ -147,9 +151,9 @@ assertCheck(
 );
 assertCheck(
   "dashboard sidebar prefetches all portal tabs",
-  readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("function prefetchSpecsForRoute")
-    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("nav.forEach((item, index)")
-    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
+  readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("function prefetchSpecsForRoute")
+    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("nav.forEach((item, index)")
+    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
 );
 assertCheck(
   "CORS allows portal header required by login",

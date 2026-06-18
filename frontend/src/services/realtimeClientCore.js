@@ -1,5 +1,18 @@
-import { api, apiBaseUrl, invalidateGetCache } from "./api.js";
+import { api, apiBaseUrl } from "./api.js";
 import { getStoredUser } from "./authSessionManager.js";
+import {
+  ACK_FLUSH_MS,
+  HEARTBEAT_TIMEOUT_MS,
+  LEADER_HEARTBEAT_MS,
+  LEADER_TTL_MS,
+  PHASE_ONE_EVENTS,
+  REALTIME_EVENT_CHANNEL,
+  REALTIME_EVENT_STORAGE_KEY,
+  REALTIME_LEADER_PREFIX,
+  REALTIME_OWNER_KEY,
+  TAB_ID,
+} from "./realtimeClient.constants.js";
+import { invalidateRealtimeCaches, mutationPayload } from "./realtimeClient.events.js";
 
 let source = null;
 let connectPromise = null;
@@ -16,37 +29,6 @@ let realtimeEventChannel = null;
 let realtimeListenersReady = false;
 let isLeaderTab = false;
 const pendingAckIds = new Set();
-const MUTATION_KINDS = new Set(["document", "notification", "staff", "bank", "dealer", "subscription"]);
-
-const HEARTBEAT_TIMEOUT_MS = 45_000;
-const ACK_FLUSH_MS = 2_000;
-const LEADER_HEARTBEAT_MS = 5_000;
-const LEADER_TTL_MS = 15_000;
-const REALTIME_EVENT_CHANNEL = "cls_realtime_event_v1";
-const REALTIME_EVENT_STORAGE_KEY = "cls_realtime_event_v1";
-const REALTIME_LEADER_PREFIX = "cls_realtime_leader_v1";
-const REALTIME_OWNER_KEY = "__CLS_REALTIME_CLIENT_OWNER";
-const TAB_ID = (() => {
-  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-})();
-
-const PHASE_ONE_EVENTS = new Set([
-  "LEAD_CREATED",
-  "LEAD_STATUS_UPDATED",
-  "LEAD_REMARK_ADDED",
-  "DOCUMENT_UPLOADED",
-]);
-
-function leadUrlForEvent(event = {}) {
-  if (event.kind === "document") return "/documents";
-  if (event.kind === "notification") return "/notifications";
-  if (event.kind === "staff") return "/dealer/staff";
-  if (event.kind === "bank") return "/banks";
-  if (event.kind === "dealer") return "/dealers";
-  if (event.kind === "subscription") return "/dealer/billing";
-  return "/lead-mutation";
-}
 
 function realtimeStorageKey() {
   const user = getStoredUser() || {};
@@ -217,84 +199,6 @@ function scheduleLeaderHeartbeat() {
     }
     if (!readLeader(activeIdentity)) connect().catch(() => {});
   }, LEADER_HEARTBEAT_MS);
-}
-
-function mutationPayload(event = {}) {
-  const url = leadUrlForEvent(event);
-  const kind = MUTATION_KINDS.has(event.kind) ? event.kind : "lead";
-  return {
-    realtime: true,
-    url,
-    canonicalUrl: event.kind === "lead" || event.kind === "document" ? "/lead-mutation" : url,
-    kind,
-    event: event.event || event.eventType,
-    eventType: event.eventType || event.event,
-    leadId: event.leadId || event.lead?.leadId || "",
-    caseId: event.caseId || event.lead?.caseId || "",
-    status: event.status || event.lead?.status || "",
-    dealershipId: event.dealershipId || event.lead?.dealershipId || "",
-    bankId: event.bankId || event.lead?.bankId || "",
-    executiveId: event.executiveId || event.lead?.assignedExecutiveId || "",
-    financeManagerId: event.financeManagerId || event.lead?.financeManagerId || "",
-    salespersonId: event.salespersonId || event.lead?.salespersonId || "",
-    lead: event.lead || null,
-    bankEvent: event.bankEvent || null,
-    dealerEvent: event.dealerEvent || null,
-    notification: event.notification || null,
-    document: event.document || null,
-    at: Date.now(),
-    source: "sse",
-  };
-}
-
-function invalidateRealtimeCaches(event = {}) {
-  if (event.kind === "notification") {
-    return;
-  }
-  if (event.kind === "staff") {
-    invalidateGetCache({ prefix: "/dealer/staff", purge: true });
-    invalidateGetCache({ prefix: "/dealer/salespersons", purge: true });
-    invalidateGetCache({ prefix: "/dealer/finance-managers", purge: true });
-    invalidateGetCache({ prefix: "/gm/salespersons", purge: true });
-    return;
-  }
-  if (event.kind === "bank") {
-    invalidateGetCache({ prefix: "/catalog/banks", purge: true });
-    invalidateGetCache({ prefix: "/bank/executives", purge: true });
-    invalidateGetCache({ prefix: "/bank/analytics", purge: true });
-    invalidateGetCache({ prefix: "/bank/leads", purge: true });
-    invalidateGetCache({ prefix: "/dealer/available-banks", purge: true });
-    invalidateGetCache({ prefix: "/dealer/bank-tieups", purge: true });
-    invalidateGetCache({ prefix: "/admin/approvals/banks", purge: true });
-    return;
-  }
-  if (event.kind === "dealer") {
-    invalidateGetCache({ prefix: "/admin/approvals/dealerships", purge: true });
-    invalidateGetCache({ prefix: "/admin/dealerships", purge: true });
-    invalidateGetCache({ prefix: "/dealer/profile", purge: true });
-    invalidateGetCache({ prefix: "/dashboard", purge: true });
-    invalidateGetCache({ prefix: "/bank/dealerships", purge: true });
-    invalidateGetCache({ prefix: "/executive/dealerships", purge: true });
-    return;
-  }
-  if (event.kind === "subscription") {
-    invalidateGetCache({ prefix: "/dealer/billing", purge: true });
-    return;
-  }
-  [
-    "/admin/leads",
-    "/admin/dead-cases",
-    "/bank/leads",
-    "/bank/dead-cases",
-    "/bank/analytics",
-    "/dealer/leads",
-    "/dealer/dead-cases",
-    "/gm/leads",
-    "/gm/dead-cases",
-    "/timeline",
-    "/notifications",
-    "/dashboard",
-  ].forEach((prefix) => invalidateGetCache({ prefix, purge: true }));
 }
 
 function dispatchRealtimeEvent(event = {}, { remote = false } = {}) {

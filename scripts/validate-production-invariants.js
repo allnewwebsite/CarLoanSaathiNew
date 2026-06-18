@@ -16,6 +16,23 @@ function readCombined(...relativePaths) {
   return relativePaths.map(readIfExists).join("\n");
 }
 
+function readAuthContext() {
+  return readCombined(
+    "frontend/src/context/AuthContext.jsx",
+    "frontend/src/context/AuthContextCore.jsx",
+    "frontend/src/context/AuthContext.helpers.js",
+  );
+}
+
+function readRealtimeClient() {
+  return readCombined(
+    "frontend/src/services/realtimeClient.js",
+    "frontend/src/services/realtimeClientCore.js",
+    "frontend/src/services/realtimeClient.constants.js",
+    "frontend/src/services/realtimeClient.events.js",
+  );
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -41,7 +58,7 @@ check("uploads directory is created before Multer writes", () => {
 });
 
 check("production auth logging does not expose token or session details", () => {
-  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const authContext = readAuthContext();
   const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js");
   assert(!authContext.includes("[CLS auth]"), "frontend auth decision logging must remain disabled");
   assert(!authContext.includes("logAuthDecision"), "frontend auth session details must not be written to console");
@@ -52,8 +69,8 @@ check("production auth logging does not expose token or session details", () => 
 
 check("SSE is the only dashboard realtime transport", () => {
   const realtimeHook = read("frontend/src/hooks/useRealtimeRefresh.js");
-  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
-  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const realtimeClient = readRealtimeClient();
+  const authContext = readAuthContext();
   const monitoringCenter = read("frontend/src/pages/dashboard/AdminMonitoringCenter.jsx");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/realtimeManager.js")), "legacy Firestore realtime manager must be removed");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/firestoreListeners.js")), "legacy Firestore listener helpers must be removed");
@@ -153,7 +170,7 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   const errorBoundary = read("frontend/src/components/ErrorBoundary.jsx");
   const router = read("frontend/src/routes/router.jsx");
   const viteConfig = read("frontend/vite.config.js");
-  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const authContext = readAuthContext();
   const api = readCombined("frontend/src/services/api.js", "frontend/src/services/apiAppCheck.js");
   const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
   const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
@@ -199,7 +216,11 @@ check("lead creation and lead status APIs remain registered", () => {
 });
 
 check("subscription billing is server-verified and blocks only lead creation", () => {
-  const subscriptionService = readCombined("backend/services/subscription.service.js", "backend/services/subscriptionCore.service.js");
+  const subscriptionService = readCombined(
+    "backend/services/subscription.service.js",
+    "backend/services/subscriptionCore.service.js",
+    "backend/services/subscriptionPlan.service.js",
+  );
   const subscriptionMiddleware = read("backend/middleware/subscription.js");
   const dealerRoutes = read("backend/routes/dealer.routes.js");
   const leadRoutes = read("backend/routes/lead.routes.js");
@@ -260,8 +281,8 @@ check("subscription billing is server-verified and blocks only lead creation", (
 
 check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
-  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
-  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const realtimeClient = readRealtimeClient();
+  const authContext = readAuthContext();
   const authMiddleware = read("backend/middleware/auth.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
@@ -359,7 +380,7 @@ check("bank analytics uses maintained aggregate data", () => {
     "frontend/src/pages/bank/BankAnalyticsPage.jsx",
   );
   const apiService = readCombined("frontend/src/services/api.js", "frontend/src/services/apiMutationEvents.js", "frontend/src/services/apiCache.js");
-  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
+  const realtimeClient = readRealtimeClient();
   includesAll(bankController, [
     "getBankAnalyticsAggregate",
     "source: \"bank-analytics-aggregates\"",
@@ -389,12 +410,16 @@ check("bank analytics uses maintained aggregate data", () => {
 });
 
 check("WhatsApp business notifications are idempotent and backend-only", () => {
-  const whatsappService = readCombined("backend/services/whatsapp.service.js", "backend/services/whatsappCore.service.js");
+  const whatsappService = readCombined(
+    "backend/services/whatsapp.service.js",
+    "backend/services/whatsappCore.service.js",
+    "backend/services/whatsappTemplates.service.js",
+  );
   const notificationService = read("backend/services/notification.service.js");
   const queueService = read("backend/services/queue.service.js");
   const queueWorkers = read("backend/services/queueWorkers.service.js");
   const realtimeService = read("backend/services/realtime.service.js");
-  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
+  const realtimeClient = readRealtimeClient();
   const firestoreRules = read("firestore.rules");
   const firestoreIndexes = read("firestore.indexes.json");
   includesAll(whatsappService, [
@@ -450,7 +475,7 @@ check("Redis queues and realtime pubsub are explicit opt-in", () => {
 });
 
 check("registration email verification gates remain enforced", () => {
-  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const authContext = readAuthContext();
   const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerRegistration.controller.js");
   const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankRegistration.controller.js");
   const router = read("frontend/src/routes/router.jsx");
