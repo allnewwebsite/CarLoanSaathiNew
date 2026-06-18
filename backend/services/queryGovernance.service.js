@@ -57,6 +57,19 @@ export function assertPaginationSafe({ page = null, limit = QUERY_LIMITS.default
   return true;
 }
 
+export function assertCompositeIndexFallbackAllowed({ collection = "", where = [], orderBy = "" } = {}) {
+  if (process.env.NODE_ENV !== "production" || process.env.ALLOW_FIRESTORE_INDEX_FALLBACK === "true") return true;
+  const error = new Error("Required Firestore composite index is missing");
+  error.status = 503;
+  error.code = "FIRESTORE_COMPOSITE_INDEX_REQUIRED";
+  error.meta = {
+    collection,
+    orderBy,
+    where: where.map((clause) => ({ field: clause.field, op: clause.op || "==" })),
+  };
+  throw error;
+}
+
 export async function withQueryMonitoring({ collection, operation = "query", where = [], limit }, executor) {
   const started = Date.now();
   let timeout;

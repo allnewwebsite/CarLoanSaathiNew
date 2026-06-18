@@ -756,6 +756,14 @@
       ]
     },
     {
+      "collectionGroup": "pendingBankApprovals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "approvalLogs",
       "queryScope": "COLLECTION",
       "fields": [

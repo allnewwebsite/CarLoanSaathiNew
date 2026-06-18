@@ -15,6 +15,7 @@ import {
 } from "../utils/onboardingPlan.js";
 import { errorResponse, successResponse } from "../utils/apiResponse.js";
 import { hashTemporaryPassword, verifyTemporaryPassword } from "../services/temporaryPassword.service.js";
+import { assertCompositeIndexFallbackAllowed } from "../services/queryGovernance.service.js";
 
 function mockResponse() {
   return {
@@ -106,4 +107,36 @@ test("temporary staff passwords are stored as verifiable non-plaintext hashes", 
   assert.notEqual(hash, password);
   assert.equal(verifyTemporaryPassword(password, hash), true);
   assert.equal(verifyTemporaryPassword("CLS@9999x", hash), false);
+});
+
+test("production Firestore queries fail loudly when a composite index is missing", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousFallback = process.env.ALLOW_FIRESTORE_INDEX_FALLBACK;
+  process.env.NODE_ENV = "production";
+  delete process.env.ALLOW_FIRESTORE_INDEX_FALLBACK;
+  try {
+    assert.throws(
+      () => assertCompositeIndexFallbackAllowed({
+        collection: "leads",
+        where: [{ field: "dealershipId", value: "dealer-1" }],
+        orderBy: "createdAt",
+      }),
+      (error) => {
+        assert.equal(error.code, "FIRESTORE_COMPOSITE_INDEX_REQUIRED");
+        assert.equal(error.status, 503);
+        return true;
+      },
+    );
+    process.env.ALLOW_FIRESTORE_INDEX_FALLBACK = "true";
+    assert.doesNotThrow(() => assertCompositeIndexFallbackAllowed({
+      collection: "leads",
+      where: [{ field: "dealershipId", value: "dealer-1" }],
+      orderBy: "createdAt",
+    }));
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousFallback === undefined) delete process.env.ALLOW_FIRESTORE_INDEX_FALLBACK;
+    else process.env.ALLOW_FIRESTORE_INDEX_FALLBACK = previousFallback;
+  }
 });

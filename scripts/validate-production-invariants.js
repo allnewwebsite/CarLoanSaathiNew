@@ -20,6 +20,7 @@ function readAuthContext() {
   return readCombined(
     "frontend/src/context/AuthContext.jsx",
     "frontend/src/context/AuthContextCore.jsx",
+    "frontend/src/context/AuthContext.loaders.js",
     "frontend/src/context/AuthContext.helpers.js",
   );
 }
@@ -28,6 +29,7 @@ function readRealtimeClient() {
   return readCombined(
     "frontend/src/services/realtimeClient.js",
     "frontend/src/services/realtimeClientCore.js",
+    "frontend/src/services/realtimeClientBrowser.js",
     "frontend/src/services/realtimeClient.constants.js",
     "frontend/src/services/realtimeClient.events.js",
   );
@@ -105,7 +107,7 @@ check("SSE is the only dashboard realtime transport", () => {
 
 check("executive lifecycle propagates over SSE", () => {
   const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankExecutive.controller.js");
-  const realtimeService = read("backend/services/realtime.service.js");
+  const realtimeService = readCombined("backend/services/realtime.service.js", "backend/services/realtimeEvents.service.js");
   includesAll(realtimeService, ["BANK_EXECUTIVE_CREATED", "BANK_EXECUTIVE_DELETED"], "realtime executive events");
   includesAll(bankController, [
     "eventType: REALTIME_EVENTS.BANK_EXECUTIVE_CREATED",
@@ -291,7 +293,7 @@ check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
   const realtimeClient = readRealtimeClient();
   const authContext = readAuthContext();
-  const authMiddleware = read("backend/middleware/auth.js");
+  const authMiddleware = readCombined("backend/middleware/auth.js", "backend/middleware/authPortalContext.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
   includesAll(authContext, ["stopRealtimeIfLoaded();", "import(\"../services/realtimeClient.js\")"], "lazy auth realtime cleanup");
@@ -555,7 +557,7 @@ check("dealership GSTIN is restored while bank GSTIN stays removed", () => {
     "frontend/src/pages/public/BankRegistration.jsx",
     "frontend/src/pages/public/BankRegistrationParts.jsx",
   );
-  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerShared.controller.js", "backend/controllers/dealerRegistration.controller.js");
+  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerShared.controller.js", "backend/controllers/dealerRegistration.controller.js", "backend/controllers/dealerRegistrationPayload.controller.js");
   const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankRegistration.controller.js");
   const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminShared.controller.js", "backend/controllers/adminApprovals.controller.js");
   const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
@@ -598,7 +600,7 @@ check("public header hides dealership menu while preserving dealer entry points"
 });
 
 check("dashboard Firestore cost optimizations stay in place", () => {
-  const bankService = read("backend/services/bank.service.js");
+  const bankService = readCombined("backend/services/bank.service.js", "backend/services/bankCatalog.service.js");
   const dealershipService = read("backend/services/dealership.service.js");
   const superAdmin = readCombined(
     "frontend/src/pages/dashboard/SuperAdminDashboard.jsx",
@@ -624,8 +626,21 @@ check("dashboard Firestore cost optimizations stay in place", () => {
   ], "admin audit lazy loading");
 });
 
+check("scale-critical Firestore indexes are declared", () => {
+  const indexManifest = read("firestore.indexes.json");
+  includesAll(indexManifest, [
+    '"collectionGroup": "financeViews"',
+    '"collectionGroup": "bankViews"',
+    '"collectionGroup": "executiveViews"',
+    '"fieldPath": "status"',
+    '"fieldPath": "updatedAt"',
+    '"fieldPath": "deadCaseDate"',
+    '"collectionGroup": "pendingBankApprovals"',
+  ], "scale-critical Firestore index manifest");
+});
+
 check("auth hot path avoids avoidable Firestore reads and writes", () => {
-  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authShared.controller.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js");
+  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authShared.controller.js", "backend/controllers/authPortalShared.controller.js", "backend/controllers/authSessionShared.controller.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js");
   includesAll(authController, [
     "AUTH_ENTITLEMENT_CACHE_TTL_MS",
     "auth:dealership-entitlement:",

@@ -1,5 +1,5 @@
 import { firestore } from "../firebase/admin.js";
-import { assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
+import { assertCompositeIndexFallbackAllowed, assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
 import { recordFirestoreRead } from "./requestScope.service.js";
 import { logRealtimeTicketStep } from "./realtimeTicketLatency.service.js";
@@ -306,6 +306,7 @@ export async function queryRecords(collection, {
     });
   } catch (error) {
     if (isMissingCompositeIndexError(error) && where.length) {
+      assertCompositeIndexFallbackAllowed({ collection, where, orderBy });
       return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit });
     }
     if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {

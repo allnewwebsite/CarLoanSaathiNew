@@ -25,6 +25,7 @@
     "security:production-blockers": "node scripts/audit-production-blockers.js",
     "security:deps": "node scripts/dependency-audit.js",
     "audit:api-efficiency": "node scripts/audit-api-efficiency.js",
+    "audit:firestore-indexes": "node scripts/audit-firestore-indexes.js",
     "validate:regression": "node scripts/validate-production-invariants.js",
     "test": "npm --prefix backend test && npm --prefix frontend test",
     "bundle:report": "npm --prefix frontend run bundle:report",
