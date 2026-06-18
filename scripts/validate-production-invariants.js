@@ -200,7 +200,11 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
 });
 
 check("Firestore direct-id collections avoid fallback query chains", () => {
-  const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js");
+  const firestoreService = readCombined(
+    "backend/services/firestore.service.js",
+    "backend/services/firestoreCore.service.js",
+    "backend/services/firestoreProjectionWrite.service.js",
+  );
   includesAll(firestoreService, [
     "DIRECT_ID_ONLY_COLLECTIONS",
     "DIRECT_ID_ONLY_COLLECTIONS.has(collection)",
@@ -373,7 +377,11 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
 check("bank analytics uses maintained aggregate data", () => {
   const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankAnalytics.controller.js");
   const aggregateService = read("backend/services/bankAnalyticsAggregate.service.js");
-  const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js");
+  const firestoreService = readCombined(
+    "backend/services/firestore.service.js",
+    "backend/services/firestoreCore.service.js",
+    "backend/services/firestoreProjectionWrite.service.js",
+  );
   const bankPanel = readCombined(
     "frontend/src/pages/bank/BankBranchManagerPanel.jsx",
     "frontend/src/pages/bank/bankManager.hooks.js",
