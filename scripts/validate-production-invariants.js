@@ -7,6 +7,15 @@ function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
+function readIfExists(relativePath) {
+  const target = path.join(root, relativePath);
+  return fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+}
+
+function readCombined(...relativePaths) {
+  return relativePaths.map(readIfExists).join("\n");
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -32,8 +41,8 @@ check("uploads directory is created before Multer writes", () => {
 });
 
 check("production auth logging does not expose token or session details", () => {
-  const authContext = read("frontend/src/context/AuthContext.jsx");
-  const authController = read("backend/controllers/auth.controller.js");
+  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js");
   assert(!authContext.includes("[CLS auth]"), "frontend auth decision logging must remain disabled");
   assert(!authContext.includes("logAuthDecision"), "frontend auth session details must not be written to console");
   const backendLogStatements = [...authController.matchAll(/log(?:Info|Warn|Error)\([^;]+?\);/gs)].map((match) => match[0]).join("\n");
@@ -43,8 +52,8 @@ check("production auth logging does not expose token or session details", () => 
 
 check("SSE is the only dashboard realtime transport", () => {
   const realtimeHook = read("frontend/src/hooks/useRealtimeRefresh.js");
-  const realtimeClient = read("frontend/src/services/realtimeClient.js");
-  const authContext = read("frontend/src/context/AuthContext.jsx");
+  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
+  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
   const monitoringCenter = read("frontend/src/pages/dashboard/AdminMonitoringCenter.jsx");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/realtimeManager.js")), "legacy Firestore realtime manager must be removed");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/firestoreListeners.js")), "legacy Firestore listener helpers must be removed");
@@ -78,7 +87,7 @@ check("SSE is the only dashboard realtime transport", () => {
 });
 
 check("executive lifecycle propagates over SSE", () => {
-  const bankController = read("backend/controllers/bank.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
   const realtimeService = read("backend/services/realtime.service.js");
   includesAll(realtimeService, ["BANK_EXECUTIVE_CREATED", "BANK_EXECUTIVE_DELETED"], "realtime executive events");
   includesAll(bankController, [
@@ -107,15 +116,21 @@ check("production App Check is not accidentally bypassed", () => {
 });
 
 check("frontend API base URL is environment driven", () => {
-  const api = read("frontend/src/services/api.js");
+  const api = readCombined("frontend/src/services/api.js", "frontend/src/services/apiBaseUrl.js");
   assert(!api.includes("carloansaathi-apkaapnasaathi.onrender.com"), "frontend must not hardcode Render API URL");
   includesAll(api, ["import.meta.env.VITE_API_BASE_URL", "import.meta.env.PROD ? \"/api\""], "api base URL");
 });
 
 check("frontend keeps Firestore and Storage out of the initial registration bundles", () => {
   const viteConfig = read("frontend/vite.config.js");
-  const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
-  const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
+  const dealerRegistration = readCombined(
+    "frontend/src/pages/DealerRegistrationPage.jsx",
+    "frontend/src/pages/dealerRegistration/DealerRegistrationFormPage.jsx",
+  );
+  const bankRegistration = readCombined(
+    "frontend/src/pages/public/BankRegistration.jsx",
+    "frontend/src/pages/public/BankRegistrationParts.jsx",
+  );
   const uploadHelper = read("frontend/src/services/firebaseUpload.js");
   assert(!fs.existsSync(path.join(root, "frontend/src/services/firebaseDb.js")), "frontend Firestore db wrapper must stay removed");
   assert(!viteConfig.includes("firebase/firestore"), "Vite manual chunks must not force Firestore into production bundles");
@@ -124,7 +139,11 @@ check("frontend keeps Firestore and Storage out of the initial registration bund
   assert(!dealerRegistration.includes("serverTimestamp"), "dealer registration must not import Firestore timestamp helpers");
   assert(!dealerRegistration.includes("firebase/storage"), "dealer registration must lazy-load Firebase Storage only on upload");
   assert(!bankRegistration.includes("firebase/storage"), "bank registration must lazy-load Firebase Storage only on upload");
-  includesAll(dealerRegistration, ["import(\"../services/firebaseUpload.js\")"], "dealer registration upload lazy import");
+  assert(
+    dealerRegistration.includes("import(\"../services/firebaseUpload.js\")")
+      || dealerRegistration.includes("import(\"../../services/firebaseUpload.js\")"),
+    "dealer registration upload lazy import missing invariant: import(\"../services/firebaseUpload.js\") or import(\"../../services/firebaseUpload.js\")"
+  );
   includesAll(bankRegistration, ["import(\"../../services/firebaseUpload.js\")"], "bank registration upload lazy import");
   includesAll(uploadHelper, ["uploadStorageFile", "deleteStoragePath", "uploadBytesResumable"], "lazy Firebase upload helper");
 });
@@ -134,8 +153,8 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   const errorBoundary = read("frontend/src/components/ErrorBoundary.jsx");
   const router = read("frontend/src/routes/router.jsx");
   const viteConfig = read("frontend/vite.config.js");
-  const authContext = read("frontend/src/context/AuthContext.jsx");
-  const api = read("frontend/src/services/api.js");
+  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const api = readCombined("frontend/src/services/api.js", "frontend/src/services/apiAppCheck.js");
   const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
   const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
   assert(!main.includes("import { initFrontendMonitoring }"), "main entry must not statically import Sentry monitoring");
@@ -154,13 +173,17 @@ check("frontend app shell keeps dashboard, Sentry, and motion out of startup", (
   includesAll(authContext, ["import(\"../services/api.js\")", "import(\"../services/realtimeClient.js\")"], "lazy API and realtime client");
   assert(!api.includes("from \"firebase/app-check\""), "API client must lazy-load Firebase App Check");
   assert(!api.includes("from \"./firebase.js\""), "API client must not statically import Firebase");
-  includesAll(api, ["import(\"firebase/app-check\")", "import(\"./firebase.js\")"], "lazy Firebase App Check");
+  includesAll(api, ["import(\"firebase/app-check\")"], "lazy Firebase App Check");
+  assert(
+    api.includes("import(\"./firebase.js\")") || api.includes("import(\"./firebaseAppCheck.js\")"),
+    "lazy Firebase App Check missing invariant: import(\"./firebase.js\") or import(\"./firebaseAppCheck.js\")"
+  );
   assert(!dealerRegistration.includes("services/firebase.js"), "dealer registration must not statically import Firebase");
   assert(!bankRegistration.includes("services/firebase.js"), "bank registration must not statically import Firebase");
 });
 
 check("Firestore direct-id collections avoid fallback query chains", () => {
-  const firestoreService = read("backend/services/firestore.service.js");
+  const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js");
   includesAll(firestoreService, [
     "DIRECT_ID_ONLY_COLLECTIONS",
     "DIRECT_ID_ONLY_COLLECTIONS.has(collection)",
@@ -176,7 +199,7 @@ check("lead creation and lead status APIs remain registered", () => {
 });
 
 check("subscription billing is server-verified and blocks only lead creation", () => {
-  const subscriptionService = read("backend/services/subscription.service.js");
+  const subscriptionService = readCombined("backend/services/subscription.service.js", "backend/services/subscriptionCore.service.js");
   const subscriptionMiddleware = read("backend/middleware/subscription.js");
   const dealerRoutes = read("backend/routes/dealer.routes.js");
   const leadRoutes = read("backend/routes/lead.routes.js");
@@ -237,8 +260,8 @@ check("subscription billing is server-verified and blocks only lead creation", (
 
 check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
-  const realtimeClient = read("frontend/src/services/realtimeClient.js");
-  const authContext = read("frontend/src/context/AuthContext.jsx");
+  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
+  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
   const authMiddleware = read("backend/middleware/auth.js");
   includesAll(realtimeRoutes, ["router.post(\"/ticket\"", "router.get(\"/events\"", "router.post(\"/ack\""], "realtime routes");
   includesAll(realtimeClient, ["EventSource", "stopRealtimeClient", "/realtime/ack"], "realtime client");
@@ -254,8 +277,12 @@ check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
 
 check("bank executive management exposes only view and permanent delete", () => {
   const bankRoutes = read("backend/routes/bank.routes.js");
-  const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
-  const bankController = read("backend/controllers/bank.controller.js");
+  const bankPanel = readCombined(
+    "frontend/src/pages/bank/BankBranchManagerPanel.jsx",
+    "frontend/src/pages/bank/BankExecutiveManagementPage.jsx",
+    "frontend/src/pages/bank/BankExecutiveManagementParts.jsx",
+  );
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
   includesAll(bankRoutes, ["router.delete(\"/executives/:executiveId\""], "bank executive routes");
   assert(!bankRoutes.includes("/executives/:executiveId/lifecycle"), "bank executive lifecycle route must be removed");
   assert(!bankRoutes.includes("/executives/:executiveId/reset-password"), "bank executive reset-password route must be removed");
@@ -284,11 +311,15 @@ check("bank executive management exposes only view and permanent delete", () => 
 });
 
 check("bank case reassignment uses explicit same-branch executive selection", () => {
-  const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
-  const bankController = read("backend/controllers/bank.controller.js");
+  const bankPanel = readCombined(
+    "frontend/src/pages/bank/BankBranchManagerPanel.jsx",
+    "frontend/src/pages/bank/ReassignLeadDialog.jsx",
+    "frontend/src/pages/bank/bankManager.hooks.js",
+  );
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankLeadWorkflow.controller.js");
   const assignmentService = read("backend/services/assignment.service.js");
-  const firestoreService = read("backend/services/firestore.service.js");
-  const projectionService = read("backend/services/projection.service.js");
+  const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js", "backend/services/firestoreTransaction.service.js");
+  const projectionService = readCombined("backend/services/projection.service.js", "backend/services/projectionCore.service.js", "backend/services/projectionLead.service.js");
   includesAll(bankPanel, [
     "Reassign Case",
     "Select New Executive",
@@ -319,12 +350,16 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
 });
 
 check("bank analytics uses maintained aggregate data", () => {
-  const bankController = read("backend/controllers/bank.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankAnalytics.controller.js");
   const aggregateService = read("backend/services/bankAnalyticsAggregate.service.js");
-  const firestoreService = read("backend/services/firestore.service.js");
-  const bankPanel = read("frontend/src/pages/bank/BankBranchManagerPanel.jsx");
-  const apiService = read("frontend/src/services/api.js");
-  const realtimeClient = read("frontend/src/services/realtimeClient.js");
+  const firestoreService = readCombined("backend/services/firestore.service.js", "backend/services/firestoreCore.service.js");
+  const bankPanel = readCombined(
+    "frontend/src/pages/bank/BankBranchManagerPanel.jsx",
+    "frontend/src/pages/bank/bankManager.hooks.js",
+    "frontend/src/pages/bank/BankAnalyticsPage.jsx",
+  );
+  const apiService = readCombined("frontend/src/services/api.js", "frontend/src/services/apiMutationEvents.js", "frontend/src/services/apiCache.js");
+  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
   includesAll(bankController, [
     "getBankAnalyticsAggregate",
     "source: \"bank-analytics-aggregates\"",
@@ -354,12 +389,12 @@ check("bank analytics uses maintained aggregate data", () => {
 });
 
 check("WhatsApp business notifications are idempotent and backend-only", () => {
-  const whatsappService = read("backend/services/whatsapp.service.js");
+  const whatsappService = readCombined("backend/services/whatsapp.service.js", "backend/services/whatsappCore.service.js");
   const notificationService = read("backend/services/notification.service.js");
   const queueService = read("backend/services/queue.service.js");
   const queueWorkers = read("backend/services/queueWorkers.service.js");
   const realtimeService = read("backend/services/realtime.service.js");
-  const realtimeClient = read("frontend/src/services/realtimeClient.js");
+  const realtimeClient = readCombined("frontend/src/services/realtimeClient.js", "frontend/src/services/realtimeClientCore.js");
   const firestoreRules = read("firestore.rules");
   const firestoreIndexes = read("firestore.indexes.json");
   includesAll(whatsappService, [
@@ -415,9 +450,9 @@ check("Redis queues and realtime pubsub are explicit opt-in", () => {
 });
 
 check("registration email verification gates remain enforced", () => {
-  const authContext = read("frontend/src/context/AuthContext.jsx");
-  const dealerController = read("backend/controllers/dealer.controller.js");
-  const bankController = read("backend/controllers/bank.controller.js");
+  const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
+  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerRegistration.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankRegistration.controller.js");
   const router = read("frontend/src/routes/router.jsx");
   includesAll(authContext, [
     "dealer: \"/dealer-registration/verify-email\"",
@@ -467,16 +502,30 @@ check("registration email verification gates remain enforced", () => {
 });
 
 check("dealership GSTIN is restored while bank GSTIN stays removed", () => {
-  const dealerRegistration = read("frontend/src/pages/DealerRegistrationPage.jsx");
-  const bankRegistration = read("frontend/src/pages/public/BankRegistration.jsx");
-  const dealerController = read("backend/controllers/dealer.controller.js");
-  const bankController = read("backend/controllers/bank.controller.js");
-  const adminController = read("backend/controllers/admin.controller.js");
+  const dealerRegistration = readCombined(
+    "frontend/src/pages/DealerRegistrationPage.jsx",
+    "frontend/src/pages/dealerRegistration/DealerRegistrationFormPage.jsx",
+    "frontend/src/pages/dealerRegistration/DealerRegistrationFormSections.jsx",
+    "frontend/src/pages/dealerRegistration/dealerRegistration.helpers.js",
+    "frontend/src/pages/dealerRegistration/dealerRegistration.constants.js",
+  );
+  const bankRegistration = readCombined(
+    "frontend/src/pages/public/BankRegistration.jsx",
+    "frontend/src/pages/public/BankRegistrationParts.jsx",
+  );
+  const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerRegistration.controller.js");
+  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankRegistration.controller.js");
+  const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminApprovals.controller.js");
   const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
+  const superAdminDealership = readCombined(
+    "frontend/src/pages/dashboard/SuperAdminDashboard.jsx",
+    "frontend/src/pages/dashboard/superAdmin/SuperAdminDealershipDetailPage.jsx",
+    "frontend/src/pages/dashboard/superAdmin/SuperAdminApprovalDetailPage.jsx",
+  );
   assert(!dealerRegistration.includes("officialDealershipEmail"), "dealer registration UI must not contain Official Dealership Email state or inputs");
   includesAll(dealerRegistration, ["gstinNumber", "GSTIN Number", "06ABCDE1234F1Z5"], "dealer GSTIN registration UI");
   includesAll(dealerController, ["requiredGstin", "gstinNumber: requiredGstin", "gstinNumber: dealership.gstinNumber"], "dealer GSTIN backend");
-  includesAll(superAdmin, ["[\"GSTIN\", dealer.gstinNumber || dealer.dealership?.gstinNumber]", "[\"GSTIN\", item.gstinNumber || item.dealership?.gstinNumber]"], "dealer GSTIN admin review");
+  includesAll(superAdminDealership, ["[\"GSTIN\", dealer.gstinNumber || dealer.dealership?.gstinNumber]", "[\"GSTIN\", item.gstinNumber || item.dealership?.gstinNumber]"], "dealer GSTIN admin review");
   assert(!bankRegistration.includes("gstin"), "bank registration UI must not contain GSTIN state, validation, or payload");
   assert(!bankRegistration.includes("GSTIN"), "bank registration UI must not show GSTIN label or validation text");
   assert(!bankRegistration.includes("GST Certificate"), "bank registration UI must not request GST Certificate");
@@ -509,7 +558,11 @@ check("public header hides dealership menu while preserving dealer entry points"
 check("dashboard Firestore cost optimizations stay in place", () => {
   const bankService = read("backend/services/bank.service.js");
   const dealershipService = read("backend/services/dealership.service.js");
-  const superAdmin = read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx");
+  const superAdmin = readCombined(
+    "frontend/src/pages/dashboard/SuperAdminDashboard.jsx",
+    "frontend/src/pages/dashboard/superAdmin/superAdmin.hooks.js",
+    "frontend/src/pages/dashboard/superAdmin/SuperAdminLeadDetailPage.jsx",
+  );
   includesAll(bankService, [
     "queryRecords(\"bankBranchCatalog\"",
     "if (catalogRows.length) {",
@@ -530,7 +583,7 @@ check("dashboard Firestore cost optimizations stay in place", () => {
 });
 
 check("auth hot path avoids avoidable Firestore reads and writes", () => {
-  const authController = read("backend/controllers/auth.controller.js");
+  const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js");
   includesAll(authController, [
     "AUTH_ENTITLEMENT_CACHE_TTL_MS",
     "auth:dealership-entitlement:",

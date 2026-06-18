@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
-import { api } from "../services/api.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 
 const AuthContext = createContext(null);
@@ -41,6 +40,12 @@ const FIREBASE_CONTINUE_PATHS = {
 };
 let firebaseAuthLoaded = false;
 let realtimeClientLoaded = false;
+let apiClientPromise = null;
+
+async function loadApiClient() {
+  if (!apiClientPromise) apiClientPromise = import("../services/api.js").then((module) => module.api);
+  return apiClientPromise;
+}
 
 function actionCodeSettings(portal = "dealer") {
   const fallbackPath = FIREBASE_CONTINUE_PATHS[String(portal || "dealer").trim().toLowerCase()] || "/dealer-registration/verify-email";
@@ -179,7 +184,7 @@ function restoredFirebaseUser(auth, onAuthStateChanged) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredToken()));
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getStoredToken() || getStoredUser()));
   const [authReady] = useState(true);
   const [sessionChecking, setSessionChecking] = useState(false);
   const [authStatus, setAuthStatus] = useState(AUTH_STATES.LOADING);
@@ -240,6 +245,7 @@ export function AuthProvider({ children }) {
   const loginWithEmailPassword = async ({ email, password, portal = "dealer", targetPortal = portal, rememberMe = true }) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const loginPayload = { email: normalizedEmail, password, portal, targetPortal };
+    const api = await loadApiClient();
 
     let response;
     try {
@@ -266,6 +272,7 @@ export function AuthProvider({ children }) {
 
   const sendPasswordReset = async (email) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
+    const api = await loadApiClient();
     await api.post("/auth/password-reset/validate", { email: normalizedEmail });
     const { auth, sendPasswordResetEmail } = await loadFirebaseAuth();
     await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings());
@@ -317,6 +324,7 @@ export function AuthProvider({ children }) {
     }
     await updatePassword(currentUser, newPassword);
     await currentUser.getIdToken(true);
+    const api = await loadApiClient();
     const response = await api.post("/auth/password/change-complete");
     if (response.data?.token && response.data?.user) {
       const session = sessionFromResponse(response);
@@ -337,6 +345,7 @@ export function AuthProvider({ children }) {
     }
     if (showLoading) setSessionChecking(true);
     try {
+      const api = await loadApiClient();
       const response = await api.get("/auth/session");
       const session = sessionFromResponse(response);
       applySession(session, token);
@@ -467,6 +476,7 @@ export function AuthProvider({ children }) {
     setFirebaseUser(credential.user);
     await credential.user.reload();
     const idToken = await credential.user.getIdToken(true);
+    const api = await loadApiClient();
     const response = await api.post("/dealer/register/email-start", { idToken, selectedPlan });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -492,6 +502,7 @@ export function AuthProvider({ children }) {
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/dealer-registration" };
     await currentUser.reload();
     const idToken = await currentUser.getIdToken(true);
+    const api = await loadApiClient();
     const response = await api.post("/dealer/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -512,6 +523,7 @@ export function AuthProvider({ children }) {
   };
 
   const registerBankPartner = async ({ email, profile }) => {
+    const api = await loadApiClient();
     const response = await api.post("/bank/register", { ...profile, email });
     return response.data;
   };
@@ -521,6 +533,7 @@ export function AuthProvider({ children }) {
     setFirebaseUser(credential.user);
     await credential.user.reload();
     const idToken = await credential.user.getIdToken(true);
+    const api = await loadApiClient();
     const response = await api.post("/bank/register/email-start", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -545,6 +558,7 @@ export function AuthProvider({ children }) {
     if (!currentUser) return { status: "unknown", message: "Email/password session is required.", redirectTo: "/bank-registration" };
     await currentUser.reload();
     const idToken = await currentUser.getIdToken(true);
+    const api = await loadApiClient();
     const response = await api.post("/bank/register/status", { idToken });
     const registration = {
       registrationId: response.data.registrationId || null,
@@ -566,6 +580,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
+      const api = await loadApiClient();
       await api.post("/auth/logout");
     } catch {
       // Local cleanup must still happen even if the log request fails.

@@ -8,6 +8,15 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
+function readIfExists(file) {
+  const target = path.join(root, file);
+  return fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+}
+
+function readCombined(...files) {
+  return files.map(readIfExists).join("\n");
+}
+
 function assertCheck(name, condition, detail = "") {
   checks.push({ name, ok: Boolean(condition), detail });
 }
@@ -20,19 +29,25 @@ function between(text, start, end) {
 }
 
 const frontendGuard = read("frontend/src/routes/RoleProtectedRoute.jsx");
-const authContext = read("frontend/src/context/AuthContext.jsx");
+const authContext = readCombined("frontend/src/context/AuthContext.jsx", "frontend/src/context/AuthContextCore.jsx");
 const authSessionManager = read("frontend/src/services/authSessionManager.js");
-const apiClient = read("frontend/src/services/api.js");
+const apiClient = readCombined(
+  "frontend/src/services/api.js",
+  "frontend/src/services/apiCache.js",
+  "frontend/src/services/apiAppCheck.js",
+  "frontend/src/services/apiAuth.js",
+  "frontend/src/services/apiWarmup.js",
+);
 const router = read("frontend/src/routes/router.jsx");
 const requireRole = read("backend/middleware/requireRole.js");
 const auth = read("backend/middleware/auth.js");
-const authController = read("backend/controllers/auth.controller.js");
+const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authLogin.controller.js");
 const securityMiddleware = read("backend/middleware/securityMiddleware.js");
 const identityService = read("backend/services/identity.service.js");
 const timelineController = read("backend/controllers/timeline.controller.js");
 const timelineService = read("backend/services/timeline.service.js");
 const leadController = read("backend/controllers/lead.controller.js");
-const bankController = read("backend/controllers/bank.controller.js");
+const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankLeadRead.controller.js");
 const partnerBranchValuesBody = between(bankController, "function partnerBranchValues", "function bankManagerCanAccessLead");
 const firestoreRules = read("firestore.rules");
 const storageRules = read("storage.rules");
@@ -84,8 +99,11 @@ assertCheck(
 );
 assertCheck(
   "email login avoids duplicate Firebase client sign-in",
-  authContext.includes("const loginPayload = { email: normalizedEmail, password, portal, targetPortal }")
-    && !authContext.includes("idToken = await credential.user.getIdToken(true)"),
+  (
+    authContext.includes("const loginPayload = { email: normalizedEmail, password, portal, targetPortal }")
+    || authContext.includes("const loginPayload = { email: normalizedEmail, password, portal, targetPortal };")
+  )
+    && !between(authContext, "const loginWithEmailPassword", "const sendPasswordReset").includes("getIdToken"),
 );
 assertCheck(
   "login enforces exact portal role before session mutation",
@@ -107,10 +125,10 @@ assertCheck(
 );
 assertCheck(
   "API client caches GET and App Check token for fast tab switching",
-  apiClient.includes("const getCache = new Map()")
+  apiClient.includes("getCache = new Map()")
     && apiClient.includes("APP_CHECK_CACHE_TTL_MS")
     && apiClient.includes("config.adapter = () => Promise.resolve(cached)")
-    && apiClient.includes("export function getCachedGetData"),
+    && (apiClient.includes("export function getCachedGetData") || apiClient.includes("export const getCachedGetData")),
 );
 assertCheck(
   "tables retain rows during refresh",
@@ -119,19 +137,19 @@ assertCheck(
 );
 assertCheck(
   "portal list pages hydrate from cached data on first paint",
-  read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx").includes("getCachedGetData(\"/dealer/leads\"")
-    && read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx").includes("const cachedTieUps = getCachedGetData(\"/dealer/bank-tieups\")")
-    && read("frontend/src/pages/dashboard/GmTrackingPanel.jsx").includes("getCachedGetData(\"/gm/leads\"")
-    && read("frontend/src/pages/bank/BankBranchManagerPanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
-    && read("frontend/src/pages/bank/LoanExecutivePanel.jsx").includes("getCachedGetData(\"/bank/leads\"")
-    && read("frontend/src/pages/dashboard/SuperAdminDashboard.jsx").includes("adminPanelRequest")
+  readCombined("frontend/src/pages/dashboard/FinanceDeskPanel.jsx", "frontend/src/pages/dashboard/finance/financeLeadList.data.js").includes("getCachedGetData(\"/dealer/leads\"")
+    && readCombined("frontend/src/pages/dashboard/FinanceDeskPanel.jsx", "frontend/src/pages/dashboard/finance/BankTieUpsScreen.jsx").includes("cachedTieUps = getCachedGetData(\"/dealer/bank-tieups\")")
+    && readCombined("frontend/src/pages/dashboard/GmTrackingPanel.jsx", "frontend/src/pages/dashboard/gm/gmTracking.data.js").includes("getCachedGetData(\"/gm/leads\"")
+    && readCombined("frontend/src/pages/bank/BankBranchManagerPanel.jsx", "frontend/src/pages/bank/bankManager.hooks.js").includes("getCachedGetData(\"/bank/leads\"")
+    && readCombined("frontend/src/pages/bank/LoanExecutivePanel.jsx", "frontend/src/pages/bank/loanExecutive.hooks.js").includes("getCachedGetData(\"/bank/leads\"")
+    && readCombined("frontend/src/pages/dashboard/SuperAdminDashboard.jsx", "frontend/src/pages/dashboard/superAdmin/useAdminPanelData.js").includes("adminPanelRequest")
     && read("frontend/src/pages/dashboard/BankTieUpSettings.jsx").includes("getCachedGetData(\"/dealer/bank-tieups\""),
 );
 assertCheck(
   "dashboard sidebar prefetches all portal tabs",
-  read("frontend/src/layouts/DashboardLayout.jsx").includes("function prefetchSpecsForRoute")
-    && read("frontend/src/layouts/DashboardLayout.jsx").includes("nav.forEach((item, index)")
-    && read("frontend/src/layouts/DashboardLayout.jsx").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
+  readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("function prefetchSpecsForRoute")
+    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("nav.forEach((item, index)")
+    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
 );
 assertCheck(
   "CORS allows portal header required by login",

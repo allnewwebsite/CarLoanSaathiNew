@@ -7,6 +7,15 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
+function readIfExists(file) {
+  const target = path.join(root, file);
+  return fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+}
+
+function readCombined(...files) {
+  return files.map(readIfExists).join("\n");
+}
+
 function assertCheck(name, condition) {
   if (!condition) {
     throw new Error(`FAIL: ${name}`);
@@ -17,10 +26,14 @@ function assertCheck(name, condition) {
 const checks = [];
 const catalogRoutes = read("backend/routes/catalog.routes.js");
 const catalogService = read("backend/services/catalog.service.js");
-const adminController = read("backend/controllers/admin.controller.js");
-const bankController = read("backend/controllers/bank.controller.js");
-const dealerController = read("backend/controllers/dealer.controller.js");
-const financeDeskPanel = read("frontend/src/pages/dashboard/FinanceDeskPanel.jsx");
+const adminController = readCombined("backend/controllers/admin.controller.js", "backend/controllers/admin.controller.impl.js", "backend/controllers/adminApprovals.controller.js");
+const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankExecutive.controller.js");
+const dealerController = readCombined("backend/controllers/dealer.controller.js", "backend/controllers/dealer.controller.impl.js", "backend/controllers/dealerStaff.controller.js");
+const financeDeskPanel = readCombined(
+  "frontend/src/pages/dashboard/FinanceDeskPanel.jsx",
+  "frontend/src/pages/dashboard/finance/StaffManagementScreen.jsx",
+  "frontend/src/pages/dashboard/finance/FinanceStaffDetailPage.jsx",
+);
 const rootPackage = JSON.parse(read("package.json"));
 const backendPackage = JSON.parse(read("backend/package.json"));
 
