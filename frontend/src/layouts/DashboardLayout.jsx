@@ -256,7 +256,7 @@ export function DashboardLayout() {
   const nav = useMemo(() => navByRole[user?.role] || [], [user?.role]);
   const loanExecutiveMobile = user?.role === "loan-executive";
   const currentTarget = `${location.pathname}${location.search}`;
-  const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to && !location.search), [currentTarget, location.pathname, location.search]);
+  const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to), [currentTarget, location.pathname]);
 
   useEffect(() => {
     const handles = [];

@@ -16,22 +16,32 @@ import {
 
 const statusCards = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
+function pageFromParams(params) {
+  const value = Math.floor(Number(params.get("page") || 1));
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
 function TotalLeadsScreen() {
   const [params, setParams] = useSearchParams();
-  const [page, setPage] = useState(Number(params.get("page") || 1));
-  const [search, setSearch] = useState(params.get("search") || "");
+  const page = pageFromParams(params);
+  const urlSearch = params.get("search") || "";
+  const [search, setSearch] = useState(urlSearch);
   const debouncedSearch = useDebouncedValue(search, 180);
-  const { leads, total, hasMore, loading, load } = useGmLeads({ search: debouncedSearch });
+  const { leads, total, hasMore, loading } = useGmLeads({ search: debouncedSearch, page });
   const updateSearch = (value) => {
     setSearch(value);
-    setPage(1);
   };
   useEffect(() => {
-    setParams(debouncedSearch ? { search: debouncedSearch, page: "1" } : { page: "1" });
-  }, [debouncedSearch, setParams]);
+    setSearch(urlSearch);
+  }, [urlSearch]);
+  useEffect(() => {
+    if (debouncedSearch === urlSearch) return;
+    const nextParams = debouncedSearch ? { search: debouncedSearch, page: "1" } : { page: "1" };
+    setParams(nextParams, { replace: true });
+  }, [debouncedSearch, setParams, urlSearch]);
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    load({ search: debouncedSearch, page: nextPage });
+    const targetPage = Math.max(Math.floor(Number(nextPage || 1)), 1);
+    setParams(debouncedSearch ? { search: debouncedSearch, page: String(targetPage) } : { page: String(targetPage) });
   };
   return (
     <section className="space-y-4">

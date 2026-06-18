@@ -29,7 +29,7 @@ export function useGmLeads(filters = {}) {
     if (!silent) setLoading(true);
     try {
       const { silent: _silent, ...params } = next;
-      const targetPage = Math.max(Number(params.page || 1), 1);
+      const targetPage = Math.max(Number(params.page || filters.page || 1), 1);
       const response = await api.get("/gm/leads", { params: { page: targetPage, limit: pageSize, ...filters, ...params, ...cursorParamsForPage(targetPage) } });
       const payload = normalizePagedResponse(response, { defaultLimit: pageSize });
       const rows = payload.data || [];
@@ -40,7 +40,7 @@ export function useGmLeads(filters = {}) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.search, filters.status, filters.salespersonId, cursorParamsForPage, rememberNextCursor]);
+  }, [filters.search, filters.status, filters.salespersonId, filters.page, cursorParamsForPage, rememberNextCursor]);
 
   useEffect(() => {
     load({ silent: true });
