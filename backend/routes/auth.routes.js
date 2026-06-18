@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { approvePendingGoogleAccount, completeForcedPasswordChange, forceLogoutUser, getLoginActivity, login, logout, lookupAccountForLogin, recordLoginFailure, refreshSession, rejectPendingGoogleAccount, restoreSession, session, validatePasswordReset } from "../controllers/auth.controller.js";
+import { login, recordLoginFailure, restoreSession } from "../controllers/authLogin.controller.js";
+import { forceLogoutUser, getLoginActivity, logout, refreshSession, session } from "../controllers/authSession.controller.js";
+import { completeForcedPasswordChange, validatePasswordReset } from "../controllers/authPassword.controller.js";
+import { lookupAccountForLogin } from "../controllers/authLookup.controller.js";
+import { approvePendingGoogleAccount, rejectPendingGoogleAccount } from "../controllers/authGoogleApproval.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { authLookupRateLimit, authRateLimit, loginFailureRateLimit, passwordResetRateLimit } from "../middleware/securityMiddleware.js";

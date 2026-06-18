@@ -1,27 +1,10 @@
 import { Router } from "express";
-import {
-  acceptBankLead,
-  deleteBankLeadDocument,
-  getBankRegistrationStatus,
-  getBankAnalytics,
-  getBankDealershipDisbursedCases,
-  getBankDealerships,
-  getBankLead,
-  getBankExecutiveCases,
-  getBankExecutives,
-  getBankLeads,
-  getBankLeadTimeline,
-  getBankNotifications,
-  registerBankPartner,
-  createBankExecutive,
-  removeBankExecutive,
-  rejectBankLead,
-  reassignBankLead,
-  startBankRegistration,
-  updateBankLeadRemarks,
-  updateBankLeadStatus,
-  uploadBankLeadDocument,
-} from "../controllers/bank.controller.js";
+import { getBankRegistrationStatus, registerBankPartner, startBankRegistration } from "../controllers/bankRegistration.controller.js";
+import { getBankDealershipDisbursedCases, getBankDealerships, getBankLead, getBankLeads, getBankLeadTimeline, getBankNotifications } from "../controllers/bankLeadRead.controller.js";
+import { acceptBankLead, reassignBankLead, rejectBankLead, updateBankLeadRemarks, updateBankLeadStatus } from "../controllers/bankLeadWorkflow.controller.js";
+import { createBankExecutive, getBankExecutiveCases, getBankExecutives, removeBankExecutive } from "../controllers/bankExecutive.controller.js";
+import { deleteBankLeadDocument, uploadBankLeadDocument } from "../controllers/bankDocument.controller.js";
+import { getBankAnalytics } from "../controllers/bankAnalytics.controller.js";
 import { getBankDeadCases } from "../controllers/deadCase.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";

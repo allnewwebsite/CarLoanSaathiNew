@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { createDealerFinanceManager, createDealerLead, createDealerSalesperson, createDealerStaff, deleteDealerFinanceManager, deleteDealerStaff, getDealerBankTieUps, getDealerEarnings, getDealerFinanceManagers, getDealerLead, getDealerLeads, getDealerProfile, getDealerRegistrationStatus, getDealerSalespersons, getDealerStaff, getDealerStaffDetail, registerDealerOnboarding, removeDealerSalesperson, startDealerRegistration, updateDealerBankTieUps, updateDealerFinanceManager, updateDealerProfile } from "../controllers/dealer.controller.js";
+import { getDealerRegistrationStatus, registerDealerOnboarding, startDealerRegistration } from "../controllers/dealerRegistration.controller.js";
+import { createDealerLead, getDealerEarnings, getDealerLead, getDealerLeads } from "../controllers/dealerLead.controller.js";
+import { createDealerSalesperson, getDealerSalespersons, removeDealerSalesperson } from "../controllers/dealerSalesperson.controller.js";
+import { createDealerFinanceManager, deleteDealerFinanceManager, getDealerFinanceManagers, updateDealerFinanceManager } from "../controllers/dealerFinanceManager.controller.js";
+import { createDealerStaff, deleteDealerStaff, getDealerStaff, getDealerStaffDetail } from "../controllers/dealerStaff.controller.js";
+import { getDealerBankTieUps, updateDealerBankTieUps } from "../controllers/dealerBankTieup.controller.js";
+import { getDealerProfile, updateDealerProfile } from "../controllers/dealerProfile.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";

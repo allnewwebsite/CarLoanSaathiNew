@@ -2,29 +2,20 @@ import { Router } from "express";
 import {
   approveBankApproval,
   approveDealershipApproval,
-  deleteBankPermanently,
-  deleteDealershipPermanently,
-  freezeAdminPartner,
   getApprovalLogs,
-  getAdminAnalytics,
-  getAdminAuditLogs,
-  getAdminEcosystem,
-  getAdminLead,
-  getAdminLeads,
-  getAdminOnboardingRequests,
-  getAdminPartners,
-  getAdminWorkflowLogs,
-  getAdminWorkflowSettings,
   getPendingBankApprovals,
   getPendingDealershipApprovals,
   rejectBankApproval,
   rejectDealershipApproval,
   suspendBankApproval,
   suspendDealershipApproval,
-  updateAdminOnboardingRequest,
-  updateAdminLeadStatus,
-  updateAdminWorkflowSettings,
-} from "../controllers/admin.controller.js";
+} from "../controllers/adminApprovals.controller.js";
+import { getAdminLead, getAdminLeads, updateAdminLeadStatus } from "../controllers/adminLead.controller.js";
+import { deleteDealershipPermanently } from "../controllers/adminDealer.controller.js";
+import { deleteBankPermanently } from "../controllers/adminBank.controller.js";
+import { freezeAdminPartner, getAdminOnboardingRequests, getAdminPartners, getAdminWorkflowLogs, getAdminWorkflowSettings, updateAdminOnboardingRequest, updateAdminWorkflowSettings } from "../controllers/adminWorkflow.controller.js";
+import { getAdminAuditLogs } from "../controllers/adminAudit.controller.js";
+import { getAdminAnalytics, getAdminEcosystem } from "../controllers/adminEcosystem.controller.js";
 import {
   registerBankBranchAdmin,
   approveBankBranchAdmin,
