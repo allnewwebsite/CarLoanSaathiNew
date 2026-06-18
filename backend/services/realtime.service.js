@@ -1,13 +1,12 @@
 import crypto from "node:crypto";
 import IORedis from "ioredis";
 import { logInfo, logWarn } from "./logger.service.js";
-import { logRealtimeTicketStep, measureRealtimeTicketSync } from "./realtimeTicketLatency.service.js";
 import { recordRealtimeMetric } from "./monitoringCenter.service.js";
+import { PHASE_ONE_EVENTS, REALTIME_EVENTS } from "./realtimeEvents.service.js";
+import { consumeRealtimeTicket, createRealtimeTicket, pendingRealtimeTickets } from "./realtimeTicket.service.js";
 
-const TICKET_TTL_MS = 60 * 1000;
 const EVENT_BUFFER_LIMIT = 500;
 const REALTIME_REDIS_CHANNEL = "cls:realtime:events:v1";
-const tickets = new Map();
 const clients = new Map();
 const clientsByIdentity = new Map();
 const eventBuffer = [];
@@ -18,61 +17,7 @@ let redisReady = false;
 let acknowledgedEvents = 0;
 let lastAcknowledgedEventAt = null;
 
-export const REALTIME_EVENTS = {
-  LEAD_CREATED: "LEAD_CREATED",
-  LEAD_STATUS_UPDATED: "LEAD_STATUS_UPDATED",
-  LEAD_STATUS_CHANGED: "LEAD_STATUS_UPDATED",
-  LEAD_REMARK_ADDED: "LEAD_REMARK_ADDED",
-  LEAD_ACCEPTED: "LEAD_ACCEPTED",
-  LEAD_REJECTED: "LEAD_REJECTED",
-  EXECUTIVE_ASSIGNED: "EXECUTIVE_ASSIGNED",
-  EXECUTIVE_REASSIGNED: "EXECUTIVE_REASSIGNED",
-  DOCUMENT_UPLOADED: "DOCUMENT_UPLOADED",
-  DOCUMENT_REQUESTED: "DOCUMENT_REQUESTED",
-  LEAD_APPROVED: "LEAD_APPROVED",
-  LEAD_DISBURSED: "LEAD_DISBURSED",
-  DEAD_CASE_CREATED: "DEAD_CASE_CREATED",
-  DEAD_CASE_RESTORED: "DEAD_CASE_RESTORED",
-  LEAD_MARKED_DEAD: "LEAD_MARKED_DEAD",
-  LEAD_RESTORED_FROM_DEAD: "LEAD_RESTORED_FROM_DEAD",
-  DEAD_CASE_UPDATED: "DEAD_CASE_UPDATED",
-  BANK_CREATED: "BANK_CREATED",
-  BANK_UPDATED: "BANK_UPDATED",
-  BANK_DISABLED: "BANK_DISABLED",
-  BANK_EXECUTIVE_CREATED: "BANK_EXECUTIVE_CREATED",
-  BANK_EXECUTIVE_DELETED: "BANK_EXECUTIVE_DELETED",
-  BRANCH_CREATED: "BRANCH_CREATED",
-  BRANCH_UPDATED: "BRANCH_UPDATED",
-  BRANCH_DISABLED: "BRANCH_DISABLED",
-  DEALER_CREATED: "DEALER_CREATED",
-  DEALER_APPROVED: "DEALER_APPROVED",
-  DEALER_UPDATED: "DEALER_UPDATED",
-  DEALER_DISABLED: "DEALER_DISABLED",
-  DEALER_LOCATION_UPDATED: "DEALER_LOCATION_UPDATED",
-  DEALER_CAPACITY_UPDATED: "DEALER_CAPACITY_UPDATED",
-  NOTIFICATION_CREATED: "NOTIFICATION_CREATED",
-  FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
-  SALESPERSON_CHANGED: "SALESPERSON_CHANGED",
-  SUBSCRIPTION_TRIAL_STARTED: "SUBSCRIPTION_TRIAL_STARTED",
-  SUBSCRIPTION_UPDATED: "SUBSCRIPTION_UPDATED",
-  SUBSCRIPTION_RENEWED: "SUBSCRIPTION_RENEWED",
-  SUBSCRIPTION_EXTENDED: "SUBSCRIPTION_EXTENDED",
-  SUBSCRIPTION_EXPIRED: "SUBSCRIPTION_EXPIRED",
-};
-
-const PHASE_ONE_EVENTS = new Set([
-  REALTIME_EVENTS.LEAD_CREATED,
-  REALTIME_EVENTS.LEAD_STATUS_UPDATED,
-  REALTIME_EVENTS.LEAD_REMARK_ADDED,
-  REALTIME_EVENTS.DOCUMENT_UPLOADED,
-]);
-
-function cleanTickets() {
-  const now = Date.now();
-  for (const [ticket, entry] of tickets.entries()) {
-    if (!entry || entry.expiresAt <= now) tickets.delete(ticket);
-  }
-}
+export { consumeRealtimeTicket, createRealtimeTicket, REALTIME_EVENTS };
 
 function redisEnabled() {
   return process.env.ENABLE_REALTIME_REDIS === "true" && Boolean(process.env.REDIS_URL);
@@ -222,27 +167,6 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
   if (bankIds.length) portals.push("bank-manager");
   if (executiveIds.length || recipientIds.length) portals.push("loan-executive");
   return [...new Set(portals)];
-}
-
-export function createRealtimeTicket(user = {}) {
-  const startedAt = Date.now();
-  cleanTickets();
-  const ticket = measureRealtimeTicketSync("token_generation", () => crypto.randomUUID(), { summaryField: "tokenGenerationDurationMs" });
-  tickets.set(ticket, {
-    user,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + TICKET_TTL_MS,
-  });
-  logRealtimeTicketStep("ticket_generation", Date.now() - startedAt, { summaryField: "ticketGenerationDurationMs" });
-  return { ticket, expiresInMs: TICKET_TTL_MS };
-}
-
-export function consumeRealtimeTicket(ticket = "") {
-  cleanTickets();
-  const entry = tickets.get(ticket);
-  tickets.delete(ticket);
-  if (!entry || entry.expiresAt <= Date.now()) return null;
-  return entry.user || null;
 }
 
 function canReceiveEvent(user = {}, event = {}) {
@@ -565,6 +489,5 @@ export function acknowledgeRealtimeEvents({ user = {}, eventIds = [], lastEventI
 }
 
 export function realtimeStats() {
-  cleanTickets();
-  return { clients: clients.size, bufferedEvents: eventBuffer.length, pendingTickets: tickets.size, redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
+  return { clients: clients.size, bufferedEvents: eventBuffer.length, pendingTickets: pendingRealtimeTickets(), redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
 }
