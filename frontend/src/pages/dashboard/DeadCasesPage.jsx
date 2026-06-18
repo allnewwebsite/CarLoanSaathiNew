@@ -1,9 +1,10 @@
-import { Download, RotateCcw, Search } from "lucide-react";
+import { Download, Pencil, RotateCcw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api } from "../../services/api.js";
 import { formatPortalDateTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { DEAD_CASE_REASONS } from "./finance/financeLeadPage.helpers.js";
 
 const PAGE_SIZE = 20;
 const HEADERS = [
@@ -13,15 +14,38 @@ const HEADERS = [
   "Executive",
   "Current Status",
   "Dead Reason",
+  "Dead Notes",
   "Dead Date",
   "Marked By",
-  "Created Date",
   "Actions",
 ];
 const CSV_HEADERS = HEADERS.filter((header) => header !== "Actions");
+const DEAD_CASE_ENDPOINTS = {
+  finance: "/dealer/dead-cases",
+  gm: "/gm/dead-cases",
+  bank: "/bank/dead-cases",
+  executive: "/bank/dead-cases",
+  admin: "/admin/dead-cases",
+};
+const AUDIENCE_LABELS = {
+  finance: "Finance Desk",
+  gm: "General Manager",
+  bank: "Bank Manager",
+  executive: "Loan Executive",
+  admin: "Super Admin",
+};
 
 function value(input) {
   return String(input || "").trim() || "-";
+}
+
+function leadIds(lead = {}) {
+  return [lead.id, lead.leadId, lead.sourceId, lead.caseId].map((item) => String(item || "").trim()).filter(Boolean);
+}
+
+function sameLead(left = {}, right = {}) {
+  const rightIds = new Set(leadIds(right));
+  return leadIds(left).some((id) => rightIds.has(id));
 }
 
 function escapeCsv(input) {
@@ -37,9 +61,9 @@ function downloadCsv(rows, audience) {
     lead.assignedExecutiveName || lead.assignedExecutiveEmail,
     portalLeadStatusLabel(lead),
     lead.deadCaseReason,
+    lead.deadCaseNotes,
     formatPortalDateTime(lead.deadCaseDate),
     lead.deadCaseBy,
-    formatPortalDateTime(lead.createdAt),
   ]);
   const csv = [CSV_HEADERS, ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -52,7 +76,8 @@ function downloadCsv(rows, audience) {
 }
 
 export function DeadCasesPage({ audience = "finance" }) {
-  const endpoint = audience === "admin" ? "/admin/dead-cases" : "/dealer/dead-cases";
+  const endpoint = DEAD_CASE_ENDPOINTS[audience] || DEAD_CASE_ENDPOINTS.finance;
+  const canModify = audience === "finance";
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [rows, setRows] = useState([]);
@@ -60,6 +85,10 @@ export function DeadCasesPage({ audience = "finance" }) {
   const [actionId, setActionId] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [editLead, setEditLead] = useState(null);
+  const [editReason, setEditReason] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editError, setEditError] = useState("");
   const { cursorParamsForPage, rememberNextCursor } = useCursorPager([endpoint, debouncedSearch]);
 
   useEffect(() => {
@@ -98,14 +127,25 @@ export function DeadCasesPage({ audience = "finance" }) {
   useEffect(() => {
     const refreshOnDeadCase = (event) => {
       const type = event.detail?.eventType || event.detail?.event;
-      if (["LEAD_MARKED_DEAD", "LEAD_RESTORED_FROM_DEAD", "DEAD_CASE_UPDATED"].includes(type)) load({ silent: true });
+      if (!["DEAD_CASE_CREATED", "DEAD_CASE_RESTORED", "DEAD_CASE_UPDATED", "LEAD_MARKED_DEAD", "LEAD_RESTORED_FROM_DEAD"].includes(type)) return;
+      const patch = event.detail?.lead || event.detail;
+      if (!patch?.id && !patch?.leadId && !patch?.caseId) return;
+      setRows((current) => {
+        if (type === "DEAD_CASE_RESTORED" || type === "LEAD_RESTORED_FROM_DEAD" || patch.isDeadCase === false) {
+          return current.filter((row) => !sameLead(row, patch));
+        }
+        const nextPatch = { ...patch, isDeadCase: true };
+        const exists = current.some((row) => sameLead(row, nextPatch));
+        if (exists) return current.map((row) => sameLead(row, nextPatch) ? { ...row, ...nextPatch } : row);
+        return [nextPatch, ...current].slice(0, Math.max(current.length || PAGE_SIZE, PAGE_SIZE));
+      });
     };
     window.addEventListener("cls:realtime-event", refreshOnDeadCase);
     return () => window.removeEventListener("cls:realtime-event", refreshOnDeadCase);
-  }, [load]);
+  }, []);
 
   const restoreCase = useCallback(async (lead) => {
-    if (audience !== "finance" || !lead?.id) return;
+    if (!canModify || !lead?.id) return;
     setActionId(lead.id);
     try {
       await api.post(`/dealer/dead-cases/${lead.id}/restore`);
@@ -114,7 +154,38 @@ export function DeadCasesPage({ audience = "finance" }) {
       setActionId("");
       load({ silent: true });
     }
-  }, [audience, load]);
+  }, [canModify, load]);
+
+  const openEdit = useCallback((lead) => {
+    if (!canModify) return;
+    setEditLead(lead);
+    setEditReason(lead.deadCaseReason || "");
+    setEditNotes(lead.deadCaseNotes || "");
+    setEditError("");
+  }, [canModify]);
+
+  const saveEdit = useCallback(async () => {
+    if (!editLead?.id) return;
+    if (!editReason || !editNotes.trim()) {
+      setEditError("Select a reason and enter notes.");
+      return;
+    }
+    setActionId(editLead.id);
+    setEditError("");
+    try {
+      const response = await api.patch(`/dealer/dead-cases/${editLead.id}`, {
+        reason: editReason,
+        notes: editNotes,
+      });
+      setRows((current) => current.map((item) => item.id === editLead.id ? response.data : item));
+      setEditLead(null);
+    } catch (error) {
+      setEditError(error.response?.data?.message || "Could not update dead case details.");
+    } finally {
+      setActionId("");
+      load({ silent: true });
+    }
+  }, [editLead?.id, editNotes, editReason, load]);
 
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
@@ -125,28 +196,39 @@ export function DeadCasesPage({ audience = "finance" }) {
       value(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
       portalLeadStatusLabel(lead),
       value(lead.deadCaseReason),
+      value(lead.deadCaseNotes),
       formatPortalDateTime(lead.deadCaseDate),
       value(lead.deadCaseBy),
-      formatPortalDateTime(lead.createdAt),
-      audience === "finance" ? (
-        <button
-          type="button"
-          onClick={() => restoreCase(lead)}
-          disabled={actionId === lead.id}
-          className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Restore
-        </button>
+      canModify ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => openEdit(lead)}
+            disabled={actionId === lead.id}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => restoreCase(lead)}
+            disabled={actionId === lead.id}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-700 disabled:opacity-50"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Restore
+          </button>
+        </div>
       ) : "Read only",
     ],
-  })), [actionId, audience, restoreCase, rows]);
+  })), [actionId, canModify, openEdit, restoreCase, rows]);
 
   return (
     <section className="space-y-4">
       <div>
         <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-          {audience === "admin" ? "Super Admin" : "Finance Desk"}
+          {AUDIENCE_LABELS[audience] || AUDIENCE_LABELS.finance}
         </p>
         <h1 className="mt-1 text-xl font-semibold text-slate-900">Dead Cases</h1>
         <p className="mt-1 text-sm text-slate-500">Cases manually moved out of active workflow by Finance Desk.</p>
@@ -184,6 +266,38 @@ export function DeadCasesPage({ audience = "finance" }) {
         onPage={setPage}
         pageSize={PAGE_SIZE}
       />
+      {editLead ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <h3 className="text-base font-semibold text-slate-900">Update Dead Case</h3>
+              <button type="button" onClick={() => setEditLead(null)} className="rounded-md p-1 text-slate-500 hover:bg-slate-100" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 p-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Dead Reason *
+                <select value={editReason} onChange={(event) => setEditReason(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100">
+                  <option value="">Select reason</option>
+                  {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Dead Notes *
+                <textarea value={editNotes} onChange={(event) => setEditNotes(event.target.value)} rows={4} className="mt-1.5 w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100" />
+              </label>
+              {editError ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p> : null}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+              <button type="button" onClick={() => setEditLead(null)} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700">Cancel</button>
+              <button type="button" onClick={saveEdit} disabled={actionId === editLead.id} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white disabled:opacity-50">
+                {actionId === editLead.id ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

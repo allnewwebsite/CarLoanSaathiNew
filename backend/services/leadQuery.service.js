@@ -309,10 +309,13 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
   });
 }
 
-export async function queryDeadCases({ dealershipId = "", query = {}, fields = LEAD_FIELDS } = {}) {
+export async function queryDeadCases({ dealershipId = "", bankId = "", executiveId = "", salespersonId = "", query = {}, fields = LEAD_FIELDS } = {}) {
   const { limit, cursor, page } = paginationParams(query);
   const where = [{ field: "isDeadCase", value: true }];
   if (dealershipId) where.push({ field: "dealershipId", value: dealershipId });
+  if (bankId) where.push({ field: "bankId", value: bankId });
+  if (executiveId) where.push({ field: "assignedExecutiveId", value: executiveId });
+  if (salespersonId) where.push({ field: "salespersonId", value: salespersonId });
   if (query.status) where.push({ field: "status", value: normalizeStatus(query.status) });
   if (query.deadCaseReason) where.push({ field: "deadCaseReason", value: String(query.deadCaseReason).trim() });
   const result = await queryRecords("leads", {
@@ -326,10 +329,19 @@ export async function queryDeadCases({ dealershipId = "", query = {}, fields = L
     searchFields: SEARCH_FIELDS,
     fields,
     maxLimit: 100,
-    allowGlobal: !dealershipId,
+    allowGlobal: !dealershipId && !bankId && !executiveId && !salespersonId,
   });
+  const bankIdentity = String(bankId || "").trim().toLowerCase();
+  const executiveIdentity = String(executiveId || "").trim().toLowerCase();
+  const salespersonIdentity = String(salespersonId || "").trim().toLowerCase();
+  const matchesScopedIdentity = (lead = {}) => {
+    const same = (values, expected) => !expected || values.some((value) => String(value || "").trim().toLowerCase() === expected);
+    return same([lead.bankId, lead.assignedBankId, lead.bankPartnerId, lead.bankEmail, lead.assignedBankEmail], bankIdentity)
+      && same([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.executiveEmail, lead.loanExecutiveId], executiveIdentity)
+      && same([lead.salespersonId, lead.salespersonEmail, lead.salespersonMobile, lead.salespersonJobId, lead.assignedSalesperson], salespersonIdentity);
+  };
   return pageResponse({
-    data: result.data.filter((lead) => lead.isDeadCase === true),
+    data: result.data.filter((lead) => lead.isDeadCase === true && matchesScopedIdentity(lead)),
     limit,
     nextCursor: result.nextCursor,
   });

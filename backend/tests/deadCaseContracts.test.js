@@ -235,12 +235,12 @@ test("dead-case SSE event shape includes the realtime patch fields", async () =>
   };
 
   const event = publishRealtimeEvent({
-    eventType: REALTIME_EVENTS.LEAD_MARKED_DEAD,
+    eventType: REALTIME_EVENTS.DEAD_CASE_CREATED,
     lead,
     actor: { role: "finance-desk", email: "finance@test.local" },
   });
 
-  assert.equal(event.eventType, REALTIME_EVENTS.LEAD_MARKED_DEAD);
+  assert.equal(event.eventType, REALTIME_EVENTS.DEAD_CASE_CREATED);
   assert.equal(event.leadId, lead.id);
   assert.equal(event.lead.isDeadCase, true);
   assert.equal(event.lead.deadCaseReason, "Other");
@@ -257,6 +257,9 @@ test("Firestore indexes include dead-case query contracts", () => {
 
   assert.equal(signatures.includes("isDeadCase|deadCaseDate"), true);
   assert.equal(signatures.includes("dealershipId|isDeadCase|deadCaseDate"), true);
+  assert.equal(signatures.includes("bankId|isDeadCase|deadCaseDate"), true);
+  assert.equal(signatures.includes("assignedExecutiveId|isDeadCase|deadCaseDate"), true);
+  assert.equal(signatures.includes("salespersonId|isDeadCase|deadCaseDate"), true);
   assert.equal(signatures.includes("assignedExecutiveId|status|isDeadCase"), true);
 });
 

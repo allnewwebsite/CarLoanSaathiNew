@@ -58,9 +58,9 @@ function clearLeadCaches(leadId) {
 }
 
 async function notifyDeadCaseChange({ lead, eventType, title, message, req }) {
-  const isMarkedDead = eventType === REALTIME_EVENTS.LEAD_MARKED_DEAD;
+  const isMarkedDead = eventType === REALTIME_EVENTS.DEAD_CASE_CREATED || eventType === REALTIME_EVENTS.LEAD_MARKED_DEAD;
   return createNotification({
-    type: isMarkedDead ? "dead-case" : eventType === REALTIME_EVENTS.LEAD_RESTORED_FROM_DEAD ? "dead-case-restored" : "dead-case-updated",
+    type: isMarkedDead ? "dead-case" : [REALTIME_EVENTS.DEAD_CASE_RESTORED, REALTIME_EVENTS.LEAD_RESTORED_FROM_DEAD].includes(eventType) ? "dead-case-restored" : "dead-case-updated",
     title,
     message,
     leadId: lead.id,
@@ -175,7 +175,7 @@ export async function moveLeadToDeadCase({ req, leadId, reason, notes }) {
     timelineEventType: TIMELINE_EVENTS.DEAD_CASE_MARKED,
     timelineTitle: "Moved To Dead Cases",
     timelineDescription: "Finance Desk marked this case as no longer actively pursued.",
-    eventType: REALTIME_EVENTS.LEAD_MARKED_DEAD,
+    eventType: REALTIME_EVENTS.DEAD_CASE_CREATED,
   });
 }
 
@@ -201,7 +201,7 @@ export async function restoreDeadCase({ req, leadId }) {
     timelineEventType: TIMELINE_EVENTS.DEAD_CASE_RESTORED,
     timelineTitle: "Restored From Dead Cases",
     timelineDescription: "Finance Desk restored this case to the active workflow.",
-    eventType: REALTIME_EVENTS.LEAD_RESTORED_FROM_DEAD,
+    eventType: REALTIME_EVENTS.DEAD_CASE_RESTORED,
   });
 }
 

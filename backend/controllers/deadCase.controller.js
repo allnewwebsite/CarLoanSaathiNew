@@ -74,6 +74,33 @@ export async function getAdminDeadCase(req, res, next) {
   }
 }
 
+export async function getGmDeadCases(req, res, next) {
+  try {
+    return res.json(await queryDeadCases({
+      dealershipId: dealershipIdFromUser(req.user),
+      query: req.query,
+    }));
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function getBankDeadCases(req, res, next) {
+  try {
+    const bankId = String(req.user?.bankId || req.user?.organizationId || "").trim();
+    const executiveId = req.user?.role === "loan-executive"
+      ? String(req.user?.uid || req.user?.email || req.user?.assignedExecutiveId || "").trim()
+      : "";
+    return res.json(await queryDeadCases({
+      bankId,
+      executiveId,
+      query: req.query,
+    }));
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function markFinanceLeadDead(req, res, next) {
   try {
     const updated = await moveLeadToDeadCase({

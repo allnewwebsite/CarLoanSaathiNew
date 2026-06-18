@@ -283,10 +283,14 @@ function invalidateRealtimeCaches(event = {}) {
   }
   [
     "/admin/leads",
+    "/admin/dead-cases",
     "/bank/leads",
+    "/bank/dead-cases",
     "/bank/analytics",
     "/dealer/leads",
+    "/dealer/dead-cases",
     "/gm/leads",
+    "/gm/dead-cases",
     "/timeline",
     "/notifications",
     "/dashboard",

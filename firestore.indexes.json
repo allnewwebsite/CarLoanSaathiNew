@@ -1229,6 +1229,33 @@
       ]
     },
     {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bankId", "order": "ASCENDING" },
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedExecutiveId", "order": "ASCENDING" },
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "subscriptionPayments",
       "queryScope": "COLLECTION",
       "fields": [

@@ -22,6 +22,7 @@ import {
   updateBankLeadStatus,
   uploadBankLeadDocument,
 } from "../controllers/bank.controller.js";
+import { getBankDeadCases } from "../controllers/deadCase.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
 import { registrationSecurity } from "../middleware/registrationSecurity.js";
@@ -36,6 +37,7 @@ router.post("/register/email-start", registrationRateLimit, registrationSecurity
 router.post("/register/status", registrationRateLimit, registrationSecurity, getBankRegistrationStatus);
 router.use(authenticate, requireRole(ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE));
 router.get("/leads", getBankLeads);
+router.get("/dead-cases", getBankDeadCases);
 router.get("/dealerships", requireRole(ROLES.BANK_MANAGER), getBankDealerships);
 router.get("/dealerships/:dealershipId/disbursed", requireRole(ROLES.BANK_MANAGER), getBankDealershipDisbursedCases);
 router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);

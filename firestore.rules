@@ -175,6 +175,31 @@ service cloud.firestore {
         && request.resource.data.bankId == resource.data.bankId;
     }
 
+    function deadCaseFields() {
+      return [
+        "isDeadCase",
+        "deadCaseDate",
+        "deadCaseBy",
+        "deadCaseReason",
+        "deadCaseNotes",
+        "deadCaseUpdatedAt",
+        "restoredFromDeadCaseAt",
+        "restoredFromDeadCaseBy"
+      ];
+    }
+
+    function touchesDeadCaseFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(deadCaseFields());
+    }
+
+    function financeDeadCaseFieldUpdate() {
+      return isFinanceDesk()
+        && approved()
+        && sameDealership(resource.data)
+        && sameDealership(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(deadCaseFields());
+    }
+
     function ownDealerRegistration(data) {
       return signedIn()
         && data.dealerUid == request.auth.uid
@@ -209,8 +234,10 @@ service cloud.firestore {
         && approved()
         && notArchived(request.resource.data)
         && request.resource.data.dealershipId == dealershipId();
+      allow update: if financeDeadCaseFieldUpdate();
       allow update: if isLoanExecutive()
         && notArchived(resource.data)
+        && !touchesDeadCaseFields()
         && assignedExecutive(resource.data)
         && request.resource.data.dealershipId == resource.data.dealershipId
         && request.resource.data.bankId == resource.data.bankId;

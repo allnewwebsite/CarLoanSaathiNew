@@ -14,6 +14,7 @@ const navByRole = {
     { label: "All Salespersons", to: "/gm/salespersons", icon: Users },
     { label: "Status", to: "/gm/status", icon: FileClock },
     { label: "All Cases", to: "/gm/cases", icon: FileText },
+    { label: "Dead Cases", to: "/gm/dead-cases", icon: FileX2 },
   ],
   "finance-desk": [
     { label: "Total Leads", to: "/finance/total-leads", icon: ClipboardList },
@@ -30,6 +31,7 @@ const navByRole = {
   "bank-manager": [
     { label: "Total Leads", to: "/bank-manager/leads", icon: ClipboardList },
     { label: "Status", to: "/bank-manager/status", icon: FileClock },
+    { label: "Dead Cases", to: "/bank-manager/dead-cases", icon: FileX2 },
     { label: "Analytics", to: "/bank-manager/analytics", icon: BarChart3 },
     { label: "Manage Executive", to: "/bank-manager/manage-executive", icon: Users },
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },
@@ -38,6 +40,7 @@ const navByRole = {
   "loan-executive": [
     { label: "Total Leads", to: "/loan-executive/leads", icon: ClipboardList },
     { label: "Status", to: "/loan-executive/status", icon: FileClock },
+    { label: "Dead Cases", to: "/loan-executive/dead-cases", icon: FileX2 },
   ],
   "super-admin": [
     { label: "Approved Dealerships", to: "/admin/dealerships", icon: Building2 },
@@ -68,6 +71,10 @@ function withCommonPrefetch(specs = []) {
 
 function prefetchSpecsForRoute(to) {
   const path = String(to || "").split("?")[0];
+  if (path === "/finance/dead-cases") return withCommonPrefetch([{ url: "/dealer/dead-cases", params: { page: 1, limit: 20 } }]);
+  if (path === "/gm/dead-cases") return withCommonPrefetch([{ url: "/gm/dead-cases", params: { page: 1, limit: 20 } }]);
+  if (path === "/bank-manager/dead-cases" || path === "/loan-executive/dead-cases") return withCommonPrefetch([{ url: "/bank/dead-cases", params: { page: 1, limit: 20 } }]);
+  if (path === "/admin/dead-cases") return withCommonPrefetch([{ url: "/admin/dead-cases", params: { page: 1, limit: 20 } }]);
   if (path.startsWith("/finance")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
   if (path.startsWith("/gm")) return withCommonPrefetch([{ url: "/dashboard/fast" }]);
   if (path.startsWith("/bank-manager/dealerships")) return withCommonPrefetch([{ url: "/dashboard/fast" }, { url: "/bank/dealerships", params: { page: 1, limit: 10 } }]);

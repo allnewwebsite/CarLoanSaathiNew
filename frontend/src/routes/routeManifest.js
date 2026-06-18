@@ -10,10 +10,15 @@ export const loginSmokeRoutes = Object.freeze([
 
 export const protectedSmokeRoutes = Object.freeze([
   { path: "/finance/total-leads", role: ROLES.FINANCE_DESK, loginPath: "/finance/login", module: "dashboard/FinanceDeskPanel.jsx" },
+  { path: "/finance/dead-cases", role: ROLES.FINANCE_DESK, loginPath: "/finance/login", module: "dashboard/DeadCasesPage.jsx" },
   { path: "/gm/total-leads", role: ROLES.GM, loginPath: "/gm/login", module: "dashboard/GmTrackingPanel.jsx" },
+  { path: "/gm/dead-cases", role: ROLES.GM, loginPath: "/gm/login", module: "dashboard/DeadCasesPage.jsx" },
   { path: "/bank-manager/leads", role: ROLES.BANK_MANAGER, loginPath: "/bank/login", module: "bank/BankBranchManagerPanel.jsx" },
+  { path: "/bank-manager/dead-cases", role: ROLES.BANK_MANAGER, loginPath: "/bank/login", module: "dashboard/DeadCasesPage.jsx" },
   { path: "/loan-executive/leads", role: ROLES.LOAN_EXECUTIVE, loginPath: "/executive/login", module: "bank/LoanExecutivePanel.jsx" },
+  { path: "/loan-executive/dead-cases", role: ROLES.LOAN_EXECUTIVE, loginPath: "/executive/login", module: "dashboard/DeadCasesPage.jsx" },
   { path: "/admin/leads", role: ROLES.SUPER_ADMIN, loginPath: "/admin/login", module: "dashboard/SuperAdminDashboard.jsx" },
+  { path: "/admin/dead-cases", role: ROLES.SUPER_ADMIN, loginPath: "/admin/login", module: "dashboard/DeadCasesPage.jsx" },
 ]);
 
 export const passwordSmokeRoutes = Object.freeze([
