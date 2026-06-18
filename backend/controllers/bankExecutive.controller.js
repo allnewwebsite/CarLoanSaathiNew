@@ -113,6 +113,12 @@ import {
   validateBankLocation,
   writeAuditLog,
 } from './bankShared.controller.js';
+import {
+  bankExecutiveCanonicalUser,
+  bankExecutiveRecord,
+  executiveInputError,
+  executiveInputFromBody,
+} from "./bankExecutivePayload.controller.js";
 
 void ACTIVE_EXPORT_SENTINEL;
 export async function getBankExecutives(req, res, next) {
@@ -198,13 +204,9 @@ export async function createBankExecutive(req, res, next) {
   try {
     const partner = await currentPartner(req);
     if (!partner || partner.roleType !== "bank-manager") return res.status(403).json({ message: "Only bank managers can add executives" });
-    const name = String(req.body.name || req.body.executiveName || "").trim();
-    const mobileDigits = String(req.body.mobile || "").replace(/\D/g, "");
-    const mobile = mobileDigits.length === 12 && mobileDigits.startsWith("91") ? mobileDigits.slice(2) : mobileDigits;
-    const email = String(req.body.email || req.body.officialEmail || "").trim().toLowerCase();
-    if (!name || !mobile || !email) return res.status(400).json({ message: "Executive name, mobile number, and official email are required" });
-    if (!/^\d{10}$/.test(mobile)) return res.status(400).json({ message: "Mobile number must be 10 digits" });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Valid official email is required" });
+    const { name, mobile, email } = executiveInputFromBody(req.body);
+    const inputError = executiveInputError({ name, mobile, email });
+    if (inputError) return res.status(400).json({ message: inputError });
 
     const identity = bankIdentity(partner);
     const executives = (await queryRecords("loanExecutives", {
@@ -253,69 +255,19 @@ export async function createBankExecutive(req, res, next) {
     }
     await assertNoActiveIdentityCollision({ uid: firebaseUser.uid, email, role: "loan-executive", excludeIds: [] });
 
-    const payload = {
-      id: email,
-      uid: firebaseUser.uid,
-      name,
-      fullName: name,
-      email,
-      officialEmail: email,
-      mobile,
-      bankPartnerId: identity.bankId,
-      bankId: identity.bankId,
-      bankName: identity.bankName,
-      bankIfsc: identity.bankIfsc,
-      ifsc: identity.bankIfsc,
-      bankLocation: identity.bankLocation,
-      bankBranchLocation: identity.bankLocation,
-      branch: identity.bankLocation,
-      branchCity: identity.bankLocation,
-      city: identity.bankLocation,
-      createdByManagerId: partner.email || partner.id,
-      createdByManager: true,
-      firstLoginRequired: true,
-      temporaryPasswordRequired: true,
-      temporaryPasswordHash,
-      temporaryPasswordIssuedAt: now,
-      passwordChangedAt: null,
-      status: "active",
-      active: true,
-      approved: true,
-      accountApproved: true,
-      accountActive: true,
-      createdAt: now,
-    };
+    const payload = bankExecutiveRecord({ name, mobile, email, identity, partner, firebaseUser, temporaryPasswordHash, now });
     await upsertRecord("loanExecutives", email, payload);
-    await upsertCanonicalUser(firebaseUser.uid, {
+    await upsertCanonicalUser(firebaseUser.uid, bankExecutiveCanonicalUser({
       name,
-      fullName: name,
-      uid: firebaseUser.uid,
-      email,
-      officialEmail: email,
       mobile,
-      role: "loan-executive",
-      approved: true,
-      active: true,
-      accountApproved: true,
-      accountActive: true,
-      bankId: identity.bankId,
-      bankName: identity.bankName,
-      bankIfsc: identity.bankIfsc,
-      branchId: identity.bankLocation,
-      branch: identity.bankLocation,
-      bankBranchLocation: identity.bankLocation,
-      city: identity.bankLocation,
-      employeeId: req.body.employeeId || req.body.employeeCode || "",
-      createdAt: now,
-      firstLoginRequired: true,
-      temporaryPasswordRequired: true,
+      email,
+      identity,
+      partner,
+      firebaseUser,
       temporaryPasswordHash,
-      temporaryPasswordIssuedAt: now,
-      passwordChangedAt: null,
-      createdByManager: true,
-      createdByManagerId: partner.email || partner.id,
-      status: "active",
-    });
+      now,
+      employeeId: req.body.employeeId || req.body.employeeCode || "",
+    }));
     await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
       role: "loan-executive",
       approved: true,

@@ -52,8 +52,6 @@ import {
   normalizeOnboardingPlan,
   normalizeStatus,
   normalizeStaffRole,
-  optionalEmail,
-  optionalText,
   owned,
   paginationParams,
   publishRealtimeEvent,
@@ -68,7 +66,6 @@ import {
   recordMonitoringSignal,
   removeBankTieUp,
   required,
-  requiredGstin,
   revokeUserSessions,
   runDealerLeadSideEffects,
   salespersonIdFrom,
@@ -90,6 +87,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { buildDealerOnboardingPayload } from "./dealerRegistrationPayload.controller.js";
 
 void DEALER_SHARED_SENTINEL;
 export async function startDealerRegistration(req, res, next) {
@@ -519,79 +517,15 @@ export async function registerDealerOnboarding(req, res, next) {
     }
     await assertNoActiveIdentityCollision({ uid: req.body.dealerUid || loginEmail, email: loginEmail, role: "finance-desk", excludeIds: [] });
     const selectedPlan = normalizeOnboardingPlan(pendingAccount.selectedPlan || req.body.selectedPlan);
-    const dealership = {
-      dealershipName: required(req.body.dealershipName, "Dealership name"),
+    const { dealership, documents, owner, registrationPayload } = buildDealerOnboardingPayload({
+      body: req.body,
+      loginEmail,
+      state,
+      city,
       dealershipBrand,
-      authorizedDealerCode: required(req.body.authorizedDealerCode, "Authorized dealer code"),
-      gstinNumber: requiredGstin(req.body.gstinNumber || req.body.gstin || req.body.gstNumber),
-      officialDealershipMobile: required(req.body.officialDealershipMobile, "Official dealership mobile"),
-      state,
-      city,
-      location: city,
-      pincode: required(req.body.pincode, "Pincode"),
-      address: required(req.body.address, "Full dealership address"),
-      landmark: String(req.body.landmark || "").trim(),
-      monthlyCarSalesCapacity: required(req.body.monthlyCarSalesCapacity, "Monthly car sales capacity"),
-      ...(optionalText(req.body.expectedMonthlyLoanApplications) ? { expectedMonthlyLoanApplications: optionalText(req.body.expectedMonthlyLoanApplications) } : {}),
-      status: "Pending Approval",
-      dealerId: loginEmail,
-      dealerName: required(req.body.dealershipName, "Dealership name"),
-      dealerBrand: dealershipBrand,
-      dealerState: state,
-      dealerLocation: city,
-      dealerStatus: "pending",
-      monthlySalesCapacity: required(req.body.monthlyCarSalesCapacity, "Monthly car sales capacity"),
-      active: false,
-      accountActive: false,
-      approved: false,
-      loginEmail,
-      primaryGoogleEmail: loginEmail,
-      createdAt: now,
       selectedPlan,
-    };
-
-    const documents = Array.isArray(req.body.documents) ? req.body.documents : [];
-    const generalManager = [req.body.gmName, req.body.gmMobile, req.body.gmEmail].some((value) => optionalText(value))
-      ? {
-          name: optionalText(req.body.gmName),
-          mobile: optionalText(req.body.gmMobile),
-          email: optionalEmail(req.body.gmEmail),
-        }
-      : null;
-    const financeDesk = [req.body.financeHeadName, req.body.financeHeadMobile, req.body.financeDeskEmail, req.body.financeTeamSize].some((value) => optionalText(value))
-      ? {
-          headName: optionalText(req.body.financeHeadName),
-          headMobile: optionalText(req.body.financeHeadMobile),
-          officialEmail: optionalEmail(req.body.financeDeskEmail) || loginEmail,
-          teamSize: optionalText(req.body.financeTeamSize),
-        }
-      : null;
-    const owner = {
-      fullName: optionalText(req.body.ownerFullName) || dealership.dealershipName,
-      mobile: optionalText(req.body.ownerMobile) || dealership.officialDealershipMobile,
-      email: optionalEmail(req.body.ownerEmail) || loginEmail,
-    };
-    const registrationPayload = {
-      type: "dealership",
-      status: "Pending Approval",
-      state,
-      city,
-      location: city,
-      dealershipName: dealership.dealershipName,
-      dealershipBrand: dealership.dealershipBrand,
-      gstinNumber: dealership.gstinNumber,
-      loginEmail,
-      submittedAt: now,
-      documents,
-      dealership,
-      owner,
-      ...(generalManager ? { generalManager } : {}),
-      ...(financeDesk ? { financeDesk } : {}),
-      verification: {
-        dealershipVerified: false,
-      },
-      selectedPlan,
-    };
+      now,
+    });
 
     const onboardingRequest = await createRecord("onboardingRequests", registrationPayload);
 

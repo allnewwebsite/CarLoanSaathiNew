@@ -23,7 +23,6 @@ import {
   createRecord,
   createUserSession,
   dealerRegistrationStatus,
-  dealershipEntitlement,
   deviceFromAgent,
   effectiveLockedUntil,
   emailMatchesRecord,
@@ -35,7 +34,6 @@ import {
   firebasePasswordErrorPayload,
   findIdentityCandidates,
   findRecordsByField,
-  firstLoginRequiredFor,
   firstLookup,
   getRecord,
   identityContextFor,
@@ -47,21 +45,16 @@ import {
   lifecycleOverlay,
   LOGIN_PORTAL_ROLES,
   loginPortalAllowsRole,
-  loginPortalForRole,
   logError,
   logInfo,
   logWarn,
   normalizeLoginPortal,
   normalizePortal,
-  onboardingStatusForUser,
-  organizationIdForAccount,
   passwordChangeRouteForRole,
   passwordLifecyclePatch,
   persistPasswordLifecycleIfMissing,
   portalAllowsRole,
-  portalForRole,
   queryRecords,
-  registrationProfile,
   resolveCanonicalIdentity,
   roleGuidance,
   ROLE_ROUTES,
@@ -84,6 +77,7 @@ import {
   wrongLoginPortalPayload,
   wrongPortalPayload,
 } from './authShared.controller.js';
+import { buildSessionUserFromAccount } from "./authLoginSession.controller.js";
 
 void AUTH_SHARED_SENTINEL;
 export async function login(req, res, next) {
@@ -271,44 +265,15 @@ export async function login(req, res, next) {
     authPhase = "password-lifecycle";
     const lifecycle = passwordLifecyclePatch(account);
     authPhase = "persist-user-session";
-    const user = {
-      uid: firebaseUid || account.uid || normalizedEmail,
+    const user = await buildSessionUserFromAccount({
+      account,
       email: normalizedEmail,
-      role: account.role,
-      portal: portalForRole(account.role),
-      scope: portalForRole(account.role),
-      loginPortal: loginPortalForRole(account.role),
-      organizationId: organizationIdForAccount(account),
-      createdAt: new Date().toISOString(),
-      approved: true,
-      active: true,
-      accountStatus: "active",
-      emailVerified: true,
+      firebaseUid,
+      portal,
+      lifecycle,
       accountApproved: ["dealer", "finance", "bank"].includes(portal) ? true : account.accountApproved === true,
-      accountActive: true,
-      dealershipId: account.dealershipId || null,
-      bankId: account.bankId || null,
-      branchId: account.branchId || null,
-      portalType: account.portalType || portal,
-      accountType: account.accountType || null,
-      accountSource: account.accountSource || "users",
-      accountSourceId: account.accountSourceId || null,
-      status: account.status || "active",
-      firstLoginRequired: firstLoginRequiredFor(account),
-      passwordChangedAt: lifecycle.passwordChangedAt,
-      passwordExpiresAt: lifecycle.passwordExpiresAt,
-      passwordExpired: lifecycle.passwordExpired,
-      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
-      lastLoginAt: new Date().toISOString(),
-      dealershipName: account.dealershipName || null,
-      dealerCity: account.dealerCity || account.city || null,
-      bankName: account.bankName || account.companyName || null,
-      bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || null,
-      bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
-      profile: registrationProfile(account),
-    };
-    Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
-    Object.assign(user, onboardingStatusForUser(user, account));
+      includeAccountSource: true,
+    });
     authPhase = "create-user-session";
     const sessionStartedAt = Date.now();
     const sessionId = await createUserSession({ req, user });
@@ -418,42 +383,14 @@ export async function restoreSession(req, res, next) {
     }
 
     const lifecycle = passwordLifecyclePatch(account);
-    const user = {
-      uid: firebaseUid || account.uid || normalizedEmail,
+    const user = await buildSessionUserFromAccount({
+      account,
       email: normalizedEmail,
-      role: account.role,
-      portal: portalForRole(account.role),
-      scope: portalForRole(account.role),
-      loginPortal: loginPortalForRole(account.role),
-      organizationId: organizationIdForAccount(account),
-      createdAt: new Date().toISOString(),
-      approved: true,
-      active: true,
-      accountStatus: "active",
-      emailVerified: true,
+      firebaseUid,
+      portal: requestedPortal,
+      lifecycle,
       accountApproved: true,
-      accountActive: true,
-      dealershipId: account.dealershipId || null,
-      bankId: account.bankId || null,
-      branchId: account.branchId || null,
-      portalType: account.portalType || null,
-      accountType: account.accountType || null,
-      status: account.status || "active",
-      firstLoginRequired: firstLoginRequiredFor(account),
-      passwordChangedAt: lifecycle.passwordChangedAt,
-      passwordExpiresAt: lifecycle.passwordExpiresAt,
-      passwordExpired: lifecycle.passwordExpired,
-      passwordDaysRemaining: lifecycle.passwordDaysRemaining,
-      lastLoginAt: new Date().toISOString(),
-      dealershipName: account.dealershipName || null,
-      dealerCity: account.dealerCity || account.city || null,
-      bankName: account.bankName || account.companyName || null,
-      bankIfsc: account.bankIfsc || account.ifsc || account.ifscCode || null,
-      bankBranchLocation: account.bankBranchLocation || account.branchLocation || account.branchCity || account.city || null,
-      profile: registrationProfile(account),
-    };
-    Object.assign(user, await dealershipEntitlement(account, normalizedEmail));
-    Object.assign(user, onboardingStatusForUser(user, account));
+    });
     const sessionId = await createUserSession({ req, user });
     user.sessionId = sessionId;
     const token = jwt.sign(user, jwtSecret(), { expiresIn: "7d" });
