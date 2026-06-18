@@ -64,6 +64,7 @@ import {
   registrationProfile,
   resolveCanonicalIdentity,
   roleGuidance,
+  ROLE_ROUTES,
   scheduleLoginMaintenance,
   sessionUserFromAuthenticatedRequest,
   setAuthCookie,
