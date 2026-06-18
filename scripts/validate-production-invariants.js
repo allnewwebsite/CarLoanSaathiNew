@@ -223,6 +223,10 @@ check("subscription billing is server-verified and blocks only lead creation", (
   const subscriptionService = readCombined(
     "backend/services/subscription.service.js",
     "backend/services/subscriptionCore.service.js",
+    "backend/services/subscriptionLifecycle.service.js",
+    "backend/services/subscriptionRazorpay.service.js",
+    "backend/services/subscriptionBilling.service.js",
+    "backend/services/subscriptionAdmin.service.js",
     "backend/services/subscriptionPlan.service.js",
   );
   const subscriptionMiddleware = read("backend/middleware/subscription.js");
@@ -421,6 +425,11 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
   const whatsappService = readCombined(
     "backend/services/whatsapp.service.js",
     "backend/services/whatsappCore.service.js",
+    "backend/services/whatsappShared.service.js",
+    "backend/services/whatsappValidation.service.js",
+    "backend/services/whatsappTransport.service.js",
+    "backend/services/whatsappQueue.service.js",
+    "backend/services/whatsappMonitoring.service.js",
     "backend/services/whatsappTemplates.service.js",
   );
   const notificationService = read("backend/services/notification.service.js");
