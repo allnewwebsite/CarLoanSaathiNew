@@ -45,13 +45,27 @@ const apiClient = readCombined(
 const router = read("frontend/src/routes/router.jsx");
 const requireRole = read("backend/middleware/requireRole.js");
 const auth = read("backend/middleware/auth.js");
-const authController = readCombined("backend/controllers/auth.controller.js", "backend/controllers/auth.controller.impl.js", "backend/controllers/authShared.controller.js", "backend/controllers/authLogin.controller.js", "backend/controllers/authSession.controller.js", "backend/controllers/authPassword.controller.js");
+const authController = readCombined(
+  "backend/controllers/auth.controller.js",
+  "backend/controllers/auth.controller.impl.js",
+  "backend/controllers/authShared.controller.js",
+  "backend/controllers/authPortalShared.controller.js",
+  "backend/controllers/authLogin.controller.js",
+  "backend/controllers/authSession.controller.js",
+  "backend/controllers/authPassword.controller.js",
+);
 const securityMiddleware = read("backend/middleware/securityMiddleware.js");
 const identityService = read("backend/services/identity.service.js");
 const timelineController = read("backend/controllers/timeline.controller.js");
 const timelineService = read("backend/services/timeline.service.js");
 const leadController = read("backend/controllers/lead.controller.js");
-const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankLeadRead.controller.js");
+const bankController = readCombined(
+  "backend/controllers/bank.controller.js",
+  "backend/controllers/bank.controller.impl.js",
+  "backend/controllers/bankShared.controller.js",
+  "backend/controllers/bankAccessShared.controller.js",
+  "backend/controllers/bankLeadRead.controller.js",
+);
 const partnerBranchValuesBody = between(bankController, "function partnerBranchValues", "function bankManagerCanAccessLead");
 const firestoreRules = read("firestore.rules");
 const storageRules = read("storage.rules");
