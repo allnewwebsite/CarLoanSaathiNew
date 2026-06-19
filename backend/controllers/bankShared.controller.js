@@ -259,20 +259,37 @@ export async function assignedLeadsForPartner(partner, query = {}, fields) {
     const primaryId = partner.id || partner.uid || partner.email || executiveIdentities[0];
     const executiveEmail = partner.email || partner.officialEmail || executiveIdentities.find((value) => String(value).includes("@"));
     const executiveMobile = partner.mobile || partner.assignedExecutiveMobile || partner.executiveMobile;
-    const projected = await queryLeadProjectionForUser({
+    const executiveNames = [partner.name, partner.fullName].filter(Boolean);
+    const scopedQuery = {
+      ...query,
+      bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined,
+      limit: query.limit || 100,
+    };
+    const [projected, canonical] = await Promise.all([
+      queryLeadProjectionForUser({
       user: { role: "loan-executive", uid: primaryId, email: executiveEmail, mobile: executiveMobile, identityValues: executiveIdentities },
-      query: { ...query, limit: query.limit || 100 },
+      query: scopedQuery,
       fields,
-    }).catch(() => null);
-    const result = projected || await queryExecutiveLeads({
-      executiveId: primaryId,
-      executiveEmail,
-      executiveMobile,
-      executiveIdentities,
-      query: { ...query, limit: query.limit || 100 },
-      fields,
+      }).catch(() => null),
+      queryExecutiveLeads({
+        executiveId: primaryId,
+        executiveEmail,
+        executiveMobile,
+        executiveIdentities,
+        executiveNames,
+        query: scopedQuery,
+        fields,
+      }).catch(() => null),
+    ]);
+    const byId = new Map();
+    [...(projected?.data || []), ...(canonical?.data || [])].forEach((lead) => {
+      const key = lead.sourceId || lead.id || lead.caseId;
+      if (key) byId.set(key, { ...lead, id: lead.sourceId || lead.id });
     });
-    return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => loanExecutiveCanAccessLead(partner, lead)), query));
+    const merged = [...byId.values()]
+      .filter((lead) => loanExecutiveCanAccessLead(partner, lead))
+      .sort((left, right) => String(right.createdAt || right.generatedAt || "").localeCompare(String(left.createdAt || left.generatedAt || "")));
+    return attachExecutiveMobile(partner, applyFilters(merged, query));
   }
   const identity = bankIdentity(partner);
   const projected = await queryLeadProjectionForUser({

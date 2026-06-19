@@ -53,6 +53,15 @@ test("loan executive list and projection contracts include id, email, and mobile
   const projectionShared = read("backend/services/projectionShared.service.js");
 
   [
+    "Promise.all([",
+    "queryExecutiveLeads({",
+    "executiveNames",
+    "const [projected, canonical] = await Promise.all([",
+    "...(projected?.data || [])",
+    "...(canonical?.data || [])",
+    "const merged = [...byId.values()]",
+    "query: scopedQuery",
+    "bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined",
     "executiveStrongIdentityValues(partner)",
     "executiveMobile",
     "loanExecutiveCanAccessLead(partner, lead)",
@@ -63,6 +72,7 @@ test("loan executive list and projection contracts include id, email, and mobile
     "assignedExecutiveMobile",
     "executiveMobile",
     "executiveIdentities",
+    "assignedExecutiveName",
   ].forEach((snippet) => assert.equal(leadQuery.includes(snippet), true, `leadQuery missing ${snippet}`));
 
   [

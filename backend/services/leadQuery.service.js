@@ -250,16 +250,26 @@ function uniqueValues(values = []) {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
-export async function queryExecutiveLeads({ executiveId, executiveEmail, executiveMobile, executiveIdentities = [], query = {}, fields = LEAD_FIELDS }) {
+export async function queryExecutiveLeads({
+  executiveId,
+  executiveEmail,
+  executiveMobile,
+  executiveIdentities = [],
+  executiveNames = [],
+  query = {},
+  fields = LEAD_FIELDS,
+}) {
   const { limit, cursor, page } = paginationParams(query);
   const identities = uniqueValues([executiveId, executiveEmail, ...executiveIdentities]);
   const email = String(executiveEmail || "").trim();
   const mobile = String(executiveMobile || "").replace(/\D/g, "").slice(-10);
+  const names = uniqueValues(executiveNames);
   const specs = [
     ...identities.map((value) => ({ field: "assignedExecutiveId", value })),
     email ? { field: "assignedExecutiveEmail", value: email } : null,
     mobile ? { field: "assignedExecutiveMobile", value: mobile } : null,
     mobile ? { field: "executiveMobile", value: mobile } : null,
+    ...names.map((value) => ({ field: "assignedExecutiveName", value })),
   ].filter(Boolean);
   const uniqueSpecs = specs.filter((spec, index) =>
     specs.findIndex((item) => item.field === spec.field && item.value === spec.value) === index

@@ -418,18 +418,17 @@ export function documentBelongsToBranch(document, lead, partner) {
 
 export function documentBelongsToExecutive(document, lead, partner) {
   if (partner.roleType !== "loan-executive") return true;
-  const executiveTargets = [partner.id, partner.email, partner.mobile, partner.name, partner.fullName];
-  const leadExecutiveMatch = anyMatch(
-    [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
-    executiveTargets,
-  );
-  if (!leadExecutiveMatch) return false;
+  if (!loanExecutiveCanAccessLead(partner, lead)) return false;
+  const executiveTargets = executiveStrongIdentityValues(partner);
 
   const documentExecutiveValues = [
     document.assignedExecutiveId,
     document.assignedExecutiveEmail,
     document.assignedExecutiveMobile,
+    document.executiveMobile,
     document.assignedExecutiveName,
   ].filter(Boolean);
-  return !documentExecutiveValues.length || anyMatch(documentExecutiveValues, executiveTargets);
+  return !documentExecutiveValues.length
+    || anyMatch(documentExecutiveValues, executiveTargets)
+    || anyMatch([document.assignedExecutiveName], [partner.name, partner.fullName]);
 }
