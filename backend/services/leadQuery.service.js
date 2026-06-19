@@ -357,6 +357,10 @@ export async function queryDeadCases({ dealershipId = "", bankId = "", executive
       lead.assignedExecutiveEmail,
       lead.executiveEmail,
       lead.loanExecutiveId,
+      lead.assignedExecutiveJobId,
+      lead.employeeId,
+      lead.employeeCode,
+      lead.jobId,
       lead.assignedExecutiveMobile,
       lead.executiveMobile,
     ].some((value) => executiveIdentities.has(normalizedIdentity(value)))

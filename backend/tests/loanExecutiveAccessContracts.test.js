@@ -46,6 +46,32 @@ test("loan executive lead access matches strong individual identities without ba
   assert.equal(loanExecutiveCanAccessLead(otherExecutive, lead), false);
 });
 
+test("loan executive dashboard identity includes auth uid and employee aliases", () => {
+  const lead = {
+    bankId: "bank-a",
+    assignedExecutiveId: "LE-042",
+    assignedExecutiveJobId: "vikas",
+    assignedExecutiveName: "Vikas",
+  };
+  const executive = {
+    uid: "firebase-uid-vikas",
+    email: "vikas@example.com",
+    employeeId: "LE-042",
+    jobId: "vikas",
+    bankId: "bank-a",
+    name: "Vikas",
+  };
+  const bankAccessShared = read("backend/controllers/bankAccessShared.controller.js");
+
+  assert.equal(executiveStrongIdentityValues(executive).includes("LE-042"), true);
+  assert.equal(leadExecutiveStrongIdentityValues(lead).includes("LE-042"), true);
+  assert.equal(leadExecutiveStrongIdentityValues(lead).includes("vikas"), true);
+  assert.equal(loanExecutiveCanAccessLead(executive, lead), true);
+  assert.equal(bankAccessShared.includes("findRecordsByField(\"loanExecutives\", \"uid\", req.user.uid"), true);
+  assert.equal(bankAccessShared.includes("findRecordsByField(\"loanExecutives\", \"authUid\", req.user.uid"), true);
+  assert.equal(bankAccessShared.includes("employeeId: req.user.employeeId || req.user.employeeCode || \"\""), true);
+});
+
 test("loan executive list and projection contracts include id, email, and mobile assignment paths", () => {
   const bankShared = read("backend/controllers/bankShared.controller.js");
   const leadQuery = read("backend/services/leadQuery.service.js");

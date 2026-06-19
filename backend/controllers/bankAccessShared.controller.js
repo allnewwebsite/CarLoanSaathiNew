@@ -91,6 +91,9 @@ export function executiveStrongIdentityValues(executive = {}) {
     executive.authUid,
     executive.sourceId,
     executive.executiveId,
+    executive.employeeId,
+    executive.employeeCode,
+    executive.jobId,
     executive.email,
     executive.officialEmail,
     executive.assignedExecutiveId,
@@ -109,6 +112,10 @@ export function leadExecutiveStrongIdentityValues(lead = {}) {
     lead.executiveEmail,
     lead.loanExecutiveId,
     lead.updatedByExecutiveId,
+    lead.assignedExecutiveJobId,
+    lead.employeeId,
+    lead.employeeCode,
+    lead.jobId,
     normalizedMobile(lead.assignedExecutiveMobile),
     normalizedMobile(lead.executiveMobile),
     normalizedMobile(lead.assignedExecutivePhone),
@@ -207,6 +214,9 @@ export async function currentPartner(req) {
     const executive = await getRecord("loanExecutives", email).catch(() => null)
       || (await findRecordsByField("loanExecutives", "email", email, 3))[0]
       || (await findRecordsByField("loanExecutives", "officialEmail", email, 3))[0]
+      || (req.user?.uid ? (await findRecordsByField("loanExecutives", "uid", req.user.uid, 3))[0] : null)
+      || (req.user?.uid ? (await findRecordsByField("loanExecutives", "authUid", req.user.uid, 3))[0] : null)
+      || (req.user?.employeeId ? (await findRecordsByField("loanExecutives", "employeeId", req.user.employeeId, 3))[0] : null)
       || null;
     if (executive) return {
       ...executive,
@@ -224,6 +234,11 @@ export async function currentPartner(req) {
       bankId: req.user.bankId,
       bankPartnerId: req.user.bankId,
       branchId: req.user.branchId,
+      employeeId: req.user.employeeId || req.user.employeeCode || "",
+      employeeCode: req.user.employeeCode || req.user.employeeId || "",
+      name: req.user.name || req.user.fullName || "",
+      fullName: req.user.fullName || req.user.name || "",
+      mobile: req.user.mobile || req.user.phone || "",
       roleType: "loan-executive",
       active: req.user.active !== false,
     };
