@@ -1,6 +1,7 @@
 import {
   ACTIVE_EXPORT_SENTINEL,
   addTimelineEvent,
+  ALERT_SEVERITY,
   anyMatch,
   applyFilters,
   assertBankRegistrationEmailVerified,
