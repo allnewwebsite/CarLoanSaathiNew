@@ -211,62 +211,116 @@ export async function deleteMatchingRecords(collection, predicate, indexedQuerie
   return matches.length;
 }
 
+function uniqueValues(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+async function firstRecordByIdentity(collection, identities = [], fields = []) {
+  const values = uniqueValues(identities);
+  for (const value of values) {
+    const direct = await getRecord(collection, value).catch(() => null);
+    if (direct) return direct;
+    for (const field of fields) {
+      const found = (await findRecordsByField(collection, field, value, 3).catch(() => []))[0];
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+async function bankProfileForContext(...records) {
+  const values = uniqueValues(records.flatMap((record = {}) => [
+    record.bankPartnerId,
+    record.partnerId,
+    record.bankId,
+    record.branchId,
+    record.bankBranchId,
+    record.ifscCode,
+    record.bankIfsc,
+    record.ifsc,
+    record.branchIfsc,
+    record.bankName,
+    record.companyName,
+  ]));
+  for (const collection of ["bankPartners", "banks", "branches", "bankBranchCatalog"]) {
+    const record = await firstRecordByIdentity(collection, values, ["bankId", "partnerId", "ifscCode", "ifsc", "bankIfsc", "bankName", "companyName"]);
+    if (record) return record;
+  }
+  return null;
+}
+
+function bankContextFrom(req, profile = {}, bankProfile = {}, roleType) {
+  const account = req.authAccount || {};
+  const user = req.user || {};
+  const email = userEmail(req);
+  const merged = { ...account, ...user, ...bankProfile, ...profile };
+  return {
+    ...merged,
+    id: profile.id || account.id || user.uid || email,
+    uid: profile.uid || account.uid || user.uid || email,
+    authUid: profile.authUid || account.authUid || user.uid || "",
+    email: profile.email || profile.officialEmail || account.email || user.email || email,
+    officialEmail: profile.officialEmail || account.officialEmail || user.email || email,
+    bankId: profile.bankId || bankProfile.bankId || account.bankId || user.bankId || profile.ifscCode || bankProfile.ifscCode || account.ifscCode || user.ifscCode || "",
+    bankPartnerId: profile.bankPartnerId || profile.partnerId || bankProfile.bankPartnerId || bankProfile.partnerId || bankProfile.bankId || account.bankPartnerId || account.bankId || user.bankId || "",
+    partnerId: profile.partnerId || bankProfile.partnerId || profile.bankPartnerId || bankProfile.bankPartnerId || "",
+    bankName: profile.bankName || profile.companyName || bankProfile.bankName || bankProfile.companyName || account.bankName || account.companyName || user.bankName || "",
+    companyName: profile.companyName || profile.bankName || bankProfile.companyName || bankProfile.bankName || account.companyName || account.bankName || user.bankName || "",
+    ifsc: profile.ifsc || profile.ifscCode || profile.bankIfsc || bankProfile.ifsc || bankProfile.ifscCode || bankProfile.bankIfsc || account.ifsc || account.ifscCode || account.bankIfsc || user.ifscCode || user.bankIfsc || "",
+    ifscCode: profile.ifscCode || profile.bankIfsc || profile.ifsc || bankProfile.ifscCode || bankProfile.bankIfsc || bankProfile.ifsc || account.ifscCode || account.bankIfsc || account.ifsc || user.ifscCode || user.bankIfsc || "",
+    bankIfsc: profile.bankIfsc || profile.ifscCode || profile.ifsc || bankProfile.bankIfsc || bankProfile.ifscCode || bankProfile.ifsc || account.bankIfsc || account.ifscCode || account.ifsc || user.bankIfsc || user.ifscCode || "",
+    branchId: profile.branchId || profile.bankBranchId || bankProfile.branchId || bankProfile.bankBranchId || account.branchId || user.branchId || profile.ifscCode || bankProfile.ifscCode || account.ifscCode || user.ifscCode || "",
+    bankBranchId: profile.bankBranchId || profile.branchId || bankProfile.bankBranchId || bankProfile.branchId || account.bankBranchId || account.branchId || user.branchId || "",
+    bankBranchLocation: profile.bankBranchLocation || profile.branchLocation || profile.branchCity || bankProfile.bankBranchLocation || bankProfile.branchLocation || bankProfile.branchCity || account.bankBranchLocation || account.branchLocation || account.branchCity || user.branchLocation || user.branchCity || "",
+    branchLocation: profile.branchLocation || profile.bankBranchLocation || profile.branchCity || bankProfile.branchLocation || bankProfile.bankBranchLocation || bankProfile.branchCity || account.branchLocation || account.bankBranchLocation || account.branchCity || user.branchLocation || user.branchCity || "",
+    branchCity: profile.branchCity || profile.bankBranchCity || profile.city || bankProfile.branchCity || bankProfile.bankBranchCity || bankProfile.city || account.branchCity || account.bankBranchCity || user.branchCity || "",
+    roleType,
+    active: merged.active !== false,
+  };
+}
+
 export async function currentPartner(req) {
   const email = userEmail(req);
   const cacheKey = `context:bank:${req.user?.role || ""}:${req.user?.uid || ""}:${email}`;
   return cached(cacheKey, 15000, async () => {
   if (req.user?.role === "loan-executive") {
-    const executive = await getRecord("loanExecutives", email).catch(() => null)
-      || (await findRecordsByField("loanExecutives", "email", email, 3))[0]
-      || (await findRecordsByField("loanExecutives", "officialEmail", email, 3))[0]
-      || (req.user?.uid ? (await findRecordsByField("loanExecutives", "uid", req.user.uid, 3))[0] : null)
-      || (req.user?.uid ? (await findRecordsByField("loanExecutives", "authUid", req.user.uid, 3))[0] : null)
-      || (req.user?.employeeId ? (await findRecordsByField("loanExecutives", "employeeId", req.user.employeeId, 3))[0] : null)
-      || null;
-    if (executive) return {
-      ...executive,
-      uid: executive.uid || req.user.uid,
-      authUid: executive.authUid || req.user.uid,
-      email: executive.email || executive.officialEmail || email,
-      bankId: executive.bankId || req.user.bankId,
-      bankPartnerId: executive.bankPartnerId || executive.bankId || req.user.bankId,
-      branchId: executive.branchId || req.user.branchId,
-      roleType: "loan-executive",
-    };
-    return {
-      id: req.user.uid || email,
+    const account = req.authAccount || {};
+    const executive = await firstRecordByIdentity("loanExecutives", [
       email,
-      bankId: req.user.bankId,
-      bankPartnerId: req.user.bankId,
-      branchId: req.user.branchId,
-      employeeId: req.user.employeeId || req.user.employeeCode || "",
-      employeeCode: req.user.employeeCode || req.user.employeeId || "",
-      name: req.user.name || req.user.fullName || "",
-      fullName: req.user.fullName || req.user.name || "",
-      mobile: req.user.mobile || req.user.phone || "",
+      req.user?.uid,
+      account.uid,
+      account.employeeId,
+      account.employeeCode,
+      account.jobId,
+      req.user?.employeeId,
+      req.user?.employeeCode,
+    ], ["email", "officialEmail", "uid", "authUid", "employeeId", "employeeCode", "jobId"]);
+    const bankProfile = await bankProfileForContext(executive || {}, account, req.user || {});
+    const partner = bankContextFrom(req, executive || {}, bankProfile || {}, "loan-executive");
+    return {
+      ...partner,
+      executiveId: executive?.executiveId || account.executiveId || partner.id,
+      employeeId: executive?.employeeId || account.employeeId || req.user?.employeeId || req.user?.employeeCode || "",
+      employeeCode: executive?.employeeCode || account.employeeCode || req.user?.employeeCode || req.user?.employeeId || "",
+      jobId: executive?.jobId || account.jobId || "",
+      name: executive?.name || executive?.fullName || account.name || account.fullName || req.user?.name || req.user?.fullName || "",
+      fullName: executive?.fullName || executive?.name || account.fullName || account.name || req.user?.fullName || req.user?.name || "",
+      mobile: executive?.mobile || account.mobile || account.phone || req.user?.mobile || req.user?.phone || "",
+      assignedExecutiveMobile: executive?.assignedExecutiveMobile || executive?.mobile || account.mobile || req.user?.mobile || "",
+      executiveMobile: executive?.executiveMobile || executive?.mobile || account.mobile || req.user?.mobile || "",
       roleType: "loan-executive",
-      active: req.user.active !== false,
     };
   }
 
   if (req.user?.role === "bank-manager") {
-    const manager = await getRecord("branchManagers", email);
-    if (manager) return {
-      ...manager,
-      bankId: manager.bankId || req.user.bankId,
-      bankPartnerId: manager.bankPartnerId || manager.bankId || req.user.bankId,
-      branchId: manager.branchId || req.user.branchId,
-      roleType: "bank-manager",
-    };
-    return {
-      id: req.user.uid || email,
+    const account = req.authAccount || {};
+    const manager = await firstRecordByIdentity("branchManagers", [
       email,
-      bankId: req.user.bankId,
-      bankPartnerId: req.user.bankId,
-      branchId: req.user.branchId,
-      roleType: "bank-manager",
-      active: req.user.active !== false,
-    };
+      req.user?.uid,
+      account.uid,
+    ], ["email", "officialEmail", "uid", "authUid"]);
+    const bankProfile = await bankProfileForContext(manager || {}, account, req.user || {});
+    return bankContextFrom(req, manager || {}, bankProfile || {}, "bank-manager");
   }
 
   const partner = await getRecord("bankPartners", email).catch(() => null)

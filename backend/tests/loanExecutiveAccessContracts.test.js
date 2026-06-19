@@ -68,9 +68,9 @@ test("loan executive dashboard identity includes auth uid and employee aliases",
   assert.equal(leadExecutiveStrongIdentityValues(lead).includes("LE-042"), true);
   assert.equal(leadExecutiveStrongIdentityValues(lead).includes("vikas"), true);
   assert.equal(loanExecutiveCanAccessLead(executive, lead), true);
-  assert.equal(bankAccessShared.includes("findRecordsByField(\"loanExecutives\", \"uid\", req.user.uid"), true);
-  assert.equal(bankAccessShared.includes("findRecordsByField(\"loanExecutives\", \"authUid\", req.user.uid"), true);
-  assert.equal(bankAccessShared.includes("employeeId: req.user.employeeId || req.user.employeeCode || \"\""), true);
+  assert.equal(bankAccessShared.includes("firstRecordByIdentity(\"loanExecutives\""), true);
+  assert.equal(bankAccessShared.includes("[\"email\", \"officialEmail\", \"uid\", \"authUid\", \"employeeId\", \"employeeCode\", \"jobId\"]"), true);
+  assert.equal(bankAccessShared.includes("employeeId: executive?.employeeId || account.employeeId || req.user?.employeeId"), true);
 });
 
 test("loan executive list and projection contracts include id, email, and mobile assignment paths", () => {
@@ -226,4 +226,7 @@ test("bank manager total leads include legacy bank-scoped rows without branch me
     ".filter((lead) => partnerCanAccessLead(partner, lead))",
   ].forEach((snippet) => assert.equal(bankShared.includes(snippet), true, `bankShared missing ${snippet}`));
   assert.equal(bankAccessShared.includes("return sameBank && (!hasLeadBranchScope || sameBranch)"), true);
+  assert.equal(bankAccessShared.includes("bankProfileForContext(manager || {}, account, req.user || {})"), true);
+  assert.equal(bankAccessShared.includes("bankName: profile.bankName || profile.companyName || bankProfile.bankName"), true);
+  assert.equal(bankAccessShared.includes("ifscCode: profile.ifscCode || profile.bankIfsc || profile.ifsc"), true);
 });
