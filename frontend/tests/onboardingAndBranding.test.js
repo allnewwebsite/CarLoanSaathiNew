@@ -40,3 +40,13 @@ test("shared platform branding uses the favicon logo instead of text tiles", asy
   assert.equal(layoutSource.includes(">CL<"), false);
   assert.equal(loginSource.includes(">CLS<"), false);
 });
+
+test("bank registration password field has a visibility toggle", async () => {
+  const source = await readFile(path.join(srcDir, "pages", "public", "BankRegistrationLandingView.jsx"), "utf8");
+
+  assert.match(source, /useState\(false\)/);
+  assert.match(source, /type=\{showPassword \? "text" : "password"\}/);
+  assert.match(source, /aria-label=\{showPassword \? "Hide password" : "Show password"\}/);
+  assert.match(source, /<Eye className="h-4 w-4" \/>/);
+  assert.match(source, /<EyeOff className="h-4 w-4" \/>/);
+});

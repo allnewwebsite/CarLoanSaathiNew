@@ -16,9 +16,12 @@ test("dealer staff permanent delete clears staff cache, projection, auth, and re
   assert.match(controllerSource, /deleteRecord\("staffViewProjection", id\)/);
   assert.match(controllerSource, /deleteStaffProjectionRecords\(\{ dealershipEmail, email, employee \}\)/);
   assert.match(controllerSource, /runDealerLeadSideEffects\("dealer-staff-created"/);
+  assert.match(controllerSource, /sourceCollection: "dealerStaff"/);
+  assert.match(controllerSource, /mergeStaffRows\(rows\.get\(rowEmail\), row\)/);
   assert.match(controllerSource, /projected\.filter\(\(row\) => !removedStaffRecord\(row\)\)/);
   assert.match(sharedSource, /export function removedStaffRecord/);
   assert.match(projectionSource, /function liveStaffProjectionRows/);
+  assert.match(projectionSource, /record\.sourceCollection \|\| record\.sourceCollections\?\.\[0\] \|\| "dealerStaff"/);
   assert.match(projectionSource, /deleteRecord\("staffViewProjection", row\.id\)/);
   assert.match(controllerSource, /clearCachedValue\(`dealer:staff:\$\{dealershipEmail\}:`\)/);
   assert.match(controllerSource, /clearIdentityCaches\(\{ uid: employee\.uid \|\| employee\.authAccountId, email \}\)/);

@@ -9,7 +9,7 @@ function staffProjectionPayload(record = {}) {
   return withProjectionMetadata({
     id: safeDocId(`staff_${dealershipId}_${email}`),
     sourceId: record.id || email,
-    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "staff",
+    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "dealerStaff",
     viewType: "staff",
     dealershipId,
     dealershipEmail: dealershipId,
@@ -33,7 +33,7 @@ function staffProjectionPayload(record = {}) {
     createdAt: record.createdAt || new Date().toISOString(),
     updatedAt: record.updatedAt || new Date().toISOString(),
   }, {
-    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "staff",
+    sourceCollection: record.sourceCollection || record.sourceCollections?.[0] || "dealerStaff",
     sourceId: record.id || email,
     sourceUpdatedAt: record.updatedAt || record.createdAt || new Date().toISOString(),
     projectionType: "staff",

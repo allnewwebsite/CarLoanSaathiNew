@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { bankExecutiveWorkflow, benefits, workflow } from "./bankRegistration.constants.js";
 
@@ -34,6 +35,8 @@ export function BankExecutiveLandingView() {
 }
 
 export function BankRegistrationLandingView({ authEmail, authPassword, error, loading, onEmailChange, onPasswordChange, onStartEmailAccount }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <main className="w-full bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
       <section className="mx-auto grid max-w-7xl gap-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:grid-cols-[1.05fr_0.95fr]">
@@ -45,7 +48,24 @@ export function BankRegistrationLandingView({ authEmail, authPassword, error, lo
           <p className={`mt-5 min-h-11 rounded-lg px-4 py-3 text-sm font-semibold ${error ? "bg-red-50 text-red-700" : "invisible bg-red-50 text-red-700"}`}>{error || "No validation issue"}</p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <input type="email" placeholder="Email Address" className="field h-11 rounded-md" value={authEmail} onChange={(event) => onEmailChange(event.target.value)} />
-            <input type="password" placeholder="Password" className="field h-11 rounded-md" value={authPassword} onChange={(event) => onPasswordChange(event.target.value)} />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="Password"
+                className="field h-11 rounded-md pr-11"
+                value={authPassword}
+                onChange={(event) => onPasswordChange(event.target.value)}
+              />
+              <button
+                type="button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <button disabled={loading} onClick={onStartEmailAccount} className="mt-6 inline-flex h-11 min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-5 text-sm font-medium text-white disabled:opacity-70">{loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Create Account"}</button>
         </div>

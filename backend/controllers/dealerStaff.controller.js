@@ -131,13 +131,20 @@ export async function getDealerStaff(req, res, next) {
     const cachedStaff = await cached(cacheKey, 30000, async () => {
       cacheHit = false;
       const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { ...req.query, limit } }).catch(() => null);
+      const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
       if (Array.isArray(projected)) {
-        const visibleProjected = projected.filter((row) => !removedStaffRecord(row));
-        logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: visibleProjected.length });
-        return visibleProjected;
+        const rows = new Map();
+        projected.filter((row) => !removedStaffRecord(row)).forEach((row) => rows.set(staffEmail(row.email || row.officialEmail || row.id), row));
+        staff.forEach((row) => {
+          const rowEmail = staffEmail(row.email || row.officialEmail || row.id);
+          if (rowEmail) rows.set(rowEmail, mergeStaffRows(rows.get(rowEmail), row));
+          syncStaffViewProjectionSoon({ ...row, dealershipId: dealershipEmail, dealershipEmail });
+        });
+        const visibleRows = [...rows.values()].slice(0, limit);
+        logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: visibleRows.length });
+        return visibleRows;
       }
       logProjectionRead("PROJECTION-MISS", req, { collection: "staffViewProjection", reason: "missing_staff_projection" });
-      const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
       staff.forEach((row) => syncStaffViewProjectionSoon({ ...row, dealershipId: dealershipEmail, dealershipEmail }));
       return staff.slice(0, limit);
     });
@@ -260,6 +267,8 @@ export async function createDealerStaff(req, res, next) {
       accountApproved: true,
       accountActive: true,
       createdAt: now,
+      sourceCollection: "dealerStaff",
+      sourceId: email,
     };
     await upsertRecord("dealerStaff", email, staffPayload);
     if (role === "finance-desk") {
