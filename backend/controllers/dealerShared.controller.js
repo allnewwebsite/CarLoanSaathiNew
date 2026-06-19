@@ -20,7 +20,7 @@ import {
 } from "../services/dealership.service.js";
 import crypto from "node:crypto";
 import { revokeUserSessions } from "./auth.controller.js";
-import { assertNoActiveIdentityCollision, upsertCanonicalUser } from "../services/identity.service.js";
+import { assertNoActiveIdentityCollision, clearIdentityCaches, upsertCanonicalUser } from "../services/identity.service.js";
 import { hashTemporaryPassword } from "../services/temporaryPassword.service.js";
 import { cached, clearCachedTags, clearCachedValue } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
@@ -69,6 +69,7 @@ export {
   crypto,
   revokeUserSessions,
   assertNoActiveIdentityCollision,
+  clearIdentityCaches,
   upsertCanonicalUser,
   hashTemporaryPassword,
   cached,
@@ -288,6 +289,13 @@ export function staffEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+export function removedStaffRecord(item = {}) {
+  const status = String(item.status || item.accountStatus || "").trim().toLowerCase();
+  return item.active === false
+    || item.accountActive === false
+    || ["deleted", "removed", "inactive", "disabled", "suspended"].includes(status);
+}
+
 export function uniqueRecords(records = []) {
   const byId = new Map();
   records.flat().filter(Boolean).forEach((item) => {
@@ -331,6 +339,7 @@ export async function buildDealerStaffRows(dealershipEmail, dealership = {}, cur
   ]);
   const rows = new Map();
   const add = (item, source) => {
+    if (removedStaffRecord(item)) return;
     const email = staffEmail(item.email || item.officialEmail || item.id);
     if (!email) return;
     if (item.dealershipId !== dealershipEmail && item.dealershipEmail !== dealershipEmail) return;

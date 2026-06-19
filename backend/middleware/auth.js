@@ -134,7 +134,7 @@ async function verifiedAccountFromTokenUser(tokenUser = {}) {
 }
 
 function passwordChangeRequired(account = {}) {
-  if (!["finance-desk", "gm", "loan-executive"].includes(account.role)) return false;
+  if (!["finance-desk", "gm", "bank-manager", "loan-executive"].includes(account.role)) return false;
   if (account.firstLoginRequired === true && !account.passwordChangedAt) return true;
   if (!account.passwordExpiresAt) return false;
   return new Date(account.passwordExpiresAt).getTime() <= Date.now();
@@ -151,6 +151,7 @@ function authUrlAllowedDuringPasswordChange(req) {
 
 function passwordChangePathForRole(role) {
   if (role === "loan-executive") return "/loan-executive/change-password";
+  if (role === "bank-manager") return "/bank-manager/change-password";
   if (role === "gm") return "/gm/change-password";
   if (role === "finance-desk") return "/finance/change-password";
   return "/change-password";

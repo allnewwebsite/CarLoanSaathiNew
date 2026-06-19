@@ -1,4 +1,4 @@
-import { queryRecords, upsertRecord } from "./firestore.service.js";
+import { deleteRecord, getRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { paginationParams } from "../utils/pagination.js";
 import { freshProjectionRows } from "./projectionFreshness.service.js";
 import { safeDocId, scopeId, withProjectionMetadata } from "./projectionShared.service.js";
@@ -40,6 +40,27 @@ function staffProjectionPayload(record = {}) {
   });
 }
 
+function removedStaffSource(record = {}) {
+  const status = String(record.status || record.accountStatus || "").trim().toLowerCase();
+  return record.active === false
+    || record.accountActive === false
+    || ["deleted", "removed", "inactive", "disabled", "suspended"].includes(status);
+}
+
+async function liveStaffProjectionRows(rows = []) {
+  const checks = await Promise.all(rows.map(async (row) => {
+    if (removedStaffSource(row)) return false;
+    const sourceCollection = String(row.sourceCollection || "").trim();
+    const sourceId = scopeId(row.sourceId || "");
+    if (!sourceCollection || !sourceId) return true;
+    const source = await getRecord(sourceCollection, sourceId).catch(() => null);
+    const live = Boolean(source && !removedStaffSource(source));
+    if (!live && row.id) await deleteRecord("staffViewProjection", row.id).catch(() => null);
+    return live;
+  }));
+  return rows.filter((_, index) => checks[index]);
+}
+
 export async function syncStaffViewProjection(record = {}) {
   const payload = staffProjectionPayload(record);
   if (!payload.email || !payload.dealershipId) return null;
@@ -66,7 +87,8 @@ export async function queryStaffViewProjection({ dealershipId, query = {} } = {}
   });
   if (!result.data.length) return null;
   const freshRows = await freshProjectionRows("staffViewProjection", result.data);
-  return freshRows.length ? freshRows : null;
+  const liveRows = await liveStaffProjectionRows(freshRows);
+  return liveRows.length ? liveRows : null;
 }
 
 export async function syncExecutiveSummaryProjection(executive = {}, counts = {}) {

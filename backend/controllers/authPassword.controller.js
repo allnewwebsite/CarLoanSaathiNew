@@ -56,6 +56,7 @@ import {
   onboardingStatusForUser,
   organizationIdForAccount,
   passwordChangeRouteForRole,
+  PASSWORD_VALID_DAYS,
   passwordLifecyclePatch,
   persistPasswordLifecycleIfMissing,
   portalAllowsRole,
@@ -120,7 +121,7 @@ export async function completeForcedPasswordChange(req, res, next) {
     const uid = String(req.user?.uid || "").trim();
     if (!email) return res.status(401).json({ message: "Invalid session" });
     const account = await resolveCanonicalIdentity({ uid, email });
-    if (!account || !["loan-executive", "finance-desk", "gm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
+    if (!account || !["loan-executive", "bank-manager", "finance-desk", "gm"].includes(account.role)) return res.status(403).json({ message: "This account cannot complete forced password change" });
     const now = new Date().toISOString();
     const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
     const lifecyclePatch = {

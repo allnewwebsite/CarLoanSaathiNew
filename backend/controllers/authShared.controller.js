@@ -247,9 +247,11 @@ export function uidMatchesRecord(record = {}, email, uid) {
 export async function updatePasswordLifecycleRecords(email, role, patch) {
   const linkedCollections = role === "loan-executive"
     ? ["loanExecutives"]
-    : role === "finance-desk"
-      ? ["financeDesks", "dealerStaff"]
-      : ["dealershipManagers", "dealerStaff"];
+    : role === "bank-manager"
+      ? ["branchManagers", "bankPartners", "banks"]
+      : role === "finance-desk"
+        ? ["financeDesks", "dealerStaff"]
+        : ["dealershipManagers", "dealerStaff"];
 
   await Promise.all(linkedCollections.map(async (collection) => {
     const pages = await Promise.all([

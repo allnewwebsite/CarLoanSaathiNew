@@ -25,3 +25,10 @@ test("GM staff removal uses the product confirmation modal and purges staff cach
   assert.match(modalSource, /aria-modal="true"/);
   assert.match(modalSource, /Permanent Delete|Confirm Action/);
 });
+
+test("temporary password page prefers backend error messages over generic Axios text", async () => {
+  const source = await readFile(path.join(srcDir, "pages", "auth", "ExecutiveChangePasswordPage.jsx"), "utf8");
+
+  assert.match(source, /err\.response\?\.data\?\.message/);
+  assert.match(source, /err\.response\?\.data\?\.code/);
+});

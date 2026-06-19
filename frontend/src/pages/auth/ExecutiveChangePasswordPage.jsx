@@ -96,7 +96,7 @@ export function ExecutiveChangePasswordPage() {
     } catch (err) {
       setError(err.code === "auth/wrong-password" || err.code === "auth/invalid-credential"
         ? "Current temporary password is incorrect."
-        : err.message || "Unable to change password. Login again and retry.");
+        : err.response?.data?.message || err.response?.data?.code || err.message || "Unable to change password. Login again and retry.");
     } finally {
       setLoading(false);
     }

@@ -8,6 +8,7 @@ import {
   buildDealerStaffRows,
   cached,
   clearCachedValue,
+  clearIdentityCaches,
   clearLeadSyncCaches,
   createRecord,
   dealerCanReadProjectedLead,
@@ -16,7 +17,6 @@ import {
   deleteDealerStaffCollectionRecords,
   deleteMatchingRecords,
   deleteRecord,
-  deleteRecordsByQuery,
   DEALER_SHARED_SENTINEL,
   financeDeskContext,
   financeDeskLeadSchema,
@@ -66,6 +66,7 @@ import {
   reassignLeadToNextBranchExecutive,
   REALTIME_EVENTS,
   recordMonitoringSignal,
+  removedStaffRecord,
   removeBankTieUp,
   required,
   requiredGstin,
@@ -92,6 +93,34 @@ import {
 } from './dealerShared.controller.js';
 
 void DEALER_SHARED_SENTINEL;
+
+function staffProjectionId(dealershipEmail = "", email = "") {
+  return String(`staff_${dealershipEmail}_${email}`).trim().replace(/[^\w.@-]/g, "_").slice(0, 420);
+}
+
+async function deleteStaffProjectionRecords({ dealershipEmail = "", email = "", employee = {} } = {}) {
+  const candidateValues = [...new Set([
+    email,
+    employee.email,
+    employee.officialEmail,
+    employee.sourceId,
+    employee.uid,
+    employee.authAccountId,
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const directIds = [...new Set([
+    staffProjectionId(dealershipEmail, email),
+    ...candidateValues.map((value) => staffProjectionId(dealershipEmail, value)),
+  ])];
+  const directResults = await Promise.all(directIds.map((id) => deleteRecord("staffViewProjection", id).then(() => 1).catch(() => 0)));
+  const indexedDeleted = await deleteMatchingRecords("staffViewProjection", () => true, [
+    ...candidateValues.map((value) => [{ field: "email", value }]),
+    ...candidateValues.map((value) => [{ field: "officialEmail", value }]),
+    ...candidateValues.map((value) => [{ field: "sourceId", value }]),
+    ...candidateValues.map((value) => [{ field: "uid", value }]),
+  ]).catch(() => 0);
+  return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
+}
+
 export async function getDealerStaff(req, res, next) {
   try {
     const { email, dealershipEmail, dealership } = await financeDeskContext(req);
@@ -103,8 +132,9 @@ export async function getDealerStaff(req, res, next) {
       cacheHit = false;
       const projected = await queryStaffViewProjection({ dealershipId: dealershipEmail, query: { ...req.query, limit } }).catch(() => null);
       if (Array.isArray(projected)) {
-        logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: projected.length });
-        return projected;
+        const visibleProjected = projected.filter((row) => !removedStaffRecord(row));
+        logProjectionRead("PROJECTION-HIT", req, { collection: "staffViewProjection", resultCount: visibleProjected.length });
+        return visibleProjected;
       }
       logProjectionRead("PROJECTION-MISS", req, { collection: "staffViewProjection", reason: "missing_staff_projection" });
       const staff = await buildDealerStaffRows(dealershipEmail, dealership, email);
@@ -350,10 +380,9 @@ export async function deleteDealerStaff(req, res, next) {
         [{ field: "updatedBy", value: email }],
       ]);
     }
-    deleted.staffViewProjection = await deleteRecordsByQuery("staffViewProjection", {
-      where: [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value: email }],
-    }).catch(() => 0);
+    deleted.staffViewProjection = await deleteStaffProjectionRecords({ dealershipEmail, email, employee });
     clearCachedValue(`dealer:staff:${dealershipEmail}:`);
+    clearIdentityCaches({ uid: employee.uid || employee.authAccountId, email });
 
     await revokeUserSessions(email, "dealer-staff-permanent-delete").catch(() => {});
     let authDeleted = false;
