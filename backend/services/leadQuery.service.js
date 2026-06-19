@@ -246,24 +246,28 @@ export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS 
   return pageResponse({ data, limit, nextCursor: result.nextCursor });
 }
 
-export async function queryExecutiveLeads({ executiveId, executiveEmail, query = {}, fields = LEAD_FIELDS }) {
+function uniqueValues(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+export async function queryExecutiveLeads({ executiveId, executiveEmail, executiveMobile, executiveIdentities = [], query = {}, fields = LEAD_FIELDS }) {
   const { limit, cursor, page } = paginationParams(query);
-  const identity = String(executiveId || executiveEmail || "").trim();
+  const identities = uniqueValues([executiveId, executiveEmail, ...executiveIdentities]);
   const email = String(executiveEmail || "").trim();
-  const idQuery = queryRecords("leads", {
-    where: queryWhere([{ field: "assignedExecutiveId", value: identity }], query),
-    orderBy: "createdAt",
-    direction: "desc",
-    limit,
-    cursor,
-    page,
-    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
-    searchFields: SEARCH_FIELDS,
-    fields,
-  });
-  const emailQuery = email && email !== identity
-    ? queryRecords("leads", {
-      where: queryWhere([{ field: "assignedExecutiveEmail", value: email }], query),
+  const mobile = String(executiveMobile || "").replace(/\D/g, "").slice(-10);
+  const specs = [
+    ...identities.map((value) => ({ field: "assignedExecutiveId", value })),
+    email ? { field: "assignedExecutiveEmail", value: email } : null,
+    mobile ? { field: "assignedExecutiveMobile", value: mobile } : null,
+    mobile ? { field: "executiveMobile", value: mobile } : null,
+  ].filter(Boolean);
+  const uniqueSpecs = specs.filter((spec, index) =>
+    specs.findIndex((item) => item.field === spec.field && item.value === spec.value) === index
+  );
+  if (!uniqueSpecs.length) return pageResponse({ data: [], limit, nextCursor: null });
+  const results = await Promise.all(uniqueSpecs.map((spec) =>
+    queryRecords("leads", {
+      where: queryWhere([spec], query),
       orderBy: "createdAt",
       direction: "desc",
       limit,
@@ -272,17 +276,16 @@ export async function queryExecutiveLeads({ executiveId, executiveEmail, query =
       search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
       searchFields: SEARCH_FIELDS,
       fields,
-    })
-    : Promise.resolve(null);
-  const [idResult, emailResult] = await Promise.all([idQuery, emailQuery]);
-  let rows = idResult.data;
-  let nextCursor = idResult.nextCursor;
-  if (emailResult) {
-    const byId = new Map(rows.map((lead) => [lead.id, lead]));
-    for (const lead of emailResult.data) byId.set(lead.id, lead);
-    rows = [...byId.values()].sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || ""))).slice(0, limit);
-    nextCursor = idResult.nextCursor || emailResult.nextCursor;
-  }
+    }).catch(() => ({ data: [], nextCursor: null }))
+  ));
+  const byId = new Map();
+  results.forEach((result) => {
+    result.data.forEach((lead) => byId.set(lead.id, lead));
+  });
+  const rows = [...byId.values()]
+    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
+    .slice(0, limit);
+  const nextCursor = results.find((result) => result.nextCursor)?.nextCursor || null;
   const data = localFilters(rows, query);
   return pageResponse({ data, limit, nextCursor });
 }

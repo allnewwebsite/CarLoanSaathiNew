@@ -50,6 +50,7 @@ export const VIEW_LEAD_FIELDS = [
   "assignedExecutiveEmail",
   "assignedExecutiveName",
   "assignedExecutiveMobile",
+  "executiveMobile",
   "pendingDocuments",
   "pendingDocumentReason",
   "updatedByExecutiveName",

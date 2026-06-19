@@ -79,6 +79,42 @@ export function anyMatch(values, targets) {
   return values.some((value) => targets.some((target) => sameText(value, target)));
 }
 
+export function normalizedMobile(value) {
+  return String(value || "").replace(/\D/g, "").slice(-10);
+}
+
+export function executiveStrongIdentityValues(executive = {}) {
+  return [
+    executive.id,
+    executive.uid,
+    executive.authUid,
+    executive.sourceId,
+    executive.executiveId,
+    executive.email,
+    executive.officialEmail,
+    executive.assignedExecutiveId,
+    executive.assignedExecutiveEmail,
+    normalizedMobile(executive.mobile),
+    normalizedMobile(executive.phone),
+    normalizedMobile(executive.assignedExecutiveMobile),
+    normalizedMobile(executive.executiveMobile),
+  ].filter(Boolean);
+}
+
+export function leadExecutiveStrongIdentityValues(lead = {}) {
+  return [
+    lead.assignedExecutiveId,
+    lead.assignedExecutiveEmail,
+    lead.executiveEmail,
+    lead.loanExecutiveId,
+    lead.updatedByExecutiveId,
+    normalizedMobile(lead.assignedExecutiveMobile),
+    normalizedMobile(lead.executiveMobile),
+    normalizedMobile(lead.assignedExecutivePhone),
+    normalizedMobile(lead.loanExecutiveMobile),
+  ].filter(Boolean);
+}
+
 export function leadBankValues(lead = {}) {
   return [
     lead.bankId,
@@ -143,10 +179,13 @@ export function bankManagerCanAccessLead(partner, lead) {
 }
 
 export function loanExecutiveCanAccessLead(partner, lead) {
-  return anyMatch(
-    [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
-    [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
-  );
+  const strongMatch = anyMatch(leadExecutiveStrongIdentityValues(lead), executiveStrongIdentityValues(partner));
+  if (strongMatch) return true;
+
+  const nameMatch = anyMatch([lead.assignedExecutiveName], [partner.name, partner.fullName]);
+  if (!nameMatch) return false;
+  return anyMatch(leadBankValues(lead), partnerBankValues(partner))
+    && anyMatch(leadBranchValues(lead), partnerBranchValues(partner));
 }
 
 export async function deleteMatchingRecords(collection, predicate, indexedQueries = []) {
@@ -165,9 +204,15 @@ export async function currentPartner(req) {
   const cacheKey = `context:bank:${req.user?.role || ""}:${req.user?.uid || ""}:${email}`;
   return cached(cacheKey, 15000, async () => {
   if (req.user?.role === "loan-executive") {
-    const executive = await getRecord("loanExecutives", email);
+    const executive = await getRecord("loanExecutives", email).catch(() => null)
+      || (await findRecordsByField("loanExecutives", "email", email, 3))[0]
+      || (await findRecordsByField("loanExecutives", "officialEmail", email, 3))[0]
+      || null;
     if (executive) return {
       ...executive,
+      uid: executive.uid || req.user.uid,
+      authUid: executive.authUid || req.user.uid,
+      email: executive.email || executive.officialEmail || email,
       bankId: executive.bankId || req.user.bankId,
       bankPartnerId: executive.bankPartnerId || executive.bankId || req.user.bankId,
       branchId: executive.branchId || req.user.branchId,
@@ -257,8 +302,8 @@ export function projectedLeadHasRequiredBankScope(partner, lead) {
   if (!partner || !lead) return false;
   if (partner.roleType === "loan-executive") {
     return hasMatchingScopeValues(
-      [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.assignedExecutiveName],
-      [partner.id, partner.email, partner.mobile, partner.name, partner.fullName],
+      leadExecutiveStrongIdentityValues(lead),
+      executiveStrongIdentityValues(partner),
     );
   }
   if (partner.roleType === "bank-manager") {

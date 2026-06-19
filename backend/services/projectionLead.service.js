@@ -64,13 +64,16 @@ function leadTargets(lead = {}) {
   }
   const bankId = scopeId(lead.bankId || lead.assignedBankId || lead.assignedPartnerId);
   if (bankId) targets.push({ collection: "bankViews", scopeType: "bank", scopeId: bankId, docId: safeDocId(`lead_${lead.id}`) });
-  [lead.assignedExecutiveId, lead.assignedExecutiveEmail].map(scopeId).filter(Boolean).forEach((executiveScope) => {
+  [lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.assignedExecutiveMobile, lead.executiveMobile]
+    .map(scopeId)
+    .filter(Boolean)
+    .forEach((executiveScope) => {
     targets.push({ collection: "executiveViews", scopeType: "executive", scopeId: executiveScope, docId: safeDocId(`lead_${lead.id}_${executiveScope}`) });
   });
   return targets;
 }
 
-function rawLeadWhereForProjectionMiss({ role, where = [] } = {}) {
+function rawLeadWhereForProjectionMiss({ role, where = [], query = {} } = {}) {
   const rawWhere = [];
   const scope = where.find((clause) => clause.field === "scopeId")?.value;
 
@@ -80,6 +83,8 @@ function rawLeadWhereForProjectionMiss({ role, where = [] } = {}) {
     if (scope) rawWhere.push({ field: "bankId", value: scope });
   } else if (role === "loan-executive") {
     if (scope) rawWhere.push({ field: "assignedExecutiveId", value: scope });
+    if (query.assignedExecutiveEmail) rawWhere.push({ field: "assignedExecutiveEmail", value: scopeId(query.assignedExecutiveEmail) });
+    if (query.assignedExecutiveMobile) rawWhere.push({ field: "assignedExecutiveMobile", value: scopeId(query.assignedExecutiveMobile) });
   }
 
   for (const clause of where) {
@@ -92,7 +97,7 @@ function rawLeadWhereForProjectionMiss({ role, where = [] } = {}) {
 }
 
 async function backfillLeadProjectionsFromMiss({ collection, role, where, limit, query, requestId }) {
-  const rawWhere = rawLeadWhereForProjectionMiss({ role, where });
+  const rawWhere = rawLeadWhereForProjectionMiss({ role, where, query });
   const allowGlobal = role === "super-admin" && rawWhere.length === 0;
   if (!allowGlobal && !rawWhere.length) return;
   const key = `${collection}:${role}:${projectionWhereSignature(where)}`;
@@ -204,7 +209,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
     where.push({ field: "scopeId", value: scopeId(user.bankId || user.bankName || user.email || user.uid) });
   } else if (role === "loan-executive") {
     collection = "executiveViews";
-    where.push({ field: "scopeId", value: scopeId(user.uid || user.email) });
+    where.push({ field: "scopeId", value: scopeId(user.email || user.uid || user.mobile) });
   } else if (role !== "super-admin") {
     return null;
   }

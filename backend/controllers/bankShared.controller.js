@@ -48,9 +48,11 @@ import {
   documentBelongsToLead,
   emitBankLeadAccessDenied,
   EXECUTIVE_ACTIVE_LEAD_STATUSES,
+  executiveStrongIdentityValues,
   hasMatchingScopeValues,
   leadBankValues,
   leadBranchValues,
+  leadExecutiveStrongIdentityValues,
   leadDetailResponseFromProjection,
   LEAD_DOCUMENT_FIELDS,
   loanExecutiveCanAccessLead,
@@ -142,9 +144,11 @@ export {
   documentBelongsToLead,
   emitBankLeadAccessDenied,
   EXECUTIVE_ACTIVE_LEAD_STATUSES,
+  executiveStrongIdentityValues,
   hasMatchingScopeValues,
   leadBankValues,
   leadBranchValues,
+  leadExecutiveStrongIdentityValues,
   leadDetailResponseFromProjection,
   LEAD_DOCUMENT_FIELDS,
   loanExecutiveCanAccessLead,
@@ -251,13 +255,24 @@ export async function liveBankRegistrationForAccount(account) {
 
 export async function assignedLeadsForPartner(partner, query = {}, fields) {
   if (partner.roleType === "loan-executive") {
+    const executiveIdentities = executiveStrongIdentityValues(partner);
+    const primaryId = partner.id || partner.uid || partner.email || executiveIdentities[0];
+    const executiveEmail = partner.email || partner.officialEmail || executiveIdentities.find((value) => String(value).includes("@"));
+    const executiveMobile = partner.mobile || partner.assignedExecutiveMobile || partner.executiveMobile;
     const projected = await queryLeadProjectionForUser({
-      user: { role: "loan-executive", uid: partner.id, email: partner.email },
+      user: { role: "loan-executive", uid: primaryId, email: executiveEmail, mobile: executiveMobile, identityValues: executiveIdentities },
       query: { ...query, limit: query.limit || 100 },
       fields,
     }).catch(() => null);
-    const result = projected || await queryExecutiveLeads({ executiveId: partner.id, executiveEmail: partner.email, query: { ...query, limit: query.limit || 100 }, fields });
-    return attachExecutiveMobile(partner, applyFilters(result.data, query));
+    const result = projected || await queryExecutiveLeads({
+      executiveId: primaryId,
+      executiveEmail,
+      executiveMobile,
+      executiveIdentities,
+      query: { ...query, limit: query.limit || 100 },
+      fields,
+    });
+    return attachExecutiveMobile(partner, applyFilters(result.data.filter((lead) => loanExecutiveCanAccessLead(partner, lead)), query));
   }
   const identity = bankIdentity(partner);
   const projected = await queryLeadProjectionForUser({
@@ -275,6 +290,7 @@ export function executiveLeadSpecs({ uid, email, mobile } = {}) {
     email ? { field: "assignedExecutiveEmail", value: email } : null,
     email ? { field: "assignedExecutiveId", value: email } : null,
     mobile ? { field: "assignedExecutiveMobile", value: mobile } : null,
+    mobile ? { field: "executiveMobile", value: mobile } : null,
   ].filter(Boolean);
 }
 
