@@ -286,6 +286,18 @@ export async function createDealerStaff(req, res, next) {
     });
     await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
     syncStaffViewProjectionSoon(staffPayload);
+    clearCachedValue(`dealer:staff:${dealershipEmail}:`);
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.STAFF_CHANGED,
+      actor: req.user,
+      data: {
+        action: "created",
+        dealershipId: dealershipEmail,
+        recipientId: email,
+        staffEmail: email,
+        role,
+      },
+    });
     const { temporaryPasswordHash: _temporaryPasswordHash, ...safeStaffPayload } = staffPayload;
     res.status(201).json({
       ...safeStaffPayload,
@@ -360,6 +372,19 @@ export async function deleteDealerStaff(req, res, next) {
       targetId: email,
       oldValue: employee,
       meta: { dealershipId: dealershipEmail, deleted, authDeleted },
+    });
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.STAFF_CHANGED,
+      actor: req.user,
+      data: {
+        action: "deleted",
+        dealershipId: dealershipEmail,
+        recipientId: email,
+        staffEmail: email,
+        role: employee.role || "",
+        deleted,
+        authDeleted,
+      },
     });
     res.json({ message: "Employee permanently removed", employeeEmail: email, deleted, authDeleted });
   } catch (error) {

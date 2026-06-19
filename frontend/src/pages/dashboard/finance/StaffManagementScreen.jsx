@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ConfirmActionModal } from "../../../components/ConfirmActionModal.jsx";
 import { ButtonSpinner } from "../../../components/ui/Loading.jsx";
 import { mutationUrlMatches, useBackgroundRefresh } from "../../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../../services/api.js";
+import { api, getCachedGetData, invalidateGetCache } from "../../../services/api.js";
 import { cleanEmail, cleanText, dateValue, digits10, display, validEmail } from "../financeDesk.helpers.js";
 import { Field, FinanceTable as Table, MobileInput, SectionTitle } from "./FinanceDeskPanelParts.jsx";
 
@@ -22,6 +23,8 @@ export function StaffManagementScreen() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [credentials, setCredentials] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingEmail, setDeletingEmail] = useState("");
 
   const loadStaff = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -89,17 +92,23 @@ export function StaffManagementScreen() {
     }
   };
 
-  const removeStaff = async (staff) => {
-    const confirmed = window.confirm("Are you sure you want to permanently remove this employee?");
-    if (!confirmed) return;
+  const removeStaff = async () => {
+    if (!pendingDelete) return;
+    const deleteEmail = pendingDelete.email || pendingDelete.id;
     setMessage("");
     setError("");
+    setDeletingEmail(deleteEmail);
     try {
-      await api.delete(`/dealer/staff/${encodeURIComponent(staff.email || staff.id)}`);
+      await api.delete(`/dealer/staff/${encodeURIComponent(deleteEmail)}`);
+      invalidateGetCache({ prefix: "/dealer/staff", purge: true });
+      setRows((current) => current.filter((item) => (item.email || item.id) !== deleteEmail));
+      setPendingDelete(null);
       setMessage("Employee permanently removed.");
       await loadStaff();
     } catch (err) {
       setError(err.response?.data?.message || "Unable to remove employee");
+    } finally {
+      setDeletingEmail("");
     }
   };
 
@@ -116,7 +125,7 @@ export function StaffManagementScreen() {
       dateValue(staff.createdAt),
       <div key="actions" className="flex flex-wrap gap-2">
         <button type="button" onClick={() => navigate(`/finance/staff/${encodeURIComponent(staff.email || staff.id)}`)} className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700">View</button>
-        {staff.protected ? null : <button type="button" onClick={() => removeStaff(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>}
+        {staff.protected ? null : <button type="button" onClick={() => setPendingDelete(staff)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Remove</button>}
       </div>,
     ],
   }));
@@ -160,6 +169,19 @@ export function StaffManagementScreen() {
         <button disabled={busy} className="mt-4 inline-flex min-w-36 items-center justify-center rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? <ButtonSpinner /> : "Create Employee"}</button>
       </form>
       <Table headers={["Employee Name", "Role", "Official Email", "Mobile Number", "Employee ID", "Branch", "Status", "Created Date", "Actions"]} rows={tableRows} loading={loading} />
+      <ConfirmActionModal
+        open={Boolean(pendingDelete)}
+        eyebrow="Permanent Delete"
+        title="Remove Employee"
+        message="This will permanently delete the staff profile, login access, active sessions, cached staff projection, and related staff notifications. Existing case history remains saved."
+        detail={pendingDelete ? `${display(pendingDelete.fullName)} - ${display(pendingDelete.email)}` : ""}
+        confirmLabel="Delete Permanently"
+        loading={Boolean(deletingEmail)}
+        onCancel={() => {
+          if (!deletingEmail) setPendingDelete(null);
+        }}
+        onConfirm={removeStaff}
+      />
     </section>
   );
 }

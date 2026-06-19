@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { ConfirmActionModal } from "../../../components/ConfirmActionModal.jsx";
 import { ButtonSpinner } from "../../../components/ui/Loading.jsx";
-import { api } from "../../../services/api.js";
+import { api, invalidateGetCache } from "../../../services/api.js";
 import { cleanEmail, cleanText, digits10, validEmail } from "../financeDesk.helpers.js";
 import { Field, FinanceTable as Table, MobileInput, SectionTitle } from "./FinanceDeskPanelParts.jsx";
 import { useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
@@ -15,6 +16,8 @@ export function SalespersonManagementScreen() {
   const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingId, setDeletingId] = useState("");
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: "" }));
@@ -48,11 +51,21 @@ export function SalespersonManagementScreen() {
       setSaving(false);
     }
   };
-  const remove = async (person) => {
-    const confirmed = window.confirm(`Delete ${person.name || person.email || "this salesperson"} permanently? Existing cases will keep their copied history.`);
-    if (!confirmed) return;
-    await api.delete(`/dealer/salespersons/${person.id}`);
-    await loadSalespersons();
+  const remove = async () => {
+    if (!pendingDelete) return;
+    setDeletingId(pendingDelete.id);
+    setMessage("");
+    try {
+      await api.delete(`/dealer/salespersons/${pendingDelete.id}`);
+      invalidateGetCache({ prefix: "/dealer/salespersons", purge: true });
+      setPendingDelete(null);
+      await loadSalespersons();
+      setMessage("Salesperson deleted");
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to delete salesperson");
+    } finally {
+      setDeletingId("");
+    }
   };
   const rows = salespersons.map((person) => ({
     key: person.id,
@@ -61,7 +74,7 @@ export function SalespersonManagementScreen() {
       person.mobile,
       person.jobId,
       person.email,
-      <button key="delete" onClick={() => remove(person)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
+      <button key="delete" onClick={() => setPendingDelete(person)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
     ],
   }));
   return (
@@ -81,6 +94,19 @@ export function SalespersonManagementScreen() {
         <SectionTitle title="Add / Remove Salesperson" subtitle="Delete removes the salesperson master record. Existing cases keep copied history." />
         <Table headers={["Salesperson Name", "Mobile Number", "Job ID", "Mail ID", "Action"]} rows={rows} loading={loading} />
       </div>
+      <ConfirmActionModal
+        open={Boolean(pendingDelete)}
+        eyebrow="Permanent Delete"
+        title="Delete Salesperson"
+        message="This will permanently delete the salesperson master record. Existing case history keeps the copied salesperson details."
+        detail={pendingDelete ? `${pendingDelete.name || "Salesperson"} - ${pendingDelete.email || pendingDelete.mobile || pendingDelete.id}` : ""}
+        confirmLabel="Delete Permanently"
+        loading={Boolean(deletingId)}
+        onCancel={() => {
+          if (!deletingId) setPendingDelete(null);
+        }}
+        onConfirm={remove}
+      />
     </div>
   );
 }
@@ -92,6 +118,8 @@ export function FinanceManagerManagementScreen() {
   const [submittedOnce, setSubmittedOnce] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deletingId, setDeletingId] = useState("");
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: "" }));
@@ -125,11 +153,21 @@ export function FinanceManagerManagementScreen() {
       setSaving(false);
     }
   };
-  const deleteManager = async (manager) => {
-    const confirmed = window.confirm(`Delete ${manager.name || manager.email || "this Finance Manager"} permanently? Existing cases will keep their copied history.`);
-    if (!confirmed) return;
-    await api.delete(`/dealer/finance-managers/${manager.id}`);
-    await loadFinanceManagers();
+  const deleteManager = async () => {
+    if (!pendingDelete) return;
+    setDeletingId(pendingDelete.id);
+    setMessage("");
+    try {
+      await api.delete(`/dealer/finance-managers/${pendingDelete.id}`);
+      invalidateGetCache({ prefix: "/dealer/finance-managers", purge: true });
+      setPendingDelete(null);
+      await loadFinanceManagers();
+      setMessage("Finance Manager deleted");
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to delete Finance Manager");
+    } finally {
+      setDeletingId("");
+    }
   };
   const rows = financeManagers.map((manager) => ({
     key: manager.id,
@@ -138,7 +176,7 @@ export function FinanceManagerManagementScreen() {
       manager.mobile,
       manager.employeeId,
       manager.email,
-      <button key="delete" onClick={() => deleteManager(manager)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
+      <button key="delete" onClick={() => setPendingDelete(manager)} className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700">Delete</button>,
     ],
   }));
   return (
@@ -158,6 +196,19 @@ export function FinanceManagerManagementScreen() {
         <SectionTitle title="Finance Managers" subtitle="Dealership-scoped ownership master for loan processing responsibility." />
         <Table headers={["Finance Manager Name", "Mobile Number", "Employee ID", "Email ID", "Action"]} rows={rows} loading={loading} />
       </div>
+      <ConfirmActionModal
+        open={Boolean(pendingDelete)}
+        eyebrow="Permanent Delete"
+        title="Delete Finance Manager"
+        message="This will permanently delete the finance manager master record. Existing case history keeps the copied finance manager details."
+        detail={pendingDelete ? `${pendingDelete.name || "Finance Manager"} - ${pendingDelete.email || pendingDelete.mobile || pendingDelete.id}` : ""}
+        confirmLabel="Delete Permanently"
+        loading={Boolean(deletingId)}
+        onCancel={() => {
+          if (!deletingId) setPendingDelete(null);
+        }}
+        onConfirm={deleteManager}
+      />
     </div>
   );
 }

@@ -156,6 +156,7 @@ function eventKind(eventType = "") {
   if (eventType.includes("SUBSCRIPTION")) return "subscription";
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
+  if (eventType.includes("STAFF")) return "staff";
   if (eventType.includes("BANK") || eventType.includes("BRANCH")) return "bank";
   if (eventType.includes("DEALER")) return "dealer";
   if (eventType.includes("SALESPERSON") || eventType.includes("FINANCE_MANAGER")) return "staff";

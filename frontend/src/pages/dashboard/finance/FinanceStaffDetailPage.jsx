@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { ConfirmActionModal } from "../../../components/ConfirmActionModal.jsx";
 import { DetailPageSkeleton } from "../../../components/ui/Loading.jsx";
-import { api, findCachedGetItem, getCachedGetData } from "../../../services/api.js";
+import { api, findCachedGetItem, getCachedGetData, invalidateGetCache } from "../../../services/api.js";
 import { dateTime, display } from "../financeDesk.helpers.js";
 
 function SectionTitle({ title, subtitle }) {
@@ -21,6 +22,8 @@ export function FinanceStaffDetailPage() {
   const [employee, setEmployee] = useState(() => cachedEmployee);
   const [loading, setLoading] = useState(() => !cachedEmployee);
   const [error, setError] = useState("");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadEmployee = useCallback(async () => {
     setLoading(true);
@@ -40,13 +43,15 @@ export function FinanceStaffDetailPage() {
 
   const removeEmployee = async () => {
     if (!employee) return;
-    const confirmed = window.confirm("Are you sure you want to permanently remove this employee?");
-    if (!confirmed) return;
+    setDeleting(true);
+    setError("");
     try {
       await api.delete(`/dealer/staff/${encodeURIComponent(employee.email || employee.id)}`);
+      invalidateGetCache({ prefix: "/dealer/staff", purge: true });
       navigate("/finance/manage-staff");
     } catch (err) {
       setError(err.response?.data?.message || "Unable to remove employee");
+      setDeleting(false);
     }
   };
 
@@ -75,7 +80,7 @@ export function FinanceStaffDetailPage() {
         <SectionTitle title="Employee Details" subtitle="Verified staff profile and authentication mapping." />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => navigate("/finance/manage-staff")} className="h-9 rounded-md border border-slate-200 px-3 text-xs font-medium text-slate-700">Back</button>
-          {employee.protected ? null : <button type="button" onClick={removeEmployee} className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Remove</button>}
+          {employee.protected ? null : <button type="button" onClick={() => setConfirmDeleteOpen(true)} className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-700">Remove</button>}
         </div>
       </div>
       {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
@@ -94,6 +99,19 @@ export function FinanceStaffDetailPage() {
           ))}
         </div>
       </section>
+      <ConfirmActionModal
+        open={confirmDeleteOpen}
+        eyebrow="Permanent Delete"
+        title="Remove Employee"
+        message="This will permanently delete the staff profile, login access, active sessions, cached staff projection, and related staff notifications. Existing case history remains saved."
+        detail={`${display(employee.fullName)} - ${display(employee.email)}`}
+        confirmLabel="Delete Permanently"
+        loading={deleting}
+        onCancel={() => {
+          if (!deleting) setConfirmDeleteOpen(false);
+        }}
+        onConfirm={removeEmployee}
+      />
     </section>
   );
 }
