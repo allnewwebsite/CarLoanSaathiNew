@@ -155,8 +155,10 @@ export async function createLead(req, res, next) {
       dealershipCity,
       routingCity: dealershipCity,
     });
+    clearLeadMutationCaches(lead.id);
+    await syncLeadProjection(lead).catch(() => null);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_CREATED, lead, actor: req.user });
     runLeadSideEffects("authenticated-lead-created", [
-      () => syncLeadProjectionSoon(lead),
       () => writeAuditLog({
         req,
         actionType: AUDIT_ACTIONS.LEAD_CREATED,
@@ -197,8 +199,10 @@ export async function createPublicLead(req, res, next) {
       dealershipId,
       status: LEAD_STATUSES.NEW,
     });
+    clearLeadMutationCaches(lead.id);
+    await syncLeadProjection(lead).catch(() => null);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_CREATED, lead, actor: req.user });
     runLeadSideEffects("finance-lead-created", [
-      () => syncLeadProjectionSoon(lead),
       () => addTimelineEvent({
         leadId: lead.id,
         eventType: TIMELINE_EVENTS.LEAD_CREATED,

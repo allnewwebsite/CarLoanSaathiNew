@@ -81,3 +81,59 @@ test("SSE dispatch targets tenant buckets without leaking to unrelated clients",
 
   clients.forEach((client) => client.close());
 });
+
+test("assigned lead realtime reaches admin, bank manager, and target loan executive", () => {
+  const clients = [];
+  const lead = {
+    id: "lead-assigned-realtime",
+    caseId: "CLS-ASSIGNED-REALTIME",
+    status: "New",
+    dealershipId: "dealer-assigned-realtime",
+    dealershipEmail: "dealer-assigned-realtime",
+    bankId: "bank-assigned-realtime",
+    branchId: "branch-assigned-realtime",
+    assignedExecutiveId: "executive-assigned-realtime",
+    assignedExecutiveEmail: "executive-assigned@example.com",
+    assignedExecutiveMobile: "9876543210",
+  };
+
+  const admin = mockConnection({ role: "super-admin", uid: "admin-assigned", email: "admin-assigned@example.com" });
+  const bank = mockConnection({
+    role: "bank-manager",
+    uid: "bank-manager-assigned",
+    email: "bank-manager-assigned@example.com",
+    bankId: "bank-assigned-realtime",
+    branchId: "branch-assigned-realtime",
+  });
+  const executive = mockConnection({
+    role: "loan-executive",
+    uid: "executive-assigned-realtime",
+    email: "executive-assigned@example.com",
+    mobile: "9876543210",
+  });
+  const otherExecutive = mockConnection({
+    role: "loan-executive",
+    uid: "executive-other-realtime",
+    email: "executive-other@example.com",
+    mobile: "9876543211",
+  });
+  clients.push(admin, bank, executive, otherExecutive);
+
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.EXECUTIVE_ASSIGNED,
+    lead,
+    data: {
+      bankId: lead.bankId,
+      branchId: lead.branchId,
+      executiveId: lead.assignedExecutiveId,
+      recipientId: lead.assignedExecutiveId,
+    },
+  });
+
+  assert.equal(admin.operationalEvents().length, 1);
+  assert.equal(bank.operationalEvents().length, 1);
+  assert.equal(executive.operationalEvents().length, 1);
+  assert.equal(otherExecutive.operationalEvents().length, 0);
+
+  clients.forEach((client) => client.close());
+});

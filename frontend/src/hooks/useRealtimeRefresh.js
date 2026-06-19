@@ -101,6 +101,16 @@ export function mutationUrlMatches(detail = {}, prefixes = []) {
     .map((url) => String(url || ""))
     .filter(Boolean);
   if (!urls.length) return true;
+  const leadRealtimeMutation = detail?.kind === "lead" || detail?.kind === "document" || urls.includes("/lead-mutation");
+  if (leadRealtimeMutation && prefixes.some((prefix) => [
+    "/admin/leads",
+    "/bank/leads",
+    "/dealer/leads",
+    "/gm/leads",
+    "/loan-executive/leads",
+    "/documents",
+    "/timeline",
+  ].some((leadPrefix) => String(prefix || "").startsWith(leadPrefix)))) return true;
   return urls.some((url) => prefixes.some((prefix) => url.startsWith(prefix)));
 }
 

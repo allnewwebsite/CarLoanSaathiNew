@@ -273,6 +273,21 @@ export async function createDealerLead(req, res, next) {
         try {
           const assignedLead = await reassignLeadToNextBranchExecutive(lead.id, "lead-created-auto-assignment", email);
           clearLeadSyncCaches(assignedLead.id || lead.id);
+          publishRealtimeEvent({
+            eventType: REALTIME_EVENTS.EXECUTIVE_ASSIGNED,
+            lead: assignedLead,
+            actor: req.user,
+            data: {
+              dealershipId,
+              bankId: assignedLead.bankId || branchTieUp.bankId,
+              branchId: assignedLead.branchId || assignedLead.bankBranchId || branchTieUp.bankId,
+              executiveId: assignedLead.assignedExecutiveId || assignedLead.assignedExecutiveEmail || "",
+              recipientId: assignedLead.assignedExecutiveId || assignedLead.assignedExecutiveEmail || "",
+              assignedExecutiveId: assignedLead.assignedExecutiveId || "",
+              assignedExecutiveEmail: assignedLead.assignedExecutiveEmail || "",
+              assignedExecutiveMobile: assignedLead.assignedExecutiveMobile || "",
+            },
+          });
           await queueLeadAssignedWhatsApp(assignedLead);
         } catch (assignmentError) {
           logInfo("Dealer lead created without executive auto-assignment", {
