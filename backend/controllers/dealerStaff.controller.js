@@ -306,28 +306,30 @@ export async function createDealerStaff(req, res, next) {
       createdByDealerAdminId: dealerEmail(req),
       status: "active",
     });
-    await firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
-      role,
-      approved: true,
-      active: true,
-      dealershipId: dealershipEmail,
-      portalType,
-      accountType,
-    });
-    await writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } });
     syncStaffViewProjectionSoon(staffPayload);
     clearCachedValue(`dealer:staff:${dealershipEmail}:`);
-    publishRealtimeEvent({
-      eventType: REALTIME_EVENTS.STAFF_CHANGED,
-      actor: req.user,
-      data: {
-        action: "created",
-        dealershipId: dealershipEmail,
-        recipientId: email,
-        staffEmail: email,
+    runDealerLeadSideEffects("dealer-staff-created", [
+      () => firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
         role,
-      },
-    });
+        approved: true,
+        active: true,
+        dealershipId: dealershipEmail,
+        portalType,
+        accountType,
+      }),
+      () => writeAuditLog({ req, actionType: "DEALER_STAFF_CREATED", newValue: employeeId, meta: { staffEmail: email, role, dealershipId: dealershipEmail } }),
+      () => publishRealtimeEvent({
+        eventType: REALTIME_EVENTS.STAFF_CHANGED,
+        actor: req.user,
+        data: {
+          action: "created",
+          dealershipId: dealershipEmail,
+          recipientId: email,
+          staffEmail: email,
+          role,
+        },
+      }),
+    ]);
     const { temporaryPasswordHash: _temporaryPasswordHash, ...safeStaffPayload } = staffPayload;
     res.status(201).json({
       ...safeStaffPayload,

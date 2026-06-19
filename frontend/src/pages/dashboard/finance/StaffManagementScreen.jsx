@@ -73,7 +73,7 @@ export function StaffManagementScreen() {
     if (Object.keys(nextErrors).length) return;
     setBusy(true);
     try {
-      const response = await api.post("/dealer/staff", nextForm);
+      const response = await api.post("/dealer/staff", nextForm, { timeout: 60000 });
       setForm(emptyStaff);
       setSubmittedOnce(false);
       setMessage("Employee created successfully.");

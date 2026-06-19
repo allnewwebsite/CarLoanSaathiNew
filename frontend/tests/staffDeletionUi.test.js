@@ -18,6 +18,7 @@ test("GM staff removal uses the product confirmation modal and purges staff cach
     assert.equal(source.includes("Delete Permanently"), true);
   });
   assert.match(listSource, /invalidateGetCache\(\{ prefix: "\/dealer\/staff", purge: true \}\)/);
+  assert.match(listSource, /api\.post\("\/dealer\/staff", nextForm, \{ timeout: 60000 \}\)/);
   assert.match(detailSource, /invalidateGetCache\(\{ prefix: "\/dealer\/staff", purge: true \}\)/);
   assert.match(financeStaffSource, /invalidateGetCache\(\{ prefix: "\/dealer\/salespersons", purge: true \}\)/);
   assert.match(financeStaffSource, /invalidateGetCache\(\{ prefix: "\/dealer\/finance-managers", purge: true \}\)/);
