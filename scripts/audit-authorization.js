@@ -198,12 +198,13 @@ assertCheck(
   "Finance-desk lead creation must derive dealership scope from the authenticated session.",
 );
 assertCheck(
-  "bank manager lead access requires same bank and same branch",
+  "bank manager lead access requires same bank and scoped branch when present",
   bankController.includes("function bankManagerCanAccessLead")
     && bankController.includes("const sameBank = anyMatch(leadBankValues(lead), partnerBankValues(partner))")
     && bankController.includes("const sameBranch = anyMatch(leadBranchValues(lead), partnerBranchValues(partner))")
-    && bankController.includes("return sameBank && sameBranch"),
-  "Bank managers must not access same-bank leads from another branch.",
+    && bankController.includes("const hasLeadBranchScope = hasScopeValue(leadBranchValues(lead))")
+    && bankController.includes("return sameBank && (!hasLeadBranchScope || sameBranch)"),
+  "Bank managers must not access same-bank leads from another branch when branch scope exists.",
 );
 assertCheck(
   "bank branch matching excludes bank-level ids",

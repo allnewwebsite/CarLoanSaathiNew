@@ -80,6 +80,10 @@ export function anyMatch(values, targets) {
   return values.some((value) => targets.some((target) => sameText(value, target)));
 }
 
+function hasScopeValue(values) {
+  return values.some((value) => Boolean(cleanText(value)));
+}
+
 export function normalizedMobile(value) {
   return String(value || "").replace(/\D/g, "").slice(-10);
 }
@@ -183,7 +187,8 @@ export function partnerBranchValues(partner = {}) {
 export function bankManagerCanAccessLead(partner, lead) {
   const sameBank = anyMatch(leadBankValues(lead), partnerBankValues(partner));
   const sameBranch = anyMatch(leadBranchValues(lead), partnerBranchValues(partner));
-  return sameBank && sameBranch;
+  const hasLeadBranchScope = hasScopeValue(leadBranchValues(lead));
+  return sameBank && (!hasLeadBranchScope || sameBranch);
 }
 
 export function loanExecutiveCanAccessLead(partner, lead) {
@@ -322,8 +327,9 @@ export function projectedLeadHasRequiredBankScope(partner, lead) {
     );
   }
   if (partner.roleType === "bank-manager") {
+    const hasLeadBranchScope = hasScopeValue(leadBranchValues(lead));
     return hasMatchingScopeValues(leadBankValues(lead), partnerBankValues(partner))
-      && hasMatchingScopeValues(leadBranchValues(lead), partnerBranchValues(partner));
+      && (!hasLeadBranchScope || hasMatchingScopeValues(leadBranchValues(lead), partnerBranchValues(partner)));
   }
   return hasMatchingScopeValues(
     [lead.assignedPartnerId, lead.assignedBankId, lead.bankPartner, lead.assignedBankName, lead.preferredBank],

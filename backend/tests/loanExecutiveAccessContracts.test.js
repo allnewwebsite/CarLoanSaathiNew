@@ -4,6 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  bankManagerCanAccessLead,
   executiveStrongIdentityValues,
   leadExecutiveStrongIdentityValues,
   loanExecutiveCanAccessLead,
@@ -198,4 +199,31 @@ test("loan executive reassignment removes every previous executive projection sc
     "lead.executiveMobile",
     "previousExecutiveKeys.map((key) => removeLeadExecutiveProjection",
   ].forEach((snippet) => assert.equal(assignmentService.includes(snippet), true, `assignment service missing ${snippet}`));
+});
+
+test("bank manager total leads include legacy bank-scoped rows without branch metadata", () => {
+  const bankShared = read("backend/controllers/bankShared.controller.js");
+  const bankAccessShared = read("backend/controllers/bankAccessShared.controller.js");
+  const manager = {
+    bankId: "UCBA0002429",
+    bankName: "UCO Bank",
+    ifscCode: "UCBA0002429",
+    branchId: "BRANCH-A",
+    roleType: "bank-manager",
+  };
+
+  assert.equal(bankManagerCanAccessLead(manager, { assignedBankName: "UCO Bank", caseId: "CLS-0001" }), true);
+  assert.equal(bankManagerCanAccessLead(manager, { assignedBankName: "UCO Bank", branchId: "BRANCH-A" }), true);
+  assert.equal(bankManagerCanAccessLead(manager, { assignedBankName: "UCO Bank", branchId: "BRANCH-B" }), false);
+  [
+    "const [projected, canonical, bankCandidates] = await Promise.all([",
+    "queryLeadProjectionForUser({",
+    "queryBankLeads({ bankId: identity.bankId, query: baseQuery, fields })",
+    "bankScopedLeadCandidates(partner, baseQuery, fields)",
+    "...(projected?.data || [])",
+    "...(canonical?.data || [])",
+    "...bankCandidates",
+    ".filter((lead) => partnerCanAccessLead(partner, lead))",
+  ].forEach((snippet) => assert.equal(bankShared.includes(snippet), true, `bankShared missing ${snippet}`));
+  assert.equal(bankAccessShared.includes("return sameBank && (!hasLeadBranchScope || sameBranch)"), true);
 });
