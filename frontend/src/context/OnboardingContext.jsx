@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useAuth } from "./AuthContext.jsx";
 import { api } from "../services/api.js";
 import { OnboardingModal } from "../components/onboarding/OnboardingModal.jsx";
+import { markLocalOnboardingSeen, onboardingIdentityKey, readLocalOnboardingSeen } from "./onboardingStorage.js";
 
 const OnboardingContext = createContext(null);
 const SUPPORTED_ROLES = new Set(["finance-desk", "gm", "bank-manager", "loan-executive"]);
@@ -26,7 +27,7 @@ export function OnboardingProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
-    const key = `${user?.uid || user?.email || ""}:${user?.role || ""}`;
+    const key = onboardingIdentityKey(user);
     if (!isAuthenticated || !canShowForUser(user)) {
       setOpen(false);
       return undefined;
@@ -34,11 +35,13 @@ export function OnboardingProvider({ children }) {
     if (checkingKey === key) return undefined;
     setCheckingKey(key);
 
-    const initialDecision = user.showOnboarding === true || user.onboardingCompleted !== true;
+    const localSeen = readLocalOnboardingSeen(user);
+    const initialDecision = user.showOnboarding === true || (user.onboardingCompleted !== true && !localSeen);
     if (!initialDecision) {
       setOpen(false);
       return undefined;
     }
+    setOpen(true);
 
     api.get("/onboarding/status", { params: { ts: Date.now() } })
       .then((response) => {
@@ -46,7 +49,7 @@ export function OnboardingProvider({ children }) {
         setOpen(response.data?.showOnboarding === true);
       })
       .catch(() => {
-        if (!cancelled) setOpen(user.showOnboarding === true);
+        if (!cancelled) setOpen(!readLocalOnboardingSeen(user) && user.onboardingCompleted !== true);
       });
     return () => {
       cancelled = true;
@@ -56,14 +59,15 @@ export function OnboardingProvider({ children }) {
   const complete = useCallback(async ({ skipped = false } = {}) => {
     if (pending) return;
     setPending(true);
+    markLocalOnboardingSeen(user);
+    setOpen(false);
     try {
       await api.post("/onboarding/complete", { skipped });
-      setOpen(false);
       await validateSession({ silent: true, showLoading: false });
     } finally {
       setPending(false);
     }
-  }, [pending, validateSession]);
+  }, [pending, user, validateSession]);
 
   const replayProductTour = useCallback(() => {
     if (canShowForUser(user)) setOpen(true);

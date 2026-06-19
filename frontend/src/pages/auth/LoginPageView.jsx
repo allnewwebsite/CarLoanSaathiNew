@@ -1,4 +1,5 @@
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react";
+import { BrandLogo } from "../../components/BrandLogo.jsx";
 import { formatRemaining, workflowSteps } from "./loginPage.helpers.js";
 
 export function LoginPageView({
@@ -31,9 +32,7 @@ export function LoginPageView({
         <div className="flex flex-col justify-between border-b border-slate-200 bg-slate-50/80 p-6 sm:p-8 lg:border-b-0 lg:border-r">
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-semibold text-[#0d47a1] shadow-sm">
-                CLS
-              </div>
+              <BrandLogo className="h-10 w-10 rounded-lg border border-slate-200 bg-white shadow-sm" />
               <div>
                 <p className="text-base font-semibold text-slate-900">CarLoanSaathi</p>
                 <p className="text-xs font-medium text-slate-500">Secure workflow platform</p>
@@ -71,9 +70,7 @@ export function LoginPageView({
         <div className="flex items-center justify-center p-6 sm:p-8">
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[#0d47a1] text-sm font-semibold text-white">
-                C
-              </div>
+              <BrandLogo className="h-9 w-9 rounded-md bg-white" />
               <div>
                 <p className="text-sm font-semibold text-slate-900">CarLoanSaathi</p>
                 <p className="text-xs text-slate-500">Email/password authentication</p>

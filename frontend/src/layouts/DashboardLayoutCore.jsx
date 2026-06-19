@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
 import { SubscriptionBanner } from "../components/PlanBillingModal.jsx";
+import { BrandLogo } from "../components/BrandLogo.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { markRouteChangeStart, useRenderDiagnostics } from "../services/frontendLatency.js";
 import { navByRole, prefetchDashboardRoute } from "./DashboardLayout.config.js";
@@ -147,7 +148,7 @@ export function DashboardLayout() {
       <aside className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200 bg-white px-3 py-4 shadow-xl shadow-slate-900/10 transition-[width,transform] duration-300 ease-[cubic-bezier(0.2,0,0,1)] will-change-transform lg:shadow-none ${loanExecutiveMobile ? "w-[min(82vw,18rem)]" : "w-64"} ${collapsed ? "lg:w-20" : "lg:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}>
         <div className="flex shrink-0 items-center gap-2">
           <NavLink to="/" className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg bg-slate-50 p-3 text-base font-semibold transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:justify-center" : ""}`} title="CarLoanSaathi">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#0d47a1] text-sm text-white transition-transform duration-200 ease-out group-hover:scale-105">CL</span>
+          <BrandLogo className="h-9 w-9 rounded-lg bg-white transition-transform duration-200 ease-out group-hover:scale-105" />
           <span className={`truncate whitespace-nowrap transition-[opacity,transform,width] duration-200 ease-out ${collapsed ? "lg:w-0 lg:-translate-x-1 lg:opacity-0" : "lg:w-auto lg:translate-x-0 lg:opacity-100"}`}><span className="text-[#08736d]">CarLoan</span><span className="text-[#d86508]">Saathi</span></span>
           </NavLink>
           <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close sidebar" className="rounded-md border border-slate-200 p-2 text-slate-600 lg:hidden">
