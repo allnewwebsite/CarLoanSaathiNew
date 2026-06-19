@@ -107,6 +107,7 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
       if (!["lead", "document"].includes(detail.kind)) return;
       const patch = patchedLeadFromEvent(detail);
       if (!patch) return;
+      console.log("SSE PATCH RECEIVED", patch);
       const eventType = detail.eventType || detail.event;
       const canInsertCreatedRow = eventType === "LEAD_CREATED" && hasHydratedLeadPayload(detail);
       setRows((current) => {
@@ -118,7 +119,16 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
             changed = true;
             return { ...row, ...patch };
           })
-          .filter((row) => !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter)));
+          .filter((row) => {
+            console.log("ROW BEFORE FILTER", row);
+            console.log("IS DEAD CASE", row?.isDeadCase);
+            console.log("STATUS FILTER", statusFilter);
+            console.log(
+              "ROW REMOVED BY PATCH",
+              sameLead(row, patch) && (row.isDeadCase === true || !statusMatchesFilter(row, statusFilter)),
+            );
+            return !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter));
+          });
         if (!changed && canInsertCreatedRow && statusMatchesFilter(patch, statusFilter)) {
           return [patch, ...current].slice(0, Math.max(current.length || 10, 10));
         }

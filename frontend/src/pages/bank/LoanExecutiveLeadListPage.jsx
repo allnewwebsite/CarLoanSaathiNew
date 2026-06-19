@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronRight, FileText, MapPin, Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
@@ -63,7 +63,13 @@ export function LoanExecutiveLeadListPage({ mode }) {
   const status = mode === "status" && BANK_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : mode === "status" ? BANK_STATUS_OPTIONS[0] : "";
+  console.log("SEARCH", search);
+  console.log("STATUS", status);
   const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search: debouncedSearch, status });
+  useEffect(() => {
+    console.log("LEADS AFTER STATE", rows);
+    console.log("ROWS STATE UPDATED", rows.length, rows);
+  }, [rows]);
 
   const updateStatus = async (lead, nextStatus) => {
     setStatusError("");
@@ -78,7 +84,13 @@ export function LoanExecutiveLeadListPage({ mode }) {
     }
   };
 
-  const tableRows = rows.map((lead) => ({
+  const displayedLeads = rows;
+  console.log("DISPLAYED LEADS", displayedLeads.length);
+  console.log("TABLE INPUT", displayedLeads);
+  console.log(displayedLeads.find((item) => item.caseId === "CLS-0008"));
+  console.log("TABLEROWS INPUT", displayedLeads.length);
+
+  const tableRows = displayedLeads.map((lead) => ({
     key: lead.id,
     cells: mode === "status"
       ? [
@@ -110,6 +122,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
   }));
+  console.log("TABLEROWS OUTPUT", tableRows.length);
 
   const statusHeaders = status === "REJECTED_REASON"
     ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", "Rejection Timestamp", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
