@@ -4,6 +4,7 @@ import {
   anyMatch,
   applyFilters,
   assertBankRegistrationEmailVerified,
+  assignedLeadsForPartner,
   assertLeadMutable,
   assertNoActiveIdentityCollision,
   assertValidStatusTransition,
