@@ -209,7 +209,12 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   const executiveName = executive.name || executive.fullName || executive.email;
   const executiveEmail = executive.email || executive.officialEmail || executive.id || null;
   const executiveMobile = executive.mobile || null;
-  const previousExecutiveKeys = [lead.assignedExecutiveId, lead.assignedExecutiveEmail].filter(Boolean);
+  const previousExecutiveKeys = [
+    lead.assignedExecutiveId,
+    lead.assignedExecutiveEmail,
+    lead.assignedExecutiveMobile,
+    lead.executiveMobile,
+  ].filter(Boolean);
   const historyEntry = {
     transferredFrom: {
       executiveId: currentExecutive.id,

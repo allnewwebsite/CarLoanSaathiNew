@@ -17,6 +17,12 @@ function patchedLeadFromEvent(event = {}) {
   if (!leadId && !event.caseId) return null;
   const updatedAt = event.timestamp || lead.updatedAt || new Date().toISOString();
   const status = event.status || event.data?.status || lead.status || "";
+  const hasExplicitDeadCaseState = Object.prototype.hasOwnProperty.call(lead, "isDeadCase")
+    || Object.prototype.hasOwnProperty.call(event, "isDeadCase")
+    || Object.prototype.hasOwnProperty.call(event.data || {}, "isDeadCase");
+  const isDeadCase = hasExplicitDeadCaseState
+    ? lead.isDeadCase === true || event.isDeadCase === true || event.data?.isDeadCase === true
+    : false;
   return {
     ...lead,
     id: lead.id || lead.leadId || leadId,
@@ -65,7 +71,7 @@ function patchedLeadFromEvent(event = {}) {
     realtimeUpdatedAt: updatedAt,
     documentUpdatedAt: (event.eventType || event.event) === "DOCUMENT_UPLOADED" ? updatedAt : lead.documentUpdatedAt,
     remarksUpdatedAt: (event.eventType || event.event) === "LEAD_REMARK_ADDED" ? updatedAt : lead.remarksUpdatedAt,
-    isDeadCase: lead.isDeadCase === true || event.isDeadCase === true || event.data?.isDeadCase === true,
+    isDeadCase,
     deadCaseDate: lead.deadCaseDate || event.deadCaseDate || event.data?.deadCaseDate || "",
     deadCaseBy: lead.deadCaseBy || event.deadCaseBy || event.data?.deadCaseBy || "",
     deadCaseReason: lead.deadCaseReason || event.deadCaseReason || event.data?.deadCaseReason || "",

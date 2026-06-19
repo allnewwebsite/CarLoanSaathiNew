@@ -22,3 +22,11 @@ test("realtime lead mutations match every lead dashboard refresh filter", async 
     assert.equal(source.includes(`"${prefix}"`), true);
   });
 });
+
+test("dead-case realtime patches preserve explicit restore state", async () => {
+  const source = await readFile(path.join(srcDir, "hooks", "useRealtimeEntityPatch.js"), "utf8");
+
+  assert.match(source, /hasExplicitDeadCaseState/);
+  assert.match(source, /Object\.prototype\.hasOwnProperty\.call\(event\.data \|\| \{\}, "isDeadCase"\)/);
+  assert.match(source, /event\.data\?\.isDeadCase === true/);
+});

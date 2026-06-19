@@ -187,3 +187,15 @@ test("bank loan executive lead list does not hide assigned leads with alternate 
   assert.equal(bankAccessShared.includes("const nameMatch = anyMatch([lead.assignedExecutiveName], executiveNameValues(partner));"), true);
   assert.equal(bankAccessShared.includes("return anyMatch(leadBankValues(lead), partnerBankValues(partner));"), true);
 });
+
+test("loan executive reassignment removes every previous executive projection scope", () => {
+  const assignmentService = read("backend/services/assignment.service.js");
+
+  [
+    "lead.assignedExecutiveId",
+    "lead.assignedExecutiveEmail",
+    "lead.assignedExecutiveMobile",
+    "lead.executiveMobile",
+    "previousExecutiveKeys.map((key) => removeLeadExecutiveProjection",
+  ].forEach((snippet) => assert.equal(assignmentService.includes(snippet), true, `assignment service missing ${snippet}`));
+});
