@@ -113,6 +113,7 @@ import {
   validateBankLocation,
   writeAuditLog,
 } from './bankShared.controller.js';
+import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 import {
   bankExecutiveCanonicalUser,
   bankExecutiveRecord,
@@ -429,31 +430,30 @@ export async function getBankExecutiveCases(req, res, next) {
     }
     if (!executive || !executiveBelongsToBank(executive, identity)) return res.status(404).json({ message: "Executive not found for this bank" });
     const rows = await cached(`bank:executive-cases:${identity.bankId}:${executive.id || executive.email}:${JSON.stringify(req.query || {})}`, 10000, async () => {
+      const executiveActor = {
+        ...executive,
+        role: "loan-executive",
+        uid: executive.sourceId || executive.executiveId || executive.uid || executive.id || executive.email,
+      };
       const projected = await queryLeadProjectionForUser({
-        user: { role: "loan-executive", uid: executive.sourceId || executive.executiveId || executive.id || executive.email, email: executive.email },
+        user: executiveActor,
         query: { ...req.query, limit: req.query.limit || 100 },
         recordMetrics: false,
       }).catch(() => null);
-      if (projected?.data) {
-        logProjectionRead("PROJECTION-HIT", req, { collection: "executiveViews", resultCount: projected.data.length });
-        return projected.data.filter((lead) => partnerCanAccessLead(partner, lead));
-      }
-      logProjectionRead("PROJECTION-MISS", req, { collection: "executiveViews", reason: "missing_executive_lead_view" });
+      if (projected?.data) logProjectionRead("PROJECTION-HIT", req, { collection: "executiveViews", resultCount: projected.data.length });
+      else logProjectionRead("PROJECTION-MISS", req, { collection: "executiveViews", reason: "missing_executive_lead_view" });
       logProjectionRead("CANONICAL-FALLBACK", req, { collection: "leads", executiveId: executive.sourceId || executive.executiveId || executive.id || executive.email });
       const candidates = await Promise.all([
-        queryExecutiveLeads({ executiveId: executive.sourceId || executive.executiveId || executive.id || executive.email, executiveEmail: executive.email, query: req.query }),
+        queryExecutiveLeads({ ...executiveQueryArgs(executiveActor), query: req.query }),
       ]);
       const byId = new Map();
-      candidates.flatMap((page) => page.data || []).forEach((lead) => {
-        if (partnerCanAccessLead(partner, lead)) byId.set(lead.id, lead);
+      [...(projected?.data || []), ...candidates.flatMap((page) => page.data || [])].forEach((lead) => {
+        const key = lead.sourceId || lead.id || lead.caseId;
+        if (key && partnerCanAccessLead(partner, lead) && loanExecutiveMatchesLead(executiveActor, lead)) {
+          byId.set(key, { ...lead, id: lead.sourceId || lead.id });
+        }
       });
-      return [...byId.values()].filter((lead) =>
-        lead.assignedExecutiveId === executive.id
-        || lead.assignedExecutiveEmail === executive.email
-        || lead.assignedExecutiveMobile === executive.mobile
-        || lead.assignedExecutiveName === executive.name
-        || lead.assignedExecutiveName === executive.fullName
-      );
+      return [...byId.values()];
     });
     res.json({ data: rows, executive });
   } catch (error) {

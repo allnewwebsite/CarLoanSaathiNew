@@ -9,6 +9,7 @@ import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { syncNotificationProjectionSoon } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
+import { executiveIdentityValues, valuesMatch } from "./roleIdentity.service.js";
 
 export async function createNotification({
   type,
@@ -181,7 +182,17 @@ function canAccessNotification(item, actor = {}) {
     return Boolean(actor.bankId && item.bankId === actor.bankId);
   }
   if (actor.role === "loan-executive") {
-    return item.assignedExecutiveId === actor.uid || item.assignedExecutiveId === actor.email;
+    return valuesMatch(
+      [
+        item.assignedExecutiveId,
+        item.assignedExecutiveEmail,
+        item.recipientId,
+        item.meta?.assignedExecutiveId,
+        item.meta?.assignedExecutiveEmail,
+        item.meta?.assignedExecutiveMobile,
+      ],
+      executiveIdentityValues(actor),
+    );
   }
   return false;
 }

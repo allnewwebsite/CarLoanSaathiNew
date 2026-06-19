@@ -1,17 +1,27 @@
 import { scopedAnalytics } from "../services/analytics.service.js";
+import { getRecord } from "../services/firestore.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { getNotifications } from "../services/notification.service.js";
 import { queryLeadProjectionForUser } from "../services/projection.service.js";
 import { ROLES } from "../utils/constants.js";
+import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 function analyticsScopeForUser(user = {}) {
   if (user.role === ROLES.SUPER_ADMIN) return {};
   if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role)) return { dealershipId: user.dealershipId };
   if (user.role === ROLES.BANK_MANAGER) return { bankId: user.bankId };
-  if (user.role === ROLES.LOAN_EXECUTIVE) return { assignedExecutiveId: user.uid };
+  if (user.role === ROLES.LOAN_EXECUTIVE) return { assignedExecutiveId: user.email || user.uid };
   const error = new Error("Dashboard role is not allowed");
   error.status = 403;
   throw error;
+}
+
+async function loanExecutiveActor(user = {}) {
+  if (user?.role !== ROLES.LOAN_EXECUTIVE) return user;
+  const email = user.email || user.uid;
+  if (!email) return user;
+  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  return executive ? { ...user, ...executive } : user;
 }
 
 export async function getOverview(req, res, next) {
@@ -55,6 +65,17 @@ const RECENT_LEAD_FIELDS = [
 async function recentLeadsForUser(user = {}) {
   const query = { page: 1, limit: 8 };
   const projected = await queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null);
+  if (user.role === ROLES.LOAN_EXECUTIVE) {
+    const actor = await loanExecutiveActor(user);
+    const canonical = await queryExecutiveLeads({ ...executiveQueryArgs(actor), query, fields: RECENT_LEAD_FIELDS });
+    if (!projected?.data?.length) return canonical;
+    const byId = new Map();
+    [...projected.data, ...canonical.data].forEach((lead) => {
+      const key = lead.sourceId || lead.id || lead.caseId;
+      if (key && loanExecutiveMatchesLead(actor, lead)) byId.set(key, { ...lead, id: lead.sourceId || lead.id });
+    });
+    return { ...canonical, data: [...byId.values()], total: byId.size, source: "projection+canonical" };
+  }
   if (projected) return { ...projected, source: "projection" };
   if (user.role === ROLES.SUPER_ADMIN) return queryAllLeads({ query, fields: RECENT_LEAD_FIELDS });
   if ([ROLES.FINANCE_DESK, ROLES.GM].includes(user.role)) {
@@ -62,14 +83,6 @@ async function recentLeadsForUser(user = {}) {
   }
   if (user.role === ROLES.BANK_MANAGER) {
     return queryBankLeads({ bankId: user.bankId, query, fields: RECENT_LEAD_FIELDS });
-  }
-  if (user.role === ROLES.LOAN_EXECUTIVE) {
-    return queryExecutiveLeads({
-      executiveId: user.uid,
-      executiveEmail: user.email,
-      query,
-      fields: RECENT_LEAD_FIELDS,
-    });
   }
   const error = new Error("Dashboard role is not allowed");
   error.status = 403;

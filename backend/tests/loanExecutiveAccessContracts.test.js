@@ -83,3 +83,61 @@ test("loan executive list and projection contracts include id, email, and mobile
 
   assert.equal(projectionShared.includes("\"executiveMobile\""), true, "projection view fields missing executiveMobile");
 });
+
+test("loan executive secondary paths enrich identity and do not trust partial projections alone", () => {
+  const leadController = read("backend/controllers/lead.controller.js");
+  const dashboardController = read("backend/controllers/dashboard.controller.js");
+  const deadCaseController = read("backend/controllers/deadCase.controller.js");
+  const documentController = read("backend/controllers/document.controller.js");
+  const bankExecutiveController = read("backend/controllers/bankExecutive.controller.js");
+  const timelineService = read("backend/services/timeline.service.js");
+  const notificationService = read("backend/services/notification.service.js");
+  const leadQuery = read("backend/services/leadQuery.service.js");
+
+  [
+    "async function loanExecutiveActor",
+    "getRecord(\"loanExecutives\", email)",
+    "executiveQueryArgs(actor)",
+    "loanExecutiveMatchesLead(actor, lead)",
+  ].forEach((snippet) => assert.equal(leadController.includes(snippet), true, `lead controller missing ${snippet}`));
+
+  [
+    "async function loanExecutiveActor",
+    "executiveQueryArgs(actor)",
+    "source: \"projection+canonical\"",
+  ].forEach((snippet) => assert.equal(dashboardController.includes(snippet), true, `dashboard controller missing ${snippet}`));
+
+  [
+    "async function loanExecutiveActor",
+    "executiveIdentityValues(actor)",
+    "executiveNameValues(actor)",
+  ].forEach((snippet) => assert.equal(deadCaseController.includes(snippet), true, `dead case controller missing ${snippet}`));
+
+  assert.equal(documentController.includes("loanExecutiveMatchesLead({ ...req.user, ...executive }, lead)"), true);
+  assert.equal(documentController.includes("lead?.isDeadCase === true && req.user?.role !== \"finance-desk\""), false);
+
+  [
+    "executiveQueryArgs(executiveActor)",
+    "loanExecutiveMatchesLead(executiveActor, lead)",
+    "...(projected?.data || [])",
+  ].forEach((snippet) => assert.equal(bankExecutiveController.includes(snippet), true, `bank executive controller missing ${snippet}`));
+
+  [
+    "async function timelineActor",
+    "loanExecutiveMatchesLead(scopedActor, lead || {})",
+    "actor: scopedActor",
+  ].forEach((snippet) => assert.equal(timelineService.includes(snippet), true, `timeline service missing ${snippet}`));
+
+  [
+    "executiveIdentityValues(actor)",
+    "item.meta?.assignedExecutiveMobile",
+  ].forEach((snippet) => assert.equal(notificationService.includes(snippet), true, `notification service missing ${snippet}`));
+
+  [
+    "executiveIdentityValues = []",
+    "executiveNameIdentities",
+    "lead.assignedExecutiveMobile",
+    "lead.executiveMobile",
+    "lead.assignedExecutiveName",
+  ].forEach((snippet) => assert.equal(leadQuery.includes(snippet), true, `lead query missing ${snippet}`));
+});

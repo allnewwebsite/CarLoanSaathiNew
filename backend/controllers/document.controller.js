@@ -10,6 +10,7 @@ import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.serv
 import { logError } from "../services/logger.service.js";
 import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "../services/whatsapp.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
+import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 function runDocumentSideEffect(label, task) {
   Promise.resolve()
@@ -26,7 +27,6 @@ function canUploadCustomerDocument(req, lead) {
 
 async function canReadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
-  if (lead?.isDeadCase === true && req.user?.role !== "finance-desk") return false;
   const email = req.user?.email || req.user?.uid;
   if (["finance-desk", "gm"].includes(req.user?.role)) {
     return lead?.dealershipId === req.user?.dealershipId || lead?.dealerEmail === email || lead?.dealershipEmail === email || lead?.createdBy === email;
@@ -45,9 +45,9 @@ async function canReviewCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
   if (req.user?.role === "loan-executive") {
     const email = req.user?.email || req.user?.uid;
-    if (lead?.assignedExecutiveEmail === email || lead?.assignedExecutiveId === email) return true;
-    const executive = await getRecord("loanExecutives", email);
-    return Boolean(executive && (lead?.assignedExecutiveId === executive.id || lead?.assignedExecutiveEmail === executive.email));
+    if (loanExecutiveMatchesLead(req.user, lead)) return true;
+    const executive = await getRecord("loanExecutives", email).catch(() => null);
+    return Boolean(executive && loanExecutiveMatchesLead({ ...req.user, ...executive }, lead));
   }
   return false;
 }

@@ -15,6 +15,7 @@ import { assertLeadMutable } from "../utils/deadCase.js";
 import { clearCachedTags } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
+import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -51,6 +52,14 @@ function authenticatedDealershipId(req, fallbackEmail) {
   return String(req.user?.dealershipId || fallbackEmail || "").trim().toLowerCase();
 }
 
+async function loanExecutiveActor(user = {}) {
+  if (user?.role !== "loan-executive") return user;
+  const email = user.email || user.uid;
+  if (!email) return user;
+  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  return executive ? { ...user, ...executive } : user;
+}
+
 async function canAccessLead(req, lead) {
   if (req.user?.role === "super-admin") return true;
   const email = req.user?.email || req.user?.uid;
@@ -61,9 +70,7 @@ async function canAccessLead(req, lead) {
       || lead.createdBy === email;
   }
   if (req.user?.role === "loan-executive") {
-    if (lead.assignedExecutiveEmail === email || lead.assignedExecutiveId === email) return true;
-    const executive = await getRecord("loanExecutives", email);
-    return Boolean(executive && (lead.assignedExecutiveId === executive.id || lead.assignedExecutiveEmail === executive.email));
+    return loanExecutiveMatchesLead(await loanExecutiveActor(req.user), lead);
   }
   if (req.user?.role === "bank-manager") {
     const manager = await getRecord("branchManagers", email);
@@ -317,7 +324,20 @@ export async function getLeads(req, res, next) {
     queryStarted = Date.now();
     let payload;
     const projected = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null);
-    if (projected) payload = projected;
+    if (req.user?.role === "loan-executive") {
+      const actor = await loanExecutiveActor(req.user);
+      const canonical = await queryExecutiveLeads({ ...executiveQueryArgs(actor), query: req.query });
+      if (projected?.data?.length) {
+        const byId = new Map();
+        [...projected.data, ...canonical.data].forEach((lead) => {
+          const key = lead.sourceId || lead.id || lead.caseId;
+          if (key && loanExecutiveMatchesLead(actor, lead)) byId.set(key, { ...lead, id: lead.sourceId || lead.id });
+        });
+        payload = { ...canonical, data: [...byId.values()], total: byId.size };
+      } else {
+        payload = canonical;
+      }
+    } else if (projected) payload = projected;
     else if (req.user?.role === "super-admin") payload = await queryAllLeads({ query: req.query });
     else if (["finance-desk", "gm"].includes(req.user?.role)) {
       const dealershipId = req.user?.dealershipId || req.user?.email || req.user?.uid;
@@ -325,8 +345,6 @@ export async function getLeads(req, res, next) {
     } else if (req.user?.role === "bank-manager") {
       const bankId = req.user?.bankId || req.user?.bankName || req.user?.email || req.user?.uid;
       payload = await queryBankLeads({ bankId, query: req.query });
-    } else if (req.user?.role === "loan-executive") {
-      payload = await queryExecutiveLeads({ executiveId: req.user?.uid, executiveEmail: req.user?.email, query: req.query });
     } else {
       return res.status(403).json({ message: "Lead access denied" });
     }

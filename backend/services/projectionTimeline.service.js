@@ -2,6 +2,7 @@ import { queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { freshProjectionRows } from "./projectionFreshness.service.js";
 import { safeDocId, scopeId, withProjectionMetadata } from "./projectionShared.service.js";
+import { executiveIdentityValues } from "./roleIdentity.service.js";
 
 export async function syncTimelineProjection(event = {}) {
   if (!event?.id) return null;
@@ -61,7 +62,7 @@ export async function queryTimelineProjection({ leadId = "", query = {}, actor =
   } else if (actor.role === "bank-manager") {
     where.push({ field: "bankId", value: scopeId(actor.bankId || actor.bankName || actor.email || actor.uid) });
   } else if (actor.role === "loan-executive") {
-    where.push({ field: "assignedExecutiveId", value: scopeId(actor.uid || actor.email) });
+    where.push({ field: "assignedExecutiveId", value: scopeId(executiveIdentityValues(actor).find((value) => String(value).includes("@")) || actor.email || actor.uid) });
   }
   const result = await queryRecords("timelineProjection", {
     where,

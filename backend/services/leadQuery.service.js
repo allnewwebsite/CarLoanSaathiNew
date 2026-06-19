@@ -2,6 +2,7 @@ import { countRecords, queryRecords } from "./firestore.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
+import { normalizedIdentity, uniqueIdentities } from "./roleIdentity.service.js";
 
 const LEAD_FIELDS = [
   "id",
@@ -322,7 +323,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
   });
 }
 
-export async function queryDeadCases({ dealershipId = "", bankId = "", executiveId = "", salespersonId = "", query = {}, fields = LEAD_FIELDS } = {}) {
+export async function queryDeadCases({ dealershipId = "", bankId = "", executiveId = "", executiveIdentityValues = [], executiveNames = [], salespersonId = "", query = {}, fields = LEAD_FIELDS } = {}) {
   const { limit, cursor, page } = paginationParams(query);
   const where = [{ field: "isDeadCase", value: true }];
   if (dealershipId) where.push({ field: "dealershipId", value: dealershipId });
@@ -346,11 +347,23 @@ export async function queryDeadCases({ dealershipId = "", bankId = "", executive
   });
   const bankIdentity = String(bankId || "").trim().toLowerCase();
   const executiveIdentity = String(executiveId || "").trim().toLowerCase();
+  const executiveIdentities = new Set(uniqueIdentities([executiveId, ...executiveIdentityValues]).map(normalizedIdentity));
+  const executiveNameIdentities = new Set(uniqueIdentities(executiveNames).map(normalizedIdentity));
   const salespersonIdentity = String(salespersonId || "").trim().toLowerCase();
   const matchesScopedIdentity = (lead = {}) => {
     const same = (values, expected) => !expected || values.some((value) => String(value || "").trim().toLowerCase() === expected);
+    const sameExecutive = !executiveIdentities.size || [
+      lead.assignedExecutiveId,
+      lead.assignedExecutiveEmail,
+      lead.executiveEmail,
+      lead.loanExecutiveId,
+      lead.assignedExecutiveMobile,
+      lead.executiveMobile,
+    ].some((value) => executiveIdentities.has(normalizedIdentity(value)))
+      || [lead.assignedExecutiveName].some((value) => executiveNameIdentities.has(normalizedIdentity(value)));
     return same([lead.bankId, lead.assignedBankId, lead.bankPartnerId, lead.bankEmail, lead.assignedBankEmail], bankIdentity)
       && same([lead.assignedExecutiveId, lead.assignedExecutiveEmail, lead.executiveEmail, lead.loanExecutiveId], executiveIdentity)
+      && sameExecutive
       && same([lead.salespersonId, lead.salespersonEmail, lead.salespersonMobile, lead.salespersonJobId, lead.assignedSalesperson], salespersonIdentity);
   };
   return pageResponse({

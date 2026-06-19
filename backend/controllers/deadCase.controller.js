@@ -2,6 +2,7 @@ import { getRecord, queryRecords } from "../services/firestore.service.js";
 import { getAuditLogs } from "../services/audit.service.js";
 import { moveCaseNumberToDeadCase, moveLeadToDeadCase, restoreDeadCase, updateDeadCaseMetadata } from "../services/deadCase.service.js";
 import { queryDeadCases } from "../services/leadQuery.service.js";
+import { executiveIdentityValues, executiveNameValues } from "../services/roleIdentity.service.js";
 
 function dealershipIdFromUser(user = {}) {
   return String(user.dealershipId || user.email || user.uid || "").trim().toLowerCase();
@@ -31,6 +32,14 @@ async function deadCaseDetail(id) {
   if (lead?.isDeadCase !== true) return null;
   const audit = await getAuditLogs({ leadId: lead.id, limit: 50 }).catch(() => []);
   return { ...lead, audit };
+}
+
+async function loanExecutiveActor(user = {}) {
+  if (user?.role !== "loan-executive") return user;
+  const email = user.email || user.uid;
+  if (!email) return user;
+  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  return executive ? { ...user, ...executive } : user;
 }
 
 export async function getFinanceDeadCases(req, res, next) {
@@ -88,12 +97,12 @@ export async function getGmDeadCases(req, res, next) {
 export async function getBankDeadCases(req, res, next) {
   try {
     const bankId = String(req.user?.bankId || req.user?.organizationId || "").trim();
-    const executiveId = req.user?.role === "loan-executive"
-      ? String(req.user?.uid || req.user?.email || req.user?.assignedExecutiveId || "").trim()
-      : "";
+    const actor = await loanExecutiveActor(req.user);
     return res.json(await queryDeadCases({
       bankId,
-      executiveId,
+      executiveId: "",
+      executiveIdentityValues: req.user?.role === "loan-executive" ? executiveIdentityValues(actor) : [],
+      executiveNames: req.user?.role === "loan-executive" ? executiveNameValues(actor) : [],
       query: req.query,
     }));
   } catch (error) {

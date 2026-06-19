@@ -1,6 +1,7 @@
 import { createRecord, getRecord, queryRecords } from "./firestore.service.js";
 import { queryTimelineProjection, syncTimelineProjectionSoon } from "./projection.service.js";
 import { cached } from "./ttlCache.service.js";
+import { executiveIdentityValues, executiveNameValues, loanExecutiveMatchesLead } from "./roleIdentity.service.js";
 
 export const TIMELINE_EVENTS = {
   LEAD_CREATED: "lead-created",
@@ -139,7 +140,15 @@ function actorBranchValues(actor = {}) {
 }
 
 function actorExecutiveValues(actor = {}) {
-  return [actor.uid, actor.email, actor.mobile, actor.name, actor.fullName];
+  return [...executiveIdentityValues(actor), ...executiveNameValues(actor)];
+}
+
+async function timelineActor(actor = {}) {
+  if (normalize(actor.role) !== "loan-executive") return actor;
+  const email = actor.email || actor.uid;
+  if (!email) return actor;
+  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  return executive ? { ...actor, ...executive } : actor;
 }
 
 function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
@@ -155,7 +164,8 @@ function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
   }
 
   if (role === "loan-executive") {
-    return valuesMatch(eventExecutiveValues(event), actorExecutiveValues(actor))
+    return loanExecutiveMatchesLead(actor, lead || {})
+      || valuesMatch(eventExecutiveValues(event), actorExecutiveValues(actor))
       || valuesMatch(leadExecutiveValues(lead), actorExecutiveValues(actor));
   }
 
@@ -173,8 +183,11 @@ function canReadScopedTimeline({ event = {}, lead = null, actor = {} }) {
 }
 
 export async function canReadTimelineLead(actor = {}, leadId) {
-  if (normalize(actor.role) === "super-admin") return true;
-  const projected = await queryTimelineProjection({ leadId, actor, query: { limit: 1 } }).catch(() => null);
+  const scopedActor = await timelineActor(actor);
+  if (normalize(scopedActor.role) === "super-admin") return true;
+  const lead = await getRecord("leads", leadId).catch(() => null);
+  if (normalize(scopedActor.role) === "loan-executive" && loanExecutiveMatchesLead(scopedActor, lead || {})) return true;
+  const projected = await queryTimelineProjection({ leadId, actor: scopedActor, query: { limit: 1 } }).catch(() => null);
   return Boolean(projected?.data?.length);
 }
 
@@ -285,7 +298,8 @@ export async function getTimelineForLead(leadId) {
 }
 
 export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
-  const projected = await queryTimelineProjection({ leadId, query, actor }).catch(() => null);
+  const scopedActor = await timelineActor(actor);
+  const projected = await queryTimelineProjection({ leadId, query, actor: scopedActor }).catch(() => null);
   if (projected) {
     return {
       data: projected.data || [],
@@ -311,7 +325,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
   const user = String(query.user || "").trim().toLowerCase();
   const eventType = String(query.eventType || "").trim();
   const dateFilter = String(query.date || "").trim();
-  const role = actor.role || "";
+  const role = scopedActor.role || "";
   const lead = leadId ? await getRecord("leads", leadId).catch(() => null) : null;
 
   const where = [];
@@ -338,7 +352,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       const { start, end } = dateWindow(dateFilter);
       if (created < start || created > end) return false;
     }
-    if (canReadScopedTimeline({ event, lead, actor })) return event;
+    if (canReadScopedTimeline({ event, lead, actor: scopedActor })) return event;
     return null;
   }).filter(Boolean);
 
