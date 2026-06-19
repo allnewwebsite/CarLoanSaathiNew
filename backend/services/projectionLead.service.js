@@ -21,6 +21,7 @@ import {
   VIEW_SEARCH_FIELDS,
   withProjectionMetadata,
 } from "./projectionShared.service.js";
+import { executiveIdentityValues } from "./roleIdentity.service.js";
 
 export { PROJECTION_VERSION } from "./projectionShared.service.js";
 const projectionMissBackfills = new Set();
@@ -209,7 +210,9 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
     where.push({ field: "scopeId", value: scopeId(user.bankId || user.bankName || user.email || user.uid) });
   } else if (role === "loan-executive") {
     collection = "executiveViews";
-    where.push({ field: "scopeId", value: scopeId(user.email || user.uid || user.mobile) });
+    const executiveScopes = [...new Set(executiveIdentityValues(user).map(scopeId).filter(Boolean))].slice(0, 10);
+    if (executiveScopes.length > 1) where.push({ field: "scopeId", op: "in", value: executiveScopes });
+    else where.push({ field: "scopeId", value: executiveScopes[0] || scopeId(user.email || user.uid || user.mobile) });
   } else if (role !== "super-admin") {
     return null;
   }

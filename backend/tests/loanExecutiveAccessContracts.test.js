@@ -56,9 +56,11 @@ test("loan executive list and projection contracts include id, email, and mobile
     "Promise.all([",
     "queryExecutiveLeads({",
     "executiveNames",
-    "const [projected, canonical] = await Promise.all([",
+    "bankScopedLeadCandidates",
+    "const [projected, canonical, bankCandidates] = await Promise.all([",
     "...(projected?.data || [])",
     "...(canonical?.data || [])",
+    "...bankCandidates",
     "const merged = [...byId.values()]",
     "query: projectionQuery",
     "query: baseQuery",
@@ -79,6 +81,8 @@ test("loan executive list and projection contracts include id, email, and mobile
   [
     "lead.assignedExecutiveMobile",
     "lead.executiveMobile",
+    "executiveIdentityValues(user)",
+    "field: \"scopeId\", op: \"in\"",
     "scopeId(user.email || user.uid || user.mobile)",
   ].forEach((snippet) => assert.equal(projectionLead.includes(snippet), true, `projectionLead missing ${snippet}`));
 
@@ -150,6 +154,9 @@ test("bank loan executive lead list does not hide assigned leads with alternate 
   assert.equal(bankShared.includes("const baseQuery = {"), true);
   assert.equal(bankShared.includes("query: baseQuery"), true);
   assert.equal(bankShared.includes("query: scopedQuery"), false);
+  assert.equal(bankShared.includes("async function bankScopedLeadCandidates"), true);
+  assert.equal(bankShared.includes("assignedExecutiveName\", \"assignedExecutiveEmail"), true);
+  assert.equal(bankShared.includes("...bankCandidates"), true);
   assert.equal(bankShared.includes(".filter((lead) => loanExecutiveCanAccessLead(partner, lead))"), true);
   assert.equal(bankAccessShared.includes("const nameMatch = anyMatch([lead.assignedExecutiveName], executiveNameValues(partner));"), true);
   assert.equal(bankAccessShared.includes("return anyMatch(leadBankValues(lead), partnerBankValues(partner));"), true);

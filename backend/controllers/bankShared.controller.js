@@ -213,6 +213,54 @@ export function applyFilters(leads, query) {
   });
 }
 
+async function bankScopedLeadCandidates(partner, query = {}, fields) {
+  const identity = bankIdentity(partner);
+  const bankValues = [
+    identity.bankId,
+    partner.bankId,
+    partner.bankPartnerId,
+    partner.partnerId,
+    identity.bankName,
+    partner.bankName,
+    partner.companyName,
+    identity.bankIfsc,
+    partner.bankIfsc,
+    partner.ifsc,
+    partner.ifscCode,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const values = [...new Set(bankValues)];
+  const bankFields = [
+    "bankId",
+    "assignedBankId",
+    "assignedPartnerId",
+    "bankPartner",
+    "assignedBankName",
+    "selectedBankName",
+    "bankName",
+    "preferredBank",
+    "assignedBankIfsc",
+    "bankIfsc",
+    "ifscCode",
+  ];
+  const { limit } = paginationParams(query);
+  const pages = await Promise.all(values.flatMap((value) => bankFields.map((field) => queryRecords("leads", {
+    where: [{ field, value }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: Math.min(Math.max(limit * 5, 100), 250),
+    maxLimit: 250,
+    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+    searchFields: ["caseId", "fullName", "customerName", "mobile", "city", "assignedExecutiveName", "assignedExecutiveEmail"],
+    fields,
+  }).catch(() => ({ data: [] })))));
+  const byId = new Map();
+  pages.flatMap((page) => page.data || []).forEach((lead) => {
+    const key = lead.sourceId || lead.id || lead.caseId;
+    if (key) byId.set(key, { ...lead, id: lead.sourceId || lead.id });
+  });
+  return [...byId.values()];
+}
+
 export async function attachExecutiveMobile(partner, leads) {
   const missing = leads.filter((lead) => !lead.assignedExecutiveMobile && (lead.assignedExecutiveId || lead.assignedExecutiveEmail));
   if (!missing.length) return leads;
@@ -268,7 +316,7 @@ export async function assignedLeadsForPartner(partner, query = {}, fields) {
       ...baseQuery,
       bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined,
     };
-    const [projected, canonical] = await Promise.all([
+    const [projected, canonical, bankCandidates] = await Promise.all([
       queryLeadProjectionForUser({
       user: { role: "loan-executive", uid: primaryId, email: executiveEmail, mobile: executiveMobile, identityValues: executiveIdentities },
       query: projectionQuery,
@@ -283,9 +331,10 @@ export async function assignedLeadsForPartner(partner, query = {}, fields) {
         query: baseQuery,
         fields,
       }).catch(() => null),
+      bankScopedLeadCandidates(partner, baseQuery, fields).catch(() => []),
     ]);
     const byId = new Map();
-    [...(projected?.data || []), ...(canonical?.data || [])].forEach((lead) => {
+    [...(projected?.data || []), ...(canonical?.data || []), ...bankCandidates].forEach((lead) => {
       const key = lead.sourceId || lead.id || lead.caseId;
       if (key) byId.set(key, { ...lead, id: lead.sourceId || lead.id });
     });
