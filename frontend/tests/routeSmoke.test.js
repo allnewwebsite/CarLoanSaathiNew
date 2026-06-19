@@ -66,3 +66,21 @@ test("route smoke modules exist on disk", async () => {
     access(path.join(srcDir, "pages", route.module))
   )));
 });
+
+test("super admin dealership approval labels and realtime filters stay aligned", async () => {
+  const layoutSource = await readFile(path.join(srcDir, "layouts", "DashboardLayout.config.js"), "utf8");
+  const dashboardSource = await readFile(path.join(srcDir, "pages", "dashboard", "SuperAdminDashboard.jsx"), "utf8");
+  const partsSource = await readFile(path.join(srcDir, "pages", "dashboard", "superAdmin", "SuperAdminParts.jsx"), "utf8");
+  const dataSource = await readFile(path.join(srcDir, "pages", "dashboard", "superAdmin", "useAdminPanelData.js"), "utf8");
+  const hooksSource = await readFile(path.join(srcDir, "pages", "dashboard", "superAdmin", "superAdmin.hooks.js"), "utf8");
+
+  [layoutSource, dashboardSource, partsSource].forEach((source) => {
+    assert.equal(source.includes("Pending Dealerships"), true);
+    assert.equal(source.includes("Pending Approval Dealerships"), false);
+  });
+  assert.equal(dataSource.includes("adminPlatformMutationFilter"), true);
+  assert.equal(hooksSource.includes("adminPlatformMutationFilter"), true);
+  assert.equal(hooksSource.includes("\"/admin/approvals\""), true);
+  assert.equal(hooksSource.includes("\"/dealers\""), true);
+  assert.equal(hooksSource.includes("\"/banks\""), true);
+});

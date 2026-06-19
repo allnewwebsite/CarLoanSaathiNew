@@ -3,6 +3,19 @@ import { mutationUrlMatches, useRoleLeadRealtime } from "../../../hooks/useRealt
 import { api, getCachedGetData } from "../../../services/api.js";
 
 export const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
+export const adminPlatformMutationFilter = (detail = {}) => (
+  adminLeadMutationFilter(detail)
+  || ["dealer", "bank", "subscription", "staff"].includes(detail.kind)
+  || mutationUrlMatches(detail, [
+    "/admin/approvals",
+    "/admin/dealerships",
+    "/admin/banks",
+    "/dealers",
+    "/banks",
+    "/dealer/profile",
+    "/bank/dealerships",
+  ])
+);
 
 export function useAdminEcosystem({ includeAudit = false } = {}) {
   const cachedEcosystem = getCachedGetData("/admin/ecosystem") || {};
@@ -55,6 +68,6 @@ export function useAdminEcosystem({ includeAudit = false } = {}) {
   }, [includeAudit]);
 
   useEffect(() => { load({ silent: true }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminPlatformMutationFilter });
   return { ...state, analytics, loading, load };
 }

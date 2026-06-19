@@ -27,7 +27,7 @@ export function DataTable({ title, headers, rows, loading, page, total, onPage, 
 export function PageTitle({ mode }) {
   const title = {
     dealerships: "Approved Dealerships",
-    "approval-dealerships": "Pending Approval Dealerships",
+    "approval-dealerships": "Pending Dealerships",
     banks: "Approved Banks",
     "approval-banks": "Pending Approval Banks",
     status: "Status",

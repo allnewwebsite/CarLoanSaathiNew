@@ -6,7 +6,7 @@ import { api, getCachedGetData } from "../../../services/api.js";
 import { normalizeRows } from "../../../services/apiResponse.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../../services/leadInstantData.js";
 import { SUPER_ADMIN_PAGE_SIZE as pageSize } from "./superAdmin.helpers.js";
-import { adminLeadMutationFilter } from "./superAdmin.hooks.js";
+import { adminPlatformMutationFilter } from "./superAdmin.hooks.js";
 
 export const STATUS_FILTERS = BANK_STATUS_OPTIONS.map((value) => ({ label: statusLabel(value), value }));
 
@@ -51,7 +51,7 @@ export function useAdminPanelData(mode, search, leadFilter) {
   }, [mode, search]);
 
   useRealtimeLeadPatch({ setRows, statusFilter: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", enabled: mode === "status" || mode === "leads" });
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminLeadMutationFilter });
+  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminPlatformMutationFilter });
 
   return { rows, loading, load };
 }

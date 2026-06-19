@@ -37,7 +37,7 @@ export const navByRole = {
   ],
   "super-admin": [
     { label: "Approved Dealerships", to: "/admin/dealerships", icon: Building2 },
-    { label: "Pending Approval Dealerships", to: "/admin/approvals/dealerships", icon: ClipboardCheck },
+    { label: "Pending Dealerships", to: "/admin/approvals/dealerships", icon: ClipboardCheck },
     { label: "Approved Banks", to: "/admin/banks", icon: Landmark },
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
     { label: "Status", to: "/admin/status", icon: FileClock },
