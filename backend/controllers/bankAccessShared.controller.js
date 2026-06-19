@@ -4,6 +4,7 @@ import { logInfo } from "../services/logger.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { cached } from "../services/ttlCache.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
+import { executiveNameValues } from "../services/roleIdentity.service.js";
 
 export const bankStatuses = [
   LEAD_STATUSES.NEW,
@@ -182,10 +183,9 @@ export function loanExecutiveCanAccessLead(partner, lead) {
   const strongMatch = anyMatch(leadExecutiveStrongIdentityValues(lead), executiveStrongIdentityValues(partner));
   if (strongMatch) return true;
 
-  const nameMatch = anyMatch([lead.assignedExecutiveName], [partner.name, partner.fullName]);
+  const nameMatch = anyMatch([lead.assignedExecutiveName], executiveNameValues(partner));
   if (!nameMatch) return false;
-  return anyMatch(leadBankValues(lead), partnerBankValues(partner))
-    && anyMatch(leadBranchValues(lead), partnerBranchValues(partner));
+  return anyMatch(leadBankValues(lead), partnerBankValues(partner));
 }
 
 export async function deleteMatchingRecords(collection, predicate, indexedQueries = []) {

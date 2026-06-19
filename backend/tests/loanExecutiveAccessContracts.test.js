@@ -60,7 +60,8 @@ test("loan executive list and projection contracts include id, email, and mobile
     "...(projected?.data || [])",
     "...(canonical?.data || [])",
     "const merged = [...byId.values()]",
-    "query: scopedQuery",
+    "query: projectionQuery",
+    "query: baseQuery",
     "bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined",
     "executiveStrongIdentityValues(partner)",
     "executiveMobile",
@@ -140,4 +141,16 @@ test("loan executive secondary paths enrich identity and do not trust partial pr
     "lead.executiveMobile",
     "lead.assignedExecutiveName",
   ].forEach((snippet) => assert.equal(leadQuery.includes(snippet), true, `lead query missing ${snippet}`));
+});
+
+test("bank loan executive lead list does not hide assigned leads with alternate bank fields", () => {
+  const bankShared = read("backend/controllers/bankShared.controller.js");
+  const bankAccessShared = read("backend/controllers/bankAccessShared.controller.js");
+
+  assert.equal(bankShared.includes("const baseQuery = {"), true);
+  assert.equal(bankShared.includes("query: baseQuery"), true);
+  assert.equal(bankShared.includes("query: scopedQuery"), false);
+  assert.equal(bankShared.includes(".filter((lead) => loanExecutiveCanAccessLead(partner, lead))"), true);
+  assert.equal(bankAccessShared.includes("const nameMatch = anyMatch([lead.assignedExecutiveName], executiveNameValues(partner));"), true);
+  assert.equal(bankAccessShared.includes("return anyMatch(leadBankValues(lead), partnerBankValues(partner));"), true);
 });

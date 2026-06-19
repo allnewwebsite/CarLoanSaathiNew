@@ -260,15 +260,18 @@ export async function assignedLeadsForPartner(partner, query = {}, fields) {
     const executiveEmail = partner.email || partner.officialEmail || executiveIdentities.find((value) => String(value).includes("@"));
     const executiveMobile = partner.mobile || partner.assignedExecutiveMobile || partner.executiveMobile;
     const executiveNames = [partner.name, partner.fullName].filter(Boolean);
-    const scopedQuery = {
+    const baseQuery = {
       ...query,
-      bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined,
       limit: query.limit || 100,
+    };
+    const projectionQuery = {
+      ...baseQuery,
+      bankId: query.bankId || partner.bankId || partner.bankPartnerId || undefined,
     };
     const [projected, canonical] = await Promise.all([
       queryLeadProjectionForUser({
       user: { role: "loan-executive", uid: primaryId, email: executiveEmail, mobile: executiveMobile, identityValues: executiveIdentities },
-      query: scopedQuery,
+      query: projectionQuery,
       fields,
       }).catch(() => null),
       queryExecutiveLeads({
@@ -277,7 +280,7 @@ export async function assignedLeadsForPartner(partner, query = {}, fields) {
         executiveMobile,
         executiveIdentities,
         executiveNames,
-        query: scopedQuery,
+        query: baseQuery,
         fields,
       }).catch(() => null),
     ]);
