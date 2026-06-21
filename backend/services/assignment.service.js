@@ -9,7 +9,7 @@ import { countOpenExecutiveLeads } from "./leadQuery.service.js";
 import { removeLeadExecutiveProjection, syncLeadProjectionSoon } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
-import { logInfo } from "./logger.service.js";
+import { logError, logInfo } from "./logger.service.js";
 import { syncBankAnalyticsAggregate } from "./bankAnalyticsAggregate.service.js";
 import {
   activeExecutive,
@@ -360,45 +360,62 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     },
   });
 
-  await syncBankAnalyticsAggregate(updated);
-  syncLeadProjectionSoon(updated);
-  await Promise.all(previousExecutiveKeys.map((key) => removeLeadExecutiveProjection({ leadId, executiveId: key })));
-  await Promise.all([
-    refreshExecutiveSummary(executive),
-    refreshExecutiveSummary(previousExecutive),
-  ]);
-  await addTimelineEvent({
-    leadId,
-    eventType: TIMELINE_EVENTS.LEAD_REASSIGNED,
-    title: "Case Reassigned",
-    description: `Case reassigned from ${currentExecutive.name || currentExecutive.email || "previous executive"} to ${executiveName}`,
-    actorName: requestedBy,
-    actorRole: "bank-manager",
-    metadata: { ...historyEntry, fromExecutiveId: currentExecutive.id || currentExecutive.email || null, toExecutiveId: executive.id },
-    leadSnapshot: updated,
-  });
-  await createNotification({
-    type: "executive-reassigned",
-    title: "Lead reassigned",
-    message: `Lead ${updated.caseId || leadId} reassigned to ${executiveName}`,
-    leadId,
-    recipientRole: "loan-executive",
-    recipientId: executive.id,
-    phoneNumber: executiveMobile,
-    meta: {
-      reason,
-      branchCity,
-      caseId: updated.caseId,
-      customerName: updated.fullName || updated.customerName,
-      dealershipId: updated.dealershipId,
-      bankId: updated.bankId,
-      assignedExecutiveId: updated.assignedExecutiveId,
-    },
-    dealershipId: updated.dealershipId || null,
-    bankId: updated.bankId || null,
-    assignedExecutiveId: updated.assignedExecutiveId || null,
-    leadSnapshot: updated,
-  });
+  const runFollowUps = async () => {
+    await syncBankAnalyticsAggregate(updated);
+    syncLeadProjectionSoon(updated);
+    await Promise.all(previousExecutiveKeys.map((key) => removeLeadExecutiveProjection({ leadId, executiveId: key })));
+    await Promise.all([
+      refreshExecutiveSummary(executive),
+      refreshExecutiveSummary(previousExecutive),
+    ]);
+    await addTimelineEvent({
+      leadId,
+      eventType: TIMELINE_EVENTS.LEAD_REASSIGNED,
+      title: "Case Reassigned",
+      description: `Case reassigned from ${currentExecutive.name || currentExecutive.email || "previous executive"} to ${executiveName}`,
+      actorName: requestedBy,
+      actorRole: "bank-manager",
+      metadata: { ...historyEntry, fromExecutiveId: currentExecutive.id || currentExecutive.email || null, toExecutiveId: executive.id },
+      leadSnapshot: updated,
+    });
+    await createNotification({
+      type: "executive-reassigned",
+      title: "Lead reassigned",
+      message: `Lead ${updated.caseId || leadId} reassigned to ${executiveName}`,
+      leadId,
+      recipientRole: "loan-executive",
+      recipientId: executive.id,
+      phoneNumber: executiveMobile,
+      meta: {
+        reason,
+        branchCity,
+        caseId: updated.caseId,
+        customerName: updated.fullName || updated.customerName,
+        dealershipId: updated.dealershipId,
+        bankId: updated.bankId,
+        assignedExecutiveId: updated.assignedExecutiveId,
+      },
+      dealershipId: updated.dealershipId || null,
+      bankId: updated.bankId || null,
+      assignedExecutiveId: updated.assignedExecutiveId || null,
+      leadSnapshot: updated,
+    });
+  };
+
+  if (options.deferFollowUps === true) {
+    Promise.resolve()
+      .then(runFollowUps)
+      .catch((error) => {
+        logError("Assignment follow-up failed", {
+          leadId,
+          caseId: updated.caseId || leadId,
+          reason,
+          error: error.message,
+        });
+      });
+  } else {
+    await runFollowUps();
+  }
 
   return updated;
 }

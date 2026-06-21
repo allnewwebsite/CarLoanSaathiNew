@@ -76,21 +76,28 @@ test("assignment integrity projection targets cover every role-visible portal", 
 
 test("lead creation queues assignment failures and validates successful auto-assignment", () => {
   const source = read("backend/controllers/dealerLead.controller.js");
+  const assignmentIndex = source.indexOf("const assignedLead = await reassignLeadToNextBranchExecutive");
+  const leadCreatedEventIndex = source.indexOf("eventType: REALTIME_EVENTS.LEAD_CREATED", assignmentIndex);
 
   assert.equal(source.includes("recordLeadAssignmentFailure"), true);
-  assert.equal(source.includes("validateLeadAssignmentIntegrity(assignedLead"), true);
+  assert.equal(source.includes("validateLeadAssignmentIntegrity(autoAssignedLead"), true);
   assert.equal(source.includes("source: \"dealer-lead-auto-assignment\""), true);
+  assert.equal(source.includes("{ deferFollowUps: true }"), true);
+  assert.equal(assignmentIndex >= 0, true);
+  assert.equal(leadCreatedEventIndex > assignmentIndex, true);
 });
 
 test("executive assignment realtime is emitted before slower assignment follow-up work", () => {
   const source = read("backend/services/assignment.service.js");
   const eventIndex = source.indexOf("const assignmentRealtimeEvent");
   const publishIndex = source.indexOf("publishRealtimeEvent({", eventIndex);
+  const deferIndex = source.indexOf("options.deferFollowUps === true", publishIndex);
   const analyticsIndex = source.indexOf("await syncBankAnalyticsAggregate(updated)", publishIndex);
   const notificationIndex = source.indexOf("await createNotification({", publishIndex);
 
   assert.equal(eventIndex >= 0, true);
   assert.equal(publishIndex > eventIndex, true);
+  assert.equal(deferIndex > publishIndex, true);
   assert.equal(analyticsIndex > publishIndex, true);
   assert.equal(notificationIndex > publishIndex, true);
   assert.equal(source.includes("REALTIME_EVENTS.EXECUTIVE_ASSIGNED"), true);
