@@ -22,7 +22,7 @@ export function setup() {
 export default function ({ token }) {
   requireToken(token, "queue");
 
-  assertOk(rawGet("/health/queues", sharedTags("queue-health")), "queue health", 1800);
+  assertOk(rawGet("/health/queues", sharedTags("queue-health"), token), "queue health", 1800);
   assertOk(apiGet("/notifications?limit=25", token, sharedTags("notification-list")), "notification list", 2200);
 
   if (__ENV.PROCESS_QUEUE === "true") {

@@ -7,6 +7,12 @@ function numberEnv(key, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function loadTestRateLimitBypass(req) {
+  if (!req.headers["x-load-test-run"]) return false;
+  return process.env.NODE_ENV !== "production"
+    || process.env.ALLOW_LOAD_TEST_RATE_LIMIT_BYPASS === "true";
+}
+
 export const securityHeaders = helmet({
   contentSecurityPolicy: {
     useDefaults: true,
@@ -30,7 +36,7 @@ export function corsOptions() {
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Monitoring-Secret", "X-CLS-Warmup", "X-CLS-Portal"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-Firebase-AppCheck", "X-Monitoring-Secret", "X-CLS-Warmup", "X-CLS-Portal", "X-Load-Test-Run"],
   };
 }
 
@@ -39,6 +45,7 @@ export const globalRateLimit = rateLimit({
   limit: numberEnv("RATE_LIMIT_MAX", 300),
   standardHeaders: true,
   legacyHeaders: false,
+  skip: loadTestRateLimitBypass,
 });
 
 export const authRateLimit = rateLimit({
@@ -95,6 +102,7 @@ export const publicCatalogRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Too many catalog requests. Try again later." },
+  skip: loadTestRateLimitBypass,
 });
 
 export const monitoringRateLimit = rateLimit({

@@ -129,3 +129,14 @@ test("audit action catalog covers final platform hardening events", () => {
     "UNAUTHORIZED_ACCESS",
   ].forEach((action) => assert.equal(auditSource.includes(action), true, `missing audit action ${action}`));
 });
+
+test("load-test rate limit bypass is explicit and non-production safe", () => {
+  const source = read("backend/middleware/securityMiddleware.js");
+
+  assert.equal(source.includes("function loadTestRateLimitBypass(req)"), true);
+  assert.equal(source.includes("req.headers[\"x-load-test-run\"]"), true);
+  assert.equal(source.includes("process.env.NODE_ENV !== \"production\""), true);
+  assert.equal(source.includes("process.env.ALLOW_LOAD_TEST_RATE_LIMIT_BYPASS === \"true\""), true);
+  assert.equal(source.includes('"X-Load-Test-Run"'), true);
+  assert.equal(source.includes("skip: loadTestRateLimitBypass"), true);
+});

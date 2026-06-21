@@ -20,9 +20,12 @@ export function enforceWriteSafety() {
   }
 }
 
-export function rawGet(path, tags = {}) {
+export function rawGet(path, tags = {}, token = "") {
   return http.get(`${BASE_URL}${path}`, {
-    headers: { "X-Load-Test-Run": RUN_ID },
+    headers: {
+      "X-Load-Test-Run": RUN_ID,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     tags,
     timeout: "30s",
   });
@@ -134,7 +137,7 @@ function summaryText(data) {
     `CarLoanSaathi k6 run: ${RUN_ID}`,
     `Requests: ${data.metrics.http_reqs?.values?.count || 0}`,
     `Failed rate: ${percent(failed?.values?.rate)}`,
-    `p50: ${round(duration?.values?.["p(50)"])} ms`,
+    `p50: ${round(duration?.values?.["p(50)"] ?? duration?.values?.med)} ms`,
     `p95: ${round(duration?.values?.["p(95)"])} ms`,
     `p99: ${round(duration?.values?.["p(99)"])} ms`,
     "",
@@ -142,7 +145,7 @@ function summaryText(data) {
 }
 
 function round(value) {
-  return Number(value || 0).toFixed(1);
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(1) : "n/a";
 }
 
 function percent(value) {
