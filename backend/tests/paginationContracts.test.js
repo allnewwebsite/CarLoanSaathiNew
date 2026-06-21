@@ -51,6 +51,7 @@ test("secondary list APIs keep bounded pagination contracts", () => {
     "limit: 100",
     "projectionOnly: true",
     "queryRecords(\"leadTimeline\"",
+    "canReadScopedTimeline({ event, lead, actor })",
   ], "timeline pagination");
 
   includesAll(read("backend/services/subscriptionBilling.service.js"), [

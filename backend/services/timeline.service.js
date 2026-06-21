@@ -297,9 +297,9 @@ export async function getTimelineForLead(leadId) {
   });
 }
 
-export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {}) {
-  const scopedActor = await timelineActor(actor);
-  const projected = await queryTimelineProjection({ leadId, query, actor: scopedActor }).catch(() => null);
+export async function getTimelineEvents({ leadId, query = {}, actor: requestedActor = {} } = {}) {
+  const actor = await timelineActor(requestedActor);
+  const projected = await queryTimelineProjection({ leadId, query, actor }).catch(() => null);
   if (projected) {
     return {
       data: projected.data || [],
@@ -325,7 +325,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
   const user = String(query.user || "").trim().toLowerCase();
   const eventType = String(query.eventType || "").trim();
   const dateFilter = String(query.date || "").trim();
-  const role = scopedActor.role || "";
+  const role = actor.role || "";
   const lead = leadId ? await getRecord("leads", leadId).catch(() => null) : null;
 
   const where = [];
@@ -352,7 +352,7 @@ export async function getTimelineEvents({ leadId, query = {}, actor = {} } = {})
       const { start, end } = dateWindow(dateFilter);
       if (created < start || created > end) return false;
     }
-    if (canReadScopedTimeline({ event, lead, actor: scopedActor })) return event;
+    if (canReadScopedTimeline({ event, lead, actor })) return event;
     return null;
   }).filter(Boolean);
 
