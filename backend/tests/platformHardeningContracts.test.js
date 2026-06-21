@@ -82,6 +82,21 @@ test("lead creation queues assignment failures and validates successful auto-ass
   assert.equal(source.includes("source: \"dealer-lead-auto-assignment\""), true);
 });
 
+test("executive assignment realtime is emitted before slower assignment follow-up work", () => {
+  const source = read("backend/services/assignment.service.js");
+  const eventIndex = source.indexOf("const assignmentRealtimeEvent");
+  const publishIndex = source.indexOf("publishRealtimeEvent({", eventIndex);
+  const analyticsIndex = source.indexOf("await syncBankAnalyticsAggregate(updated)", publishIndex);
+  const notificationIndex = source.indexOf("await createNotification({", publishIndex);
+
+  assert.equal(eventIndex >= 0, true);
+  assert.equal(publishIndex > eventIndex, true);
+  assert.equal(analyticsIndex > publishIndex, true);
+  assert.equal(notificationIndex > publishIndex, true);
+  assert.equal(source.includes("REALTIME_EVENTS.EXECUTIVE_ASSIGNED"), true);
+  assert.equal(source.includes("REALTIME_EVENTS.EXECUTIVE_REASSIGNED"), true);
+});
+
 test("assignment integrity job is available in scheduler and maintenance", () => {
   const scheduler = read("backend/services/scheduler.service.js");
   const maintenance = read("backend/scripts/runMaintenance.js");

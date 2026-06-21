@@ -342,6 +342,24 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     });
     return { ...latestLead, ...leadPatch, updatedAt: now };
   });
+
+  const assignmentRealtimeEvent = currentExecutive.id || currentExecutive.email || currentExecutive.mobile
+    ? REALTIME_EVENTS.EXECUTIVE_REASSIGNED
+    : REALTIME_EVENTS.EXECUTIVE_ASSIGNED;
+  publishRealtimeEvent({
+    eventType: assignmentRealtimeEvent,
+    lead: updated,
+    actor: { email: requestedBy, role: "bank-manager" },
+    data: {
+      reason,
+      fromExecutiveId: currentExecutive.id || currentExecutive.email || "",
+      toExecutiveId: executive.id,
+      previousExecutiveId: currentExecutive.id || currentExecutive.email || "",
+      assignedExecutiveId: executive.id,
+      recipientId: executive.id,
+    },
+  });
+
   await syncBankAnalyticsAggregate(updated);
   syncLeadProjectionSoon(updated);
   await Promise.all(previousExecutiveKeys.map((key) => removeLeadExecutiveProjection({ leadId, executiveId: key })));
@@ -380,20 +398,6 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     bankId: updated.bankId || null,
     assignedExecutiveId: updated.assignedExecutiveId || null,
     leadSnapshot: updated,
-  });
-
-  publishRealtimeEvent({
-    eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED,
-    lead: updated,
-    actor: { email: requestedBy, role: "bank-manager" },
-    data: {
-      reason,
-      fromExecutiveId: currentExecutive.id || currentExecutive.email || "",
-      toExecutiveId: executive.id,
-      previousExecutiveId: currentExecutive.id || currentExecutive.email || "",
-      assignedExecutiveId: executive.id,
-      recipientId: executive.id,
-    },
   });
 
   return updated;
