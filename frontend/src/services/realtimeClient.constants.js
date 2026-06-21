@@ -4,6 +4,7 @@ export const HEARTBEAT_TIMEOUT_MS = 45_000;
 export const ACK_FLUSH_MS = 2_000;
 export const LEADER_HEARTBEAT_MS = 5_000;
 export const LEADER_TTL_MS = 15_000;
+export const RECONNECT_DELAYS_MS = [2_000, 5_000, 10_000];
 export const REALTIME_EVENT_CHANNEL = "cls_realtime_event_v1";
 export const REALTIME_EVENT_STORAGE_KEY = "cls_realtime_event_v1";
 export const REALTIME_LEADER_PREFIX = "cls_realtime_leader_v1";

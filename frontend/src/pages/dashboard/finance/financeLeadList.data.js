@@ -49,8 +49,8 @@ export function useDealerLeads(filters = {}) {
     scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
-  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
-  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter });
+  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, pageSize });
+  useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
 
   return { leads, total, hasMore, loading, loadLeads };
 }

@@ -110,13 +110,20 @@ export function AdminMonitoringContent({
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Section title="Realtime Monitoring">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricTile label="Active SSE Connections" value={realtime.activeSseConnections || 0} />
+            <MetricTile label="Connected Users" value={realtime.connectedUsers || 0} />
             <MetricTile label="Realtime Events Today" value={realtime.realtimeEventsToday || 0} />
             <MetricTile label="Realtime Errors" value={realtime.realtimeErrors || 0} />
+            <MetricTile label="Dropped Events" value={realtime.droppedEvents || 0} />
             <MetricTile label="Disconnected Clients" value={realtime.disconnectedClients || 0} />
+            <MetricTile label="Reconnect Count" value={realtime.reconnectCount || 0} />
+            <MetricTile label="Applied Events" value={realtime.acknowledgedEvents || 0} />
             <MetricTile label="Average Delivery" value={`${realtime.averageEventDeliveryMs || 0}ms`} />
+            <MetricTile label="Average Latency" value={`${realtime.averageEventLatencyMs || 0}ms`} />
             <MetricTile label="Buffered Events" value={realtime.bufferedEvents || 0} />
+            <MetricTile label="Event Registry" value={realtime.eventRegistryCount || 0} />
+            <MetricTile label="Readiness Score" value={`${realtime.productionReadinessScore ?? 100}/100`} />
           </div>
         </Section>
 

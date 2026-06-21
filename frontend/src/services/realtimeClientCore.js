@@ -17,6 +17,7 @@ import {
   REALTIME_EVENT_CHANNEL,
   REALTIME_EVENT_STORAGE_KEY,
   REALTIME_LEADER_PREFIX,
+  RECONNECT_DELAYS_MS,
   TAB_ID,
 } from "./realtimeClient.constants.js";
 import { invalidateRealtimeCaches, mutationPayload } from "./realtimeClient.events.js";
@@ -36,6 +37,9 @@ let realtimeEventChannel = null;
 let realtimeListenersReady = false;
 let isLeaderTab = false;
 const pendingAckIds = new Set();
+const seenEventIds = new Map();
+const SEEN_EVENT_TTL_MS = 5 * 60 * 1000;
+const SEEN_EVENT_MAX = 500;
 
 function loadLastEventId() {
   lastEventId = readStoredLastEventId();
@@ -101,6 +105,15 @@ function setupRealtimeBroadcastListeners() {
     }
     if (!leader) connect().catch(() => {});
   });
+  window.addEventListener("pagehide", () => {
+    flushAcks();
+    releaseLeader(activeIdentity);
+    releaseBrowserSingletonOwner();
+    closeSource({ notify: false });
+  });
+  window.addEventListener("pageshow", () => {
+    if (active) connect().catch(() => {});
+  });
 }
 
 function ensureLeader() {
@@ -130,8 +143,38 @@ function scheduleLeaderHeartbeat() {
   }, LEADER_HEARTBEAT_MS);
 }
 
+function rememberSeenEvent(event = {}) {
+  const id = String(event.id || "");
+  if (!id) return true;
+  const now = Date.now();
+  for (const [eventId, seenAt] of seenEventIds.entries()) {
+    if (now - seenAt > SEEN_EVENT_TTL_MS || seenEventIds.size > SEEN_EVENT_MAX) seenEventIds.delete(eventId);
+  }
+  if (seenEventIds.has(id)) return false;
+  seenEventIds.set(id, now);
+  return true;
+}
+
+function dispatchRealtimeLifecycle(name, detail = {}) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(`cls:realtime-${name}`, { detail }));
+}
+
 function dispatchRealtimeEvent(event = {}, { remote = false } = {}) {
   if (typeof window === "undefined") return;
+  if (!rememberSeenEvent(event)) {
+    dispatchRealtimeLifecycle("ignored", {
+      reason: "duplicate-event",
+      eventId: event.id || "",
+      eventType: event.eventType || event.event || "",
+    });
+    return;
+  }
+  dispatchRealtimeLifecycle("received", {
+    eventId: event.id || "",
+    eventType: event.eventType || event.event || "",
+    remote,
+  });
   if (!remote) resetHeartbeatWatch();
   if (event.id) persistLastEventId(event.id);
   if (!remote) broadcastRealtimeEvent(event);
@@ -142,6 +185,11 @@ function dispatchRealtimeEvent(event = {}, { remote = false } = {}) {
   }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
   window.dispatchEvent(new CustomEvent("cls:data-mutated", { detail: mutationPayload(event) }));
+  dispatchRealtimeLifecycle("applied", {
+    eventId: event.id || "",
+    eventType: event.eventType || event.event || "",
+    remote,
+  });
   if (!remote) queueAck(event.id);
 }
 
@@ -166,7 +214,7 @@ function resetReconnectTimers() {
 
 function reconnectDelay() {
   reconnectAttempts += 1;
-  return Math.min(1000 * (2 ** Math.min(reconnectAttempts - 1, 4)), 15000);
+  return RECONNECT_DELAYS_MS[Math.min(reconnectAttempts - 1, RECONNECT_DELAYS_MS.length - 1)] || 10_000;
 }
 
 function resetHeartbeatWatch() {
@@ -262,9 +310,14 @@ async function connect() {
         if (!active) return;
         if (expectedGeneration !== connectionGeneration || expectedIdentity !== activeIdentity) return;
         resetReconnectTimers();
+        const delayMs = reconnectDelay();
+        dispatchRealtimeLifecycle("retried", {
+          attempt: reconnectAttempts,
+          delayMs,
+        });
         reconnectTimer = window.setTimeout(() => {
           connect().catch(() => {});
-        }, reconnectDelay());
+        }, delayMs);
       };
       return nextSource;
     })

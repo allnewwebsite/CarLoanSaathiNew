@@ -50,8 +50,8 @@ export function useGmLeads(filters = {}) {
     scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
-  useRealtimeLeadPatch({ setRows: setLeads, statusFilter: filters.status });
-  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter });
+  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, pageSize });
+  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
 
   return { leads, total, hasMore, loading, load };
 }

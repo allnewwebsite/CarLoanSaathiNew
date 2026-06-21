@@ -30,3 +30,19 @@ test("dead-case realtime patches preserve explicit restore state", async () => {
   assert.match(source, /Object\.prototype\.hasOwnProperty\.call\(event\.data \|\| \{\}, "isDeadCase"\)/);
   assert.match(source, /event\.data\?\.isDeadCase === true/);
 });
+
+test("SSE client uses bounded dedupe, exact backoff, and patch-first lead tables", async () => {
+  const constants = await readFile(path.join(srcDir, "services", "realtimeClient.constants.js"), "utf8");
+  const client = await readFile(path.join(srcDir, "services", "realtimeClientCore.js"), "utf8");
+  const refresh = await readFile(path.join(srcDir, "hooks", "useRealtimeRefresh.js"), "utf8");
+  const executiveHooks = await readFile(path.join(srcDir, "pages", "bank", "loanExecutive.hooks.js"), "utf8");
+  const executivePage = await readFile(path.join(srcDir, "pages", "bank", "LoanExecutiveLeadListPage.jsx"), "utf8");
+
+  assert.match(constants, /RECONNECT_DELAYS_MS = \[2_000, 5_000, 10_000\]/);
+  assert.match(client, /seenEventIds/);
+  assert.match(client, /pagehide/);
+  assert.match(client, /dispatchRealtimeLifecycle\("received"/);
+  assert.match(refresh, /refreshOnMutation = true/);
+  assert.match(executiveHooks, /refreshOnMutation: false/);
+  assert.equal(executivePage.includes("console.log"), false);
+});

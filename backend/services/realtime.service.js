@@ -2,21 +2,45 @@ import crypto from "node:crypto";
 import IORedis from "ioredis";
 import { logInfo, logWarn } from "./logger.service.js";
 import { recordRealtimeMetric } from "./monitoringCenter.service.js";
-import { PHASE_ONE_EVENTS, REALTIME_EVENTS } from "./realtimeEvents.service.js";
+import {
+  PHASE_ONE_EVENTS,
+  REALTIME_EVENTS,
+  realtimeEventDefinition,
+  realtimeEventRegistryReport,
+  realtimeRoleDeliveryMatrix,
+} from "./realtimeEvents.service.js";
 import { consumeRealtimeTicket, createRealtimeTicket, pendingRealtimeTickets } from "./realtimeTicket.service.js";
 
 const EVENT_BUFFER_LIMIT = 500;
+const EVENT_AUDIT_LIMIT = 500;
+const EVENT_DEDUPE_TTL_MS = Number(process.env.REALTIME_EVENT_DEDUPE_TTL_MS || 2_000);
 const REALTIME_REDIS_CHANNEL = "cls:realtime:events:v1";
 const clients = new Map();
 const clientsByIdentity = new Map();
 const clientsByDispatchKey = new Map();
 const eventBuffer = [];
+const eventDedupe = new Map();
+const realtimeAuditTrail = [];
 const instanceId = crypto.randomUUID();
 let redisPublisher = null;
 let redisSubscriber = null;
 let redisReady = false;
 let acknowledgedEvents = 0;
 let lastAcknowledgedEventAt = null;
+const realtimeCounters = {
+  connected: 0,
+  disconnected: 0,
+  duplicateConnections: 0,
+  reconnects: 0,
+  emitted: 0,
+  delivered: 0,
+  failed: 0,
+  dropped: 0,
+  replayed: 0,
+  applied: 0,
+  redisFailures: 0,
+  latencySamples: [],
+};
 
 export { consumeRealtimeTicket, createRealtimeTicket, REALTIME_EVENTS };
 
@@ -69,6 +93,67 @@ function scope(value) {
 
 function unique(values = []) {
   return [...new Set(values.map(scope).filter(Boolean))];
+}
+
+function pushLimitedMetric(bucket = [], value, limit = 200) {
+  bucket.push(value);
+  if (bucket.length > limit) bucket.splice(0, bucket.length - limit);
+}
+
+function average(values = []) {
+  const clean = values.map(Number).filter(Number.isFinite);
+  if (!clean.length) return 0;
+  return Math.round(clean.reduce((sum, value) => sum + value, 0) / clean.length);
+}
+
+function auditRealtimeEvent(phase, event = {}, meta = {}) {
+  realtimeAuditTrail.push({
+    phase,
+    eventId: event.id || null,
+    eventType: event.eventType || event.event || meta.eventType || "realtime",
+    leadId: event.leadId || meta.leadId || "",
+    caseId: event.caseId || meta.caseId || "",
+    delivered: Number(meta.delivered || 0),
+    errors: Number(meta.errors || 0),
+    dropped: Number(meta.dropped || 0),
+    replayed: Number(meta.replayed || 0),
+    candidateClients: Number(meta.candidateClients || 0),
+    activeClients: clients.size,
+    reason: meta.reason || "",
+    userId: meta.userId || "",
+    role: meta.role || "",
+    latencyMs: Number(meta.latencyMs || 0),
+    at: new Date().toISOString(),
+  });
+  if (realtimeAuditTrail.length > EVENT_AUDIT_LIMIT) realtimeAuditTrail.splice(0, realtimeAuditTrail.length - EVENT_AUDIT_LIMIT);
+}
+
+function pruneEventDedupe(now = Date.now()) {
+  for (const [key, item] of eventDedupe.entries()) {
+    if (now - Number(item.at || 0) > EVENT_DEDUPE_TTL_MS) eventDedupe.delete(key);
+  }
+}
+
+function dedupeKeyForEvent({ eventType = "", leadSummary = null, notification = null, document = null, data = {} } = {}) {
+  return [
+    eventType,
+    leadSummary?.leadId || data.leadId || notification?.leadId || document?.leadId || "",
+    leadSummary?.caseId || data.caseId || notification?.caseId || document?.caseId || "",
+    notification?.id || document?.id || data.documentId || "",
+    data.status || leadSummary?.status || "",
+    data.previousStatus || "",
+    data.recipientId || data.executiveId || "",
+  ].map(scope).join("|");
+}
+
+function rememberEventDedupe(key, event) {
+  if (!key || EVENT_DEDUPE_TTL_MS <= 0) return null;
+  const now = Date.now();
+  pruneEventDedupe(now);
+  const previous = eventDedupe.get(key);
+  if (previous && now - previous.at <= EVENT_DEDUPE_TTL_MS) return previous.event;
+  eventDedupe.set(key, { at: now, event });
+  return null;
 }
 
 function leadRealtimeScopes(lead = {}) {
@@ -156,6 +241,7 @@ function eventKind(eventType = "") {
   if (eventType.includes("SUBSCRIPTION")) return "subscription";
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
+  if (/^(LEAD_|STATUS_|DEAD_CASE_|BANK_ASSIGNED|EXECUTIVE_ASSIGNED|EXECUTIVE_REASSIGNED)/.test(eventType)) return "lead";
   if (eventType.includes("STAFF")) return "staff";
   if (eventType.includes("BANK") || eventType.includes("BRANCH")) return "bank";
   if (eventType.includes("DEALER")) return "dealer";
@@ -315,6 +401,12 @@ function closeDuplicateClient(identity = "", nextClientId = "") {
   } catch {
     // Existing socket is already gone.
   }
+  realtimeCounters.duplicateConnections += 1;
+  auditRealtimeEvent("connection_replaced", {}, {
+    userId: existing.user?.uid || existing.user?.email || "",
+    role: existing.user?.role || "",
+    reason: "duplicate-session",
+  });
   removeClient(existing);
 }
 
@@ -322,6 +414,7 @@ export function connectRealtimeClient({ user, req, res }) {
   initRedisPubSub();
   const clientId = crypto.randomUUID();
   const identity = realtimeClientIdentity(user);
+  const lastEventId = Number(req.headers["last-event-id"] || req.query.lastEventId || 0);
   closeDuplicateClient(identity, clientId);
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -340,22 +433,41 @@ export function connectRealtimeClient({ user, req, res }) {
   }, 25_000);
   heartbeat.unref?.();
 
-  const client = { id: clientId, identity, user, res, heartbeat };
+  const client = { id: clientId, identity, user, res, heartbeat, connectedAt: new Date().toISOString() };
   clients.set(clientId, client);
   if (identity) clientsByIdentity.set(identity, clientId);
   addClientToDispatchIndex(client);
+  realtimeCounters.connected += 1;
+  if (Number.isFinite(lastEventId) && lastEventId > 0) realtimeCounters.reconnects += 1;
   recordRealtimeMetric({ eventType: "SSE_CONNECTED", activeClients: clients.size });
+  auditRealtimeEvent(Number.isFinite(lastEventId) && lastEventId > 0 ? "connection_reconnected" : "connection_connected", {}, {
+    userId: user?.uid || user?.email || "",
+    role: user?.role || "",
+    reason: identity,
+  });
 
-  const lastEventId = Number(req.headers["last-event-id"] || req.query.lastEventId || 0);
   if (Number.isFinite(lastEventId) && lastEventId > 0) {
+    let replayed = 0;
     eventBuffer
       .filter((event) => event.id > lastEventId && canReceiveEvent(user, event))
-      .forEach((event) => writeSse(res, event));
+      .forEach((event) => {
+        writeSse(res, event);
+        replayed += 1;
+      });
+    realtimeCounters.replayed += replayed;
+    if (replayed) auditRealtimeEvent("event_replayed", {}, { replayed, userId: user?.uid || user?.email || "", role: user?.role || "" });
   }
 
   req.on("close", () => {
+    const wasActive = clients.has(clientId);
     removeClient(clientId);
+    if (!wasActive) return;
+    realtimeCounters.disconnected += 1;
     recordRealtimeMetric({ eventType: "SSE_DISCONNECTED", activeClients: clients.size, disconnected: 1 });
+    auditRealtimeEvent("connection_disconnected", {}, {
+      userId: user?.uid || user?.email || "",
+      role: user?.role || "",
+    });
   });
 }
 
@@ -382,6 +494,10 @@ function dispatchLocalEvent(event) {
       removeClient(client);
     }
   }
+  realtimeCounters.delivered += delivered;
+  realtimeCounters.failed += errors;
+  const latencyMs = event.emittedAt ? Math.max(0, Date.now() - Date.parse(event.emittedAt)) : Date.now() - startedAt;
+  pushLimitedMetric(realtimeCounters.latencySamples, latencyMs);
   recordRealtimeMetric({
     eventType: event.eventType,
     delivered,
@@ -389,6 +505,13 @@ function dispatchLocalEvent(event) {
     activeClients: clients.size,
     candidateClients: candidateCount,
     durationMs: Date.now() - startedAt,
+    latencyMs,
+  });
+  auditRealtimeEvent(errors ? "event_failed" : "event_delivered", event, {
+    delivered,
+    errors,
+    candidateClients: candidateCount,
+    latencyMs,
   });
   logInfo("SSE_EVENT_DELIVERED", {
     tag: "SSE_EVENT_DELIVERED",
@@ -421,6 +544,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
   initRedisPubSub();
   const now = new Date().toISOString();
   const phaseOneEvent = PHASE_ONE_EVENTS.has(eventType);
+  const definition = realtimeEventDefinition(eventType);
   const leadSummary = lightweightLeadPatch(lead || data.lead || {}, { ...data, timestamp: now });
   const leadScopes = leadSummary ? leadRealtimeScopes({ ...lead, ...leadSummary }) : { dealershipIds: [], bankIds: [], executiveIds: [], branchIds: [] };
   const notificationScopes = notification ? notificationRealtimeScopes(notification) : { dealershipIds: [], bankIds: [], executiveIds: [], recipientIds: [] };
@@ -432,11 +556,17 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     recipientIds: unique([...(notificationScopes.recipientIds || []), data.recipientId]),
     branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.branchIfsc, data.bankIfsc, data.ifscCode, data.branchLocation]),
   };
+  const dedupeKey = dedupeKeyForEvent({ eventType, leadSummary, notification, document, data });
   const event = {
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
     event: eventType,
     eventType,
     kind,
+    module: definition.module,
+    registryDescription: definition.description,
+    expectedRoles: definition.roles,
+    expectedScopes: definition.scopes,
+    emittedAt: now,
     leadId: leadSummary?.leadId || data.leadId || notification?.leadId || document?.leadId || "",
     caseId: leadSummary?.caseId || data.caseId || notification?.caseId || document?.caseId || "",
     status: leadSummary?.status || data.status || notification?.leadSnapshot?.status || "",
@@ -524,7 +654,32 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     } : {}),
     originInstanceId: instanceId,
   };
+  const duplicate = rememberEventDedupe(dedupeKey, event);
+  if (duplicate) {
+    realtimeCounters.dropped += 1;
+    recordRealtimeMetric({
+      eventType,
+      activeClients: clients.size,
+      dropped: 1,
+    });
+    auditRealtimeEvent("event_dropped", event, {
+      dropped: 1,
+      reason: "duplicate-event",
+    });
+    logInfo("SSE_EVENT_DROPPED", {
+      tag: "SSE_EVENT_DROPPED",
+      eventType,
+      leadId: event.leadId,
+      caseId: event.caseId,
+      reason: "duplicate-event",
+    });
+    return { ...duplicate, duplicate: true, dropped: true };
+  }
 
+  realtimeCounters.emitted += 1;
+  auditRealtimeEvent("event_emitted", event, {
+    candidateClients: candidateKeysForEvent(event).length,
+  });
   logInfo("SSE_EVENT_PUBLISHED", {
     tag: "SSE_EVENT_PUBLISHED",
     eventType,
@@ -543,6 +698,9 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
         phase: "redis_publish",
         error: error.message,
       });
+      realtimeCounters.redisFailures += 1;
+      realtimeCounters.failed += 1;
+      auditRealtimeEvent("event_failed", event, { errors: 1, reason: "redis_publish" });
       logWarn("Realtime Redis publish failed; local clients were still notified", { eventType, error: error.message });
     });
   }
@@ -552,14 +710,21 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
 export function acknowledgeRealtimeEvents({ user = {}, eventIds = [], lastEventId = "" } = {}) {
   const ids = Array.isArray(eventIds) ? eventIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
   acknowledgedEvents += ids.length;
+  realtimeCounters.applied += ids.length;
   lastAcknowledgedEventAt = ids.length ? new Date().toISOString() : lastAcknowledgedEventAt;
   recordRealtimeMetric({
-    eventType: "SSE_EVENT_ACKED",
+    eventType: "SSE_EVENT_APPLIED",
     delivered: ids.length,
     activeClients: clients.size,
   });
-  logInfo("SSE_EVENT_ACKED", {
-    tag: "SSE_EVENT_ACKED",
+  auditRealtimeEvent("event_applied", {}, {
+    delivered: ids.length,
+    userId: user.uid || user.email || "",
+    role: user.role || "",
+    reason: String(lastEventId || ""),
+  });
+  logInfo("SSE_EVENT_APPLIED", {
+    tag: "SSE_EVENT_APPLIED",
     count: ids.length,
     lastEventId: String(lastEventId || ""),
     userId: user.uid || user.email || "",
@@ -568,6 +733,85 @@ export function acknowledgeRealtimeEvents({ user = {}, eventIds = [], lastEventI
   return { acknowledged: ids.length, lastEventId: String(lastEventId || "") };
 }
 
+function realtimeConnectionReport() {
+  return {
+    lifecycle: [
+      "AuthContext starts realtime after a valid role-scoped session is applied.",
+      "Frontend elects one browser leader tab per identity; follower tabs receive BroadcastChannel/storage fanout.",
+      "Leader tab requests a short-lived realtime ticket and opens one EventSource.",
+      "Backend replaces any duplicate server connection for the same session/role/user/scope identity.",
+      "Events are delivered only to clients whose role and dispatch scopes match the event.",
+      "Client stores lastEventId, applies patches, acknowledges applied events, and replays buffered events on reconnect.",
+      "Logout, pagehide, tab close, or token identity change closes EventSource and releases browser/server indexes.",
+    ],
+    connected: realtimeCounters.connected,
+    disconnected: realtimeCounters.disconnected,
+    duplicateConnections: realtimeCounters.duplicateConnections,
+    reconnects: realtimeCounters.reconnects,
+    activeIdentities: clientsByIdentity.size,
+    activeConnections: clients.size,
+  };
+}
+
+function realtimeEventAuditReport() {
+  return {
+    emitted: realtimeCounters.emitted,
+    delivered: realtimeCounters.delivered,
+    applied: realtimeCounters.applied,
+    failed: realtimeCounters.failed,
+    retried: realtimeCounters.replayed,
+    dropped: realtimeCounters.dropped,
+    redisFailures: realtimeCounters.redisFailures,
+    lastAppliedAt: lastAcknowledgedEventAt,
+    recent: realtimeAuditTrail.slice(-50),
+  };
+}
+
+function realtimePerformanceReport() {
+  const memory = process.memoryUsage();
+  return {
+    noPollingRequired: true,
+    patchingMode: "incremental-row-and-counter-events",
+    eventBufferLimit: EVENT_BUFFER_LIMIT,
+    dedupeTtlMs: EVENT_DEDUPE_TTL_MS,
+    averageEventLatencyMs: average(realtimeCounters.latencySamples),
+    memoryUsage: {
+      rssMb: Math.round(memory.rss / 1024 / 1024),
+      heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+      externalMb: Math.round(memory.external / 1024 / 1024),
+    },
+  };
+}
+
+function productionReadinessScore() {
+  let score = 100;
+  if (realtimeCounters.failed > 0) score -= Math.min(25, realtimeCounters.failed * 5);
+  if (realtimeCounters.dropped > 0) score -= Math.min(15, realtimeCounters.dropped * 2);
+  if (realtimeCounters.duplicateConnections > 0) score -= Math.min(10, realtimeCounters.duplicateConnections);
+  if (average(realtimeCounters.latencySamples) > 500) score -= 10;
+  return Math.max(0, score);
+}
+
 export function realtimeStats() {
-  return { clients: clients.size, dispatchBuckets: clientsByDispatchKey.size, bufferedEvents: eventBuffer.length, pendingTickets: pendingRealtimeTickets(), redisEnabled: redisEnabled(), acknowledgedEvents, lastAcknowledgedEventAt };
+  return {
+    clients: clients.size,
+    connectedUsers: clientsByIdentity.size,
+    disconnectedUsers: realtimeCounters.disconnected,
+    reconnectCount: realtimeCounters.reconnects,
+    failedEvents: realtimeCounters.failed,
+    droppedEvents: realtimeCounters.dropped,
+    dispatchBuckets: clientsByDispatchKey.size,
+    bufferedEvents: eventBuffer.length,
+    pendingTickets: pendingRealtimeTickets(),
+    redisEnabled: redisEnabled(),
+    acknowledgedEvents,
+    lastAcknowledgedEventAt,
+    averageEventLatencyMs: average(realtimeCounters.latencySamples),
+    connectionLifecycle: realtimeConnectionReport(),
+    eventRegistry: realtimeEventRegistryReport(),
+    roleDeliveryMatrix: realtimeRoleDeliveryMatrix(),
+    eventAudit: realtimeEventAuditReport(),
+    performance: realtimePerformanceReport(),
+    productionReadinessScore: productionReadinessScore(),
+  };
 }

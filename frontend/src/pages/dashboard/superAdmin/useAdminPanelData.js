@@ -50,8 +50,9 @@ export function useAdminPanelData(mode, search, leadFilter) {
     }
   }, [mode, search]);
 
-  useRealtimeLeadPatch({ setRows, statusFilter: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", enabled: mode === "status" || mode === "leads" });
-  useRoleLeadRealtime({ onRefresh: load, pageSize: 10, mutationFilter: adminPlatformMutationFilter });
+  const leadGridMode = mode === "status" || mode === "leads";
+  useRealtimeLeadPatch({ setRows, statusFilter: mode === "status" ? leadFilter || LEAD_STATUSES.NEW : "", enabled: leadGridMode, pageSize });
+  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: adminPlatformMutationFilter, refreshOnMutation: !leadGridMode });
 
   return { rows, loading, load };
 }

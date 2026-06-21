@@ -26,16 +26,7 @@ export function useExecutiveLeads({ search, status }) {
       const targetPage = Math.max(Number(nextPage || 1), 1);
       const requestPage = requestPageForPage(targetPage);
       const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, status: apiFilterStatus, ...cursorParamsForPage(requestPage) } });
-      console.log("FULL RESPONSE", response);
-      console.log("response.data", response?.data);
-      console.log("response.data.data", response?.data?.data);
-      console.log("response.data.leads", response?.data?.leads);
-      console.log("response.data.items", response?.data?.items);
       const nextRows = responseRows(response);
-      console.log("responseRows output", nextRows);
-      console.log("responseRows count", Array.isArray(nextRows) ? nextRows.length : "not-array");
-      console.log("LEADS BEFORE STATE", nextRows);
-      console.log("SETROWS INPUT", nextRows.length, nextRows);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
       rememberNextCursor(requestPage, response.data?.nextCursor);
@@ -49,16 +40,8 @@ export function useExecutiveLeads({ search, status }) {
     scheduleLeadPrefetch("/bank/leads", BANK_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
-  const setRowsWithPatchLogging = useCallback((updater) => {
-    setRows((current) => {
-      console.log("PATCH ROWS BEFORE", current.length, current);
-      const next = typeof updater === "function" ? updater(current) : updater;
-      console.log("PATCH ROWS AFTER", Array.isArray(next) ? next.length : "not-array", next);
-      return next;
-    });
-  }, []);
-  useRealtimeLeadPatch({ setRows: setRowsWithPatchLogging, statusFilter: status ? apiStatus(status) : "" });
-  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
+  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize });
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
 }

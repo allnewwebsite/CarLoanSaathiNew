@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { connectRealtimeClient, publishRealtimeEvent, realtimeStats, REALTIME_EVENTS } from "../services/realtime.service.js";
+import { REALTIME_EVENT_REGISTRY, realtimeEventRegistryReport, realtimeRoleDeliveryMatrix } from "../services/realtimeEvents.service.js";
 
 function mockConnection(user) {
   const req = new EventEmitter();
@@ -136,4 +137,53 @@ test("assigned lead realtime reaches admin, bank manager, and target loan execut
   assert.equal(otherExecutive.operationalEvents().length, 0);
 
   clients.forEach((client) => client.close());
+});
+
+test("SSE keeps one connection per user identity", () => {
+  const user = {
+    sessionId: "same-session",
+    role: "finance-desk",
+    uid: "finance-single-connection",
+    email: "finance-single-connection@example.com",
+    dealershipId: "dealer-single-connection",
+  };
+  const first = mockConnection(user);
+  const second = mockConnection(user);
+
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.LEAD_CREATED,
+    lead: {
+      id: "lead-single-connection",
+      caseId: "CLS-SINGLE-CONNECTION",
+      dealershipId: "dealer-single-connection",
+    },
+  });
+
+  assert.equal(first.operationalEvents().length, 0);
+  assert.equal(second.operationalEvents().length, 1);
+  first.close();
+  second.close();
+});
+
+test("realtime registry documents every event and health stats expose audit reports", () => {
+  const uniqueEvents = [...new Set(Object.values(REALTIME_EVENTS))];
+  uniqueEvents.forEach((eventType) => {
+    const definition = REALTIME_EVENT_REGISTRY[eventType];
+    assert.equal(Boolean(definition), true, `${eventType} must be registered`);
+    assert.equal(Boolean(definition.description), true, `${eventType} must have a description`);
+    assert.equal(Array.isArray(definition.roles) && definition.roles.length > 0, true, `${eventType} must define roles`);
+    assert.equal(Array.isArray(definition.scopes) && definition.scopes.length > 0, true, `${eventType} must define scopes`);
+  });
+
+  const report = realtimeEventRegistryReport();
+  const roleMatrix = realtimeRoleDeliveryMatrix();
+  const stats = realtimeStats();
+
+  assert.equal(report.length, uniqueEvents.length);
+  assert.equal(Array.isArray(roleMatrix["super-admin"]), true);
+  assert.equal(Array.isArray(stats.eventRegistry), true);
+  assert.equal(Boolean(stats.connectionLifecycle), true);
+  assert.equal(Boolean(stats.eventAudit), true);
+  assert.equal(Boolean(stats.performance), true);
+  assert.equal(Number.isFinite(stats.productionReadinessScore), true);
 });

@@ -120,7 +120,7 @@ function scheduleFreshRefresh(callback, state, delay = 250) {
   state.timer = window.setTimeout(() => runFreshRefresh(callback, state), delay);
 }
 
-export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "default", mutationFilter = null } = {}) {
+export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "default", mutationFilter = null, refreshOnMutation = true } = {}) {
   const refreshRef = useRef(onRefresh);
   const mutationFilterRef = useRef(mutationFilter);
   const stateRef = useRef(null);
@@ -142,6 +142,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       scheduleFreshRefresh(refreshRef.current, state, 100);
     };
     const onMutation = (event) => {
+      if (!refreshOnMutation) return;
       const detail = event?.detail || {};
       const filter = mutationFilterRef.current;
       if (typeof filter === "function" && !filter(detail)) return;
@@ -165,7 +166,7 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       window.removeEventListener("cls:data-mutated", onMutation);
       window.clearTimeout(state.timer);
     };
-  }, [enabled, refreshKey]);
+  }, [enabled, refreshKey, refreshOnMutation]);
 }
 
 export function useRealtimeRefresh({ key, onRefresh, enabled = true, mutationFilter = null }) {
@@ -190,8 +191,8 @@ export function useRealtimeRefresh({ key, onRefresh, enabled = true, mutationFil
   return health;
 }
 
-export function useRoleLeadRealtime({ onRefresh, enabled = true, mutationFilter = null } = {}) {
-  useBackgroundRefresh({ onRefresh, enabled, refreshKey: "role-leads", mutationFilter });
+export function useRoleLeadRealtime({ onRefresh, enabled = true, mutationFilter = null, refreshOnMutation = true } = {}) {
+  useBackgroundRefresh({ onRefresh, enabled, refreshKey: "role-leads", mutationFilter, refreshOnMutation });
 }
 
 export function useLeadDetailRealtime({ leadId, onRefresh, enabled = true, mutationFilter = null }) {

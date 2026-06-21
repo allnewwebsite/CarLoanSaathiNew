@@ -132,9 +132,11 @@ export function recordRealtimeMetric(meta = {}) {
     eventType: meta.eventType || "realtime",
     delivered: Number(meta.delivered || 0),
     errors: Number(meta.errors || 0),
+    dropped: Number(meta.dropped || 0),
     activeClients: Number(meta.activeClients || 0),
     candidateClients: Number(meta.candidateClients || 0),
     durationMs: Number(meta.durationMs || 0),
+    latencyMs: Number(meta.latencyMs || meta.durationMs || 0),
     disconnected: Number(meta.disconnected || 0),
   });
 }
@@ -294,18 +296,31 @@ function cacheSummary(readItems, signalItems) {
 
 function realtimeSummary(realtimeItems, currentStats = {}) {
   const disconnectedClients = realtimeItems.reduce((sum, item) => sum + item.disconnected, 0);
+  const realtimeErrors = realtimeItems.reduce((sum, item) => sum + item.errors, 0) + Number(currentStats.failedEvents || 0);
+  const droppedEvents = realtimeItems.reduce((sum, item) => sum + item.dropped, 0) + Number(currentStats.droppedEvents || 0);
   return {
     activeSseConnections: Number(currentStats.clients || 0),
+    connectedUsers: Number(currentStats.connectedUsers || currentStats.clients || 0),
     pendingTickets: Number(currentStats.pendingTickets || 0),
     bufferedEvents: Number(currentStats.bufferedEvents || 0),
     redisEnabled: Boolean(currentStats.redisEnabled),
     realtimeEventsToday: realtimeItems.length,
-    realtimeErrors: realtimeItems.reduce((sum, item) => sum + item.errors, 0),
+    realtimeErrors,
+    droppedEvents,
     disconnectedClients,
+    reconnectCount: Number(currentStats.reconnectCount || 0),
+    duplicateConnections: Number(currentStats.connectionLifecycle?.duplicateConnections || 0),
+    acknowledgedEvents: Number(currentStats.acknowledgedEvents || 0),
     disconnectStormThreshold: REALTIME_DISCONNECT_STORM_THRESHOLD,
     disconnectStormDetected: disconnectedClients >= REALTIME_DISCONNECT_STORM_THRESHOLD,
     averageCandidateClients: average(realtimeItems.map((item) => item.candidateClients)),
     averageEventDeliveryMs: average(realtimeItems.map((item) => item.durationMs)),
+    averageEventLatencyMs: Number(currentStats.averageEventLatencyMs || average(realtimeItems.map((item) => item.latencyMs))),
+    productionReadinessScore: Number(currentStats.productionReadinessScore || 100),
+    eventAudit: currentStats.eventAudit || {},
+    performance: currentStats.performance || {},
+    eventRegistryCount: Array.isArray(currentStats.eventRegistry) ? currentStats.eventRegistry.length : 0,
+    roleDeliveryMatrix: currentStats.roleDeliveryMatrix || {},
   };
 }
 
@@ -454,7 +469,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
           ? "warning"
           : projection.projectionHitRate === null ? "warning" : statusFromThreshold(projection.projectionHitRate, 80, 50, true),
       cache: cache.hitRate === null ? "warning" : statusFromThreshold(cache.hitRate, 70, 40, true),
-      realtime: realtime.disconnectStormDetected || realtime.realtimeErrors > 0 ? "warning" : "healthy",
+      realtime: realtime.disconnectStormDetected || realtime.realtimeErrors > 0 || realtime.droppedEvents > 0 ? "warning" : "healthy",
     },
   };
 }

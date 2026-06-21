@@ -54,7 +54,7 @@ function patchedLeadFromEvent(event = {}) {
     bankBranchId: lead.bankBranchId || event.bankBranchId || event.branchId || "",
     bankBranchCity: lead.bankBranchCity || event.bankBranchCity || event.branchCity || "",
     branchCity: lead.branchCity || event.branchCity || event.bankBranchCity || "",
-    assignedExecutiveId: lead.assignedExecutiveId || event.executiveId || "",
+    assignedExecutiveId: lead.assignedExecutiveId || event.assignedExecutiveId || event.executiveId || "",
     assignedExecutiveName: lead.assignedExecutiveName || event.assignedExecutiveName || "",
     assignedExecutiveMobile: lead.assignedExecutiveMobile || event.assignedExecutiveMobile || event.executiveMobile || "",
     executiveMobile: lead.executiveMobile || event.executiveMobile || event.assignedExecutiveMobile || "",
@@ -99,7 +99,7 @@ function statusMatchesFilter(lead = {}, statusFilter = "") {
   return normalizeStatus(lead.status) === normalizeStatus(statusFilter);
 }
 
-export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = true } = {}) {
+export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", enabled = true, pageSize = 10 } = {}) {
   useEffect(() => {
     if (!enabled || typeof setRows !== "function") return undefined;
     const onRealtime = (event) => {
@@ -107,12 +107,23 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
       if (!["lead", "document"].includes(detail.kind)) return;
       const patch = patchedLeadFromEvent(detail);
       if (!patch) return;
-      console.log("SSE PATCH RECEIVED", patch);
       const eventType = detail.eventType || detail.event;
-      const canInsertCreatedRow = eventType === "LEAD_CREATED" && hasHydratedLeadPayload(detail);
+      const canInsertPatchedRow = hasHydratedLeadPayload(detail)
+        && patch.isDeadCase !== true
+        && statusMatchesFilter(patch, statusFilter)
+        && (
+          eventType === "LEAD_CREATED"
+          || eventType === "LEAD_ASSIGNED"
+          || eventType === "LEAD_REASSIGNED"
+          || eventType === "BANK_ASSIGNED"
+          || eventType === "EXECUTIVE_ASSIGNED"
+          || eventType === "EXECUTIVE_REASSIGNED"
+          || (statusFilter && ["LEAD_STATUS_UPDATED", "STATUS_UPDATED"].includes(eventType))
+        );
       setRows((current) => {
         if (!Array.isArray(current)) return current;
         let changed = false;
+        let removed = false;
         const next = current
           .map((row) => {
             if (!sameLead(row, patch)) return row;
@@ -120,24 +131,23 @@ export function useRealtimeLeadPatch({ setRows, statusFilter = "", enabled = tru
             return { ...row, ...patch };
           })
           .filter((row) => {
-            console.log("ROW BEFORE FILTER", row);
-            console.log("IS DEAD CASE", row?.isDeadCase);
-            console.log("STATUS FILTER", statusFilter);
-            console.log(
-              "ROW REMOVED BY PATCH",
-              sameLead(row, patch) && (row.isDeadCase === true || !statusMatchesFilter(row, statusFilter)),
-            );
-            return !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter));
+            const keep = !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter));
+            if (!keep) removed = true;
+            return keep;
           });
-        if (!changed && canInsertCreatedRow && statusMatchesFilter(patch, statusFilter)) {
-          return [patch, ...current].slice(0, Math.max(current.length || 10, 10));
+        if (!changed && canInsertPatchedRow) {
+          if (typeof setTotal === "function") setTotal((value) => Math.max(0, Number(value || 0) + 1));
+          return [patch, ...current].slice(0, Math.max(current.length || pageSize, pageSize));
+        }
+        if (removed && typeof setTotal === "function") {
+          setTotal((value) => Math.max(0, Number(value || 0) - 1));
         }
         return changed ? next : current;
       });
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [enabled, setRows, statusFilter]);
+  }, [enabled, pageSize, setRows, setTotal, statusFilter]);
 }
 
 export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true } = {}) {

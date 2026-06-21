@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CURRENT_WORKFLOW_STATUS_OPTIONS } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES } from "../../constants/status.js";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { mutationUrlMatches, useBackgroundRefresh, useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
@@ -46,8 +46,8 @@ export function useBankLeads(search, status = "") {
     scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
-  useRealtimeLeadPatch({ setRows, statusFilter: status });
-  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter });
+  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status, pageSize });
+  useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
 }
@@ -185,7 +185,8 @@ export function useBankDealershipDisbursedCases(dealershipId, search) {
   }, [page, search, url, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: Boolean(cached) }); }, [load, page]);
-  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter });
+  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: LEAD_STATUSES.DISBURSED, pageSize });
+  useRoleLeadRealtime({ onRefresh: () => load(page, { silent: true }), pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage };
 }
