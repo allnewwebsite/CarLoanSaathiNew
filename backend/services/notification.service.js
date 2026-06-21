@@ -10,6 +10,48 @@ import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { syncNotificationProjectionSoon } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { executiveIdentityValues, valuesMatch } from "./roleIdentity.service.js";
+import { cached, clearCachedTags } from "./ttlCache.service.js";
+
+const NOTIFICATION_LIST_CACHE_TTL_MS = Number(process.env.NOTIFICATION_LIST_CACHE_TTL_MS || 5000);
+
+function notificationCacheTags(notification = {}) {
+  return [
+    "notifications",
+    notification.recipientId ? `notifications:user:${notification.recipientId}` : null,
+    notification.userId ? `notifications:user:${notification.userId}` : null,
+    notification.dealerEmail ? `notifications:user:${notification.dealerEmail}` : null,
+    notification.partnerId ? `notifications:user:${notification.partnerId}` : null,
+    notification.dealershipId ? `notifications:dealership:${notification.dealershipId}` : null,
+    notification.bankId ? `notifications:bank:${notification.bankId}` : null,
+    notification.assignedExecutiveId ? `notifications:executive:${notification.assignedExecutiveId}` : null,
+  ].filter(Boolean);
+}
+
+function notificationActorTags(actor = {}) {
+  return [
+    "notifications",
+    actor.email || actor.uid ? `notifications:user:${actor.email || actor.uid}` : null,
+    actor.dealershipId ? `notifications:dealership:${actor.dealershipId}` : null,
+    actor.bankId ? `notifications:bank:${actor.bankId}` : null,
+    actor.executiveId ? `notifications:executive:${actor.executiveId}` : null,
+  ].filter(Boolean);
+}
+
+function notificationListCacheKey({ query = {}, actor = {} } = {}) {
+  const key = {
+    limit: query.limit || "",
+    cursor: query.cursor || "",
+    search: query.search || "",
+    type: query.type || "",
+    unread: query.unread || "",
+    role: actor.role || "",
+    id: actor.email || actor.uid || "",
+    dealershipId: actor.dealershipId || "",
+    bankId: actor.bankId || "",
+    executiveId: actor.executiveId || "",
+  };
+  return `notifications:list:${Buffer.from(JSON.stringify(key)).toString("base64url").slice(0, 220)}`;
+}
 
 export async function createNotification({
   type,
@@ -75,6 +117,7 @@ export async function createNotification({
       status: meta.status || lead?.status || null,
     },
   });
+  clearCachedTags([...notificationCacheTags(notification), "dashboard:fast"]);
   syncNotificationProjectionSoon(notification);
   publishRealtimeEvent({
     eventType: REALTIME_EVENTS.NOTIFICATION_CREATED,
@@ -138,37 +181,39 @@ onDomainEvent(DOMAIN_EVENTS.NOTIFICATION_REQUESTED, async ({ payload }) => {
 });
 
 export async function getNotifications({ query = {}, actor = {} } = {}) {
-  const { limit, cursor } = paginationParams(query);
-  const role = actor.role;
-  const id = actor.email || actor.uid;
-  const search = String(query.search || "").trim().toLowerCase();
-  const type = String(query.type || "").trim();
-  const unreadOnly = query.unread === "true";
-  const where = [];
-  if (role !== "super-admin") {
-    if (["finance-desk", "gm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
-    else if (role === "bank-manager" && actor.bankId) where.push({ field: "bankId", value: actor.bankId });
-    else where.push({ field: "recipientId", value: id });
-  }
-  if (type) where.push({ field: "type", value: type });
+  return cached(notificationListCacheKey({ query, actor }), NOTIFICATION_LIST_CACHE_TTL_MS, async () => {
+    const { limit, cursor } = paginationParams(query);
+    const role = actor.role;
+    const id = actor.email || actor.uid;
+    const search = String(query.search || "").trim().toLowerCase();
+    const type = String(query.type || "").trim();
+    const unreadOnly = query.unread === "true";
+    const where = [];
+    if (role !== "super-admin") {
+      if (["finance-desk", "gm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
+      else if (role === "bank-manager" && actor.bankId) where.push({ field: "bankId", value: actor.bankId });
+      else where.push({ field: "recipientId", value: id });
+    }
+    if (type) where.push({ field: "type", value: type });
 
-  const result = await queryRecords("notifications", {
-    where,
-    orderBy: "createdAt",
-    direction: "desc",
-    limit,
-    cursor,
-    search,
-    searchFields: ["title", "message", "caseId", "leadId"],
-  });
+    const result = await queryRecords("notifications", {
+      where,
+      orderBy: "createdAt",
+      direction: "desc",
+      limit,
+      cursor,
+      search,
+      searchFields: ["title", "message", "caseId", "leadId"],
+    });
 
-  let items = result.data.filter((item) => {
-    const allowed = canAccessNotification(item, actor);
-    const unreadOk = !unreadOnly || item.read === false;
-    return allowed && unreadOk;
-  });
+    const items = result.data.filter((item) => {
+      const allowed = canAccessNotification(item, actor);
+      const unreadOk = !unreadOnly || item.read === false;
+      return allowed && unreadOk;
+    });
 
-  return pageResponse({ data: items, limit, nextCursor: result.nextCursor, extra: { unread: items.filter((item) => !item.read).length } });
+    return pageResponse({ data: items, limit, nextCursor: result.nextCursor, extra: { unread: items.filter((item) => !item.read).length } });
+  }, { tags: notificationActorTags(actor) });
 }
 
 function canAccessNotification(item, actor = {}) {
@@ -210,6 +255,7 @@ export async function markNotificationRead(id, actor = {}) {
     throw error;
   }
   const updated = await updateRecord("notifications", id, { read: true, readAt: new Date().toISOString() });
+  clearCachedTags([...notificationCacheTags({ ...item, ...updated }), "dashboard:fast"]);
   syncNotificationProjectionSoon(updated);
   await createRecord("notificationLogs", {
     notificationId: id,

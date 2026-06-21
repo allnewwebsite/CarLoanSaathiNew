@@ -7,6 +7,7 @@ import {
   cleanId,
   subscriptionSnapshot,
 } from "./subscriptionPlan.service.js";
+import { clearCachedTags } from "./ttlCache.service.js";
 
 export const SUBSCRIPTION_COLLECTION = "dealershipSubscriptions";
 
@@ -22,6 +23,7 @@ export async function dealershipRecord(dealershipId) {
 }
 
 export async function syncSubscriptionSummary(snapshot) {
+  clearCachedTags([`billing:${snapshot.dealershipId}`]);
   const patch = {
     planName: snapshot.planName,
     subscriptionStatus: snapshot.subscriptionStatus,

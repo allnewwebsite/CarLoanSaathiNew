@@ -149,6 +149,26 @@ async function backfillLeadProjectionsFromMiss({ collection, role, where, limit,
   }
 }
 
+async function projectionScopeHasRows({ collection, where, requestId, role }) {
+  const page = await queryRecords(collection, {
+    where,
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 1,
+    maxLimit: 1,
+    fields: ["sourceId", "viewType", "scopeId", "createdAt"],
+  }).catch((error) => {
+    logWarn("Projection scope presence check failed", {
+      requestId,
+      collection,
+      role,
+      error: error.code || error.message,
+    });
+    return null;
+  });
+  return Array.isArray(page?.data) && page.data.length > 0;
+}
+
 export async function syncLeadProjection(lead = {}) {
   if (!lead?.id) return null;
   clearCachedValue("lead-query:");
@@ -217,6 +237,7 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
     return null;
   }
 
+  const scopeWhere = [...where];
   const statuses = statusValuesForProjectionQuery(query.status);
   if (statuses.length === 1) where.push({ field: "status", value: statuses[0] });
   if (statuses.length > 1 && statuses.length <= 10) where.push({ field: "status", op: "in", value: statuses });
@@ -287,6 +308,26 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
         search: Boolean(query.search),
       });
       if (!resultCount) {
+        const narrowedProjectionQuery = Boolean(
+          query.search
+          || statuses.length
+          || query.dealershipId
+          || query.salespersonId
+          || query.financeManagerId
+          || query.assignedExecutiveId
+        );
+        if (narrowedProjectionQuery && await projectionScopeHasRows({ collection, where: scopeWhere, requestId, role })) {
+          const emptyResponse = pageResponse({ data: [], limit, nextCursor: null });
+          if (recordMetrics) recordProjectionMetric("PROJECTION-HIT", {
+            requestId,
+            collection,
+            role,
+            resultCount: 0,
+            durationMs: Date.now() - projectionStartedAt,
+            reason: "empty_filtered_projection_result",
+          });
+          return emptyResponse;
+        }
         if (recordMetrics) recordProjectionMetric("PROJECTION-MISS", { requestId, collection, role, resultCount, durationMs, reason: "empty_projection_result" });
         backfillLeadProjectionsFromMiss({ collection, role, where, limit, query, requestId }).catch(() => {});
         return null;

@@ -1,4 +1,5 @@
 import { getGlobalMetrics } from "../services/analyticsEngine.service.js";
+import { countRecords } from "../services/firestore.service.js";
 import { productionHealth } from "../services/health.service.js";
 import { monitoringTelemetrySummary } from "../services/monitoringCenter.service.js";
 import { getOperationalDashboard } from "../services/observability.service.js";
@@ -16,6 +17,46 @@ function card(status, detail = "") {
   return {
     status: statusLabel(status),
     detail,
+  };
+}
+
+async function platformMetricsWithFallbacks(metrics = {}) {
+  const [
+    projectedLeads,
+    activeDealerships,
+    approvedDealerships,
+    legacyDealers,
+    activeBanks,
+    bankPartners,
+  ] = await Promise.all([
+    countRecords("adminViews", { where: [{ field: "viewType", value: "lead" }] }).catch(() => 0),
+    countRecords("dealerships", { where: [{ field: "active", value: true }] }).catch(() => 0),
+    countRecords("approvedDealerships").catch(() => 0),
+    countRecords("dealers", { where: [{ field: "active", value: true }] }).catch(() => 0),
+    countRecords("banks", { where: [{ field: "active", value: true }] }).catch(() => 0),
+    countRecords("bankPartners", { where: [{ field: "active", value: true }] }).catch(() => 0),
+  ]);
+  const dealershipCount = Math.max(
+    Number(metrics.activeDealerships || 0),
+    Number(metrics.totalDealerships || 0),
+    Number(activeDealerships || 0),
+    Number(approvedDealerships || 0),
+    Number(legacyDealers || 0),
+  );
+  const bankCount = Math.max(
+    Number(metrics.activeBanks || 0),
+    Number(metrics.bankPartners || 0),
+    Number(activeBanks || 0),
+    Number(bankPartners || 0),
+  );
+  return {
+    ...metrics,
+    totalLeads: Number(metrics.totalLeads || 0) || Number(projectedLeads || 0),
+    activeDealerships: Number(metrics.activeDealerships || 0) || dealershipCount,
+    totalDealerships: Number(metrics.totalDealerships || 0) || dealershipCount,
+    approvedDealerships: Number(metrics.approvedDealerships || 0) || Number(approvedDealerships || 0) || dealershipCount,
+    activeBanks: Number(metrics.activeBanks || 0) || bankCount,
+    bankPartners: Number(metrics.bankPartners || 0) || bankCount,
   };
 }
 
@@ -98,11 +139,12 @@ export async function getAdminMonitoringCenter(_req, res, next) {
   try {
     const snapshot = await cached("admin:monitoring:center:v1", 15000, async () => {
       const currentRealtimeStats = realtimeStats();
-      const [health, operational, metrics] = await Promise.all([
+      const [health, operational, rawMetrics] = await Promise.all([
         productionHealth({ deep: false }),
         getOperationalDashboard({ limit: 10 }),
         getGlobalMetrics(),
       ]);
+      const metrics = await platformMetricsWithFallbacks(rawMetrics);
       const telemetry = monitoringTelemetrySummary({ realtimeStats: currentRealtimeStats });
       const whatsappMonitoring = whatsappMonitoringSummary();
       const activeUsers = telemetry.realtime.activeSseConnections;
@@ -177,7 +219,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
         readModel: {
           source: "metrics + in-process telemetry",
           avoidsCollectionScans: true,
-          expectedReadsPerColdSnapshot: 43,
+          expectedReadsPerColdSnapshot: 49,
           snapshotCacheTtlMs: 15000,
         },
       };

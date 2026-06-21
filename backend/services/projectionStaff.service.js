@@ -72,7 +72,7 @@ export function syncStaffViewProjectionSoon(record = {}) {
   Promise.resolve().then(() => syncStaffViewProjection(record)).catch(() => {});
 }
 
-export async function queryStaffViewProjection({ dealershipId, query = {} } = {}) {
+export async function queryStaffViewProjection({ dealershipId, query = {}, verifyLive = false } = {}) {
   const scope = scopeId(dealershipId);
   if (!scope) return null;
   const { limit, cursor, page } = paginationParams({ ...query, limit: query.limit || 100 });
@@ -87,7 +87,7 @@ export async function queryStaffViewProjection({ dealershipId, query = {} } = {}
   });
   if (!result.data.length) return null;
   const freshRows = await freshProjectionRows("staffViewProjection", result.data);
-  const liveRows = await liveStaffProjectionRows(freshRows);
+  const liveRows = verifyLive ? await liveStaffProjectionRows(freshRows) : freshRows;
   return liveRows.length ? liveRows : null;
 }
 

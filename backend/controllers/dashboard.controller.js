@@ -3,6 +3,7 @@ import { getRecord } from "../services/firestore.service.js";
 import { queryAllLeads, queryBankLeads, queryDealershipLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { getNotifications } from "../services/notification.service.js";
 import { queryLeadProjectionForUser } from "../services/projection.service.js";
+import { cached } from "../services/ttlCache.service.js";
 import { ROLES } from "../utils/constants.js";
 import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
@@ -99,31 +100,45 @@ function permissionSnapshot(user = {}) {
   };
 }
 
+function fastDashboardCacheKey(user = {}) {
+  return [
+    "dashboard:fast:v2",
+    user.role || "",
+    user.dealershipId || "",
+    user.bankId || "",
+    user.email || "",
+    user.uid || "",
+  ].join(":");
+}
+
 export async function getFastDashboard(req, res, next) {
   try {
-    const [metrics, recent, notifications] = await Promise.all([
-      scopedAnalytics(analyticsScopeForUser(req.user)).catch(() => ({})),
-      recentLeadsForUser(req.user).catch(() => ({ data: [], nextCursor: null, limit: 8 })),
-      getNotifications({ query: { limit: 20 }, actor: req.user }).catch(() => ({ data: [], unread: 0 })),
-    ]);
-    const recentRecords = Array.isArray(recent?.data) ? recent.data : [];
-    const notificationRows = Array.isArray(notifications?.data) ? notifications.data : [];
-    res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=300").json({
-      generatedAt: new Date().toISOString(),
-      permissionSnapshot: permissionSnapshot(req.user),
-      counts: {
-        totalLeads: metrics.totalLeads || recentRecords.length || 0,
-        pendingLeads: metrics.pendingLeads || 0,
-        approvedLeads: metrics.approvedLeads || 0,
-        disbursedLeads: metrics.disbursedLeads || 0,
-        rejectedLeads: metrics.rejectedLeads || 0,
-        unreadNotifications: notifications?.unread ?? notificationRows.filter((item) => !item.read).length,
-      },
-      metrics,
-      recentRecords,
-      notifications: notificationRows.slice(0, 5),
-      nextCursor: recent?.nextCursor || null,
-    });
+    const payload = await cached(fastDashboardCacheKey(req.user), 10000, async () => {
+      const [metrics, recent, notifications] = await Promise.all([
+        scopedAnalytics(analyticsScopeForUser(req.user)).catch(() => ({})),
+        recentLeadsForUser(req.user).catch(() => ({ data: [], nextCursor: null, limit: 8 })),
+        getNotifications({ query: { limit: 20 }, actor: req.user }).catch(() => ({ data: [], unread: 0 })),
+      ]);
+      const recentRecords = Array.isArray(recent?.data) ? recent.data : [];
+      const notificationRows = Array.isArray(notifications?.data) ? notifications.data : [];
+      return {
+        generatedAt: new Date().toISOString(),
+        permissionSnapshot: permissionSnapshot(req.user),
+        counts: {
+          totalLeads: metrics.totalLeads || recentRecords.length || 0,
+          pendingLeads: metrics.pendingLeads || 0,
+          approvedLeads: metrics.approvedLeads || 0,
+          disbursedLeads: metrics.disbursedLeads || 0,
+          rejectedLeads: metrics.rejectedLeads || 0,
+          unreadNotifications: notifications?.unread ?? notificationRows.filter((item) => !item.read).length,
+        },
+        metrics,
+        recentRecords,
+        notifications: notificationRows.slice(0, 5),
+        nextCursor: recent?.nextCursor || null,
+      };
+    }, { tags: ["dashboard:fast", "lead:list"] });
+    res.set("Cache-Control", "private, max-age=30, stale-while-revalidate=300").json(payload);
   } catch (error) {
     next(error);
   }
