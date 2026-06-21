@@ -6,6 +6,7 @@ import { logInfo, logWarn } from "./logger.service.js";
 import { markWorkerHealth } from "./health.service.js";
 import { processSubscriptionLifecycle } from "./subscription.service.js";
 import { reconcileSubscriptionPayments } from "./paymentReconciliation.service.js";
+import { validateRecentLeadDistribution } from "./assignmentIntegrity.service.js";
 
 const scheduled = [];
 
@@ -53,6 +54,17 @@ export function registerScheduledOperations() {
     const summary = await validateProjectionFreshness();
     markWorkerHealth("projectionFreshnessLastRunAt");
     markWorkerHealth("projectionFreshnessLastSummary", summary);
+    return summary;
+  });
+
+  schedule("assignment-integrity", Number(process.env.ASSIGNMENT_INTEGRITY_INTERVAL_MS || 15 * 60 * 1000), async () => {
+    const summary = await validateRecentLeadDistribution({
+      limit: Number(process.env.ASSIGNMENT_INTEGRITY_SCAN_LIMIT || 100),
+      repair: true,
+      source: "scheduled-assignment-integrity",
+    });
+    markWorkerHealth("assignmentIntegrityLastRunAt");
+    markWorkerHealth("assignmentIntegrityLastSummary", summary);
     return summary;
   });
 

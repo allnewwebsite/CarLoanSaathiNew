@@ -60,7 +60,7 @@ function projectFile(relativePath) {
 }
 
 function assertNoFailedLoginMutation() {
-  const source = sourceFile("context/AuthContext.jsx");
+  const source = sourceFile("context/AuthContextCore.jsx");
   const loginStart = source.indexOf("const loginWithEmailPassword");
   const loginEnd = source.indexOf("const sendPasswordReset", loginStart);
   const loginSource = loginStart >= 0 && loginEnd > loginStart ? source.slice(loginStart, loginEnd) : "";
@@ -77,12 +77,17 @@ function assertNoFailedLoginMutation() {
 }
 
 function assertBackendExactPortalValidation() {
-  const source = projectFile("backend/controllers/auth.controller.js");
-  assert(source.includes("const LOGIN_PORTAL_ROLES"), "Backend must define exact login portal role contracts.");
-  assert(source.includes("loginPortalAllowsRole(requestedLoginPortal, account.role)"), "Backend login must validate the exact login portal.");
-  assert(source.includes("wrongLoginPortalPayload()"), "Wrong-portal login must return a non-mutating authorization error.");
-  assert(source.includes('message: "You are not authorized to access this portal."'), "Wrong-portal response must use the required safe message.");
-  assert(source.includes("loginPortal: loginPortalForRole(account.role)"), "JWT session payload must include the exact login portal claim.");
+  const portalShared = projectFile("backend/controllers/authPortalShared.controller.js");
+  const login = projectFile("backend/controllers/authLogin.controller.js");
+  const loginSession = projectFile("backend/controllers/authLoginSession.controller.js");
+  const authMiddleware = projectFile("backend/middleware/auth.js");
+  assert(portalShared.includes("export const LOGIN_PORTAL_ROLES"), "Backend must define exact login portal role contracts.");
+  assert(portalShared.includes("export function loginPortalAllowsRole"), "Backend must expose exact login portal validation.");
+  assert(login.includes("loginPortalAllowsRole(requestedLoginPortal, account.role)"), "Backend login must validate the exact login portal.");
+  assert(login.includes("wrongLoginPortalPayload(account.role)"), "Wrong-portal login must return a non-mutating authorization error.");
+  assert(portalShared.includes('message: "You are not authorized to access this portal."'), "Wrong-portal response must use the required safe message.");
+  assert(loginSession.includes("loginPortal: loginPortalForRole(account.role)"), "JWT session payload must include the exact login portal claim.");
+  assert(authMiddleware.includes("loginPortalForRole(tokenUser.role)") && authMiddleware.includes("loginPortalForRole(account.role)"), "Auth middleware must validate stored token login portal claims.");
 }
 
 function assertNoRouteMismatchMutation() {

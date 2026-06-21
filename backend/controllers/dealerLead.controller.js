@@ -90,6 +90,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { recordLeadAssignmentFailure, validateLeadAssignmentIntegrity } from "../services/assignmentIntegrity.service.js";
 
 void DEALER_SHARED_SENTINEL;
 export async function createDealerLead(req, res, next) {
@@ -289,7 +290,9 @@ export async function createDealerLead(req, res, next) {
             },
           });
           await queueLeadAssignedWhatsApp(assignedLead);
+          await validateLeadAssignmentIntegrity(assignedLead, { repair: true, source: "dealer-lead-auto-assignment" });
         } catch (assignmentError) {
+          await recordLeadAssignmentFailure(lead, assignmentError, { source: "dealer-lead-auto-assignment" });
           logInfo("Dealer lead created without executive auto-assignment", {
             requestId: req.requestId,
             leadId: lead.id,
