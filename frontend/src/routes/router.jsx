@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { PublicLayout } from "../layouts/PublicLayout.jsx";
 import { ROLES } from "../auth/roleSystem.js";
 import { ProtectedRoute } from "./ProtectedRoute.jsx";
+import { RouteErrorBoundary } from "./RouteErrorBoundary.jsx";
 
 const moduleCache = new WeakMap();
 
@@ -74,6 +75,7 @@ const DashboardLayout = lazy(() => import("../layouts/DashboardLayout.jsx").then
 
 export const router = createBrowserRouter([
   {
+    errorElement: <RouteErrorBoundary />,
     element: <PublicLayout />,
     children: [
       { path: "/", element: <HomePage /> },
@@ -127,6 +129,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/gm",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.GM]} loginPath="/gm/login" />,
     children: [
       { path: "dashboard", element: <DashboardLayout />, children: [{ index: true, element: <Navigate to="/gm/total-leads" replace /> }] },
@@ -148,6 +151,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/finance",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/finance/login" />,
     children: [
       {
@@ -184,6 +188,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/change-password",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE]} loginPath="/finance/login" />,
     children: [
       { index: true, element: <ExecutiveChangePasswordPage /> },
@@ -191,6 +196,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/security",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.FINANCE_DESK, ROLES.GM, ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE, ROLES.SUPER_ADMIN]} loginPath="/finance/login" />,
     children: [
       { path: "login-activity", element: <DashboardLayout />, children: [{ index: true, element: <LoginActivityPage /> }] },
@@ -198,6 +204,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/dealer",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.FINANCE_DESK]} loginPath="/finance/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/finance/dashboard" replace /> },
@@ -205,6 +212,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/bank-manager",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.BANK_MANAGER]} loginPath="/bank/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/bank-manager/leads" replace /> },
@@ -231,6 +239,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/loan-executive",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.LOAN_EXECUTIVE]} loginPath="/executive/login" />,
     children: [
       { path: "dashboard", element: <Navigate to="/loan-executive/leads" replace /> },
@@ -253,6 +262,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/admin",
+    errorElement: <RouteErrorBoundary />,
     element: <ProtectedRoute roles={[ROLES.SUPER_ADMIN]} loginPath="/admin/login" />,
     children: [
       {
@@ -262,6 +272,7 @@ export const router = createBrowserRouter([
           { path: "dealerships", element: <SuperAdminDashboard mode="dealerships" /> },
           { path: "dealerships/:id", element: <SuperAdminDealershipDetailPage /> },
           { path: "banks", element: <SuperAdminDashboard mode="banks" /> },
+          { path: "status", element: <Navigate to="/admin/leads" replace /> },
           { path: "leads", element: <SuperAdminDashboard mode="leads" /> },
           { path: "dead-cases", element: <DeadCasesPage audience="admin" /> },
           { path: "leads/:leadId", element: <SuperAdminLeadDetailPage /> },
