@@ -91,6 +91,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { createNotification } from "../services/notification.service.js";
 import { queryMemberViewProjection, syncMemberViewProjectionSoon } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
@@ -395,6 +396,26 @@ export async function createDealerStaff(req, res, next) {
           role,
         },
       }),
+      () => createNotification({
+        type: "GM_CREATED",
+        title: "Welcome to CarLoanSaathi",
+        message: "Congratulations!\n\nYou have been added as General Manager.",
+        recipientRole: "gm",
+        recipientId: email,
+        recipientEmail: email,
+        priority: "success",
+        entityType: "user",
+        entityId: email,
+        actionUrl: "/gm/total-leads",
+        dealershipId: dealershipEmail,
+        createdBy: dealerEmail(req),
+        meta: {
+          memberName: fullName,
+          roleLabel: "GM",
+          dealershipId: dealershipEmail,
+          dedupeKey: "gm-created",
+        },
+      }),
     ]);
     const { temporaryPasswordHash: _temporaryPasswordHash, ...safeStaffPayload } = staffPayload;
     res.status(201).json({
@@ -485,6 +506,31 @@ export async function deleteDealerStaff(req, res, next) {
         authDeleted,
       },
     });
+    const removedRole = normalizeStaffRole(employee.role || "gm");
+    const removedRoleLabel = removedRole === "gm" ? "GM" : staffRoleLabel(removedRole);
+    const removedName = employee.name || employee.fullName || email;
+    runDealerLeadSideEffects("dealer-staff-deleted-notification", [
+      () => createNotification({
+        type: "USER_DELETED",
+        title: "User Removed",
+        message: `${removedRoleLabel} ${removedName} has been removed.`,
+        recipientRole: "finance-desk",
+        recipientId: dealershipEmail,
+        priority: "medium",
+        entityType: "user",
+        entityId: email,
+        actionUrl: "/finance/active-members",
+        dealershipId: dealershipEmail,
+        createdBy: actorEmail,
+        meta: {
+          memberName: removedName,
+          roleLabel: removedRoleLabel,
+          removedEmail: email,
+          dealershipId: dealershipEmail,
+          dedupeKey: `user-deleted-${removedRole}`,
+        },
+      }),
+    ]);
     res.json({ message: "Employee permanently removed", employeeEmail: email, deleted, authDeleted });
   } catch (error) {
     next(error);

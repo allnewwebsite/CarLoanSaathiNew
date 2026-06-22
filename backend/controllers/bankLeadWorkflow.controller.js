@@ -324,6 +324,23 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
 export function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalizedStatus, pendingDocument, requestedDocuments, pendingDocumentReason, pendingDocumentDescription }) {
   const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
   const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
+  const leadId = updated.id || lead.id;
+  const caseId = updated.caseId || lead.caseId || leadId;
+  const dealershipId = updated.dealershipId || updated.dealershipEmail || updated.dealerEmail || lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "";
+  const bankId = updated.bankId || updated.assignedBankId || lead.bankId || lead.assignedBankId || partner.bankId || partner.id || "";
+  const executiveName = partner.name || partner.fullName || partner.email || req.user?.email || "Loan Executive";
+  const statusNotificationMessage = `Executive ${executiveName} updated ${caseId} to ${statusLabel}.`;
+  const statusNotificationMeta = {
+    caseId,
+    customerName: updated.fullName || lead.fullName || updated.customerName || lead.customerName || "",
+    status: normalizedStatus,
+    statusLabel,
+    executiveName,
+    dealershipId,
+    bankId,
+    assignedExecutiveId: updated.assignedExecutiveId || lead.assignedExecutiveId || partner.id || partner.uid || partner.email || "",
+    assignedExecutiveEmail: updated.assignedExecutiveEmail || lead.assignedExecutiveEmail || partner.email || "",
+  };
   setImmediate(() => {
     Promise.allSettled([
       ensureCommissionForLead(updated, normalizedStatus),
@@ -346,7 +363,60 @@ export function queueBankLeadStatusSideEffects({ req, lead, updated, partner, no
         metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocuments: requestedDocuments, pendingDocumentReason },
         leadSnapshot: updated,
       }),
-      createNotification({ type: normalizedStatus === LEAD_STATUSES.APPROVED ? "approval" : normalizedStatus === LEAD_STATUSES.DISBURSED ? "disbursement" : isPendingDocumentStatus ? "pending-documents" : normalizedStatus.toLowerCase().replace(/_/g, "-"), title: `Lead ${statusLabel}`, message: isPendingDocumentStatus && requestedDocuments.length ? `Lead ${lead.caseId || lead.id} needs: ${requestedDocuments.join(", ")}` : `Lead ${lead.caseId || lead.id} marked ${statusLabel}`, leadId: lead.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, meta: { caseId: lead.caseId, customerName: lead.fullName, loanAmount: lead.loanAmount, bankName: partner.bankName || partner.companyName, pendingDocuments: requestedDocuments, pendingDocumentReason } }),
+      createNotification({
+        type: "STATUS_CHANGED",
+        title: "Case Status Updated",
+        message: statusNotificationMessage,
+        leadId,
+        dealerEmail: dealershipId,
+        recipientRole: "bank-manager",
+        recipientId: bankId,
+        priority: "medium",
+        entityType: "lead",
+        entityId: leadId,
+        actionUrl: `/bank-manager/leads/${leadId}`,
+        dealershipId,
+        bankId,
+        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
+        leadSnapshot: updated,
+        meta: { ...statusNotificationMeta, dedupeKey: "status-changed-bank-manager" },
+      }),
+      createNotification({
+        type: "STATUS_CHANGED",
+        title: "Case Status Updated",
+        message: statusNotificationMessage,
+        leadId,
+        dealerEmail: dealershipId,
+        recipientRole: "finance-desk",
+        recipientId: dealershipId,
+        priority: "medium",
+        entityType: "lead",
+        entityId: leadId,
+        actionUrl: `/finance/leads/${leadId}`,
+        dealershipId,
+        bankId,
+        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
+        leadSnapshot: updated,
+        meta: { ...statusNotificationMeta, pendingDocuments: requestedDocuments, pendingDocumentReason, dedupeKey: "status-changed-finance-desk" },
+      }),
+      createNotification({
+        type: "STATUS_CHANGED",
+        title: "Case Status Updated",
+        message: statusNotificationMessage,
+        leadId,
+        dealerEmail: dealershipId,
+        recipientRole: "gm",
+        recipientId: dealershipId,
+        priority: "medium",
+        entityType: "lead",
+        entityId: leadId,
+        actionUrl: `/gm/leads/${leadId}`,
+        dealershipId,
+        bankId,
+        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
+        leadSnapshot: updated,
+        meta: { ...statusNotificationMeta, dedupeKey: "status-changed-gm" },
+      }),
       isPendingDocumentStatus
         ? queueDocumentsRequiredWhatsApp({ lead: updated, documents: requestedDocuments })
         : queueStatusUpdatedWhatsApp({ lead: updated, statusLabel }),

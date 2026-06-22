@@ -1,18 +1,55 @@
-import { createRecord, getRecord, queryRecords, updateRecord } from "./firestore.service.js";
+import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { buildWhatsAppMessage, queueWhatsAppNotification } from "./whatsapp.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
-import { logError } from "./logger.service.js";
+import { logError, logInfo } from "./logger.service.js";
 import { GOVERNANCE_LIMITS } from "../config/governance.js";
 import { DOMAIN_EVENTS, emitDomainEvent, onDomainEvent } from "./eventBus.service.js";
 import { renderNotificationTemplate } from "./notificationTemplates.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { syncNotificationProjectionSoon } from "./projection.service.js";
-import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
+import { markBufferedNotificationRead, publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { executiveIdentityValues, valuesMatch } from "./roleIdentity.service.js";
 import { cached, clearCachedTags } from "./ttlCache.service.js";
 
 const NOTIFICATION_LIST_CACHE_TTL_MS = Number(process.env.NOTIFICATION_LIST_CACHE_TTL_MS || 5000);
+const NOTIFICATION_MARK_ALL_LIMIT = Number(process.env.NOTIFICATION_MARK_ALL_LIMIT || 100);
+
+function safeNotificationId(...parts) {
+  const key = parts.map((part) => String(part || "").trim().toLowerCase()).join("|");
+  return `notification_${Buffer.from(key).toString("base64url").slice(0, 180)}`;
+}
+
+function notificationDedupeId({ type, recipientRole, recipientId, entityType, entityId, caseId, meta = {} } = {}) {
+  return safeNotificationId(
+    meta.notificationId || meta.dedupeKey || "",
+    recipientRole || "",
+    recipientId || "",
+    type || "",
+    entityType || "",
+    entityId || "",
+    caseId || "",
+    meta.status || meta.action || "",
+  );
+}
+
+function actorId(actor = {}) {
+  return actor.email || actor.uid || "";
+}
+
+function actorScopeWhere(actor = {}, { unreadOnly = false, type = "" } = {}) {
+  const role = actor.role;
+  const id = actorId(actor);
+  const where = [];
+  if (role !== "super-admin") {
+    if (["finance-desk", "gm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
+    else if (role === "bank-manager" && actor.bankId) where.push({ field: "bankId", value: actor.bankId });
+    else where.push({ field: "recipientId", value: id });
+  }
+  if (type) where.push({ field: "type", value: type });
+  if (unreadOnly) where.push({ field: "read", value: false });
+  return where;
+}
 
 function notificationCacheTags(notification = {}) {
   return [
@@ -64,6 +101,7 @@ export async function createNotification({
   meta = {},
   recipientRole,
   recipientId,
+  recipientEmail,
   phoneNumber,
   priority = "normal",
   userId,
@@ -72,17 +110,40 @@ export async function createNotification({
   assignedExecutiveId,
   entityType = leadId ? "lead" : "system",
   entityId,
+  caseId: inputCaseId,
+  actionUrl,
+  metadata = {},
+  createdBy = "system",
+  deliveryChannels = ["in-app"],
   source = "api",
   requestId = null,
   leadSnapshot = null,
 }) {
   const lead = leadSnapshot || null;
-  const caseId = lead?.caseId || meta.caseId || null;
-  const targetUserId = userId || recipientId || partnerId || dealerEmail || null;
-  const rendered = renderNotificationTemplate(type, { ...meta, title, message, caseId });
+  const mergedMeta = { ...metadata, ...meta };
+  const caseId = lead?.caseId || mergedMeta.caseId || inputCaseId || null;
+  const targetUserId = userId || recipientId || recipientEmail || partnerId || dealerEmail || null;
+  const targetEmail = recipientEmail || (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(targetUserId || "")) ? targetUserId : "");
+  const resolvedEntityId = entityId || leadId || caseId || null;
+  const rendered = renderNotificationTemplate(type, { ...mergedMeta, title, message, caseId });
   const normalizedPriority = GOVERNANCE_LIMITS.notifications.priorities.includes(priority) ? priority : rendered.priority;
-  const notification = await createRecord("notifications", {
+  const notificationId = notificationDedupeId({
+    type,
+    recipientRole: recipientRole || (admin ? "super-admin" : null),
     recipientId: targetUserId,
+    entityType,
+    entityId: resolvedEntityId,
+    caseId,
+    meta: mergedMeta,
+  });
+  const existing = await getRecord("notifications", notificationId).catch(() => null);
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const notification = await upsertRecord("notifications", notificationId, {
+    id: notificationId,
+    recipientId: targetUserId,
+    recipientEmail: targetEmail || targetUserId,
     userId: targetUserId,
     role: recipientRole || (admin ? "super-admin" : null),
     notificationType: type,
@@ -90,14 +151,14 @@ export async function createNotification({
     title: rendered.title,
     message: rendered.message,
     entityType,
-    entityId: entityId || leadId || caseId || null,
+    entityId: resolvedEntityId,
     leadId,
     caseId,
     partnerId,
     dealerEmail,
-    dealershipId: dealershipId || lead?.dealershipId || meta.dealershipId || null,
-    bankId: bankId || lead?.bankId || meta.bankId || null,
-    assignedExecutiveId: assignedExecutiveId || lead?.assignedExecutiveId || meta.assignedExecutiveId || null,
+    dealershipId: dealershipId || lead?.dealershipId || mergedMeta.dealershipId || null,
+    bankId: bankId || lead?.bankId || mergedMeta.bankId || null,
+    assignedExecutiveId: assignedExecutiveId || lead?.assignedExecutiveId || mergedMeta.assignedExecutiveId || null,
     admin,
     recipientRole,
     priority: normalizedPriority,
@@ -107,14 +168,18 @@ export async function createNotification({
     maxRetries: GOVERNANCE_LIMITS.notifications.maxRetryCount,
     source,
     requestId,
+    createdBy,
+    createdAt: now,
+    actionUrl: actionUrl || mergedMeta.actionUrl || "",
     expiresAt: new Date(Date.now() + GOVERNANCE_LIMITS.notifications.ttlDays * 24 * 60 * 60 * 1000).toISOString(),
-    meta,
+    meta: mergedMeta,
+    metadata: mergedMeta,
     leadSnapshot: {
       leadId: leadId || null,
       caseId,
-      customerName: meta.customerName || lead?.fullName || lead?.customerName || null,
-      assignedUser: meta.assignedUser || meta.executiveName || lead?.assignedExecutiveName || lead?.assignedExecutiveEmail || null,
-      status: meta.status || lead?.status || null,
+      customerName: mergedMeta.customerName || lead?.fullName || lead?.customerName || null,
+      assignedUser: mergedMeta.assignedUser || mergedMeta.executiveName || lead?.assignedExecutiveName || lead?.assignedExecutiveEmail || null,
+      status: mergedMeta.status || lead?.status || null,
     },
   });
   clearCachedTags([...notificationCacheTags(notification), "dashboard:fast"]);
@@ -146,17 +211,19 @@ export async function createNotification({
     requestId,
   });
 
-  const whatsappMessage = rendered.message || buildWhatsAppMessage(type, { ...meta, leadId: caseId || leadId, caseId });
-  Promise.resolve().then(() => queueWhatsAppNotification({
-    type,
-    recipientRole: recipientRole || (admin ? "super-admin" : partnerId ? "loan-executive" : dealerEmail ? "finance-desk" : "system"),
-    recipientId: recipientId || partnerId || dealerEmail || "admin",
-    phoneNumber: phoneNumber || meta.phoneNumber || meta.mobile,
-    message: whatsappMessage,
-    leadId,
-    priority: normalizedPriority,
-    metadata: { notificationId: notification.id, caseId, ...meta },
-  })).catch((error) => logError("Notification delivery queue failed", { notificationId: notification.id, error: error.message }));
+  if (deliveryChannels.includes("whatsapp")) {
+    const whatsappMessage = rendered.message || buildWhatsAppMessage(type, { ...mergedMeta, leadId: caseId || leadId, caseId });
+    Promise.resolve().then(() => queueWhatsAppNotification({
+      type,
+      recipientRole: recipientRole || (admin ? "super-admin" : partnerId ? "loan-executive" : dealerEmail ? "finance-desk" : "system"),
+      recipientId: recipientId || partnerId || dealerEmail || "admin",
+      phoneNumber: phoneNumber || mergedMeta.phoneNumber || mergedMeta.mobile,
+      message: whatsappMessage,
+      leadId,
+      priority: normalizedPriority,
+      metadata: { notificationId: notification.id, caseId, ...mergedMeta },
+    })).catch((error) => logError("Notification delivery queue failed", { notificationId: notification.id, error: error.message }));
+  }
 
   Promise.resolve().then(() => writeAuditLog({
     actionType: AUDIT_ACTIONS.NOTIFICATION_CREATED,
@@ -166,6 +233,7 @@ export async function createNotification({
     meta: { notificationId: notification.id, type, caseId, requestId },
   })).catch((error) => logError("Notification audit failed", { notificationId: notification.id, error: error.message }));
 
+  logInfo("Notification created", { notificationId: notification.id, type, recipientRole: notification.recipientRole, recipientId: notification.recipientId, caseId });
   return notification;
 }
 
@@ -183,18 +251,10 @@ onDomainEvent(DOMAIN_EVENTS.NOTIFICATION_REQUESTED, async ({ payload }) => {
 export async function getNotifications({ query = {}, actor = {} } = {}) {
   return cached(notificationListCacheKey({ query, actor }), NOTIFICATION_LIST_CACHE_TTL_MS, async () => {
     const { limit, cursor } = paginationParams(query);
-    const role = actor.role;
-    const id = actor.email || actor.uid;
     const search = String(query.search || "").trim().toLowerCase();
     const type = String(query.type || "").trim();
     const unreadOnly = query.unread === "true";
-    const where = [];
-    if (role !== "super-admin") {
-      if (["finance-desk", "gm"].includes(role) && actor.dealershipId) where.push({ field: "dealershipId", value: actor.dealershipId });
-      else if (role === "bank-manager" && actor.bankId) where.push({ field: "bankId", value: actor.bankId });
-      else where.push({ field: "recipientId", value: id });
-    }
-    if (type) where.push({ field: "type", value: type });
+    const where = actorScopeWhere(actor, { unreadOnly, type });
 
     const result = await queryRecords("notifications", {
       where,
@@ -208,18 +268,20 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
 
     const items = result.data.filter((item) => {
       const allowed = canAccessNotification(item, actor);
-      const unreadOk = !unreadOnly || item.read === false;
-      return allowed && unreadOk;
+      return allowed;
     });
 
-    return pageResponse({ data: items, limit, nextCursor: result.nextCursor, extra: { unread: items.filter((item) => !item.read).length } });
+    const unread = await getUnreadNotificationCount(actor);
+    return pageResponse({ data: items, limit, nextCursor: result.nextCursor, extra: { unread } });
   }, { tags: notificationActorTags(actor) });
 }
 
 function canAccessNotification(item, actor = {}) {
   const actorId = actor.email || actor.uid;
   if (actor.role === "super-admin") return true;
-  if (item.recipientId === actorId || item.userId === actorId || item.dealerEmail === actorId || item.partnerId === actorId) return true;
+  const expectedRole = item.recipientRole || item.role || "";
+  if (expectedRole && expectedRole !== actor.role && item.recipientId !== actorId && item.userId !== actorId) return false;
+  if (item.recipientId === actorId || item.recipientEmail === actorId || item.userId === actorId || item.dealerEmail === actorId || item.partnerId === actorId) return true;
   if (["finance-desk", "gm"].includes(actor.role)) {
     return Boolean(actor.dealershipId && item.dealershipId === actor.dealershipId);
   }
@@ -242,6 +304,19 @@ function canAccessNotification(item, actor = {}) {
   return false;
 }
 
+export async function getUnreadNotificationCount(actor = {}) {
+  const where = actorScopeWhere(actor, { unreadOnly: true });
+  const result = await queryRecords("notifications", {
+    where,
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: NOTIFICATION_MARK_ALL_LIMIT,
+    maxLimit: NOTIFICATION_MARK_ALL_LIMIT,
+    fields: ["recipientRole", "role", "recipientId", "recipientEmail", "userId", "dealerEmail", "partnerId", "dealershipId", "bankId", "assignedExecutiveId", "assignedExecutiveEmail", "meta", "read"],
+  });
+  return result.data.filter((item) => item.read === false && canAccessNotification(item, actor)).length;
+}
+
 export async function markNotificationRead(id, actor = {}) {
   const item = await getRecord("notifications", id);
   if (!item) {
@@ -254,9 +329,21 @@ export async function markNotificationRead(id, actor = {}) {
     error.status = 403;
     throw error;
   }
-  const updated = await updateRecord("notifications", id, { read: true, readAt: new Date().toISOString() });
+  const readAt = new Date().toISOString();
+  const updated = await updateRecord("notifications", id, { read: true, readAt });
   clearCachedTags([...notificationCacheTags({ ...item, ...updated }), "dashboard:fast"]);
   syncNotificationProjectionSoon(updated);
+  markBufferedNotificationRead(id, readAt);
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.NOTIFICATION_READ,
+    notification: updated,
+    data: {
+      recipientId: updated.recipientId || actor.email || actor.uid || "",
+      dealershipId: updated.dealershipId || "",
+      bankId: updated.bankId || "",
+      executiveId: updated.assignedExecutiveId || "",
+    },
+  });
   await createRecord("notificationLogs", {
     notificationId: id,
     userId: actor.email || actor.uid,
@@ -269,5 +356,65 @@ export async function markNotificationRead(id, actor = {}) {
     assignedExecutiveId: item.assignedExecutiveId || null,
     status: "read",
   });
+  logInfo("Notification read", { notificationId: id, recipientId: updated.recipientId, role: actor.role });
   return updated;
+}
+
+export async function markAllNotificationsRead(actor = {}) {
+  const where = actorScopeWhere(actor, { unreadOnly: true });
+  const result = await queryRecords("notifications", {
+    where,
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: NOTIFICATION_MARK_ALL_LIMIT,
+    maxLimit: NOTIFICATION_MARK_ALL_LIMIT,
+  });
+  const visibleUnread = result.data.filter((item) => item.read === false && canAccessNotification(item, actor));
+  const readAt = new Date().toISOString();
+  const updatedItems = await Promise.all(visibleUnread.map((item) => updateRecord("notifications", item.id, { read: true, readAt })));
+  updatedItems.forEach((item) => syncNotificationProjectionSoon(item));
+  markBufferedNotificationRead(updatedItems.map((item) => item.id), readAt);
+  clearCachedTags(["notifications", ...notificationActorTags(actor), "dashboard:fast"]);
+  await Promise.all(updatedItems.map((item) => createRecord("notificationLogs", {
+    notificationId: item.id,
+    userId: actor.email || actor.uid,
+    role: actor.role,
+    type: item.type,
+    leadId: item.leadId || null,
+    caseId: item.caseId || null,
+    dealershipId: item.dealershipId || null,
+    bankId: item.bankId || null,
+    assignedExecutiveId: item.assignedExecutiveId || null,
+    status: "read-all",
+  })));
+  const sample = updatedItems[0] || {};
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.NOTIFICATION_MARK_ALL_READ,
+    notification: {
+      id: `mark-all-${Date.now()}`,
+      recipientRole: actor.role,
+      recipientId: actor.email || actor.uid || sample.recipientId || "",
+      recipientEmail: actor.email || sample.recipientEmail || "",
+      dealershipId: actor.dealershipId || sample.dealershipId || "",
+      bankId: actor.bankId || sample.bankId || "",
+      assignedExecutiveId: actor.executiveId || sample.assignedExecutiveId || "",
+      read: true,
+      title: "Notifications read",
+      message: "All notifications marked read.",
+      priority: "low",
+      type: "NOTIFICATION_MARK_ALL_READ",
+      createdAt: readAt,
+      updatedAt: readAt,
+    },
+    data: {
+      recipientId: actor.email || actor.uid || "",
+      dealershipId: actor.dealershipId || sample.dealershipId || "",
+      bankId: actor.bankId || sample.bankId || "",
+      executiveId: actor.executiveId || sample.assignedExecutiveId || "",
+      unread: 0,
+      updated: updatedItems.length,
+    },
+  });
+  logInfo("Notifications marked all read", { count: updatedItems.length, actorId: actor.email || actor.uid, role: actor.role });
+  return { updated: updatedItems.length, unread: 0 };
 }

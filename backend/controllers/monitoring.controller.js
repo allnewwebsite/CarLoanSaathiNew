@@ -184,6 +184,7 @@ export async function getAdminMonitoringCenter(_req, res, next) {
         firestoreMonitoring: telemetry.firestore,
         projectionHealth: telemetry.projection,
         realtimeMonitoring: telemetry.realtime,
+        notificationMonitoring: telemetry.realtime.notificationDelivery,
         branchMonitoring: {
           totalBanks: metrics.activeBanks || metrics.bankPartners || 0,
           totalBranches: metrics.totalBranches || 0,

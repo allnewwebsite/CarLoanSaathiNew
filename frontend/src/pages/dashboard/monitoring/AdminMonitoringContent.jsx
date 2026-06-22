@@ -30,6 +30,7 @@ export function AdminMonitoringContent({
   firestore,
   load,
   loading,
+  notifications,
   overview,
   projection,
   projectionCollections,
@@ -124,6 +125,16 @@ export function AdminMonitoringContent({
             <MetricTile label="Buffered Events" value={realtime.bufferedEvents || 0} />
             <MetricTile label="Event Registry" value={realtime.eventRegistryCount || 0} />
             <MetricTile label="Readiness Score" value={`${realtime.productionReadinessScore ?? 100}/100`} />
+          </div>
+        </Section>
+
+        <Section title="Browser Notifications">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <MetricTile label="Notifications Sent" value={notifications.sent || 0} />
+            <MetricTile label="Unread Count" value={notifications.unreadCount || 0} />
+            <MetricTile label="Failed Deliveries" value={notifications.failedDeliveries || 0} />
+            <MetricTile label="Delivery Latency" value={`${notifications.deliveryLatencyMs || 0}ms`} />
+            <MetricTile label="Connected Users" value={notifications.connectedUsers || realtime.connectedUsers || 0} />
           </div>
         </Section>
 

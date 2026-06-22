@@ -91,6 +91,7 @@ import {
   writeAuditLog,
 } from './dealerShared.controller.js';
 import { recordLeadAssignmentFailure, validateLeadAssignmentIntegrity } from "../services/assignmentIntegrity.service.js";
+import { createNotification } from "../services/notification.service.js";
 
 void DEALER_SHARED_SENTINEL;
 export async function createDealerLead(req, res, next) {
@@ -294,9 +295,69 @@ export async function createDealerLead(req, res, next) {
     ]);
 
     if (autoAssignedLead) {
+      const assignedLeadId = autoAssignedLead.id || lead.id;
+      const assignedCaseId = autoAssignedLead.caseId || lead.caseId || assignedLeadId;
+      const assignedBankId = autoAssignedLead.bankId || autoAssignedLead.assignedBankId || branchTieUp.bankId;
+      const assignedExecutiveId = autoAssignedLead.assignedExecutiveId || autoAssignedLead.assignedExecutiveEmail || "";
+      const assignedExecutiveEmail = autoAssignedLead.assignedExecutiveEmail || "";
       runDealerLeadSideEffects("dealer-lead-auto-assignment", [
         () => queueLeadAssignedWhatsApp(autoAssignedLead),
         () => validateLeadAssignmentIntegrity(autoAssignedLead, { repair: true, source: "dealer-lead-auto-assignment" }),
+        () => createNotification({
+          type: "NEW_LEAD_ASSIGNED",
+          title: "New Lead Assigned",
+          message: `Case ${assignedCaseId} has been assigned to you.`,
+          leadId: assignedLeadId,
+          recipientRole: "bank-manager",
+          recipientId: assignedBankId,
+          recipientEmail: autoAssignedLead.assignedBankEmail || "",
+          priority: "high",
+          entityType: "lead",
+          entityId: assignedLeadId,
+          caseId: assignedCaseId,
+          actionUrl: `/bank-manager/leads/${assignedLeadId}`,
+          dealershipId,
+          bankId: assignedBankId,
+          assignedExecutiveId,
+          leadSnapshot: autoAssignedLead,
+          createdBy: email,
+          meta: {
+            caseId: assignedCaseId,
+            dealershipId,
+            bankId: assignedBankId,
+            assignedExecutiveId,
+            assignedExecutiveEmail,
+            dedupeKey: "finance-lead-created-bank-manager",
+          },
+        }),
+        () => createNotification({
+          type: "NEW_LEAD_ASSIGNED",
+          title: "New Lead Assigned",
+          message: `Case ${assignedCaseId} has been assigned to you.`,
+          leadId: assignedLeadId,
+          recipientRole: "loan-executive",
+          recipientId: assignedExecutiveEmail || assignedExecutiveId,
+          recipientEmail: assignedExecutiveEmail,
+          priority: "high",
+          entityType: "lead",
+          entityId: assignedLeadId,
+          caseId: assignedCaseId,
+          actionUrl: `/loan-executive/leads/${assignedLeadId}`,
+          dealershipId,
+          bankId: assignedBankId,
+          assignedExecutiveId,
+          leadSnapshot: autoAssignedLead,
+          createdBy: email,
+          meta: {
+            caseId: assignedCaseId,
+            dealershipId,
+            bankId: assignedBankId,
+            assignedExecutiveId,
+            assignedExecutiveEmail,
+            assignedExecutiveMobile: autoAssignedLead.assignedExecutiveMobile || "",
+            dedupeKey: "finance-lead-created-loan-executive",
+          },
+        }),
       ]);
     }
 

@@ -87,6 +87,7 @@ export function AdminMonitoringCenter() {
   const firestore = snapshot?.firestoreMonitoring || {};
   const projection = snapshot?.projectionHealth || {};
   const realtime = snapshot?.realtimeMonitoring || {};
+  const notifications = snapshot?.notificationMonitoring || realtime.notificationDelivery || {};
   const cache = snapshot?.cacheMonitoring || {};
   const whatsapp = snapshot?.whatsappMonitoring || {};
   const queue = snapshot?.queueMonitoring || {};
@@ -197,6 +198,7 @@ export function AdminMonitoringCenter() {
       queue={queue}
       queueRows={queueRows}
       realtime={realtime}
+      notifications={notifications}
       sendWhatsappTest={sendWhatsappTest}
       setWhatsappTestPhone={setWhatsappTestPhone}
       snapshot={snapshot}

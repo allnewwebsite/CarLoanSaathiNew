@@ -65,13 +65,14 @@ publishRealtimeEvent({
   data: { status: LEAD_STATUSES.UNDER_BANK_PROCESS },
 });
 
-for (const key of ["finance", "gm", "bank", "executive", "admin"]) {
+for (const key of ["finance", "gm", "bank", "executive"]) {
   const events = clients[key].operationalEvents();
   assert(events.length === 1, `${key} should receive one realtime event`);
   assert(events[0].leadId === lead.id, `${key} received wrong lead id`);
   assert(events[0].status === LEAD_STATUSES.UNDER_BANK_PROCESS, `${key} received wrong status`);
 }
 
+assert(clients.admin.operationalEvents().length === 0, "super admin must not receive operational lead workflow events");
 assert(clients.otherDealer.operationalEvents().length === 0, "unrelated dealership must not receive tenant event");
 
 Object.values(clients).forEach((client) => client.close());

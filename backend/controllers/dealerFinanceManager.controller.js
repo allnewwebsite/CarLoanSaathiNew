@@ -90,6 +90,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { createNotification } from "../services/notification.service.js";
 import { syncMemberViewProjection } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
@@ -181,6 +182,27 @@ export async function createDealerFinanceManager(req, res, next) {
       actor: req.user,
       data: { dealershipId: dealershipEmail, financeManagerId: manager.id, action: "created" },
     });
+    runDealerLeadSideEffects("finance-manager-created-notification", [
+      () => createNotification({
+        type: "FINANCE_MANAGER_CREATED",
+        title: "Welcome to CarLoanSaathi",
+        message: "Congratulations!\n\nYour Finance Manager account has been created successfully.",
+        recipientRole: "finance-manager",
+        recipientId: email,
+        recipientEmail: email,
+        priority: "success",
+        entityType: "user",
+        entityId: email,
+        dealershipId: dealershipEmail,
+        createdBy: dealerEmail(req),
+        meta: {
+          memberName: name,
+          roleLabel: "Finance Manager",
+          dealershipId: dealershipEmail,
+          dedupeKey: "finance-manager-created",
+        },
+      }),
+    ]);
     res.status(201).json(financeManagerRow(manager));
   } catch (error) {
     next(error);
@@ -238,6 +260,28 @@ export async function deleteDealerFinanceManager(req, res, next) {
       actor: req.user,
       data: { dealershipId: dealershipEmail, financeManagerId: manager.id, action: "deleted" },
     });
+    runDealerLeadSideEffects("finance-manager-deleted-notification", [
+      () => createNotification({
+        type: "USER_DELETED",
+        title: "User Removed",
+        message: `Finance Manager ${manager.name || manager.email || manager.id} has been removed.`,
+        recipientRole: "finance-desk",
+        recipientId: dealershipEmail,
+        priority: "medium",
+        entityType: "user",
+        entityId: manager.email || manager.id,
+        actionUrl: "/finance/active-members",
+        dealershipId: dealershipEmail,
+        createdBy: dealerEmail(req),
+        meta: {
+          memberName: manager.name || manager.email || manager.id,
+          roleLabel: "Finance Manager",
+          removedEmail: manager.email || "",
+          dealershipId: dealershipEmail,
+          dedupeKey: "finance-manager-deleted",
+        },
+      }),
+    ]);
     await writeAuditLog({
       req,
       actionType: "FINANCE_MANAGER_PERMANENT_DELETE",

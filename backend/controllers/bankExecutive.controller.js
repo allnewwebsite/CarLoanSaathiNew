@@ -298,6 +298,29 @@ export async function createBankExecutive(req, res, next) {
         },
       },
     });
+    Promise.resolve().then(() => createNotification({
+      type: "USER_CREATED",
+      title: "Welcome to CarLoanSaathi",
+      message: "Congratulations!\n\nYour Loan Executive account has been activated.",
+      recipientRole: "loan-executive",
+      recipientId: executive.email || email,
+      recipientEmail: executive.email || email,
+      priority: "success",
+      entityType: "user",
+      entityId: executive.email || email,
+      actionUrl: "/loan-executive/leads",
+      bankId: identity.bankId,
+      assignedExecutiveId: executive.uid || executive.email || executive.id,
+      createdBy: partner.email || partner.id || req.user?.email || "bank-manager",
+      meta: {
+        memberName: executive.name || name,
+        roleLabel: "Loan Executive",
+        bankId: identity.bankId,
+        assignedExecutiveId: executive.uid || executive.email || executive.id,
+        assignedExecutiveEmail: executive.email || email,
+        dedupeKey: "loan-executive-created",
+      },
+    })).catch((error) => logError("Loan executive created notification failed", { error: error.message, executiveId: executive.id || email }));
     const { temporaryPasswordHash: _temporaryPasswordHash, ...safeExecutive } = executive;
     res.status(201).json({
       ...safeExecutive,
@@ -404,6 +427,27 @@ export async function removeBankExecutive(req, res, next) {
         },
       },
     });
+    Promise.resolve().then(() => createNotification({
+      type: "EXECUTIVE_REMOVED",
+      title: "Loan Executive Removed",
+      message: `Loan Executive ${executive.name || executive.fullName || email} has been removed successfully.`,
+      recipientRole: "bank-manager",
+      recipientId: identity.bankId,
+      priority: "medium",
+      entityType: "user",
+      entityId: email || executive.id,
+      actionUrl: "/bank-manager/executives",
+      bankId: identity.bankId,
+      assignedExecutiveId: uid || email || executive.id,
+      createdBy: partner.email || partner.id || req.user?.email || "bank-manager",
+      meta: {
+        memberName: executive.name || executive.fullName || email,
+        roleLabel: "Loan Executive",
+        removedEmail: email,
+        bankId: identity.bankId,
+        dedupeKey: "loan-executive-removed",
+      },
+    })).catch((error) => logError("Loan executive removed notification failed", { error: error.message, executiveId: executive.id || email }));
     res.json({ message: "Executive permanently deleted", deleted, affectedLeadCount, authDeleted });
   } catch (error) {
     next(error);

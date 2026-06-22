@@ -11,7 +11,7 @@ export const GOVERNANCE_LIMITS = Object.freeze({
     retryBaseDelayMs: Number(process.env.NOTIFICATION_RETRY_BASE_MS || 60_000),
     ttlDays: Number(process.env.NOTIFICATION_TTL_DAYS || 90),
     deliveryChannels: ["in-app", "email", "whatsapp", "sms", "push", "websocket"],
-    priorities: ["critical", "high", "medium", "low"],
+    priorities: ["critical", "high", "medium", "low", "success", "normal"],
   },
   uploads: {
     maxFileSizeBytes: Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024),

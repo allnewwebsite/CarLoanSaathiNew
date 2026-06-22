@@ -1,33 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, CheckCheck, X } from "lucide-react";
+import { Bell, CheckCheck, ExternalLink, X } from "lucide-react";
 import { api, getCachedGetData, patchCachedGetData } from "../services/api.js";
 import { logNotificationRefresh, useRenderDiagnostics } from "../services/frontendLatency.js";
 
 const NOTIFICATION_REFRESH_COOLDOWN_MS = 10000;
-const NOTIFICATION_REFRESH_DEBOUNCE_MS = 700;
 const NOTIFICATION_PANEL_FRESH_MS = 30000;
 
 function formatDate(value) {
   if (!value) return "";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < minute) return "Just now";
+  if (diffMs < hour) {
+    const minutes = Math.max(1, Math.floor(diffMs / minute));
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+  if (diffMs < day) {
+    const hours = Math.max(1, Math.floor(diffMs / hour));
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+  if (diffMs < 2 * day) return "Yesterday";
+  return date.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function priorityClass(priority) {
-  if (priority === "high") return "bg-red-50 text-red-700 border-red-100";
+  if (priority === "critical" || priority === "high") return "bg-red-50 text-red-700 border-red-100";
+  if (priority === "medium") return "bg-amber-50 text-amber-700 border-amber-100";
+  if (priority === "success") return "bg-emerald-50 text-emerald-700 border-emerald-100";
   return "bg-blue-50 text-[#0d47a1] border-blue-100";
-}
-
-function mutationCanAffectNotifications(detail = {}) {
-  const url = String(detail.url || "");
-  if (!url) return true;
-  return [
-    "/notifications",
-    "/admin/leads",
-    "/bank/leads",
-    "/dealer/leads",
-    "/documents",
-    "/gm/leads",
-  ].some((prefix) => url.startsWith(prefix));
 }
 
 function rowsFromPayload(payload) {
@@ -51,6 +55,14 @@ function patchNotificationPayload(payload, notification, params = null) {
   return Array.isArray(payload) ? nextRows : { ...payload, data: nextRows, unread };
 }
 
+function markAllPayloadRead(payload, params = null) {
+  if (!payload || typeof payload !== "object") return payload;
+  const unreadOnly = String(params?.unread || "") === "true";
+  const currentRows = rowsFromPayload(payload);
+  const nextRows = unreadOnly ? [] : currentRows.map((item) => ({ ...item, read: true, readAt: item.readAt || new Date().toISOString() }));
+  return Array.isArray(payload) ? nextRows : { ...payload, data: nextRows, unread: 0 };
+}
+
 export function NotificationCenter() {
   useRenderDiagnostics("NotificationCenter", { open: false });
   const initialPayload = getCachedGetData("/notifications", { limit: 20 });
@@ -64,7 +76,6 @@ export function NotificationCenter() {
   const inFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
   const lastLocalPatchAtRef = useRef(initialPayload?.data?.length ? Date.now() : 0);
-  const mutationTimerRef = useRef(0);
   const toastTimerRef = useRef(0);
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -113,14 +124,24 @@ export function NotificationCenter() {
 
   useEffect(() => {
     const onRealtime = (event) => {
+      const eventType = event?.detail?.eventType || event?.detail?.event || "";
       const notification = event?.detail?.notification;
+      if (eventType === "NOTIFICATION_MARK_ALL_READ") {
+        setItems((current) => filter === "unread" ? [] : current.map((item) => ({ ...item, read: true, readAt: item.readAt || new Date().toISOString() })));
+        setUnread(0);
+        patchCachedGetData("/notifications", markAllPayloadRead, { matchPrefix: true });
+        lastLocalPatchAtRef.current = Date.now();
+        return;
+      }
       if (!notification?.id) return;
       seenIds.current.add(notification.id);
-      if (filter === "unread" && notification.read) return;
       let shouldIncrementUnread = false;
+      let shouldDecrementUnread = false;
       setItems((current) => {
         const existing = current.find((item) => item.id === notification.id);
-        shouldIncrementUnread = !existing && !notification.read;
+        shouldIncrementUnread = eventType === "NOTIFICATION_CREATED" && !existing && !notification.read;
+        shouldDecrementUnread = (eventType === "NOTIFICATION_READ" || notification.read) && existing && existing.read !== true;
+        if (filter === "unread" && notification.read) return current.filter((item) => item.id !== notification.id);
         const next = existing
           ? current.map((item) => item.id === notification.id ? { ...item, ...notification } : item)
           : [{ ...notification, read: notification.read === true }, ...current].slice(0, 20);
@@ -133,6 +154,8 @@ export function NotificationCenter() {
         setToast(notification.title || "New notification");
         window.clearTimeout(toastTimerRef.current);
         toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+      } else if (shouldDecrementUnread) {
+        setUnread((current) => Math.max(0, current - 1));
       }
     };
     window.addEventListener("cls:realtime-event", onRealtime);
@@ -140,24 +163,10 @@ export function NotificationCenter() {
   }, [filter]);
 
   useEffect(() => {
-    const onMutation = (event) => {
-      const detail = event?.detail || {};
-      if (detail.realtime && detail.notification?.id) return;
-      if (!mutationCanAffectNotifications(detail)) return;
-      if (detail.kind === "notification") return;
-      logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: detail.kind || "data-mutated", url: detail.url || "" });
-      window.clearTimeout(mutationTimerRef.current);
-      mutationTimerRef.current = window.setTimeout(() => {
-        refreshNotifications({ force: false }).catch(() => {});
-      }, NOTIFICATION_REFRESH_DEBOUNCE_MS);
-    };
-    window.addEventListener("cls:data-mutated", onMutation);
     return () => {
       window.clearTimeout(toastTimerRef.current);
-      window.clearTimeout(mutationTimerRef.current);
-      window.removeEventListener("cls:data-mutated", onMutation);
     };
-  }, [refreshNotifications]);
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -169,9 +178,23 @@ export function NotificationCenter() {
 
   const markRead = async (id) => {
     await api.patch(`/notifications/${id}/read`);
-    setItems((current) => current.map((item) => item.id === id ? { ...item, read: true, readAt: new Date().toISOString() } : item));
+    setItems((current) => filter === "unread"
+      ? current.filter((item) => item.id !== id)
+      : current.map((item) => item.id === id ? { ...item, read: true, readAt: new Date().toISOString() } : item));
     setUnread((current) => Math.max(0, current - 1));
     patchCachedGetData("/notifications", (payload, params) => patchNotificationPayload(payload, { id, read: true, readAt: new Date().toISOString() }, params), { matchPrefix: true });
+  };
+
+  const markAllRead = async () => {
+    const response = await api.patch("/notifications/read-all");
+    setItems((current) => filter === "unread" ? [] : current.map((item) => ({ ...item, read: true, readAt: item.readAt || new Date().toISOString() })));
+    setUnread(response.data?.unread ?? 0);
+    patchCachedGetData("/notifications", markAllPayloadRead, { matchPrefix: true });
+  };
+
+  const openAction = (url) => {
+    if (!url) return;
+    window.location.assign(url);
   };
 
   return (
@@ -187,14 +210,19 @@ export function NotificationCenter() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="font-semibold text-slate-900">Notifications</h3>
-              <p className="text-xs text-slate-500">WhatsApp-first operational alerts</p>
+              <p className="text-xs text-slate-500">Realtime browser alerts</p>
             </div>
-            <button onClick={() => setOpen(false)} className="rounded-xl p-2 hover:bg-[#f5f7fb]"><X className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded-xl p-2 hover:bg-[#f5f7fb]"><X className="h-4 w-4" /></button>
           </div>
 
-          <div className="mt-4 flex gap-2">
-            <button onClick={() => setFilter("")} className={`rounded-full px-3 py-1.5 text-xs font-medium ${filter === "" ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>
-            <button onClick={() => setFilter("unread")} className={`rounded-full px-3 py-1.5 text-xs font-medium ${filter === "unread" ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>Unread</button>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setFilter("")} className={`rounded-full px-3 py-1.5 text-xs font-medium ${filter === "" ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>All</button>
+              <button type="button" onClick={() => setFilter("unread")} className={`rounded-full px-3 py-1.5 text-xs font-medium ${filter === "unread" ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>Unread</button>
+            </div>
+            <button type="button" onClick={markAllRead} disabled={unread <= 0} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50">
+              <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+            </button>
           </div>
 
           <div className="mt-4 max-h-[60vh] space-y-3 overflow-y-auto">
@@ -211,7 +239,10 @@ export function NotificationCenter() {
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#536173]">
                   <span>{formatDate(item.createdAt)}</span>
-                  {!item.read && <button onClick={() => markRead(item.id)} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 font-medium text-[#0d47a1]"><CheckCheck className="h-3.5 w-3.5" /> Mark read</button>}
+                  <div className="flex items-center gap-2">
+                    {item.actionUrl ? <button type="button" onClick={() => openAction(item.actionUrl)} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 font-medium text-slate-600"><ExternalLink className="h-3.5 w-3.5" /> Open</button> : null}
+                    {!item.read && <button type="button" onClick={() => markRead(item.id)} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 font-medium text-[#0d47a1]"><CheckCheck className="h-3.5 w-3.5" /> Mark read</button>}
+                  </div>
                 </div>
               </div>
             ))}

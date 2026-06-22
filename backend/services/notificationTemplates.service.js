@@ -1,4 +1,13 @@
 export const NOTIFICATION_TYPES = Object.freeze({
+  NEW_LEAD_ASSIGNED: "NEW_LEAD_ASSIGNED",
+  STATUS_CHANGED: "STATUS_CHANGED",
+  DEAD_CASE: "DEAD_CASE",
+  USER_CREATED: "USER_CREATED",
+  USER_DELETED: "USER_DELETED",
+  EXECUTIVE_REMOVED: "EXECUTIVE_REMOVED",
+  GM_CREATED: "GM_CREATED",
+  FINANCE_MANAGER_CREATED: "FINANCE_MANAGER_CREATED",
+  SYSTEM: "SYSTEM",
   LEAD_ASSIGNED: "lead-assigned",
   STATUS_UPDATED: "status-updated",
   PENDING_DOCUMENTS: "pending-documents",
@@ -7,14 +16,69 @@ export const NOTIFICATION_TYPES = Object.freeze({
   DISBURSED: "disbursed",
   DEALER_APPROVED: "dealer-approved",
   BANK_APPROVED: "bank-approved",
-  EXECUTIVE_ASSIGNED: "executive-assigned",
+  EXECUTIVE_ASSIGNED: "EXECUTIVE_ASSIGNED",
   SYSTEM_ALERT: "system-alert",
 });
 
 const templates = {
+  [NOTIFICATION_TYPES.NEW_LEAD_ASSIGNED]: {
+    title: "New Lead Assigned",
+    message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
+    priority: "high",
+  },
+  [NOTIFICATION_TYPES.STATUS_CHANGED]: {
+    title: "Case Status Updated",
+    message: ({ caseId, status, executiveName }) => `Executive ${executiveName || "Loan Executive"} updated ${caseId || ""} to ${status || "updated"}.`,
+    priority: "medium",
+  },
+  [NOTIFICATION_TYPES.DEAD_CASE]: {
+    title: "Dead Case Updated",
+    message: ({ caseId, reason }) => `Case ${caseId || ""} moved to dead cases${reason ? `: ${reason}` : "."}`,
+    priority: "medium",
+  },
+  [NOTIFICATION_TYPES.USER_CREATED]: {
+    title: "Welcome to CarLoanSaathi",
+    message: ({ message }) => message || "Congratulations! Your account has been created successfully.",
+    priority: "success",
+  },
+  [NOTIFICATION_TYPES.USER_DELETED]: {
+    title: "User Removed",
+    message: ({ memberName, roleLabel }) => `${roleLabel || "User"} ${memberName || ""} has been removed.`,
+    priority: "medium",
+  },
+  [NOTIFICATION_TYPES.EXECUTIVE_ASSIGNED]: {
+    title: "New Lead Assigned",
+    message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
+    priority: "high",
+  },
+  "executive-assigned": {
+    title: "New Lead Assigned",
+    message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
+    priority: "high",
+  },
+  [NOTIFICATION_TYPES.EXECUTIVE_REMOVED]: {
+    title: "Loan Executive Removed",
+    message: ({ memberName }) => `Loan Executive ${memberName || ""} has been removed successfully.`,
+    priority: "medium",
+  },
+  [NOTIFICATION_TYPES.GM_CREATED]: {
+    title: "Welcome to CarLoanSaathi",
+    message: () => "Congratulations! You have been added as General Manager.",
+    priority: "success",
+  },
+  [NOTIFICATION_TYPES.FINANCE_MANAGER_CREATED]: {
+    title: "Welcome to CarLoanSaathi",
+    message: () => "Congratulations!\n\nYour Finance Manager account has been created successfully.",
+    priority: "success",
+  },
+  [NOTIFICATION_TYPES.SYSTEM]: {
+    title: "System",
+    message: ({ message }) => message || "System notification.",
+    priority: "low",
+  },
   [NOTIFICATION_TYPES.LEAD_ASSIGNED]: {
-    title: "New lead assigned",
-    message: ({ caseId }) => `Lead ${caseId || ""} has been assigned.`,
+    title: "New Lead Assigned",
+    message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
     priority: "high",
   },
   [NOTIFICATION_TYPES.STATUS_UPDATED]: {

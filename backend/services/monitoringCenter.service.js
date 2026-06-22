@@ -138,6 +138,7 @@ export function recordRealtimeMetric(meta = {}) {
     durationMs: Number(meta.durationMs || 0),
     latencyMs: Number(meta.latencyMs || meta.durationMs || 0),
     disconnected: Number(meta.disconnected || 0),
+    notificationDelta: Number(meta.notificationDelta || 0),
   });
 }
 
@@ -298,6 +299,8 @@ function realtimeSummary(realtimeItems, currentStats = {}) {
   const disconnectedClients = realtimeItems.reduce((sum, item) => sum + item.disconnected, 0);
   const realtimeErrors = realtimeItems.reduce((sum, item) => sum + item.errors, 0) + Number(currentStats.failedEvents || 0);
   const droppedEvents = realtimeItems.reduce((sum, item) => sum + item.dropped, 0) + Number(currentStats.droppedEvents || 0);
+  const notificationItems = realtimeItems.filter((item) => String(item.eventType || "").includes("NOTIFICATION"));
+  const notificationSent = notificationItems.filter((item) => item.eventType === "NOTIFICATION_CREATED").length;
   return {
     activeSseConnections: Number(currentStats.clients || 0),
     connectedUsers: Number(currentStats.connectedUsers || currentStats.clients || 0),
@@ -321,6 +324,13 @@ function realtimeSummary(realtimeItems, currentStats = {}) {
     performance: currentStats.performance || {},
     eventRegistryCount: Array.isArray(currentStats.eventRegistry) ? currentStats.eventRegistry.length : 0,
     roleDeliveryMatrix: currentStats.roleDeliveryMatrix || {},
+    notificationDelivery: {
+      sent: notificationSent,
+      unreadCount: Math.max(0, notificationItems.reduce((sum, item) => sum + Number(item.notificationDelta || 0), 0)),
+      failedDeliveries: notificationItems.reduce((sum, item) => sum + Number(item.errors || 0), 0),
+      deliveryLatencyMs: average(notificationItems.map((item) => item.latencyMs)),
+      connectedUsers: Number(currentStats.connectedUsers || currentStats.clients || 0),
+    },
   };
 }
 

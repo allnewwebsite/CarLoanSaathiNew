@@ -179,9 +179,21 @@ function notificationRealtimeScopes(notification = {}) {
   return {
     dealershipIds: unique([notification.dealershipId, notification.dealerEmail, notification.meta?.dealershipId, notification.meta?.dealershipEmail]),
     bankIds: unique([notification.bankId, notification.partnerId, notification.meta?.bankId, notification.meta?.assignedBankId]),
-    executiveIds: unique([notification.assignedExecutiveId, notification.recipientId, notification.meta?.assignedExecutiveId, notification.meta?.assignedExecutiveEmail]),
-    recipientIds: unique([notification.recipientId, notification.userId, notification.partnerId, notification.dealerEmail]),
+    executiveIds: unique([notification.assignedExecutiveId, notification.recipientId, notification.recipientEmail, notification.meta?.assignedExecutiveId, notification.meta?.assignedExecutiveEmail]),
+    recipientIds: unique([notification.recipientId, notification.recipientEmail, notification.userId, notification.partnerId, notification.dealerEmail]),
   };
+}
+
+export function markBufferedNotificationRead(notificationIds = [], readAt = new Date().toISOString()) {
+  const ids = new Set([notificationIds].flat().map(scope).filter(Boolean));
+  if (!ids.size) return 0;
+  let patched = 0;
+  eventBuffer.forEach((event) => {
+    if (!ids.has(scope(event.notification?.id))) return;
+    event.notification = { ...event.notification, read: true, readAt, updatedAt: readAt };
+    patched += 1;
+  });
+  return patched;
 }
 
 function lightweightLeadPatch(lead = {}, data = {}) {
@@ -273,6 +285,18 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
 
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
+  if (event.kind === "notification" && event.notification?.recipientRole) {
+    const expectedRole = scope(event.notification.recipientRole);
+    const directRecipients = unique([
+      event.notification.recipientId,
+      event.notification.recipientEmail,
+      event.notification.userId,
+      event.scopes?.recipientIds,
+    ].flat());
+    const userIds = unique([user.uid, user.email, user.assignedExecutiveId, user.executiveId]);
+    const directRecipient = userIds.some((id) => directRecipients.includes(id));
+    if (expectedRole && scope(user.role) !== expectedRole && !directRecipient) return false;
+  }
   if (user.role === "super-admin") return adminCanReceiveEvent(event);
   if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm"].includes(user.role)) return true;
   if (event.kind === "dealer" && event.publicDealerCatalog === true && ["finance-desk", "gm", "bank-manager", "loan-executive"].includes(user.role)) return true;
@@ -521,6 +545,13 @@ function dispatchLocalEvent(event) {
     candidateClients: candidateCount,
     durationMs: Date.now() - startedAt,
     latencyMs,
+    notificationDelta: event.eventType === REALTIME_EVENTS.NOTIFICATION_CREATED
+      ? 1
+      : event.eventType === REALTIME_EVENTS.NOTIFICATION_READ
+        ? -1
+        : event.eventType === REALTIME_EVENTS.NOTIFICATION_MARK_ALL_READ
+          ? -Number(event.data?.updated || 0)
+          : 0,
   });
   auditRealtimeEvent(errors ? "event_failed" : "event_delivered", event, {
     delivered,
@@ -651,11 +682,19 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
         title: notification.title,
         message: notification.message,
         read: notification.read === true,
+        readAt: notification.readAt || "",
         priority: notification.priority || "normal",
         type: notification.type || notification.notificationType || "",
+        recipientRole: notification.recipientRole || notification.role || "",
+        recipientId: notification.recipientId || notification.userId || "",
+        recipientEmail: notification.recipientEmail || notification.recipientId || notification.userId || "",
+        actionUrl: notification.actionUrl || "",
+        entityType: notification.entityType || "",
+        entityId: notification.entityId || "",
         leadId: notification.leadId || "",
         caseId: notification.caseId || "",
         createdAt: notification.createdAt || now,
+        updatedAt: notification.updatedAt || notification.readAt || notification.createdAt || now,
       } : null,
       document: document ? {
         id: document.id,

@@ -9,14 +9,24 @@ import {
 } from "./projectionShared.service.js";
 
 function notificationTargets(notification = {}) {
-  const targets = [{ collection: "adminViews", scopeType: "admin", scopeId: "global", docId: safeDocId(`notification_${notification.id}`) }];
+  const recipientRole = scopeId(notification.recipientRole || notification.role || "");
+  const targets = [];
+  if (!recipientRole || recipientRole === "super-admin") {
+    targets.push({ collection: "adminViews", scopeType: "admin", scopeId: "global", docId: safeDocId(`notification_${notification.id}`) });
+  }
   const dealershipId = scopeId(notification.dealershipId || notification.dealerEmail || notification.meta?.dealershipId || notification.meta?.dealershipEmail);
   if (dealershipId) {
-    targets.push({ collection: "financeViews", scopeType: "dealership", scopeId: dealershipId, docId: safeDocId(`notification_${notification.id}`) });
-    targets.push({ collection: "gmViews", scopeType: "dealership", scopeId: dealershipId, docId: safeDocId(`notification_${notification.id}`) });
+    if (!recipientRole || recipientRole === "finance-desk") {
+      targets.push({ collection: "financeViews", scopeType: "dealership", scopeId: dealershipId, docId: safeDocId(`notification_${notification.id}`) });
+    }
+    if (!recipientRole || recipientRole === "gm") {
+      targets.push({ collection: "gmViews", scopeType: "dealership", scopeId: dealershipId, docId: safeDocId(`notification_${notification.id}`) });
+    }
   }
   const bankId = scopeId(notification.bankId || notification.partnerId || notification.meta?.bankId || notification.meta?.assignedBankId || notification.meta?.assignedPartnerId);
-  if (bankId) targets.push({ collection: "bankViews", scopeType: "bank", scopeId: bankId, docId: safeDocId(`notification_${notification.id}`) });
+  if (bankId && (!recipientRole || recipientRole === "bank-manager")) {
+    targets.push({ collection: "bankViews", scopeType: "bank", scopeId: bankId, docId: safeDocId(`notification_${notification.id}`) });
+  }
   const executiveScope = scopeId(notification.assignedExecutiveId || notification.recipientId || notification.meta?.assignedExecutiveId || notification.meta?.assignedExecutiveEmail);
   if (notification.recipientRole === "loan-executive" && executiveScope) {
     targets.push({ collection: "executiveViews", scopeType: "executive", scopeId: executiveScope, docId: safeDocId(`notification_${notification.id}_${executiveScope}`) });
@@ -38,6 +48,9 @@ export async function syncNotificationProjection(notification = {}) {
     read: notification.read === true,
     type: notification.type || notification.notificationType || "",
     priority: notification.priority || "normal",
+    recipientRole: notification.recipientRole || notification.role || "",
+    recipientId: notification.recipientId || notification.userId || "",
+    recipientEmail: notification.recipientEmail || "",
     leadId: notification.leadId || null,
     caseId: notification.caseId || null,
     customerName: notification.leadSnapshot?.customerName || notification.meta?.customerName || "",
@@ -98,6 +111,9 @@ export async function queryNotificationProjectionForUser({ user = {}, query = {}
       "read",
       "type",
       "priority",
+      "recipientRole",
+      "recipientId",
+      "recipientEmail",
       "leadId",
       "caseId",
       "status",

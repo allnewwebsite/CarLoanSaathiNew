@@ -88,6 +88,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { createNotification } from "../services/notification.service.js";
 import { syncMemberViewProjection, syncSalespersonSummaryProjection } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
@@ -212,6 +213,27 @@ export async function createDealerSalesperson(req, res, next) {
       actor: req.user,
       data: { dealershipId: dealershipEmail, salespersonId: salesperson.id, action: "created" },
     });
+    runDealerLeadSideEffects("salesperson-created-notification", [
+      () => createNotification({
+        type: "USER_CREATED",
+        title: "Welcome to CarLoanSaathi",
+        message: "Congratulations!\n\nYour account has been created successfully.",
+        recipientRole: "salesperson",
+        recipientId: email,
+        recipientEmail: email,
+        priority: "success",
+        entityType: "user",
+        entityId: email,
+        dealershipId: dealershipEmail,
+        createdBy: dealerEmail(req),
+        meta: {
+          memberName: name,
+          roleLabel: "Salesperson",
+          dealershipId: dealershipEmail,
+          dedupeKey: "salesperson-created",
+        },
+      }),
+    ]);
     res.status(201).json(salesperson);
   } catch (error) {
     next(error);
@@ -232,6 +254,28 @@ export async function removeDealerSalesperson(req, res, next) {
       actor: req.user,
       data: { dealershipId: dealershipEmail, salespersonId: salesperson.id, action: "deleted" },
     });
+    runDealerLeadSideEffects("salesperson-deleted-notification", [
+      () => createNotification({
+        type: "USER_DELETED",
+        title: "User Removed",
+        message: `Salesperson ${salesperson.name || salesperson.email || salesperson.id} has been removed.`,
+        recipientRole: "finance-desk",
+        recipientId: dealershipEmail,
+        priority: "medium",
+        entityType: "user",
+        entityId: salesperson.email || salesperson.id,
+        actionUrl: "/finance/active-members",
+        dealershipId: dealershipEmail,
+        createdBy: dealerEmail(req),
+        meta: {
+          memberName: salesperson.name || salesperson.email || salesperson.id,
+          roleLabel: "Salesperson",
+          removedEmail: salesperson.email || "",
+          dealershipId: dealershipEmail,
+          dedupeKey: "salesperson-deleted",
+        },
+      }),
+    ]);
     await writeAuditLog({
       req,
       actionType: "SALESPERSON_PERMANENT_DELETE",
