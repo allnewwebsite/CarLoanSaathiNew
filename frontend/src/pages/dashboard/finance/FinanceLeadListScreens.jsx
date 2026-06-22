@@ -7,7 +7,7 @@ import { portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 import { dateTime, display, moneyValue } from "../financeDesk.helpers.js";
 import { FinanceTable as Table, SectionTitle } from "./FinanceDeskPanelParts.jsx";
 import { useDealerLeads } from "./financeLeadList.data.js";
-import { useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
+import { useActiveMembers, useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
 
 const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
@@ -26,6 +26,18 @@ function financeStatus(lead) {
 function StatusBadge({ lead }) {
   const label = financeStatus(lead);
   return <span className="text-xs font-normal text-slate-700">{label}</span>;
+}
+
+function roleBadgeClass(role = "") {
+  if (role === "gm") return "border-blue-100 bg-blue-50 text-blue-700";
+  if (role === "finance-manager") return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  return "border-amber-100 bg-amber-50 text-amber-700";
+}
+
+function RoleBadge({ member }) {
+  const role = String(member.role || "").trim().toLowerCase();
+  const label = String(member.roleLabel || role || "Member").trim().toUpperCase();
+  return <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${roleBadgeClass(role)}`}>{label}</span>;
 }
 
 function DocumentsButton({ lead }) {
@@ -112,13 +124,30 @@ export function TotalLeadsScreen() {
   );
 }
 
-export function ActiveSalespersonsScreen() {
-  const { salespersons, loading } = useSalespersons();
-  const rows = salespersons.map((person) => ({ key: person.id, cells: [person.name, person.mobile, person.jobId, person.email] }));
+export function ActiveMembersScreen() {
+  const { members, loading } = useActiveMembers();
+  const rows = members.map((member) => ({
+    key: member.id || member.memberId,
+    cells: [
+      display(member.memberName || member.name),
+      <RoleBadge key="role" member={member} />,
+      display(member.mobile),
+      display(member.email),
+      display(member.status || (member.active === false ? "Inactive" : "Active")),
+      dateTime(member.createdAt),
+    ],
+  }));
   return (
     <div className="space-y-4">
-      <SectionTitle title="Active Salespersons" subtitle="Only active salespersons attached to this dealership." />
-      <Table headers={["Salesperson Name", "Mobile Number", "Job ID", "Mail ID"]} rows={rows} loading={loading} />
+      <SectionTitle title="Active Members" subtitle="Active dealership members across sales, finance, and GM roles." />
+      <Table
+        headers={["Member Name", "Role", "Mobile Number", "Email", "Status", "Created Date"]}
+        rows={rows}
+        loading={loading}
+        fitToWidth
+        tableMinWidth="100%"
+        gridTemplateColumns="minmax(130px,1.2fr) minmax(105px,0.8fr) minmax(120px,0.8fr) minmax(160px,1.3fr) minmax(90px,0.7fr) minmax(130px,0.9fr)"
+      />
     </div>
   );
 }

@@ -90,8 +90,27 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { syncMemberViewProjection } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
+
+async function deleteFinanceManagerMemberProjectionRecords({ dealershipEmail = "", manager = {} } = {}) {
+  const candidateValues = [...new Set([
+    manager.id,
+    manager.sourceId,
+    manager.employeeId,
+    manager.email,
+    manager.mobile,
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const directIds = candidateValues.map((value) => String(`member_${dealershipEmail}_finance-manager_${value}`).trim().replace(/[^\w.@-]/g, "_").slice(0, 420));
+  const directResults = await Promise.all(directIds.map((id) => deleteRecord("memberViewProjection", id).then(() => 1).catch(() => 0)));
+  const indexedDeleted = await deleteMatchingRecords("memberViewProjection", () => true, [
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "sourceId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "memberId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value }]),
+  ]).catch(() => 0);
+  return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
+}
 export async function getDealerFinanceManagers(req, res, next) {
   try {
     const { dealershipEmail } = await financeDeskContext(req);
@@ -148,7 +167,15 @@ export async function createDealerFinanceManager(req, res, next) {
       createdAt: now,
       updatedAt: now,
     });
+    await syncMemberViewProjection({
+      ...manager,
+      dealershipId: dealershipEmail,
+      sourceCollection: "financeManagers",
+      role: "finance-manager",
+      roleLabel: "Finance Manager",
+    });
     clearCachedValue("dealer:finance-managers:");
+    clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,
       actor: req.user,
@@ -171,7 +198,19 @@ export async function updateDealerFinanceManager(req, res, next) {
       status: nextActive ? "Active" : "Inactive",
       updatedAt: new Date().toISOString(),
     });
+    if (nextActive) {
+      await syncMemberViewProjection({
+        ...updated,
+        dealershipId: dealershipEmail,
+        sourceCollection: "financeManagers",
+        role: "finance-manager",
+        roleLabel: "Finance Manager",
+      });
+    } else {
+      await deleteFinanceManagerMemberProjectionRecords({ dealershipEmail, manager: updated });
+    }
     clearCachedValue("dealer:finance-managers:");
+    clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,
       actor: req.user,
@@ -190,7 +229,9 @@ export async function deleteDealerFinanceManager(req, res, next) {
     if (!manager || manager.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Finance Manager not found" });
 
     await deleteRecord("financeManagers", manager.id);
+    await deleteFinanceManagerMemberProjectionRecords({ dealershipEmail, manager });
     clearCachedValue("dealer:finance-managers:");
+    clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
     clearCachedValue("dealer:leads:");
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.FINANCE_MANAGER_CHANGED,

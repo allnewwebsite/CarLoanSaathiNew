@@ -120,41 +120,19 @@ export async function getBankAnalytics(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const identity = bankIdentity(partner);
-    const executiveId = partner.roleType === "loan-executive"
-      ? String(partner.id || partner.email || "").trim()
-      : "";
-    const aggregate = await getBankAnalyticsAggregate(identity, {
-      executiveId,
-      executiveLimit: req.query.executiveLimit || 100,
-      executiveCursor: req.query.executiveCursor || null,
-    });
+    const aggregate = await getBankAnalyticsAggregate(identity);
     const summary = aggregate?.summary || {};
-    const executivePerformance = aggregate?.executivePerformance || [];
-    const assignedLeads = Number(executiveId
-      ? executivePerformance[0]?.assignedLeads
-      : summary.assignedLeads || 0);
-    const activeLeads = Number(executiveId
-      ? executivePerformance[0]?.activeLeads
-      : summary.activeLeads || 0);
-    const approvedLeads = Number(executiveId
-      ? executivePerformance[0]?.approvedLeads
-      : summary.approvedLeads || 0);
-    const disbursedLeads = Number(executiveId
-      ? executivePerformance[0]?.disbursedLeads
-      : summary.disbursedLeads || 0);
-    const rejectedLeads = Number(executiveId
-      ? executivePerformance[0]?.rejectedLeads
-      : summary.rejectedLeads || 0);
-    const pendingDocuments = Number(executiveId
-      ? executivePerformance[0]?.pendingDocuments
-      : summary.pendingDocuments || 0);
-    const disbursedAmount = Number(executiveId
-      ? executivePerformance[0]?.disbursedAmount
-      : summary.disbursedAmount || 0);
+    const assignedLeads = Number(summary.assignedLeads || 0);
+    const activeLeads = Number(summary.activeLeads || 0);
+    const approvedLeads = Number(summary.approvedLeads || 0);
+    const disbursedLeads = Number(summary.disbursedLeads || 0);
+    const rejectedLeads = Number(summary.rejectedLeads || 0);
+    const pendingDocuments = Number(summary.pendingDocuments || 0);
+    const disbursedAmount = Number(summary.disbursedAmount || 0);
 
     logReadMetric("READS-AFTER", req, {
       endpoint: "GET /api/bank/analytics",
-      estimatedReads: aggregate ? 3 + executivePerformance.length + (aggregate.recentCases?.length || 0) : 1,
+      estimatedReads: aggregate ? 2 + (aggregate.recentCases?.length || 0) : 1,
       cacheHit: false,
       source: "bank-analytics-aggregates",
       resultCount: assignedLeads,
@@ -171,7 +149,6 @@ export async function getBankAnalytics(req, res, next) {
       pendingDocuments,
       disbursedAmount,
       branches: assignedLeads || summary.branch ? 1 : 0,
-      executives: executiveId ? (executivePerformance.length ? 1 : 0) : Number(summary.executives || 0),
       conversionRate: assignedLeads ? Math.round((approvedLeads / assignedLeads) * 100) : 0,
       rejectionRate: assignedLeads ? Math.round((rejectedLeads / assignedLeads) * 100) : 0,
       branchMetrics: summary.scopeId ? [{
@@ -184,12 +161,6 @@ export async function getBankAnalytics(req, res, next) {
         rejectedLeads,
         pendingDocuments,
       }] : [],
-      executivePerformance,
-      executivePagination: {
-        nextCursor: aggregate?.executiveNextCursor || null,
-        hasMore: Boolean(aggregate?.executiveNextCursor),
-        limit: Math.min(Math.max(Number(req.query.executiveLimit) || 100, 1), 100),
-      },
       recentCases: (aggregate?.recentCases || []).map((lead) => ({
         id: lead.leadId,
         caseId: lead.caseId || lead.leadId,

@@ -22,6 +22,7 @@ const VALIDATED_PROJECTION_COLLECTIONS = [
   "executiveViews",
   "leadDetailsProjection",
   "staffViewProjection",
+  "memberViewProjection",
   "salespersonSummaryProjection",
   "timelineProjection",
   "bankDealershipViews",
@@ -34,6 +35,7 @@ async function projectionRebuilders() {
     syncNotificationProjection: projection.syncNotificationProjection,
     syncTimelineProjection: projection.syncTimelineProjection,
     syncStaffViewProjection: projection.syncStaffViewProjection,
+    syncMemberViewProjection: projection.syncMemberViewProjection,
     syncExecutiveSummaryProjection: projection.syncExecutiveSummaryProjection,
     syncSalespersonSummaryProjection: projection.syncSalespersonSummaryProjection,
   };
@@ -149,7 +151,7 @@ export async function rebuildProjectionFromSource(collection, record = {}, reaso
     recordMonitoringSignal("PROJECTION-REBUILD", { collection, projectionId: record.id, sourceId, sourceCollection: "leadTimeline", reason, durationMs: Date.now() - startedAt });
     return true;
   }
-  if (["staffViewProjection", "executiveSummaryProjection", "salespersonSummaryProjection"].includes(collection)) {
+  if (["staffViewProjection", "memberViewProjection", "executiveSummaryProjection", "salespersonSummaryProjection"].includes(collection)) {
     const startedAt = Date.now();
     const sourceCollection = record.sourceCollection;
     const sourceId = scopeId(record.sourceId || record.id);
@@ -158,10 +160,12 @@ export async function rebuildProjectionFromSource(collection, record = {}, reaso
     if (!source) return false;
     const {
       syncExecutiveSummaryProjection,
+      syncMemberViewProjection,
       syncSalespersonSummaryProjection,
       syncStaffViewProjection,
     } = await projectionRebuilders();
     if (collection === "staffViewProjection") await syncStaffViewProjection({ ...source, sourceCollection });
+    if (collection === "memberViewProjection") await syncMemberViewProjection({ ...source, sourceCollection });
     if (collection === "executiveSummaryProjection") await syncExecutiveSummaryProjection(source);
     if (collection === "salespersonSummaryProjection") await syncSalespersonSummaryProjection(source);
     recordMonitoringSignal("PROJECTION-REBUILD", { collection, projectionId: record.id, sourceId, sourceCollection, reason, durationMs: Date.now() - startedAt });

@@ -70,6 +70,7 @@ test("secondary list APIs keep bounded pagination contracts", () => {
 
   includesAll(read("backend/services/projectionStaff.service.js"), [
     "queryRecords(\"staffViewProjection\"",
+    "queryRecords(\"memberViewProjection\"",
     "queryRecords(\"executiveSummaryProjection\"",
     "queryRecords(\"salespersonSummaryProjection\"",
     "maxLimit: 100",

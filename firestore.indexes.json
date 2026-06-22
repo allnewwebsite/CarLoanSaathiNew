@@ -1192,6 +1192,14 @@
       ]
     },
     {
+      "collectionGroup": "memberViewProjection",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "executiveSummaryProjection",
       "queryScope": "COLLECTION",
       "fields": [

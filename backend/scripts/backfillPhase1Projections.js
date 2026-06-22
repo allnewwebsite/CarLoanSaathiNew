@@ -24,6 +24,12 @@ const bankSources = [
   "pendingBankApprovals",
 ];
 
+const memberSources = [
+  "dealerStaff",
+  "salespersons",
+  "financeManagers",
+];
+
 async function scanCollectionByOrder(collection, orderBy, seen) {
   let cursor = null;
   let scanned = 0;
@@ -97,7 +103,7 @@ async function scanLeadProjections() {
   return { collection: "leads", scanned, projected };
 }
 
-const collections = [...workflowSources, ...bankSources];
+const collections = [...workflowSources, ...bankSources, ...memberSources];
 
 if (!apply && !sample) {
   console.log(JSON.stringify({
@@ -108,6 +114,11 @@ if (!apply && !sample) {
       writes: ["adminViews", "financeViews", "gmViews", "bankViews", "executiveViews", "leadDetailsProjection", "bankDealershipViews"],
     },
     collections,
+    memberProjectionRepair: {
+      collection: "memberViewProjection",
+      sources: memberSources,
+      writes: ["memberViewProjection", "staffViewProjection", "salespersonSummaryProjection"],
+    },
     batchSize,
     maxLeads: maxLeads || "unlimited",
   }, null, 2));

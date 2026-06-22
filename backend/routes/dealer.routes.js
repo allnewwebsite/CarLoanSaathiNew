@@ -3,7 +3,7 @@ import { getDealerRegistrationStatus, registerDealerOnboarding, startDealerRegis
 import { createDealerLead, getDealerEarnings, getDealerLead, getDealerLeads } from "../controllers/dealerLead.controller.js";
 import { createDealerSalesperson, getDealerSalespersons, removeDealerSalesperson } from "../controllers/dealerSalesperson.controller.js";
 import { createDealerFinanceManager, deleteDealerFinanceManager, getDealerFinanceManagers, updateDealerFinanceManager } from "../controllers/dealerFinanceManager.controller.js";
-import { createDealerStaff, deleteDealerStaff, getDealerStaff, getDealerStaffDetail } from "../controllers/dealerStaff.controller.js";
+import { createDealerStaff, deleteDealerStaff, getDealerActiveMembers, getDealerStaff, getDealerStaffDetail } from "../controllers/dealerStaff.controller.js";
 import { getDealerBankTieUps, updateDealerBankTieUps } from "../controllers/dealerBankTieup.controller.js";
 import { getDealerProfile, updateDealerProfile } from "../controllers/dealerProfile.controller.js";
 import { authenticate } from "../middleware/auth.js";
@@ -52,6 +52,7 @@ router.get("/finance-managers", getDealerFinanceManagers);
 router.post("/finance-managers", createDealerFinanceManager);
 router.patch("/finance-managers/:id", updateDealerFinanceManager);
 router.delete("/finance-managers/:id", deleteDealerFinanceManager);
+router.get("/active-members", getDealerActiveMembers);
 router.get("/staff", getDealerStaff);
 router.post("/staff", createDealerStaff);
 router.get("/staff/:id", getDealerStaffDetail);

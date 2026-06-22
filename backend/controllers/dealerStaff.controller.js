@@ -91,6 +91,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
+import { queryMemberViewProjection, syncMemberViewProjectionSoon } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
 
@@ -119,6 +120,57 @@ async function deleteStaffProjectionRecords({ dealershipEmail = "", email = "", 
     ...candidateValues.map((value) => [{ field: "uid", value }]),
   ]).catch(() => 0);
   return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
+}
+
+function memberProjectionId(dealershipEmail = "", role = "", value = "") {
+  return String(`member_${dealershipEmail}_${role}_${value}`).trim().replace(/[^\w.@-]/g, "_").slice(0, 420);
+}
+
+async function deleteMemberProjectionRecords({ dealershipEmail = "", role = "", member = {} } = {}) {
+  const candidateValues = [...new Set([
+    member.id,
+    member.sourceId,
+    member.email,
+    member.officialEmail,
+    member.employeeId,
+    member.jobId,
+    member.mobile,
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const directIds = candidateValues.map((value) => memberProjectionId(dealershipEmail, role, value));
+  const directResults = await Promise.all(directIds.map((id) => deleteRecord("memberViewProjection", id).then(() => 1).catch(() => 0)));
+  const indexedDeleted = await deleteMatchingRecords("memberViewProjection", () => true, [
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "sourceId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "memberId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value }]),
+  ]).catch(() => 0);
+  return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
+}
+
+export async function getDealerActiveMembers(req, res, next) {
+  try {
+    const { dealershipEmail } = await financeDeskContext(req);
+    const cacheKey = `dealer:active-members:${dealershipEmail}:${JSON.stringify(req.query || {})}`;
+    let cacheHit = true;
+    const members = await cached(cacheKey, 30000, async () => {
+      cacheHit = false;
+      const projected = await queryMemberViewProjection({ dealershipId: dealershipEmail, query: { ...req.query, limit: req.query.limit || 100 }, verifyLive: true }).catch(() => null);
+      logProjectionRead(projected ? "PROJECTION-HIT" : "PROJECTION-MISS", req, {
+        collection: "memberViewProjection",
+        resultCount: projected?.length || 0,
+      });
+      return (projected || []).filter((member) => member.active !== false);
+    });
+    if (cacheHit) logReadMetric("CACHE-HIT", req, { endpoint: "GET /api/dealer/active-members", cacheKey });
+    logReadMetric("READS-AFTER", req, {
+      endpoint: "GET /api/dealer/active-members",
+      estimatedReads: cacheHit ? 0 : Math.max(1, members.length),
+      resultCount: members.length,
+      source: "memberViewProjection",
+    });
+    res.json(members);
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function getDealerStaff(req, res, next) {
@@ -319,7 +371,9 @@ export async function createDealerStaff(req, res, next) {
       status: "active",
     });
     syncStaffViewProjectionSoon(staffPayload);
+    syncMemberViewProjectionSoon(staffPayload);
     clearCachedValue(`dealer:staff:${dealershipEmail}:`);
+    clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
     runDealerLeadSideEffects("dealer-staff-created", [
       () => firebaseAdmin.auth().setCustomUserClaims(firebaseUser.uid, {
         role,
@@ -395,7 +449,9 @@ export async function deleteDealerStaff(req, res, next) {
       ]);
     }
     deleted.staffViewProjection = await deleteStaffProjectionRecords({ dealershipEmail, email, employee });
+    deleted.memberViewProjection = await deleteMemberProjectionRecords({ dealershipEmail, email, role: "gm", member: employee });
     clearCachedValue(`dealer:staff:${dealershipEmail}:`);
+    clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
     clearIdentityCaches({ uid: employee.uid || employee.authAccountId, email });
 
     await revokeUserSessions(email, "dealer-staff-permanent-delete").catch(() => {});

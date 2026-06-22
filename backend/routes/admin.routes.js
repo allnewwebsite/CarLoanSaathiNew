@@ -43,7 +43,6 @@ import {
   getAdminSubscription,
   suspendAdminSubscription,
 } from "../controllers/subscription.controller.js";
-import { getAdminDeadCase, getAdminDeadCases } from "../controllers/deadCase.controller.js";
 
 const router = Router();
 
@@ -73,8 +72,6 @@ router.post("/approvals/banks/:id/reject", rejectBankApproval);
 router.post("/approvals/banks/:id/suspend", suspendBankApproval);
 router.get("/approvals/logs", getApprovalLogs);
 router.get("/leads", getAdminLeads);
-router.get("/dead-cases", getAdminDeadCases);
-router.get("/dead-cases/:id", getAdminDeadCase);
 router.get("/leads/:id", getAdminLead);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);

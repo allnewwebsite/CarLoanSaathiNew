@@ -65,24 +65,6 @@ export async function getFinanceDeadCase(req, res, next) {
   }
 }
 
-export async function getAdminDeadCases(req, res, next) {
-  try {
-    return res.json(await queryDeadCases({ query: req.query }));
-  } catch (error) {
-    return next(error);
-  }
-}
-
-export async function getAdminDeadCase(req, res, next) {
-  try {
-    const lead = await deadCaseDetail(req.params.id);
-    if (!lead) return res.status(404).json({ message: "Dead case not found" });
-    return res.json(lead);
-  } catch (error) {
-    return next(error);
-  }
-}
-
 export async function getGmDeadCases(req, res, next) {
   try {
     return res.json(await queryDeadCases({

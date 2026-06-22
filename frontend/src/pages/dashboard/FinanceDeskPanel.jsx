@@ -2,7 +2,7 @@ import { usePageLatency } from "../../services/frontendLatency.js";
 import { AddLeadOnlyScreen } from "./finance/AddLeadOnlyScreen.jsx";
 import { BankTieUpsScreen } from "./finance/BankTieUpsScreen.jsx";
 import { FinanceManagerManagementScreen, SalespersonManagementScreen } from "./finance/FinanceStaffManagementScreens.jsx";
-import { ActiveSalespersonsScreen, AllCasesScreen, StatusScreen, TotalLeadsScreen } from "./finance/FinanceLeadListScreens.jsx";
+import { ActiveMembersScreen, AllCasesScreen, StatusScreen, TotalLeadsScreen } from "./finance/FinanceLeadListScreens.jsx";
 import { StaffManagementScreen } from "./finance/StaffManagementScreen.jsx";
 
 export function FinanceDeskPanel({ mode = "total" }) {
@@ -12,7 +12,7 @@ export function FinanceDeskPanel({ mode = "total" }) {
   if (mode === "staff") return <StaffManagementScreen />;
   if (mode === "finance-managers") return <FinanceManagerManagementScreen />;
   if (mode === "salespersons") return <SalespersonManagementScreen />;
-  if (mode === "active-salespersons") return <ActiveSalespersonsScreen />;
+  if (mode === "active-members" || mode === "active-salespersons") return <ActiveMembersScreen />;
   if (mode === "cases") return <AllCasesScreen />;
   if (mode === "status") return <StatusScreen />;
   return <TotalLeadsScreen />;

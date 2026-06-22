@@ -295,7 +295,7 @@ test("dead-case SSE event shape includes the realtime patch fields", async () =>
   assert.equal(event.lead.deadCaseReason, "Other");
   assert.equal(event.lead.deadCaseDate, "2026-06-17T08:00:00.000Z");
   assert.equal(event.affectedPortals.includes("finance"), true);
-  assert.equal(event.affectedPortals.includes("admin"), true);
+  assert.equal(event.affectedPortals.includes("admin"), false);
 });
 
 test("Firestore indexes include dead-case query contracts", () => {

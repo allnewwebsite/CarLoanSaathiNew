@@ -49,6 +49,7 @@ export function invalidateRealtimeCaches(event = {}) {
     return;
   }
   if (event.kind === "staff") {
+    invalidateGetCache({ prefix: "/dealer/active-members", purge: true });
     invalidateGetCache({ prefix: "/dealer/staff", purge: true });
     invalidateGetCache({ prefix: "/dealer/salespersons", purge: true });
     invalidateGetCache({ prefix: "/dealer/finance-managers", purge: true });
@@ -80,7 +81,6 @@ export function invalidateRealtimeCaches(event = {}) {
   }
   [
     "/admin/leads",
-    "/admin/dead-cases",
     "/bank/leads",
     "/bank/dead-cases",
     "/bank/analytics",

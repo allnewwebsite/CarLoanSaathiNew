@@ -18,7 +18,6 @@ export const protectedSmokeRoutes = Object.freeze([
   { path: "/loan-executive/leads", role: ROLES.LOAN_EXECUTIVE, loginPath: "/executive/login", module: "bank/LoanExecutivePanel.jsx" },
   { path: "/loan-executive/dead-cases", role: ROLES.LOAN_EXECUTIVE, loginPath: "/executive/login", module: "dashboard/DeadCasesPage.jsx" },
   { path: "/admin/leads", role: ROLES.SUPER_ADMIN, loginPath: "/admin/login", module: "dashboard/SuperAdminDashboard.jsx" },
-  { path: "/admin/dead-cases", role: ROLES.SUPER_ADMIN, loginPath: "/admin/login", module: "dashboard/DeadCasesPage.jsx" },
 ]);
 
 export const passwordSmokeRoutes = Object.freeze([

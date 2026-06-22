@@ -8,7 +8,6 @@ export const DEAD_CASE_ENDPOINTS = {
   bank: "/bank/dead-cases",
   executive: "/bank/dead-cases",
   salesperson: "/dealer/dead-cases",
-  admin: "/admin/dead-cases",
 };
 
 export const AUDIENCE_LABELS = {
@@ -17,7 +16,6 @@ export const AUDIENCE_LABELS = {
   bank: "Bank Manager",
   executive: "Loan Executive",
   salesperson: "Salesperson",
-  admin: "Super Admin",
 };
 
 export function value(input) {

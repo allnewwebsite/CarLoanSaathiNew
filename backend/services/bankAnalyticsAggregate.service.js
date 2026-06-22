@@ -304,11 +304,7 @@ export async function removeBankAnalyticsAggregate(lead = {}) {
   return syncBankAnalyticsAggregateState(lead.id, null);
 }
 
-export async function getBankAnalyticsAggregate(identity = {}, {
-  executiveLimit = 100,
-  executiveCursor = null,
-  executiveId = "",
-} = {}) {
+export async function getBankAnalyticsAggregate(identity = {}) {
   const candidates = bankAnalyticsScopeCandidates(identity);
   let summary = null;
   for (const scopeId of candidates) {
@@ -317,40 +313,16 @@ export async function getBankAnalyticsAggregate(identity = {}, {
   }
   if (!summary) return null;
 
-  const limit = Math.min(Math.max(Number(executiveLimit) || 100, 1), 100);
-  const executiveMetric = executiveId
-    ? await getRecord("bankExecutiveAnalytics", executiveMetricId(summary.scopeId, executiveId)).catch(() => null)
-    : null;
-  const [executives, recent] = await Promise.all([
-    executiveId
-      ? Promise.resolve({ data: executiveMetric ? [executiveMetric] : [], nextCursor: null })
-      : queryRecords("bankExecutiveAnalytics", {
-        where: [
-          { field: "scopeId", value: summary.scopeId },
-          { field: "assignedLeads", op: ">", value: 0 },
-        ],
-        orderBy: "assignedLeads",
-        direction: "desc",
-        limit,
-        maxLimit: 100,
-        cursor: executiveCursor,
-      }),
-    queryRecords("bankRecentCases", {
-      where: [
-        { field: "scopeId", value: summary.scopeId },
-        ...(executiveId ? [{ field: "executiveId", value: executiveId }] : []),
-      ],
-      orderBy: "activityAt",
-      direction: "desc",
-      limit: 10,
-      maxLimit: 10,
-    }),
-  ]);
+  const recent = await queryRecords("bankRecentCases", {
+    where: [{ field: "scopeId", value: summary.scopeId }],
+    orderBy: "activityAt",
+    direction: "desc",
+    limit: 10,
+    maxLimit: 10,
+  });
 
   return {
     summary,
-    executivePerformance: executives.data,
-    executiveNextCursor: executives.nextCursor,
     recentCases: recent.data,
   };
 }

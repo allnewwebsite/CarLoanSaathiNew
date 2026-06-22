@@ -44,6 +44,7 @@ export const memoryStore = {
   dealershipMetrics: [],
   bankMetrics: [],
   executiveMetrics: [],
+  memberViewProjection: [],
   bankAnalyticsSummaries: [],
   bankAnalyticsLeadStates: [],
   bankExecutiveAnalytics: [],

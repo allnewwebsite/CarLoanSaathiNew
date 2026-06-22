@@ -3,7 +3,7 @@ import { digits10 } from "../financeDesk.helpers.js";
 
 export const FINANCE_PAGE_SIZE = 10;
 
-export function FinanceTable({ headers, rows, loading, page, total, hasMore, onPage }) {
+export function FinanceTable({ headers, rows, loading, page, total, hasMore, onPage, ...tableProps }) {
   return (
     <OperationalTable
       headers={headers}
@@ -14,6 +14,7 @@ export function FinanceTable({ headers, rows, loading, page, total, hasMore, onP
       hasMore={hasMore}
       onPage={onPage}
       pageSize={FINANCE_PAGE_SIZE}
+      {...tableProps}
     />
   );
 }

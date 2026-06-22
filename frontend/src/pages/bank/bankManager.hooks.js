@@ -11,7 +11,7 @@ import { responseRows } from "./bankManager.helpers.js";
 
 const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
-const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks", "/bank/executives"]);
+const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks"]);
 
 export function useBankLeads(search, status = "") {
   const [params, setParams] = useSearchParams();
@@ -56,36 +56,25 @@ export function useBankAnalytics() {
   const cachedAnalytics = getCachedGetData("/bank/analytics");
   const [data, setData] = useState(() => cachedAnalytics);
   const [loading, setLoading] = useState(() => !cachedAnalytics);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async ({ silent = false, executiveCursor = null } = {}) => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
-    if (executiveCursor) setLoadingMore(true);
     setError("");
     try {
-      const response = await api.get("/bank/analytics", {
-        params: { executiveLimit: 100, ...(executiveCursor ? { executiveCursor } : {}) },
-      });
+      const response = await api.get("/bank/analytics");
       const payload = response.data || {};
-      setData((current) => executiveCursor ? {
-        ...payload,
-        executivePerformance: [
-          ...(current?.executivePerformance || []),
-          ...(payload.executivePerformance || []),
-        ],
-      } : payload);
+      setData(payload);
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Unable to load bank analytics");
     } finally {
       if (!silent) setLoading(false);
-      if (executiveCursor) setLoadingMore(false);
     }
   }, []);
 
   useEffect(() => { load({ silent: Boolean(cachedAnalytics) }); }, [load]);
   useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize, mutationFilter: bankAnalyticsMutationFilter });
-  return { data, loading, loadingMore, error, load };
+  return { data, loading, error, load };
 }
 
 export function useExecutives() {

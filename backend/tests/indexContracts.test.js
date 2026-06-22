@@ -21,6 +21,7 @@ test("Firestore indexes include scale-critical projection list contracts", () =>
     "bankViews:viewType:ASCENDING|scopeId:ASCENDING|createdAt:DESCENDING",
     "executiveViews:viewType:ASCENDING|scopeId:ASCENDING|createdAt:DESCENDING",
     "staffViewProjection:dealershipId:ASCENDING|createdAt:DESCENDING",
+    "memberViewProjection:dealershipId:ASCENDING|createdAt:DESCENDING",
     "executiveSummaryProjection:bankId:ASCENDING|createdAt:DESCENDING",
     "salespersonSummaryProjection:dealershipId:ASCENDING|createdAt:DESCENDING",
     "bankDealershipViews:viewType:ASCENDING|bankId:ASCENDING|lastLeadAt:DESCENDING",

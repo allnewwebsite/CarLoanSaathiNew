@@ -88,7 +88,7 @@ import {
   validateDealerLeadAssignees,
   writeAuditLog,
 } from './dealerShared.controller.js';
-import { syncSalespersonSummaryProjection } from "../services/projection.service.js";
+import { syncMemberViewProjection, syncSalespersonSummaryProjection } from "../services/projection.service.js";
 
 void DEALER_SHARED_SENTINEL;
 
@@ -118,11 +118,31 @@ async function deleteSalespersonSummaryProjectionRecords({ dealershipEmail = "",
   return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
 }
 
+async function deleteSalespersonMemberProjectionRecords({ dealershipEmail = "", salesperson = {} } = {}) {
+  const candidateValues = [...new Set([
+    salesperson.id,
+    salesperson.sourceId,
+    salesperson.salespersonId,
+    salesperson.jobId,
+    salesperson.email,
+    salesperson.mobile,
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const directIds = candidateValues.map((value) => String(`member_${dealershipEmail}_salesperson_${value}`).trim().replace(/[^\w.@-]/g, "_").slice(0, 420));
+  const directResults = await Promise.all(directIds.map((id) => deleteRecord("memberViewProjection", id).then(() => 1).catch(() => 0)));
+  const indexedDeleted = await deleteMatchingRecords("memberViewProjection", () => true, [
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "sourceId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "memberId", value }]),
+    ...candidateValues.map((value) => [{ field: "dealershipId", value: dealershipEmail }, { field: "email", value }]),
+  ]).catch(() => 0);
+  return directResults.reduce((sum, count) => sum + count, 0) + indexedDeleted;
+}
+
 function clearSalespersonRuntimeCaches(dealershipEmail = "") {
   clearCachedValue("gm:salespersons:");
   clearCachedValue(`gm:salespersons:staff:${dealershipEmail}`);
   clearCachedValue(`gm:salespersons:leads:${dealershipEmail}`);
   clearCachedValue("dealer:leads:");
+  clearCachedValue(`dealer:active-members:${dealershipEmail}:`);
 }
 
 export async function getDealerSalespersons(req, res, next) {
@@ -179,6 +199,13 @@ export async function createDealerSalesperson(req, res, next) {
       rejectedCases: 0,
       pendingCases: 0,
     });
+    await syncMemberViewProjection({
+      ...salesperson,
+      dealershipId: dealershipEmail,
+      sourceCollection: "salespersons",
+      role: "salesperson",
+      roleLabel: "Salesperson",
+    });
     clearSalespersonRuntimeCaches(dealershipEmail);
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.SALESPERSON_CHANGED,
@@ -198,6 +225,7 @@ export async function removeDealerSalesperson(req, res, next) {
     if (!salesperson || salesperson.dealershipId !== dealershipEmail) return res.status(404).json({ message: "Salesperson not found" });
     await deleteRecord("salespersons", salesperson.id);
     await deleteSalespersonSummaryProjectionRecords({ dealershipEmail, salesperson });
+    await deleteSalespersonMemberProjectionRecords({ dealershipEmail, salesperson });
     clearSalespersonRuntimeCaches(dealershipEmail);
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.SALESPERSON_CHANGED,
