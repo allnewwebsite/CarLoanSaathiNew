@@ -40,7 +40,6 @@ export const navByRole = {
     { label: "Pending Dealerships", to: "/admin/approvals/dealerships", icon: ClipboardCheck },
     { label: "Approved Banks", to: "/admin/banks", icon: Landmark },
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
-    { label: "Status", to: "/admin/status", icon: FileClock },
     { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
     { label: "Dead Cases", to: "/admin/dead-cases", icon: FileX2 },
     { label: "Monitoring", to: "/admin/monitoring", icon: Activity },

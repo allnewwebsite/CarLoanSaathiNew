@@ -1,98 +1,14 @@
 import {
-  activateApprovedBankUsers,
-  activateDealerAccessFromRequest,
-  addTimelineEvent,
   ADMIN_SHARED_SENTINEL,
-  approvalLog,
-  approvalStatusOf,
-  approveBankBackrefs,
-  approveBankBranchAdmin,
-  approveDealershipBackrefs,
-  assertNoActiveIdentityCollision,
-  assertValidStatusTransition,
-  boundedList,
-  cached,
-  candidateRecordsByQueries,
-  clearAdminApprovalCaches,
-  clearCachedValue,
-  clearLeadMutationCaches,
-  computeLeadMetrics,
-  countRecords,
-  createNotification,
-  createRecord,
-  deactivateBankBranchAdmin,
-  dealerEventPayload,
-  dealerIdentityProfile,
-  deleteFirebaseAuthByEmail,
-  deleteMatchingRecords,
-  deleteRecord,
-  deleteRecordsByQuery,
-  ecosystemLimit,
-  ensureCommissionForLead,
   enrichAdminLeadRows,
-  filterLeads,
-  finalApprovalStatus,
-  findRecordsByField,
-  firebaseAdmin,
-  firebaseUidForEmail,
-  firestoreNotFound,
-  freezePartner,
-  getAdminBankBranches,
-  getAuditLogs,
-  getBankBranchDetailsAdmin,
   getLeadDetailProjection,
   getRecord,
-  getWorkflowSettings,
-  incrementPlatformCounters,
-  incrementRecord,
-  initializeDealershipTrial,
-  initializeProfessionalSubscriptionPending,
-  isProfessionalPlan,
   leadDetailResponseFromProjection,
-  LEAD_STATUSES,
-  listRecords,
-  listRecentRecords,
-  logError,
   logInfo,
-  materializeApprovedBank,
-  materializeApprovedDealership,
-  normalizeEmail,
-  normalizeIfsc,
-  normalizeOnboardingPlan,
-  normalizeStatus,
-  pendingApprovalStatus,
-  publishDealerEvent,
-  publishRealtimeEvent,
   queryAllLeads,
   queryLeadProjectionForUser,
   queryRecords,
-  queueDocumentsRequiredWhatsApp,
-  queueStatusUpdatedWhatsApp,
-  REALTIME_EVENTS,
-  recordDealerSignal,
   recordMonitoringSignal,
-  registerBankBranchAdmin,
-  rejectBankBranchAdmin,
-  requestLoginEmail,
-  resolveDealershipApprovalRequest,
-  revokeUserSessions,
-  runAdminSideEffects,
-  safeAdminUser,
-  safeDealershipApprovalRecord,
-  safeDocument,
-  safeLoginActivity,
-  STATUS_LABELS,
-  syncLeadProjectionSoon,
-  TIMELINE_EVENTS,
-  today,
-  updateBankBranchAdmin,
-  updateRecord,
-  updateRecordIfExists,
-  updateWorkflowSettings,
-  upsertCanonicalUser,
-  upsertRecord,
-  validateBankLocation,
-  writeAuditLog,
 } from './adminShared.controller.js';
 
 void ADMIN_SHARED_SENTINEL;
@@ -210,59 +126,6 @@ export async function getAdminLead(req, res, next) {
       documents: documentsPage.data || [],
       bankDocuments: bankDocumentsPage.data || [],
     });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function applyAdminLeadStatusSideEffects({ req, existing, lead, status }) {
-  await ensureCommissionForLead(lead, status);
-  const statusLabel = STATUS_LABELS[status] || status;
-  await addTimelineEvent({
-    leadId: req.params.id,
-    eventType: status === LEAD_STATUSES.APPROVED
-      ? TIMELINE_EVENTS.APPROVAL
-      : status === LEAD_STATUSES.REJECTED
-        ? TIMELINE_EVENTS.REJECTION
-        : status === LEAD_STATUSES.DISBURSED
-          ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-          : TIMELINE_EVENTS.STATUS_CHANGED,
-    title: `Admin Status Update: ${statusLabel}`,
-    description: `Super Admin moved lead to ${statusLabel}`,
-    actorName: req.user?.email || "super-admin",
-    actorRole: "super-admin",
-    metadata: { oldStatus: existing.status, nextStatus: status, status },
-  });
-  await createNotification({
-    type: status === LEAD_STATUSES.REJECTED ? "rejection" : status === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
-    title: `Lead ${statusLabel}`,
-    message: `Lead ${lead.caseId || req.params.id} moved to ${statusLabel}`,
-    leadId: req.params.id,
-    dealerEmail: lead.dealerEmail || lead.createdBy,
-    admin: true,
-    meta: { caseId: lead.caseId },
-  });
-  Promise.resolve(status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS
-    ? queueDocumentsRequiredWhatsApp({ lead, documents: lead.pendingDocuments || [] })
-    : queueStatusUpdatedWhatsApp({ lead, statusLabel }))
-    .catch((error) => logError("Admin WhatsApp status side effect failed", { error: error.message, leadId: lead.id, status }));
-  await writeAuditLog({ req, actionType: "STATUS_CHANGE", newValue: status, leadId: req.params.id });
-}
-
-export async function updateAdminLeadStatus(req, res, next) {
-  try {
-    const existing = await getRecord("leads", req.params.id);
-    if (!existing) return res.status(404).json({ message: "Lead not found" });
-    const status = assertValidStatusTransition(existing?.status, req.body.status);
-    const lead = await updateRecord("leads", req.params.id, { status });
-    clearLeadMutationCaches(req.params.id);
-    syncLeadProjectionSoon(lead);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead, actor: req.user, data: { status, previousStatus: existing.status } });
-    if (req.body.adminRemarks) {
-      publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_REMARK_ADDED, lead, actor: req.user, data: { remarkType: "admin", status } });
-    }
-    await applyAdminLeadStatusSideEffects({ req, existing, lead, status });
-    res.json({ message: "Lead status updated", lead });
   } catch (error) {
     next(error);
   }

@@ -64,6 +64,7 @@ const ROLE_GROUPS = Object.freeze({
   dealership: ["super-admin", "finance-desk", "gm"],
   bank: ["super-admin", "finance-desk", "gm", "bank-manager"],
   assignedExecutive: ["super-admin", "finance-desk", "gm", "bank-manager", "loan-executive"],
+  workflow: ["finance-desk", "gm", "bank-manager", "loan-executive"],
   notification: ["super-admin", "finance-desk", "gm", "bank-manager", "loan-executive"],
 });
 
@@ -140,7 +141,7 @@ const DETAILED_REALTIME_EVENT_REGISTRY = Object.freeze({
     eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED,
     module: "workflow",
     description: "A lead workflow status changed.",
-    roles: ROLE_GROUPS.assignedExecutive,
+    roles: ROLE_GROUPS.workflow,
     scopes: ["dealershipIds", "bankIds", "executiveIds", "branchIds"],
     payload: ["leadId", "caseId", "status", "previousStatus", "lead"],
   }),
@@ -148,7 +149,7 @@ const DETAILED_REALTIME_EVENT_REGISTRY = Object.freeze({
     eventType: REALTIME_EVENTS.STATUS_UPDATED,
     module: "workflow",
     description: "Generic status update event for counters and status tabs.",
-    roles: ROLE_GROUPS.assignedExecutive,
+    roles: ROLE_GROUPS.workflow,
     scopes: ["dealershipIds", "bankIds", "executiveIds", "branchIds"],
     payload: ["leadId", "caseId", "status", "previousStatus", "lead"],
   }),

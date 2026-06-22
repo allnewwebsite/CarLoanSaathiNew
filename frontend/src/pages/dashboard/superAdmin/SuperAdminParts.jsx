@@ -30,7 +30,6 @@ export function PageTitle({ mode }) {
     "approval-dealerships": "Pending Dealerships",
     banks: "Approved Banks",
     "approval-banks": "Pending Approval Banks",
-    status: "Status",
     leads: "Total Leads",
   }[mode] || `${mode.charAt(0).toUpperCase()}${mode.slice(1)}`;
   return <div><p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Super Admin</p><h1 className="mt-1 text-xl font-semibold text-slate-900">{title}</h1></div>;

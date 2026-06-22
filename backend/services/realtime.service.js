@@ -249,8 +249,17 @@ function eventKind(eventType = "") {
   return "lead";
 }
 
-function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveIds = [], recipientIds = [] } = {}) {
-  const portals = ["admin"];
+const ADMIN_EXCLUDED_WORKFLOW_EVENTS = new Set([
+  REALTIME_EVENTS.LEAD_STATUS_UPDATED,
+  REALTIME_EVENTS.STATUS_UPDATED,
+]);
+
+function adminCanReceiveEvent(event = {}) {
+  return !ADMIN_EXCLUDED_WORKFLOW_EVENTS.has(event.eventType || event.event);
+}
+
+function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveIds = [], recipientIds = [] } = {}, { includeAdmin = true } = {}) {
+  const portals = includeAdmin ? ["admin"] : [];
   if (dealershipIds.length) portals.push("finance", "gm");
   if (bankIds.length) portals.push("bank-manager");
   if (executiveIds.length || recipientIds.length) portals.push("loan-executive");
@@ -259,7 +268,7 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
 
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
-  if (user.role === "super-admin") return true;
+  if (user.role === "super-admin") return adminCanReceiveEvent(event);
   if (event.kind === "bank" && event.publicCatalog === true && ["finance-desk", "gm"].includes(user.role)) return true;
   if (event.kind === "dealer" && event.publicDealerCatalog === true && ["finance-desk", "gm", "bank-manager", "loan-executive"].includes(user.role)) return true;
   const scopes = event.scopes || {};
@@ -335,7 +344,8 @@ function dispatchKeysForClient(user = {}) {
 }
 
 function candidateKeysForEvent(event = {}) {
-  const keys = new Set([dispatchKey("role", "super-admin")]);
+  const keys = new Set();
+  if (adminCanReceiveEvent(event)) keys.add(dispatchKey("role", "super-admin"));
   const scopes = event.scopes || {};
   if (event.kind === "bank" && event.publicCatalog === true) {
     ["finance-desk", "gm"].forEach((role) => keys.add(dispatchKey("role", role)));
@@ -610,7 +620,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     timestamp: now,
     affectedPortals: kind === "dealer" && data.publicDealerCatalog === true
       ? ["admin", "finance", "gm", "bank-manager", "loan-executive"]
-      : affectedPortalsForScopes(scopes),
+      : affectedPortalsForScopes(scopes, { includeAdmin: !ADMIN_EXCLUDED_WORKFLOW_EVENTS.has(eventType) }),
     scopes,
     actor: actor ? { id: actor.uid || actor.email || "", email: actor.email || "", role: actor.role || "" } : null,
     tenantId: scopes.dealershipIds[0] || scopes.bankIds[0] || "platform",

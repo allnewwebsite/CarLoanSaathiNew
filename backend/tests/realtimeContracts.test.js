@@ -32,7 +32,7 @@ function mockConnection(user) {
   };
 }
 
-test("SSE dispatch targets tenant buckets without leaking to unrelated clients", () => {
+test("SSE status dispatch targets operational tenant buckets without leaking to admin or unrelated clients", () => {
   const clients = [];
   const targetDealer = "dealer-realtime-target";
   const targetLead = {
@@ -75,7 +75,7 @@ test("SSE dispatch targets tenant buckets without leaking to unrelated clients",
   });
 
   assert.equal(target.operationalEvents().length, 1);
-  assert.equal(admin.operationalEvents().length, 1);
+  assert.equal(admin.operationalEvents().length, 0);
   for (const client of clients.slice(2)) {
     assert.equal(client.operationalEvents().length, 0);
   }

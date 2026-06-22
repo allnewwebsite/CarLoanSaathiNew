@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../../services/api.js";
 
-export const adminLeadMutationFilter = (detail) => mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"]);
+const ADMIN_IGNORED_OPERATIONAL_EVENTS = new Set(["LEAD_STATUS_UPDATED", "STATUS_UPDATED"]);
+
+export const adminLeadMutationFilter = (detail = {}) => (
+  !ADMIN_IGNORED_OPERATIONAL_EVENTS.has(detail.eventType || detail.event)
+  && mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"])
+);
 export const adminPlatformMutationFilter = (detail = {}) => (
   adminLeadMutationFilter(detail)
   || ["dealer", "bank", "subscription", "staff"].includes(detail.kind)
