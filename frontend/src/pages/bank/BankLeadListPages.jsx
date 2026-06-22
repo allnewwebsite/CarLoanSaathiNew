@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
-import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { BankManagerTable as Table, PageTitle, SearchBar } from "./BankManagerPanelParts.jsx";
+import { BankManagerTable as Table, PageTitle } from "./BankManagerPanelParts.jsx";
 import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 import { useBankLeads } from "./bankManager.hooks.js";
 import { caseId, dateTime, display, generatedAt, leadStatusLabel, moneyValue } from "./bankManager.helpers.js";
@@ -90,10 +89,8 @@ export function StatusPage() {
   const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
-  const [search, setSearch] = useState(params.get("search") || "");
-  const debouncedSearch = useDebouncedValue(search, 180);
-  const { rows, total, hasMore, loading, page, onPage } = useBankLeads(debouncedSearch, status);
-  const choose = (nextStatus) => setParams({ status: nextStatus, page: "1", ...(search ? { search } : {}) });
+  const { rows, total, hasMore, loading, page, onPage } = useBankLeads("", status);
+  const choose = (nextStatus) => setParams({ status: nextStatus, page: "1" });
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [
@@ -115,10 +112,6 @@ export function StatusPage() {
   return (
     <section className="space-y-4">
       <PageTitle title="Status" />
-      <SearchBar value={search} onChange={(value) => {
-        setSearch(value);
-        setParams({ status, page: "1", ...(value ? { search: value } : {}) });
-      }} />
       <div className="flex flex-wrap gap-2">
         {CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => <button key={value} onClick={() => choose(value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{standardStatusLabel(value)}</button>)}
       </div>

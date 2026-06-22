@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../../constants/status.js";
@@ -28,16 +27,44 @@ function StatusBadge({ lead }) {
   return <span className="text-xs font-normal text-slate-700">{label}</span>;
 }
 
+function normalizedMemberRole(role = "") {
+  const value = String(role || "").trim().toLowerCase().replace(/_/g, "-");
+  if (value === "general-manager") return "gm";
+  if (value === "finance manager") return "finance-manager";
+  if (value === "sales") return "salesperson";
+  return value;
+}
+
 function roleBadgeClass(role = "") {
-  if (role === "gm") return "border-blue-100 bg-blue-50 text-blue-700";
-  if (role === "finance-manager") return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  const normalized = normalizedMemberRole(role);
+  if (normalized === "gm") return "border-blue-100 bg-blue-50 text-blue-700";
+  if (normalized === "finance-manager") return "border-emerald-100 bg-emerald-50 text-emerald-700";
   return "border-amber-100 bg-amber-50 text-amber-700";
 }
 
 function RoleBadge({ member }) {
-  const role = String(member.role || "").trim().toLowerCase();
-  const label = String(member.roleLabel || role || "Member").trim().toUpperCase();
+  const role = normalizedMemberRole(member.role);
+  const fallbackLabel = role === "gm" ? "GM" : role.replace(/-/g, " ");
+  const label = String(member.roleLabel || fallbackLabel || "Member").trim().toUpperCase();
   return <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${roleBadgeClass(role)}`}>{label}</span>;
+}
+
+function MemberStatusBadge({ member }) {
+  const inactive = member.active === false || ["inactive", "disabled", "removed"].includes(String(member.status || "").trim().toLowerCase());
+  const label = inactive ? "Inactive" : "Active";
+  const className = inactive
+    ? "border-slate-200 bg-slate-100 text-slate-600"
+    : "border-emerald-100 bg-emerald-50 text-emerald-700";
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}>{label}</span>;
+}
+
+function MemberMetricCard({ label, value }) {
+  return (
+    <div className="rounded-[10px] border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
 }
 
 function DocumentsButton({ lead }) {
@@ -126,6 +153,17 @@ export function TotalLeadsScreen() {
 
 export function ActiveMembersScreen() {
   const { members, loading } = useActiveMembers();
+  const stats = useMemo(() => {
+    const activeMembers = members.filter((member) => member.active !== false && !["inactive", "disabled", "removed"].includes(String(member.status || "").trim().toLowerCase()));
+    return activeMembers.reduce((summary, member) => {
+      const role = normalizedMemberRole(member.role);
+      summary.total += 1;
+      if (role === "gm") summary.gm += 1;
+      if (role === "finance-manager") summary.finance += 1;
+      if (role === "salesperson") summary.sales += 1;
+      return summary;
+    }, { total: 0, gm: 0, finance: 0, sales: 0 });
+  }, [members]);
   const rows = members.map((member) => ({
     key: member.id || member.memberId,
     cells: [
@@ -133,20 +171,26 @@ export function ActiveMembersScreen() {
       <RoleBadge key="role" member={member} />,
       display(member.mobile),
       display(member.email),
-      display(member.status || (member.active === false ? "Inactive" : "Active")),
+      <MemberStatusBadge key="status" member={member} />,
       dateTime(member.createdAt),
     ],
   }));
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <SectionTitle title="Active Members" subtitle="Active dealership members across sales, finance, and GM roles." />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MemberMetricCard label="Total Members" value={stats.total} />
+        <MemberMetricCard label="GM Count" value={stats.gm} />
+        <MemberMetricCard label="Finance Count" value={stats.finance} />
+        <MemberMetricCard label="Sales Count" value={stats.sales} />
+      </div>
       <Table
-        headers={["Member Name", "Role", "Mobile Number", "Email", "Status", "Created Date"]}
+        headers={["Member Name", "Role", "Mobile", "Email", "Status", "Created Date"]}
         rows={rows}
         loading={loading}
         fitToWidth
         tableMinWidth="100%"
-        gridTemplateColumns="minmax(130px,1.2fr) minmax(105px,0.8fr) minmax(120px,0.8fr) minmax(160px,1.3fr) minmax(90px,0.7fr) minmax(130px,0.9fr)"
+        gridTemplateColumns="minmax(140px,1.1fr) minmax(130px,0.9fr) minmax(120px,0.8fr) minmax(190px,1.4fr) minmax(110px,0.7fr) minmax(150px,0.9fr)"
       />
     </div>
   );
@@ -157,13 +201,12 @@ export function AllCasesScreen() {
   const [page, setPage] = useState(Number(params.get("page") || 1));
   const salespersonId = params.get("salespersonId") || "";
   const financeManagerId = params.get("financeManagerId") || "";
-  const search = params.get("search") || "";
   const { salespersons } = useSalespersons();
   const { financeManagers } = useFinanceManagers();
-  const filters = useMemo(() => ({ salespersonId, financeManagerId, search }), [salespersonId, financeManagerId, search]);
+  const filters = useMemo(() => ({ salespersonId, financeManagerId }), [salespersonId, financeManagerId]);
   const { leads, total, hasMore, loading, loadLeads } = useDealerLeads(filters);
   const updateFilter = (next) => {
-    const merged = { salespersonId, financeManagerId, search, page: "1", ...next };
+    const merged = { salespersonId, financeManagerId, page: "1", ...next };
     Object.keys(merged).forEach((key) => !merged[key] && delete merged[key]);
     setPage(1);
     setParams(merged);
@@ -176,13 +219,12 @@ export function AllCasesScreen() {
   return (
     <div className="space-y-4">
       <SectionTitle title="All Cases" subtitle="Main dealership monitoring page with salesperson and Finance Manager filtering." />
-      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 md:grid-cols-[1fr_220px_220px]">
-        <div className="flex items-center gap-2"><Search className="h-4 w-4 text-slate-400" /><input className="h-9 flex-1 outline-none" placeholder="Search customer or mobile" defaultValue={search} onChange={(event) => updateFilter({ search: event.target.value })} /></div>
-        <select className="field" value={salespersonId} onChange={(event) => updateFilter({ salespersonId: event.target.value })}>
+      <div className="flex flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:justify-end">
+        <select className="field h-11 sm:w-64" value={salespersonId} onChange={(event) => updateFilter({ salespersonId: event.target.value })}>
           <option value="">Filter By Salesperson</option>
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
-        <select className="field" value={financeManagerId} onChange={(event) => updateFilter({ financeManagerId: event.target.value })}>
+        <select className="field h-11 sm:w-64" value={financeManagerId} onChange={(event) => updateFilter({ financeManagerId: event.target.value })}>
           <option value="">Filter By Finance Manager</option>
           {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
         </select>

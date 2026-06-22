@@ -14,9 +14,7 @@ const DEAD_CASE_REALTIME_EVENTS = new Set([
 export function useDeadCasesPageState(audience = "finance") {
   const endpoint = DEAD_CASE_ENDPOINTS[audience] || DEAD_CASE_ENDPOINTS.finance;
   const canModify = audience === "finance";
-  const [search, setSearch] = useState("");
   const [reasonFilter, setReasonFilter] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState("");
@@ -32,15 +30,7 @@ export function useDeadCasesPageState(audience = "finance") {
   const [addNotes, setAddNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, debouncedSearch, reasonFilter]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSearch(search.trim());
-      setPage(1);
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, reasonFilter]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -51,7 +41,6 @@ export function useDeadCasesPageState(audience = "finance") {
         params: {
           page: requestPage,
           limit: PAGE_SIZE,
-          search: debouncedSearch || undefined,
           deadCaseReason: reasonFilter || undefined,
           ...cursor,
         },
@@ -63,7 +52,7 @@ export function useDeadCasesPageState(audience = "finance") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [cursorParamsForPage, debouncedSearch, endpoint, page, reasonFilter, rememberNextCursor, requestPageForPage]);
+  }, [cursorParamsForPage, endpoint, page, reasonFilter, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     load();
@@ -200,7 +189,6 @@ export function useDeadCasesPageState(audience = "finance") {
     restoreCase,
     rows,
     saveEdit,
-    search,
     setAddNotes,
     setAddOpen,
     setAddReason,
@@ -210,7 +198,6 @@ export function useDeadCasesPageState(audience = "finance") {
     setEditReason,
     setPage,
     setReasonFilter: setReasonAndResetPage,
-    setSearch,
     submitAdd,
   };
 }

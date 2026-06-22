@@ -2,17 +2,6 @@ import { LEAD_STATUSES, normalizeStatus } from "../../../constants/status.js";
 import { mutationUrlMatches } from "../../../hooks/useRealtimeRefresh.js";
 import { portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 
-export const DEAD_CASE_REASONS = [
-  "Customer Not Interested",
-  "Customer Unreachable",
-  "Duplicate Lead",
-  "Rejected By Customer",
-  "Rejected By Bank",
-  "Vehicle Purchase Cancelled",
-  "Documentation Issue",
-  "Other",
-];
-
 export const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
 
 export const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/dealer/dead-cases", "/bank/leads", "/gm/leads", "/documents"]);

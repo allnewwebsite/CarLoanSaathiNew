@@ -1,5 +1,5 @@
 import { RotateCcw, X } from "lucide-react";
-import { DEAD_CASE_REASONS } from "./finance/financeLeadPage.helpers.js";
+import { DEAD_CASE_REASONS } from "../../constants/deadCaseReasons.js";
 
 export function DeadCaseDialogs({
   actionId,
