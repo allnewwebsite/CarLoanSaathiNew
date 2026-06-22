@@ -34,6 +34,15 @@ function priorityClass(priority) {
   return "bg-blue-50 text-[#0d47a1] border-blue-100";
 }
 
+function desktopPermissionState() {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return window.Notification.permission;
+}
+
+function desktopBody(notification) {
+  return [notification?.caseId, notification?.message].filter(Boolean).join("\n");
+}
+
 function rowsFromPayload(payload) {
   return Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
 }
@@ -71,6 +80,7 @@ export function NotificationCenter() {
   const [unread, setUnread] = useState(() => initialPayload?.unread || 0);
   const [filter, setFilter] = useState("");
   const [toast, setToast] = useState("");
+  const [desktopPermission, setDesktopPermission] = useState(() => desktopPermissionState());
   const seenIds = useRef(new Set());
   const loadRef = useRef(null);
   const inFlightRef = useRef(false);
@@ -110,6 +120,53 @@ export function NotificationCenter() {
       inFlightRef.current = false;
     }
   }, []);
+
+  const flashToast = useCallback((message) => {
+    setToast(message);
+    window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+  }, []);
+
+  const showDesktopNotification = useCallback((notification) => {
+    if (desktopPermission !== "granted" || typeof window === "undefined" || !("Notification" in window)) return;
+    const alert = new window.Notification(notification.title || "New notification", {
+      body: desktopBody(notification),
+      icon: "/favicon.ico",
+      tag: notification.id || `${notification.type || "notification"}-${notification.createdAt || Date.now()}`,
+    });
+    alert.onclick = () => {
+      window.focus();
+      if (notification.actionUrl) window.location.assign(notification.actionUrl);
+      alert.close();
+    };
+  }, [desktopPermission]);
+
+  const enableDesktopAlerts = async () => {
+    if (desktopPermission === "unsupported" || typeof window === "undefined" || !("Notification" in window)) {
+      flashToast("Desktop alerts are not supported in this browser");
+      return;
+    }
+    if (desktopPermission === "granted") {
+      flashToast("Desktop alerts are already enabled");
+      return;
+    }
+    const permission = await window.Notification.requestPermission();
+    setDesktopPermission(permission);
+    if (permission === "granted") {
+      flashToast("Desktop alerts enabled");
+      const alert = new window.Notification("CarLoanSaathi alerts enabled", {
+        body: "Realtime alerts will appear while this dashboard is open.",
+        icon: "/favicon.ico",
+        tag: "carloansaathi-alerts-enabled",
+      });
+      alert.onclick = () => {
+        window.focus();
+        alert.close();
+      };
+    } else {
+      flashToast("Desktop alerts are blocked by browser settings");
+    }
+  };
 
   useEffect(() => {
     const cached = getCachedGetData("/notifications", { limit: 20, unread: filter === "unread" ? "true" : undefined });
@@ -151,16 +208,15 @@ export function NotificationCenter() {
       lastLocalPatchAtRef.current = Date.now();
       if (shouldIncrementUnread) {
         setUnread((current) => current + 1);
-        setToast(notification.title || "New notification");
-        window.clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = window.setTimeout(() => setToast(""), 3500);
+        flashToast(notification.title || "New notification");
+        showDesktopNotification(notification);
       } else if (shouldDecrementUnread) {
         setUnread((current) => Math.max(0, current - 1));
       }
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [filter]);
+  }, [filter, flashToast, showDesktopNotification]);
 
   useEffect(() => {
     return () => {
@@ -214,6 +270,15 @@ export function NotificationCenter() {
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-xl p-2 hover:bg-[#f5f7fb]"><X className="h-4 w-4" /></button>
           </div>
+
+          {desktopPermission === "default" ? (
+            <button type="button" onClick={enableDesktopAlerts} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#0d47a1] hover:bg-blue-100">
+              <Bell className="h-3.5 w-3.5" /> Enable desktop alerts
+            </button>
+          ) : null}
+          {desktopPermission === "denied" ? (
+            <p className="mt-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">Desktop alerts are blocked in browser settings.</p>
+          ) : null}
 
           <div className="mt-4 flex items-center justify-between gap-2">
             <div className="flex gap-2">
