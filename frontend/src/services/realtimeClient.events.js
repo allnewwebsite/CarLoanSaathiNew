@@ -4,7 +4,12 @@ import { MUTATION_KINDS } from "./realtimeClient.constants.js";
 export function leadUrlForEvent(event = {}) {
   if (event.kind === "document") return "/documents";
   if (event.kind === "notification") return "/notifications";
-  if (event.kind === "staff") return "/dealer/staff";
+  if (event.kind === "staff") {
+    const eventType = String(event.eventType || event.event || "");
+    if (eventType.includes("SALESPERSON")) return "/dealer/salespersons";
+    if (eventType.includes("FINANCE_MANAGER")) return "/dealer/finance-managers";
+    return "/dealer/staff";
+  }
   if (event.kind === "bank") return "/banks";
   if (event.kind === "dealer") return "/dealers";
   if (event.kind === "subscription") return "/dealer/billing";

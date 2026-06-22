@@ -31,3 +31,19 @@ test("dealer staff permanent delete clears staff cache, projection, auth, and re
   assert.match(realtimeEventsSource, /STAFF_CHANGED: "STAFF_CHANGED"/);
   assert.match(realtimeSource, /eventType\.includes\("STAFF"\)\) return "staff"/);
 });
+
+test("salesperson create and delete keep GM projections and realtime synchronized", async () => {
+  const controllerSource = await readFile(path.join(backendRoot, "controllers", "dealerSalesperson.controller.js"), "utf8");
+  const gmSource = await readFile(path.join(backendRoot, "controllers", "gm.controller.js"), "utf8");
+  const projectionSource = await readFile(path.join(backendRoot, "services", "projectionStaff.service.js"), "utf8");
+  const frontendRealtimeSource = await readFile(path.join(backendRoot, "..", "frontend", "src", "services", "realtimeClient.events.js"), "utf8");
+
+  assert.match(controllerSource, /syncSalespersonSummaryProjection/);
+  assert.match(controllerSource, /deleteSalespersonSummaryProjectionRecords/);
+  assert.match(controllerSource, /clearSalespersonRuntimeCaches\(dealershipEmail\)/);
+  assert.match(controllerSource, /eventType: REALTIME_EVENTS\.SALESPERSON_CHANGED/);
+  assert.match(gmSource, /querySalespersonSummaryProjection\(\{ dealershipId: dealershipEmail, query: req\.query, verifyLive: true \}\)/);
+  assert.match(projectionSource, /function liveSalespersonProjectionRows/);
+  assert.match(projectionSource, /deleteRecord\("salespersonSummaryProjection", row\.id\)/);
+  assert.match(frontendRealtimeSource, /eventType\.includes\("SALESPERSON"\)\) return "\/dealer\/salespersons"/);
+});

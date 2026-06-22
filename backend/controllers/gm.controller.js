@@ -200,7 +200,7 @@ export async function getGmSalespersons(req, res, next) {
   try {
     const dealershipEmail = await dealershipEmailForGm(req);
     if (!dealershipEmail) return res.json([]);
-    const projected = await querySalespersonSummaryProjection({ dealershipId: dealershipEmail, query: req.query }).catch(() => null);
+    const projected = await querySalespersonSummaryProjection({ dealershipId: dealershipEmail, query: req.query, verifyLive: true }).catch(() => null);
     if (projected) return res.json(projected);
     const leads = await cached(`gm:salespersons:leads:${dealershipEmail}`, 15000, async () => {
       const leadsPage = await queryLeadProjectionForUser({

@@ -47,6 +47,11 @@ function removedStaffSource(record = {}) {
     || ["deleted", "removed", "inactive", "disabled", "suspended"].includes(status);
 }
 
+function removedSalespersonSource(record = {}) {
+  const status = String(record.status || "").trim().toLowerCase();
+  return record.active === false || ["deleted", "removed", "inactive", "disabled", "suspended"].includes(status);
+}
+
 async function liveStaffProjectionRows(rows = []) {
   const checks = await Promise.all(rows.map(async (row) => {
     if (removedStaffSource(row)) return false;
@@ -56,6 +61,20 @@ async function liveStaffProjectionRows(rows = []) {
     const source = await getRecord(sourceCollection, sourceId).catch(() => null);
     const live = Boolean(source && !removedStaffSource(source));
     if (!live && row.id) await deleteRecord("staffViewProjection", row.id).catch(() => null);
+    return live;
+  }));
+  return rows.filter((_, index) => checks[index]);
+}
+
+async function liveSalespersonProjectionRows(rows = []) {
+  const checks = await Promise.all(rows.map(async (row) => {
+    if (removedSalespersonSource(row)) return false;
+    const sourceCollection = String(row.sourceCollection || "salespersons").trim();
+    const sourceId = scopeId(row.sourceId || row.salespersonId || "");
+    if (!sourceCollection || !sourceId) return true;
+    const source = await getRecord(sourceCollection, sourceId).catch(() => null);
+    const live = Boolean(source && !removedSalespersonSource(source));
+    if (!live && row.id) await deleteRecord("salespersonSummaryProjection", row.id).catch(() => null);
     return live;
   }));
   return rows.filter((_, index) => checks[index]);
@@ -179,7 +198,7 @@ export function syncSalespersonSummaryProjectionSoon(person = {}, counts = {}) {
   Promise.resolve().then(() => syncSalespersonSummaryProjection(person, counts)).catch(() => {});
 }
 
-export async function querySalespersonSummaryProjection({ dealershipId, query = {} } = {}) {
+export async function querySalespersonSummaryProjection({ dealershipId, query = {}, verifyLive = false } = {}) {
   const scope = scopeId(dealershipId);
   if (!scope) return null;
   const { limit, cursor, page } = paginationParams({ ...query, limit: query.limit || 100 });
@@ -194,5 +213,6 @@ export async function querySalespersonSummaryProjection({ dealershipId, query = 
   });
   if (!result.data.length) return null;
   const freshRows = await freshProjectionRows("salespersonSummaryProjection", result.data);
-  return freshRows.length ? freshRows : null;
+  const liveRows = verifyLive ? await liveSalespersonProjectionRows(freshRows) : freshRows;
+  return liveRows.length ? liveRows : null;
 }
