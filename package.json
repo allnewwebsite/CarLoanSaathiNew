@@ -39,7 +39,7 @@
     "load:queue": "k6 run load-tests/k6/queue-stress.js",
     "load:upload": "k6 run load-tests/k6/upload-load.js",
     "load:report": "node scripts/summarize-k6-results.js",
-    "prepare": "husky"
+    "prepare": "node scripts/prepare-husky.js"
   },
   "lint-staged": {
     "*": "node scripts/scan-secrets.js --staged"
