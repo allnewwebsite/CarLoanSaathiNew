@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStoredToken } from "./authSessionManager.js";
+import { getAuthCacheIdentity, getStoredToken } from "./authSessionManager.js";
 import { appCheckHeaderToken } from "./apiAppCheck.js";
 import { apiBaseUrl } from "./apiBaseUrl.js";
 import { authEndpoint, handleAuthResponseError, refreshSessionToken, shouldRefreshToken, shouldRetryAuthNetworkError } from "./apiAuth.js";
@@ -26,6 +26,7 @@ const apiCache = createApiCache({
   apiBaseUrl,
   requestPortalHeader,
   authEndpoint,
+  authCacheIdentity: getAuthCacheIdentity,
   defaultRequestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
 });
 

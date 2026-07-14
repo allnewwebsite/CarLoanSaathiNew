@@ -120,7 +120,10 @@ export async function getBankAnalytics(req, res, next) {
     const partner = await currentPartner(req);
     if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
     const identity = bankIdentity(partner);
-    const aggregate = await getBankAnalyticsAggregate(identity);
+    const aggregate = await getBankAnalyticsAggregate(identity, {
+      executiveCursor: req.query.executiveCursor,
+      executiveLimit: req.query.executiveLimit,
+    });
     const summary = aggregate?.summary || {};
     const assignedLeads = Number(summary.assignedLeads || 0);
     const activeLeads = Number(summary.activeLeads || 0);
@@ -149,6 +152,7 @@ export async function getBankAnalytics(req, res, next) {
       pendingDocuments,
       disbursedAmount,
       branches: assignedLeads || summary.branch ? 1 : 0,
+      executives: Number(summary.executives || aggregate?.executives?.length || 0),
       conversionRate: assignedLeads ? Math.round((approvedLeads / assignedLeads) * 100) : 0,
       rejectionRate: assignedLeads ? Math.round((rejectedLeads / assignedLeads) * 100) : 0,
       branchMetrics: summary.scopeId ? [{
@@ -170,6 +174,12 @@ export async function getBankAnalytics(req, res, next) {
         branch: lead.branch || summary.branch || identity.bankLocation || "",
         updatedAt: lead.activityAt || lead.updatedAt || null,
       })),
+      executivePerformance: aggregate?.executives || [],
+      executivePagination: aggregate?.executivePagination || {
+        limit: Math.min(Math.max(Number(req.query.executiveLimit) || 20, 1), 50),
+        nextCursor: null,
+        hasMore: false,
+      },
       aggregateReady: Boolean(aggregate),
     });
   } catch (error) {

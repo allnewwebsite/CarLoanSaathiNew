@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { bulkUpsertRecords, getRecord, queryRecords, runRecordTransaction } from "./firestore.service.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
+import { cached, clearCachedTags } from "./ttlCache.service.js";
 
 const ACTIVE_STATUSES = new Set([
   LEAD_STATUSES.NEW,
@@ -200,8 +201,12 @@ async function syncBankAnalyticsAggregateState(leadId, nextContribution) {
     const summarySources = new Map();
     const executiveSources = new Map();
     const executiveCountDeltas = new Map();
-    for (const id of summaryIds) summaries.set(id, await transaction.get("bankAnalyticsSummaries", id));
-    for (const id of executiveIds) executives.set(id, await transaction.get("bankExecutiveAnalytics", id));
+    const [summaryRows, executiveRows] = await Promise.all([
+      Promise.all(summaryIds.map((id) => transaction.get("bankAnalyticsSummaries", id))),
+      Promise.all(executiveIds.map((id) => transaction.get("bankExecutiveAnalytics", id))),
+    ]);
+    summaryIds.forEach((id, index) => summaries.set(id, summaryRows[index]));
+    executiveIds.forEach((id, index) => executives.set(id, executiveRows[index]));
 
     if (previousContribution?.scopeId) {
       const id = summaryId(previousContribution.scopeId);
@@ -296,15 +301,31 @@ async function syncBankAnalyticsAggregateState(leadId, nextContribution) {
 
 export async function syncBankAnalyticsAggregate(lead = {}) {
   if (!lead?.id) return null;
-  return syncBankAnalyticsAggregateState(lead.id, contributionForLead(lead));
+  const result = await syncBankAnalyticsAggregateState(lead.id, contributionForLead(lead));
+  clearCachedTags("bank:analytics");
+  return result;
 }
 
 export async function removeBankAnalyticsAggregate(lead = {}) {
   if (!lead?.id) return null;
-  return syncBankAnalyticsAggregateState(lead.id, null);
+  const result = await syncBankAnalyticsAggregateState(lead.id, null);
+  clearCachedTags("bank:analytics");
+  return result;
 }
 
-export async function getBankAnalyticsAggregate(identity = {}) {
+function aggregateCacheKey(identity = {}, query = {}) {
+  return [
+    "bank:analytics:v3",
+    identity.bankId || "",
+    identity.bankIfsc || "",
+    identity.branchId || "",
+    identity.bankLocation || "",
+    query.executiveCursor || "",
+    query.executiveLimit || 20,
+  ].join(":");
+}
+
+async function loadBankAnalyticsAggregate(identity = {}, query = {}) {
   const candidates = bankAnalyticsScopeCandidates(identity);
   let summary = null;
   for (const scopeId of candidates) {
@@ -313,18 +334,44 @@ export async function getBankAnalyticsAggregate(identity = {}) {
   }
   if (!summary) return null;
 
-  const recent = await queryRecords("bankRecentCases", {
-    where: [{ field: "scopeId", value: summary.scopeId }],
-    orderBy: "activityAt",
-    direction: "desc",
-    limit: 10,
-    maxLimit: 10,
-  });
+  const executiveLimit = Math.min(Math.max(Number(query.executiveLimit) || 20, 1), 50);
+  const [recent, executives] = await Promise.all([
+    queryRecords("bankRecentCases", {
+      where: [{ field: "scopeId", value: summary.scopeId }],
+      orderBy: "activityAt",
+      direction: "desc",
+      limit: 10,
+      maxLimit: 10,
+    }),
+    queryRecords("bankExecutiveAnalytics", {
+      where: [{ field: "scopeId", value: summary.scopeId }],
+      orderBy: "assignedLeads",
+      direction: "desc",
+      limit: executiveLimit,
+      maxLimit: 50,
+      cursor: query.executiveCursor || null,
+    }),
+  ]);
 
   return {
     summary,
     recentCases: recent.data,
+    executives: executives.data,
+    executivePagination: {
+      limit: executiveLimit,
+      nextCursor: executives.nextCursor || null,
+      hasMore: Boolean(executives.nextCursor),
+    },
   };
+}
+
+export async function getBankAnalyticsAggregate(identity = {}, query = {}) {
+  return cached(
+    aggregateCacheKey(identity, query),
+    Number(process.env.BANK_ANALYTICS_CACHE_TTL_MS || 15_000),
+    () => loadBankAnalyticsAggregate(identity, query),
+    { tags: ["bank:analytics", "bank:summary"] },
+  );
 }
 
 export async function rebuildBankAnalyticsAggregates({

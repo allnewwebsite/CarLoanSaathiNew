@@ -3,6 +3,10 @@ import { ROLE_LABELS, ROLE_ROUTES } from "../auth/roleSystem.js";
 export const SESSION_VALIDATE_FRESHNESS_MS = 5 * 60 * 1000;
 export const SESSION_VALIDATE_KEY = "cls_last_session_validate_at";
 
+export function sessionValidateKey(scope = "unknown") {
+  return `${SESSION_VALIDATE_KEY}:${scope}`;
+}
+
 export const LOGIN_PORTAL_ROLES = {
   dealer: ["finance-desk"],
   finance: ["finance-desk", "gm"],

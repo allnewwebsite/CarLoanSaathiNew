@@ -8,21 +8,20 @@ h2{margin-top:26px}.high{color:#b91c1c;font-weight:700}.medium{color:#b45309;fon
 </style></head><body><main>
 <h1>Production-Scale Load Test</h1><div class="sub">500 dealerships | 5,000 executives | 1,00,000 leads | isolated local benchmark</div>
 <div class="grid">
-<div class="card"><div class="label">Lead creation p95</div><div class="metric">31.773 ms</div><div class="note">150 requests, concurrency 25</div></div>
-<div class="card"><div class="label">Lead search p95</div><div class="metric">479.641 ms</div><div class="note">500 requests</div></div>
-<div class="card"><div class="label">Dashboard p95</div><div class="metric">435.924 ms</div><div class="note">500 requests</div></div>
-<div class="card"><div class="label">SSE propagation p95</div><div class="metric">5.627 ms</div><div class="note">500 clients, 100 events</div></div>
+<div class="card"><div class="label">Lead creation p95</div><div class="metric">38.888 ms</div><div class="note">150 requests, concurrency 25</div></div>
+<div class="card"><div class="label">Lead search p95</div><div class="metric">418.955 ms</div><div class="note">500 requests</div></div>
+<div class="card"><div class="label">Dashboard p95</div><div class="metric">509.969 ms</div><div class="note">500 requests</div></div>
+<div class="card"><div class="label">SSE propagation p95</div><div class="metric">0.446 ms</div><div class="note">500 clients, 100 events</div></div>
 </div>
 <h2>Capacity Evidence</h2><table><thead><tr><th>Measurement</th><th>Result</th><th>Context</th></tr></thead><tbody>
-<tr><td>Dataset seed</td><td>859.638 ms</td><td>145.68 MB heap after seed</td></tr>
-<tr><td>Overall API p95 ceiling</td><td>479.641 ms</td><td>Worst p95 of create/search/dashboard</td></tr>
-<tr><td>Archive execution</td><td>200 in 2340.92 ms</td><td>85.44 records/sec</td></tr>
+<tr><td>Dataset seed</td><td>843.161 ms</td><td>137.29 MB heap after seed</td></tr>
+<tr><td>Overall API p95 ceiling</td><td>509.969 ms</td><td>Worst p95 of create/search/dashboard</td></tr>
 <tr><td>Indexed search read amplification</td><td>1.00x expected</td><td>Exact caseId equality query</td></tr>
 <tr><td>Dashboard page read amplification</td><td>1.125x expected</td><td>9 reads for 8 returned rows</td></tr>
 <tr><td>Local fallback scan amplification</td><td>12,500x</td><td>100,000 examined for 8 returned</td></tr>
 </tbody></table>
 <h2>Bottlenecks and Recommendations</h2><table><thead><tr><th>Severity</th><th>Area</th><th>Finding</th><th>Production recommendation</th></tr></thead><tbody>
-<tr><td class="high">HIGH</td><td>Local fallback query complexity</td><td>Memory fallback examines up to 100,000 leads for scoped sorting/search, producing a 12,500x examined-to-returned ratio for an 8-row dashboard page.</td><td>Never use memory fallback for production capacity. Require Firestore indexes and fail readiness checks when the backend reports memory-fallback.</td></tr><tr><td class="high">HIGH</td><td>Archive batch ceiling</td><td>A limit=100 archival run processed 200 records while 20,000 were eligible. Full backlog clearance is estimated at 234.1 seconds under this local profile.</td><td>Run archival continuously in bounded queue jobs, expose backlog depth, and alert when eligible backlog exceeds one day of configured throughput.</td></tr><tr><td class="medium">MEDIUM</td><td>Dashboard query fan-out</td><td>Dashboard assembly performs metrics, recent-lead, projection, and notification work concurrently. Tail latency follows the slowest dependency.</td><td>Keep projection hit rate above 95%, cache metrics, and monitor per-dependency p95 rather than only the aggregate endpoint.</td></tr><tr><td class="medium">MEDIUM</td><td>SSE fan-out</td><td>500 connected clients received 50,000 synchronous in-process deliveries during the benchmark.</td><td>For multi-instance production, require Redis pub/sub, cap per-instance connections, and load-test proxy buffering and reconnect storms in staging.</td></tr>
+<tr><td class="high">HIGH</td><td>Local fallback query complexity</td><td>Memory fallback examines up to 1,00,000 leads for scoped sorting/search, producing a 12,500x examined-to-returned ratio for an 8-row dashboard page.</td><td>Never use memory fallback for production capacity. Require Firestore indexes and fail readiness checks when the backend reports memory-fallback.</td></tr><tr><td class="medium">MEDIUM</td><td>Dashboard query fan-out</td><td>Dashboard assembly performs metrics, recent-lead, projection, and notification work concurrently. Tail latency follows the slowest dependency.</td><td>Keep projection hit rate above 95%, cache metrics, and monitor per-dependency p95 rather than only the aggregate endpoint.</td></tr><tr><td class="medium">MEDIUM</td><td>SSE fan-out</td><td>500 connected clients received 50000 synchronous in-process deliveries during the benchmark.</td><td>For multi-instance production, require Redis pub/sub, cap per-instance connections, and load-test proxy buffering and reconnect storms in staging.</td></tr>
 </tbody></table>
 <h2>Interpretation</h2><div class="callout">These are isolated application baselines. A staging k6 run against real Firestore and deployed infrastructure is required for a production capacity sign-off.</div>
 </main></body></html>

@@ -44,7 +44,7 @@ function cacheTtlForUrl(url = "") {
   return GET_CACHE_TTL_MS;
 }
 
-export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, authEndpoint, defaultRequestTimeoutMs }) {
+export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, authEndpoint, authCacheIdentity, defaultRequestTimeoutMs }) {
   const getCache = new Map();
   const pendingGetRequests = new Map();
   let getCacheHydrated = false;
@@ -96,7 +96,7 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
 
   function getCacheKey(url = "", params = null, baseURL = apiBaseUrl()) {
     if (authEndpoint(url)) return "";
-    return `${baseURL}|${url || ""}|${stableParams(params)}|${requestPortalHeader()}`;
+    return `${baseURL}|${url || ""}|${stableParams(params)}|${requestPortalHeader()}|${authCacheIdentity()}`;
   }
 
   function cacheKey(config = {}) {

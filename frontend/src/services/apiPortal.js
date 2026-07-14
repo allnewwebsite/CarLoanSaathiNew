@@ -13,7 +13,8 @@ export function loginPathForRole(role, fallback = "/finance/login") {
 export function currentLoginPath() {
   if (typeof window === "undefined") return "";
   const path = window.location.pathname || "";
-  if (path.startsWith("/finance/login") || path.startsWith("/gm/login")) return "/finance/login";
+  if (path.startsWith("/finance/login")) return "/finance/login";
+  if (path.startsWith("/gm/login")) return "/gm/login";
   if (path.startsWith("/dealer/login")) return "/dealer/login";
   if (path.startsWith("/bank/login")) return "/bank/login";
   if (path.startsWith("/executive/login")) return "/executive/login";
@@ -28,7 +29,8 @@ export function loginPathForCurrentPortal(fallback = "/finance/login") {
   if (path.startsWith("/loan-executive") || path.startsWith("/executive")) return "/executive/login";
   if (path.startsWith("/admin") || path.startsWith("/super-admin")) return "/admin/login";
   if (path.startsWith("/dealer/login")) return "/dealer/login";
-  if (path.startsWith("/dealer") || path.startsWith("/finance") || path.startsWith("/gm")) return "/finance/login";
+  if (path.startsWith("/gm")) return "/gm/login";
+  if (path.startsWith("/dealer") || path.startsWith("/finance")) return "/finance/login";
   return fallback;
 }
 

@@ -34,10 +34,16 @@ globalThis.window = {
 
 const {
   clearAuthStorage,
+  getAuthCacheIdentity,
   getStoredToken,
   getStoredUser,
   storeAuthSession,
 } = await import("../src/services/authSessionManager.js");
+const {
+  currentLoginPath,
+  loginPathForCurrentPortal,
+  requestPortalHeader,
+} = await import("../src/services/apiPortal.js");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -126,6 +132,12 @@ setPath("/gm/total-leads");
 storeAuthSession(session("gm@example.com", "gm"), "gm-token");
 assert(getStoredToken() === "gm-token", "GM token was not stored in GM scope.");
 assert(getStoredUser()?.role === "gm", "GM user was not restored from GM scope.");
+assert(getAuthCacheIdentity() === "gm:gm@example.com", "GM API cache identity is not account scoped.");
+
+setPath("/gm/login");
+assert(currentLoginPath() === "/gm/login", "GM login was collapsed into the Finance login path.");
+assert(loginPathForCurrentPortal() === "/gm/login", "GM portal failure redirect does not remain in the GM portal.");
+assert(requestPortalHeader() === "gm", "GM requests do not carry the GM portal header.");
 
 setPath("/finance/total-leads");
 assert(getStoredToken() === "finance-token", "GM login overwrote finance token.");
@@ -139,8 +151,14 @@ storeAuthSession(session("executive@example.com", "loan-executive"), "loan-execu
 assert(getStoredToken() === "loan-executive-token", "Loan executive token was not stored in executive scope.");
 
 setPath("/admin/leads");
-assert(getStoredToken() === null, "Portal path borrowed a token from another active portal.");
-assert(getStoredUser() === null, "Portal path borrowed a user from another active portal.");
+storeAuthSession(session("admin@example.com", "super-admin"), "admin-token");
+assert(getStoredToken() === "admin-token", "Admin token was not stored in admin scope.");
+
+setPath("/gm/total-leads");
+assert(getStoredToken() === "gm-token", "Admin login overwrote GM token.");
+
+setPath("/admin/leads");
+assert(getStoredUser()?.role === "super-admin", "Admin user was not restored from admin scope.");
 
 setPath("/bank-manager/leads");
 assert(getStoredToken() === "bank-manager-token", "Loan executive login overwrote bank manager token.");

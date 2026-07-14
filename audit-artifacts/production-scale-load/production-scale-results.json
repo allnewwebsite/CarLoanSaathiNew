@@ -1,11 +1,11 @@
 {
   "audit": "CarLoanSaathi production-scale local capacity benchmark",
-  "runStartedAt": "2026-06-13T17:47:59.274Z",
-  "completedAt": "2026-06-13T17:48:26.516Z",
+  "runStartedAt": "2026-07-14T03:45:08.336Z",
+  "completedAt": "2026-07-14T03:45:32.227Z",
   "environment": {
     "executionMode": "isolated-memory-and-loopback-http",
     "productionDataTouched": false,
-    "node": "v24.14.0",
+    "node": "v22.23.1",
     "platform": "win32 x64",
     "cpuCount": 4,
     "totalMemoryGb": 7.89
@@ -14,65 +14,64 @@
     "dealerships": 500,
     "executives": 5000,
     "leads": 100000,
-    "eligibleForArchive": 20000,
     "seed": {
-      "durationMs": 859.638,
-      "heapUsedMb": 145.68
+      "durationMs": 843.161,
+      "heapUsedMb": 137.29
     }
   },
   "measurements": {
     "leadCreationLatency": {
       "samples": 150,
-      "minMs": 20.763,
-      "averageMs": 25.668,
-      "p50Ms": 24.943,
-      "p95Ms": 31.773,
-      "p99Ms": 33.1,
-      "maxMs": 33.333,
+      "minMs": 22.209,
+      "averageMs": 28.301,
+      "p50Ms": 27.562,
+      "p95Ms": 38.888,
+      "p99Ms": 40.265,
+      "maxMs": 40.49,
       "concurrency": 25,
       "failures": 0
     },
     "leadSearchLatency": {
       "samples": 500,
-      "minMs": 410.836,
-      "averageMs": 425.594,
-      "p50Ms": 417.022,
-      "p95Ms": 479.641,
-      "p99Ms": 499.195,
-      "maxMs": 509.085,
+      "minMs": 339.899,
+      "averageMs": 368.459,
+      "p50Ms": 364.188,
+      "p95Ms": 418.955,
+      "p99Ms": 449.894,
+      "maxMs": 454.692,
       "concurrency": 25,
       "failures": 0
     },
     "dashboardLoadTime": {
       "samples": 500,
-      "minMs": 420.269,
-      "averageMs": 427.25,
-      "p50Ms": 426.283,
-      "p95Ms": 435.924,
-      "p99Ms": 441.927,
-      "maxMs": 443.062,
+      "minMs": 392.712,
+      "averageMs": 470.582,
+      "p50Ms": 472.08,
+      "p95Ms": 509.969,
+      "p99Ms": 512.383,
+      "maxMs": 512.7,
       "concurrency": 25,
       "failures": 0
     },
     "directServiceSearch": {
       "samples": 300,
-      "minMs": 8.35,
-      "averageMs": 9.042,
-      "p50Ms": 8.881,
-      "p95Ms": 9.589,
-      "p99Ms": 10.151,
-      "maxMs": 48.987
+      "minMs": 5.804,
+      "averageMs": 6.326,
+      "p50Ms": 6.204,
+      "p95Ms": 6.954,
+      "p99Ms": 7.42,
+      "maxMs": 24.992
     },
     "directServiceDashboard": {
       "samples": 300,
-      "minMs": 10.67,
-      "averageMs": 11.751,
-      "p50Ms": 11.481,
-      "p95Ms": 12.466,
-      "p99Ms": 15.006,
-      "maxMs": 63.941
+      "minMs": 12.022,
+      "averageMs": 13.433,
+      "p50Ms": 13.154,
+      "p95Ms": 13.946,
+      "p99Ms": 23.61,
+      "maxMs": 50.737
     },
-    "apiP95Ms": 479.641,
+    "apiP95Ms": 509.969,
     "firestoreReadAmplification": {
       "exactCaseSearch": {
         "estimatedReads": 1,
@@ -91,21 +90,14 @@
         "note": "Local fallback scan only; indexed Firestore should not scan 100,000 documents."
       }
     },
-    "archiveExecution": {
-      "batchLimit": 100,
-      "archived": 200,
-      "durationMs": 2340.919,
-      "throughputPerSecond": 85.437,
-      "estimatedFullBacklogSeconds": 234.092
-    },
     "ssePropagation": {
       "samples": 100,
-      "minMs": 4.509,
-      "averageMs": 5.009,
-      "p50Ms": 4.885,
-      "p95Ms": 5.627,
-      "p99Ms": 7.17,
-      "maxMs": 9.149,
+      "minMs": 0.182,
+      "averageMs": 0.263,
+      "p50Ms": 0.195,
+      "p95Ms": 0.446,
+      "p99Ms": 1.046,
+      "maxMs": 2.997,
       "clients": 500,
       "events": 100,
       "deliveries": 50000
@@ -117,12 +109,6 @@
       "area": "Local fallback query complexity",
       "finding": "Memory fallback examines up to 1,00,000 leads for scoped sorting/search, producing a 12,500x examined-to-returned ratio for an 8-row dashboard page.",
       "recommendation": "Never use memory fallback for production capacity. Require Firestore indexes and fail readiness checks when the backend reports memory-fallback."
-    },
-    {
-      "severity": "high",
-      "area": "Archive batch ceiling",
-      "finding": "A limit=100 archival run processed 200 records while 20,000 were eligible. Full backlog clearance is estimated at 234.1 seconds under this local profile.",
-      "recommendation": "Run archival continuously in bounded queue jobs, expose backlog depth, and alert when eligible backlog exceeds one day of configured throughput."
     },
     {
       "severity": "medium",

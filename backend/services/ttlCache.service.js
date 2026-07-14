@@ -11,6 +11,7 @@ let redisClient = null;
 let redisSubscriber = null;
 let redisReady = false;
 let redisWarningLogged = false;
+let cacheEvictions = 0;
 const REDIS_INVALIDATION_CHANNEL = "cls:cache:invalidation:v1";
 const CACHE_KEY_PREFIX = process.env.REDIS_CACHE_KEY_PREFIX || "cls:cache:v1";
 
@@ -106,6 +107,21 @@ function removeKey(key) {
     if (!keys.size) tagIndex.delete(tag);
   }
   keyTags.delete(key);
+}
+
+export function pruneCache(maxEntries = Number(process.env.MEMORY_CACHE_MAX_ENTRIES || 5000)) {
+  const timestamp = now();
+  for (const [key, entry] of cache.entries()) {
+    if (!entry || entry.expiresAt <= timestamp) removeKey(key);
+  }
+  const safeMax = Math.max(100, Number(maxEntries) || 5000);
+  while (cache.size > safeMax) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) break;
+    removeKey(oldestKey);
+    cacheEvictions += 1;
+  }
+  return cache.size;
 }
 
 function rememberTags(key, tags = []) {
@@ -228,6 +244,8 @@ export function getCachedValue(key) {
     recordCacheEvent(false);
     return null;
   }
+  cache.delete(key);
+  cache.set(key, entry);
   recordCacheEvent(true);
   return entry.value;
 }
@@ -235,8 +253,10 @@ export function getCachedValue(key) {
 export function setCachedValue(key, value, ttlMs, { tags = [] } = {}) {
   initRedisCache();
   if (!key || ttlMs <= 0) return value;
+  removeKey(key);
   cache.set(key, { value, expiresAt: now() + ttlMs });
   rememberTags(key, tags);
+  pruneCache();
   setRedisCachedValue(key, value, ttlMs, tags);
   return value;
 }
@@ -282,10 +302,13 @@ export async function cached(key, ttlMs, loader, options = {}) {
 }
 
 export function cacheStats() {
+  pruneCache();
   return {
     entries: cache.size,
     pending: pending.size,
     tags: tagIndex.size,
+    evictions: cacheEvictions,
+    maxEntries: Math.max(100, Number(process.env.MEMORY_CACHE_MAX_ENTRIES || 5000)),
     redisEnabled: redisCacheEnabled(),
   };
 }

@@ -27,7 +27,7 @@ function browserPath() {
   return typeof window === "undefined" ? "/" : window.location.pathname;
 }
 
-function scopeFromRole(role) {
+export function scopeFromRole(role) {
   return ROLE_SCOPES[String(role || "").trim().toLowerCase()] || null;
 }
 
@@ -35,7 +35,7 @@ function scopeFromPath(path = browserPath()) {
   return scopeForPortalPath(path) || sessionStorage.getItem(ACTIVE_SCOPE_KEY) || "finance";
 }
 
-function scopeForPortalPath(path = browserPath()) {
+export function scopeForPortalPath(path = browserPath()) {
   const normalized = String(path || "").toLowerCase();
   if (normalized.startsWith("/gm")) return "gm";
   if (normalized.startsWith("/finance") || normalized.startsWith("/dealer")) return "finance";
@@ -47,6 +47,10 @@ function scopeForPortalPath(path = browserPath()) {
 
 export function getCurrentPortalScope() {
   return scopeForPortalPath();
+}
+
+export function getAuthScope() {
+  return scopeFromPath();
 }
 
 function scopedKey(key, scope = scopeFromPath()) {
@@ -97,6 +101,13 @@ export function getStoredUser() {
   return legacyUserForScope(scope);
 }
 
+export function getAuthCacheIdentity() {
+  const scope = scopeFromPath();
+  const user = getStoredUser();
+  const identity = String(user?.uid || user?.email || "anonymous").trim().toLowerCase();
+  return `${scope}:${identity}`;
+}
+
 export function storeAuthSession(session, token) {
   const scope = scopeFromRole(session?.role) || scopeFromPath();
   sessionStorage.setItem(scopedKey(USER_KEY, scope), JSON.stringify(session));
@@ -111,16 +122,16 @@ export function storeAuthSession(session, token) {
   localStorage.removeItem(PERSISTENCE_KEY);
 }
 
-export function updateStoredToken(token) {
+export function updateStoredToken(token, explicitScope = "") {
   if (!token) return;
   const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
-  const scope = scopeFromRole(getStoredUser()?.role) || activeScope || scopeFromPath();
+  const scope = explicitScope || scopeFromRole(getStoredUser()?.role) || scopeForPortalPath() || activeScope || "finance";
   sessionStorage.setItem(scopedKey(TOKEN_KEY, scope), token);
   localStorage.removeItem(TOKEN_KEY);
 }
 
-export function clearAuthStorage() {
-  const scope = scopeFromPath();
+export function clearAuthStorage(explicitScope = "") {
+  const scope = explicitScope || scopeFromPath();
   const activeScope = sessionStorage.getItem(ACTIVE_SCOPE_KEY);
   sessionStorage.removeItem(scopedKey(TOKEN_KEY, scope));
   sessionStorage.removeItem(scopedKey(USER_KEY, scope));

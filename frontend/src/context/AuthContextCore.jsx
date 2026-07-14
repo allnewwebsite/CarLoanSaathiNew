@@ -6,7 +6,7 @@ import {
   LOGIN_PORTAL_ROLES,
   ROLE_LOGIN_PORTALS,
   SESSION_VALIDATE_FRESHNESS_MS,
-  SESSION_VALIDATE_KEY,
+  sessionValidateKey,
   actionCodeSettings,
   registrationAccountError,
   restoredFirebaseUser,
@@ -192,7 +192,7 @@ export function AuthProvider({ children }) {
       const session = sessionFromResponse(response);
       applySession(session, token);
       try {
-        sessionStorage.setItem(SESSION_VALIDATE_KEY, String(Date.now()));
+        sessionStorage.setItem(sessionValidateKey(getCurrentPortalScope()), String(Date.now()));
       } catch {
         // Validation timestamp is only a performance hint.
       }
@@ -218,7 +218,7 @@ export function AuthProvider({ children }) {
     }
     let recentlyValidated = false;
     try {
-      recentlyValidated = Date.now() - Number(sessionStorage.getItem(SESSION_VALIDATE_KEY) || 0) < SESSION_VALIDATE_FRESHNESS_MS;
+      recentlyValidated = Date.now() - Number(sessionStorage.getItem(sessionValidateKey(getCurrentPortalScope())) || 0) < SESSION_VALIDATE_FRESHNESS_MS;
     } catch {
       recentlyValidated = false;
     }
