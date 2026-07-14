@@ -12,8 +12,8 @@ export function BankDealershipsPage() {
   const [dealershipFilter, setDealershipFilter] = useState("");
   const dealershipOptions = useMemo(() => rows.map((dealership) => ({
     id: String(dealership.dealershipId || dealership.id || "").trim(),
-    name: dealership.dealershipName || dealership.dealerName || dealership.dealershipEmail || dealership.id,
-  })).filter((dealership) => dealership.id).sort((left, right) => left.name.localeCompare(right.name)), [rows]);
+    name: dealership.dealershipName,
+  })).filter((dealership) => dealership.id && dealership.name).sort((left, right) => left.name.localeCompare(right.name)), [rows]);
   const visibleDealerships = useMemo(() => rows.filter((dealership) => {
     if (!dealershipFilter) return true;
     return String(dealership.dealershipId || dealership.id || "").trim() === dealershipFilter;
@@ -21,7 +21,7 @@ export function BankDealershipsPage() {
   const tableRows = useMemo(() => visibleDealerships.map((dealership) => ({
     key: dealership.id || dealership.dealershipId,
     cells: [
-      display(dealership.dealershipName || dealership.dealerName),
+      display(dealership.dealershipName),
       display(dealership.dealershipEmail),
       display(dealership.city || dealership.dealershipCity),
       display(dealership.dealerMobile),
@@ -60,7 +60,7 @@ export function BankDealershipDisbursedPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 180);
   const { rows, total, hasMore, loading, page, onPage } = useBankDealershipDisbursedCases(dealershipId, debouncedSearch);
-  const dealershipName = rows[0]?.dealershipName || rows[0]?.dealerName || rows[0]?.dealershipEmail || "Dealership";
+  const dealershipName = rows[0]?.dealershipName || "Dealership";
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [

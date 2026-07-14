@@ -82,6 +82,32 @@ export async function getRecord(collection, id) {
   }
 }
 
+export async function getRecordsByIds(collection, ids = []) {
+  const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!uniqueIds.length) return [];
+  if (!firestore) {
+    const wanted = new Set(uniqueIds);
+    return (memoryStore[collection] || []).filter((item) => wanted.has(String(item.id || "")));
+  }
+  const records = [];
+  for (let offset = 0; offset < uniqueIds.length; offset += 100) {
+    const chunk = uniqueIds.slice(offset, offset + 100);
+    const snapshots = await firestore.getAll(...chunk.map((id) => firestore.collection(collection).doc(id)));
+    recordFirestoreRead({
+      collection,
+      operation: "get-all",
+      signature: readSignature(collection, "get-all", [["ids", chunk.map(hashValue).sort()]]),
+      documentsReturned: snapshots.filter((snapshot) => snapshot.exists).length,
+      estimatedReads: snapshots.length,
+      limit: chunk.length,
+    });
+    snapshots.forEach((snapshot) => {
+      if (snapshot.exists) records.push({ ...snapshot.data(), id: snapshot.id });
+    });
+  }
+  return records;
+}
+
 export async function updateRecord(collection, id, payload, { readback = true, mutationRole = "" } = {}) {
   const startedAt = Date.now();
   clearCollectionReadCache(collection);

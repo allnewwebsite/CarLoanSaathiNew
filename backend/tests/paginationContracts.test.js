@@ -78,6 +78,8 @@ test("secondary list APIs keep bounded pagination contracts", () => {
 
   includesAll(read("backend/services/projectionBankDealership.service.js"), [
     "queryRecords(\"bankDealershipViews\"",
+    "getRecordsByIds(\"dealerships\"",
+    "canonicalizeBankDealershipRows",
     "paginationParams",
     "pageResponse",
     "maxLimit: 100",

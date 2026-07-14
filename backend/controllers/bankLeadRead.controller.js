@@ -28,6 +28,7 @@ import {
   createShortLivedDocumentUrl,
   crypto,
   currentPartner,
+  canonicalizeBankDealershipRows,
   dealershipIdentityFromLead,
   deleteExecutiveSummaryProjection,
   deleteLeadDocument,
@@ -188,7 +189,8 @@ export async function getBankDealerships(req, res, next) {
     const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, limit: 100 });
     const grouped = groupDealershipsFromLeads(scopedLeads);
-    return res.json(pageResponse({ data: grouped.slice(0, limit), limit, total: grouped.length }));
+    const canonicalRows = await canonicalizeBankDealershipRows(grouped);
+    return res.json(pageResponse({ data: canonicalRows.slice(0, limit), limit, total: canonicalRows.length }));
   } catch (error) {
     next(error);
   }
@@ -205,14 +207,23 @@ export async function getBankDealershipDisbursedCases(req, res, next) {
       user: { ...req.user, role: "bank-manager", bankId: identity.bankId },
       query: { ...req.query, dealershipId, status: LEAD_STATUSES.DISBURSED },
     }).catch(() => null);
-    if (projected) return res.json(projected);
+    if (projected) {
+      const [canonical] = await canonicalizeBankDealershipRows([{ dealershipId }]);
+      if (!canonical) return res.status(404).json({ message: "Registered dealership not found" });
+      return res.json({
+        ...projected,
+        data: (projected.data || []).map((lead) => ({ ...lead, dealershipId, dealershipName: canonical.dealershipName })),
+      });
+    }
 
     const { limit } = paginationParams({ ...req.query, limit: req.query.limit || 20 });
     const scopedLeads = await assignedLeadsForPartner(partner, { ...req.query, status: LEAD_STATUSES.DISBURSED, limit: 100 });
     const data = scopedLeads
       .filter((lead) => dealershipIdentityFromLead(lead)?.dealershipId === dealershipId && normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED)
       .slice(0, limit);
-    return res.json(pageResponse({ data, limit, total: data.length }));
+    const [canonical] = await canonicalizeBankDealershipRows([{ dealershipId }]);
+    if (!canonical) return res.status(404).json({ message: "Registered dealership not found" });
+    return res.json(pageResponse({ data: data.map((lead) => ({ ...lead, dealershipName: canonical.dealershipName })), limit, total: data.length }));
   } catch (error) {
     next(error);
   }

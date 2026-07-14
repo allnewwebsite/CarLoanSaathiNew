@@ -12,6 +12,7 @@ import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "..
 import { logError, logInfo } from "../services/logger.service.js";
 import {
   getLeadDetailProjection,
+  canonicalizeBankDealershipRows,
   queryBankDealershipProjection,
   queryExecutiveSummaryProjection,
   queryLeadProjectionForUser,
@@ -72,6 +73,7 @@ export {
   deleteRecordsByQuery,
   findRecordsByField,
   getRecord,
+  canonicalizeBankDealershipRows,
   listRecords,
   queryRecords,
   updateRecord,

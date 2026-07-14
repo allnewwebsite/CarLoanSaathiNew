@@ -7,6 +7,9 @@ export async function createRecord(...args) {
 export async function getRecord(...args) {
   return core.getRecord(...args);
 }
+export async function getRecordsByIds(...args) {
+  return core.getRecordsByIds(...args);
+}
 export async function updateRecord(...args) {
   return core.updateRecord(...args);
 }
