@@ -663,6 +663,25 @@ check("auth hot path avoids avoidable Firestore reads and writes", () => {
   assert(!authController.includes("Object.assign(user, await accountPresentation"), "restore session must not perform presentation Firestore reads before response");
 });
 
+check("performance certification fails closed on deployment evidence", () => {
+  const certificate = read("scripts/certify-performance-readiness.js");
+  const projectionReport = read("backend/scripts/reportProjectionFreshness.js");
+  const realtime = read("backend/services/realtime.service.js");
+  const render = read("render.yaml");
+  includesAll(certificate, [
+    "PERFORMANCE_K6_RESULTS_DIR",
+    "PERFORMANCE_READ_METER_LOG",
+    "PROJECTION_FRESHNESS_REPORT",
+    "ENABLE_REDIS_CACHE",
+    "ENABLE_REDIS_QUEUE",
+    "ENABLE_REALTIME_REDIS",
+    'strict && overall !== "GREEN"',
+  ], "performance evidence gate");
+  includesAll(projectionReport, ["validateProjectionFreshness", "--backfill-complete", "summary.stale", "summary.rebuildQueued"], "projection evidence report");
+  includesAll(realtime, ['"Cache-Control": "no-store, no-transform"', '"X-Accel-Buffering": "no"', "event: heartbeat"], "SSE proxy contract");
+  includesAll(render, ["REDIS_URL", "ENABLE_REDIS_CACHE", "ENABLE_REDIS_QUEUE", "ENABLE_REALTIME_REDIS"], "Render distributed runtime configuration");
+});
+
 let failed = 0;
 for (const item of checks) {
   try {

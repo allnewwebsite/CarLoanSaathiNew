@@ -56,3 +56,13 @@ services:
         value: "5"
       - key: ACCOUNT_LOCK_MINUTES
         value: "30"
+      # Required for horizontally scaled production. Configure these as secrets
+      # in Render; the readiness certificate fails closed when any are absent.
+      - key: REDIS_URL
+        sync: false
+      - key: ENABLE_REDIS_CACHE
+        sync: false
+      - key: ENABLE_REDIS_QUEUE
+        sync: false
+      - key: ENABLE_REALTIME_REDIS
+        sync: false

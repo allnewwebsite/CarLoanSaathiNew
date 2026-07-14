@@ -19,6 +19,7 @@
     "verify:read-reduction": "npm --prefix backend run verify:read-reduction",
     "migrate:sm-to-gm": "npm --prefix backend run migrate:sm-to-gm",
     "report:read-meter": "npm --prefix backend run report:read-meter --",
+    "report:projection-freshness": "npm --prefix backend run report:projection-freshness --",
     "load:seed": "npm --prefix backend run load:seed",
     "security:scan": "node scripts/scan-secrets.js",
     "security:authz-audit": "node scripts/audit-authorization.js",
@@ -39,6 +40,8 @@
     "load:queue": "k6 run load-tests/k6/queue-stress.js",
     "load:upload": "k6 run load-tests/k6/upload-load.js",
     "load:report": "node scripts/summarize-k6-results.js",
+    "certify:performance": "node scripts/certify-performance-readiness.js",
+    "certify:performance:strict": "node scripts/certify-performance-readiness.js --strict",
     "prepare": "node scripts/prepare-husky.js"
   },
   "lint-staged": {

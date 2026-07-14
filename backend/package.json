@@ -33,6 +33,7 @@
     "verify:subscriptions": "node scripts/verifySubscriptionBilling.js",
     "verify:razorpay-webhook": "node scripts/verifyRazorpayWebhook.js",
     "report:read-meter": "node scripts/reportReadMeter.js",
+    "report:projection-freshness": "node scripts/reportProjectionFreshness.js",
     "load:seed": "node scripts/seedLoadTestData.js"
   },
   "dependencies": {

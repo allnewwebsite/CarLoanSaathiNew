@@ -3,6 +3,17 @@ import readline from "node:readline";
 
 const input = process.argv[2];
 const rows = new Map();
+let firstEventAt = Infinity;
+let lastEventAt = -Infinity;
+let eventsWithoutTimestamp = 0;
+
+function eventTimestamp(item = {}) {
+  for (const value of [item.timestamp, item.time, item.generatedAt, item.createdAt, item.loggedAt]) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
 
 function routeKey(item = {}) {
   const method = item.method || "GET";
@@ -72,6 +83,14 @@ function summarize() {
     source: input || "stdin",
     generatedAt: new Date().toISOString(),
     endpointsSeen: rows.size,
+    observation: {
+      firstEventAt: Number.isFinite(firstEventAt) ? new Date(firstEventAt).toISOString() : null,
+      lastEventAt: Number.isFinite(lastEventAt) ? new Date(lastEventAt).toISOString() : null,
+      observedDays: Number.isFinite(firstEventAt) && Number.isFinite(lastEventAt)
+        ? Number(((lastEventAt - firstEventAt) / 86_400_000).toFixed(2))
+        : 0,
+      eventsWithoutTimestamp,
+    },
     top20: ranked,
   }, null, 2));
 }
@@ -82,6 +101,12 @@ async function main() {
   for await (const line of reader) {
     const item = parseLine(line);
     if (!item || item.tag !== "READ-METER") continue;
+    const timestamp = eventTimestamp(item);
+    if (timestamp === null) eventsWithoutTimestamp += 1;
+    else {
+      firstEventAt = Math.min(firstEventAt, timestamp);
+      lastEventAt = Math.max(lastEventAt, timestamp);
+    }
     const row = endpointRow(routeKey(item));
     row.calls += 1;
     row.totalReads += Number(item.totalEstimatedReads || 0);
