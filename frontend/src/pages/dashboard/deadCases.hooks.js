@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
-import { api } from "../../services/api.js";
+import { api, getCachedGetData } from "../../services/api.js";
 import { DEAD_CASE_ENDPOINTS, PAGE_SIZE, sameLead } from "./deadCases.helpers.js";
 
 const DEAD_CASE_REALTIME_EVENTS = new Set([
@@ -14,12 +14,15 @@ const DEAD_CASE_REALTIME_EVENTS = new Set([
 export function useDeadCasesPageState(audience = "finance") {
   const endpoint = DEAD_CASE_ENDPOINTS[audience] || DEAD_CASE_ENDPOINTS.finance;
   const canModify = audience === "finance";
+  const initialParams = { page: 1, limit: PAGE_SIZE };
+  const cachedPayload = getCachedGetData(endpoint, initialParams);
+  const initialPayload = Array.isArray(cachedPayload) ? { data: cachedPayload } : cachedPayload || {};
   const [reasonFilter, setReasonFilter] = useState("");
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState(() => initialPayload.data || []);
+  const [loading, setLoading] = useState(() => !cachedPayload);
   const [actionId, setActionId] = useState("");
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(() => Boolean(initialPayload.hasMore || initialPayload.nextCursor));
   const [editLead, setEditLead] = useState(null);
   const [editReason, setEditReason] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -55,7 +58,7 @@ export function useDeadCasesPageState(audience = "finance") {
   }, [cursorParamsForPage, endpoint, page, reasonFilter, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
-    load();
+    load({ silent: Boolean(cachedPayload) });
   }, [load]);
 
   useEffect(() => {

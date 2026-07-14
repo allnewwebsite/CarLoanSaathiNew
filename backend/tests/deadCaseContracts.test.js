@@ -312,6 +312,21 @@ test("Firestore indexes include dead-case query contracts", () => {
   assert.equal(signatures.includes("assignedExecutiveId|status|isDeadCase"), true);
 });
 
+test("dead-case pages hydrate prefetched cache and refresh silently", () => {
+  const hookPath = path.join(workspaceRoot, "frontend", "src", "pages", "dashboard", "deadCases.hooks.js");
+  const layoutPath = path.join(workspaceRoot, "frontend", "src", "layouts", "DashboardLayout.config.js");
+  const hook = fs.readFileSync(hookPath, "utf8");
+  const layout = fs.readFileSync(layoutPath, "utf8");
+
+  assert.equal(hook.includes("getCachedGetData(endpoint, initialParams)"), true);
+  assert.equal(hook.includes("useState(() => initialPayload.data || [])"), true);
+  assert.equal(hook.includes("useState(() => !cachedPayload)"), true);
+  assert.equal(hook.includes("load({ silent: Boolean(cachedPayload) })"), true);
+  assert.equal(layout.includes('url: "/dealer/dead-cases", params: { page: 1, limit: 20 }'), true);
+  assert.equal(layout.includes('url: "/gm/dead-cases", params: { page: 1, limit: 20 }'), true);
+  assert.equal(layout.includes('url: "/bank/dead-cases", params: { page: 1, limit: 20 }'), true);
+});
+
 test("subscription trial days are dynamic and not stored as a static counter", async () => {
   const dealershipId = `dealer-trial-dynamic-${Date.now()}`;
   const trialStartDate = "2026-06-01T00:00:00.000Z";
