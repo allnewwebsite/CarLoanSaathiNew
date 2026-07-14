@@ -137,11 +137,11 @@ function leadRows(leads, mode = "total") {
 }
 
 export function TotalLeadsScreen() {
-  const [page, setPage] = useState(1);
-  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads();
+  const [params, setParams] = useSearchParams();
+  const page = Math.max(Number(params.get("page") || 1), 1);
+  const { leads, total, hasMore, loading } = useDealerLeads({ page });
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    loadLeads({ page: nextPage });
+    setParams({ page: String(Math.max(Number(nextPage || 1), 1)) });
   };
   return (
     <div className="space-y-4">
@@ -198,23 +198,22 @@ export function ActiveMembersScreen() {
 
 export function AllCasesScreen() {
   const [params, setParams] = useSearchParams();
-  const [page, setPage] = useState(Number(params.get("page") || 1));
+  const page = Math.max(Number(params.get("page") || 1), 1);
   const salespersonId = params.get("salespersonId") || "";
   const financeManagerId = params.get("financeManagerId") || "";
   const { salespersons } = useSalespersons();
   const { financeManagers } = useFinanceManagers();
-  const filters = useMemo(() => ({ salespersonId, financeManagerId }), [salespersonId, financeManagerId]);
-  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads(filters);
+  const filters = useMemo(() => ({ salespersonId, financeManagerId, page }), [salespersonId, financeManagerId, page]);
+  const { leads, total, hasMore, loading } = useDealerLeads(filters);
   const updateFilter = (next) => {
     const merged = { salespersonId, financeManagerId, page: "1", ...next };
     Object.keys(merged).forEach((key) => !merged[key] && delete merged[key]);
-    setPage(1);
     setParams(merged);
-    loadLeads({ ...merged, page: 1 });
   };
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    loadLeads({ page: nextPage });
+    const next = { salespersonId, financeManagerId, page: String(Math.max(Number(nextPage || 1), 1)) };
+    Object.keys(next).forEach((key) => !next[key] && delete next[key]);
+    setParams(next);
   };
   return (
     <div className="space-y-4">
@@ -236,22 +235,19 @@ export function AllCasesScreen() {
 
 export function StatusScreen() {
   const [params, setParams] = useSearchParams();
-  const [page, setPage] = useState(Number(params.get("page") || 1));
+  const page = Math.max(Number(params.get("page") || 1), 1);
   const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
   const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
-  const { leads, total, hasMore, loading, loadLeads } = useDealerLeads({ status });
+  const { leads, total, hasMore, loading } = useDealerLeads({ status, page });
   const choose = (value) => {
-    setPage(1);
     const next = { status: value, page: "1" };
     Object.keys(next).forEach((key) => !next[key] && delete next[key]);
     setParams(next);
-    loadLeads({ ...next, page: 1 });
   };
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    loadLeads({ page: nextPage, status });
+    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)) });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (

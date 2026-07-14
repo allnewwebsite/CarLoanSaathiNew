@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
@@ -66,16 +65,13 @@ function StatusScreen() {
   const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
-  const [page, setPage] = useState(Number(params.get("page") || 1));
-  const { leads, total, hasMore, loading, load } = useGmLeads({ status });
+  const page = pageFromParams(params);
+  const { leads, total, hasMore, loading } = useGmLeads({ status, page });
   const choose = (nextStatus) => {
-    setPage(1);
     setParams({ status: nextStatus, page: "1" });
-    load({ status: nextStatus, page: 1 });
   };
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    load({ status, page: nextPage });
+    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)) });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
@@ -91,18 +87,15 @@ function StatusScreen() {
 
 function AllCasesScreen() {
   const [params, setParams] = useSearchParams();
-  const [page, setPage] = useState(Number(params.get("page") || 1));
+  const page = pageFromParams(params);
   const salespersonId = params.get("salespersonId") || "";
   const { salespersons } = useSalespersons();
-  const { leads, total, hasMore, loading, load } = useGmLeads({ salespersonId });
+  const { leads, total, hasMore, loading } = useGmLeads({ salespersonId, page });
   const filter = (value) => {
-    setPage(1);
     setParams(value ? { salespersonId: value, page: "1" } : { page: "1" });
-    load({ salespersonId: value, page: 1 });
   };
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    load({ salespersonId, page: nextPage });
+    setParams(salespersonId ? { salespersonId, page: String(nextPage) } : { page: String(nextPage) });
   };
   return (
     <section className="space-y-4">
@@ -122,11 +115,11 @@ function SalespersonCasesScreen() {
   const { salespersonId } = useParams();
   const { salespersons } = useSalespersons();
   const salesperson = salespersons.find((person) => sameSalesperson(person, salespersonId));
-  const { leads, total, hasMore, loading, load } = useGmLeads({ salespersonId });
-  const [page, setPage] = useState(1);
+  const [params, setParams] = useSearchParams();
+  const page = pageFromParams(params);
+  const { leads, total, hasMore, loading } = useGmLeads({ salespersonId, page });
   const pageTo = (nextPage) => {
-    setPage(nextPage);
-    load({ page: nextPage });
+    setParams({ page: String(Math.max(Number(nextPage || 1), 1)) });
   };
   return (
     <section className="space-y-4">

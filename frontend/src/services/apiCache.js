@@ -99,6 +99,11 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
     return `${baseURL}|${url || ""}|${stableParams(params)}|${requestPortalHeader()}|${authCacheIdentity()}`;
   }
 
+  function belongsToCurrentIdentity(key) {
+    const suffix = `|${requestPortalHeader()}|${authCacheIdentity()}`;
+    return String(key || "").endsWith(suffix);
+  }
+
   function cacheKey(config = {}) {
     const method = String(config.method || "get").toLowerCase();
     if (method !== "get") return "";
@@ -199,6 +204,7 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
     const now = Date.now();
     for (const [key, entry] of getCache.entries()) {
       if (!entry || !entry.response) continue;
+      if (!belongsToCurrentIdentity(key)) continue;
       const matches = matchPrefix
         ? String(entry.url || "").startsWith(url)
         : entry.url === url && (!params || stableParams(entry.params) === stableParams(params));
@@ -221,7 +227,8 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
   function findCachedGetItem(url, matcher) {
     hydrateGetCache();
     if (typeof matcher !== "function") return null;
-    for (const entry of getCache.values()) {
+    for (const [key, entry] of getCache.entries()) {
+      if (!belongsToCurrentIdentity(key)) continue;
       if (!entry || (entry.expiresAt <= Date.now() && entry.staleUntil <= Date.now()) || entry.url !== url) continue;
       const payload = entry.response?.data;
       const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
@@ -244,7 +251,8 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
     const seen = new Set();
     const now = Date.now();
     const accepts = typeof matcher === "function" ? matcher : () => true;
-    for (const entry of getCache.values()) {
+    for (const [key, entry] of getCache.entries()) {
+      if (!belongsToCurrentIdentity(key)) continue;
       if (!entry || (entry.expiresAt <= now && entry.staleUntil <= now) || entry.url !== url) continue;
       const payload = entry.response?.data;
       const candidates = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];

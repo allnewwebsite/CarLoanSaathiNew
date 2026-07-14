@@ -40,7 +40,7 @@ export function useDealerLeads(filters = {}) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [filters.status, filters.salespersonId, filters.financeManagerId, filters.search, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
+  }, [filters.status, filters.salespersonId, filters.financeManagerId, filters.search, filters.page, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     loadLeads({ silent: true });
