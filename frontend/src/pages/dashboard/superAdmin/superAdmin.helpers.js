@@ -1,19 +1,11 @@
 import { LEAD_STATUSES, normalizeStatus } from "../../../constants/status.js";
+import { CUSTOMER_DOCUMENTS } from "../../../constants/customerDocuments.js";
 import { formatPortalDate, formatPortalDateTime, formatPortalTime, portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 
 export const SUPER_ADMIN_PAGE_SIZE = 10;
 export const superAdminMoney = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
-export const customerDocumentTypes = [
-  "Aadhaar",
-  "PAN",
-  "Salary Slip",
-  "ITR",
-  "Bank Statement",
-  "Electricity Bill",
-  "Rent Agreement",
-  "Form 16",
-];
+export const customerDocumentTypes = CUSTOMER_DOCUMENTS;
 
 export function display(value) {
   return value || "-";

@@ -6,7 +6,7 @@ import { LEAD_TABLE_LABELS } from "../../../constants/leadTableLabels.js";
 import { statusLabel } from "../../../constants/status.js";
 import { useRealtimeLeadDetailPatch } from "../../../hooks/useRealtimeEntityPatch.js";
 import { api, getCachedGetData } from "../../../services/api.js";
-import { bankDocumentRows, loanExecutiveRemark } from "../../../utils/portalDisplay.js";
+import { bankDocumentRows, loanExecutiveRemark, pendingDocumentItems } from "../../../utils/portalDisplay.js";
 import { DataTable, PageTitle } from "./SuperAdminParts.jsx";
 import { useAdminEcosystem } from "./superAdmin.hooks.js";
 import {
@@ -41,6 +41,7 @@ export function SuperAdminLeadDetailPage() {
 
   useRealtimeLeadDetailPatch({ leadId, setLead: setDetailLead });
   const customerDocuments = useMemo(() => (Array.isArray(lead?.documents) ? lead.documents : []), [lead]);
+  const visibleCustomerDocumentTypes = useMemo(() => [...new Map([...customerDocumentTypes, ...pendingDocumentItems(lead)].map((type) => [type.toLowerCase(), type])).values()], [lead]);
   const bankDocuments = useMemo(() => bankDocumentRows(lead), [lead]);
 
   if (data.loading && !lead) return <DetailPageSkeleton />;
@@ -57,7 +58,8 @@ export function SuperAdminLeadDetailPage() {
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{loanExecutiveRemark(lead)}</p>
       </section>
       <PendingDocumentsPanel lead={lead} />
-      <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={(customerDocuments.length ? customerDocuments : customerDocumentTypes.map((type) => ({ id: type.toLowerCase().replace(/\s+/g, "-"), type }))).map((document) => {
+      <DataTable title="Customer Uploaded Documents" headers={["Document", "Preview", "Uploaded Date/Time", "Download"]} rows={visibleCustomerDocumentTypes.map((type) => {
+        const document = customerDocuments.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase()) || { id: type.toLowerCase().replace(/\s+/g, "-"), type };
         const url = document.fileUrl || document.url || document.downloadUrl;
         return { key: document.id, cells: [display(document.label || document.type || document.documentType), url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", formatDate(document.createdAt || document.uploadedAt), url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-"] };
       })} loading={false} />

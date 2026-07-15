@@ -1,11 +1,12 @@
 import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
+import { CUSTOMER_DOCUMENTS, OTHER_CUSTOMER_DOCUMENT } from "../../constants/customerDocuments.js";
 import { mutationUrlMatches } from "../../hooks/useRealtimeRefresh.js";
 import { normalizeRows } from "../../services/apiResponse.js";
 import { formatPortalDateTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
 
 export const LOAN_EXECUTIVE_PAGE_SIZE = 10;
-export const loanExecutiveDocs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
-export const otherDocumentLabel = "Other";
+export const loanExecutiveDocs = CUSTOMER_DOCUMENTS;
+export const otherDocumentLabel = OTHER_CUSTOMER_DOCUMENT;
 export const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/documents"]);
 
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });

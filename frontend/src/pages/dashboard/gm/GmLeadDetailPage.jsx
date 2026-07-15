@@ -4,12 +4,13 @@ import { OperationalTable } from "../../../components/OperationalTable.jsx";
 import { PendingDocumentsPanel } from "../../../components/PendingDocumentsPanel.jsx";
 import { DetailPageSkeleton } from "../../../components/ui/Loading.jsx";
 import { LEAD_TABLE_LABELS } from "../../../constants/leadTableLabels.js";
+import { CUSTOMER_DOCUMENTS } from "../../../constants/customerDocuments.js";
 import { mutationUrlMatches, useLeadDetailRealtime } from "../../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch } from "../../../hooks/useRealtimeEntityPatch.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../../services/api.js";
-import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
+import { bankDocumentRows, formatPortalDateTime, loanExecutiveRemark, pendingDocumentItems, portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 
-const docs = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
+const docs = CUSTOMER_DOCUMENTS;
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/gm/leads", "/dealer/leads", "/bank/leads", "/documents"]);
 
 function display(value) {
@@ -65,6 +66,7 @@ export function GmLeadDetailPage() {
 
   if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
+  const visibleDocumentTypes = [...new Map([...docs, ...pendingDocumentItems(lead)].map((type) => [type.toLowerCase(), type])).values()];
 
   return (
     <section className="space-y-4">
@@ -92,7 +94,7 @@ export function GmLeadDetailPage() {
       <Table
         title="Customer Uploaded Documents"
         headers={["Document", "Preview", "Uploaded Timestamp", "Download"]}
-        rows={docs.map((type) => {
+        rows={visibleDocumentTypes.map((type) => {
           const document = (lead.documents || []).find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
           const url = document?.url || document?.fileUrl || document?.downloadUrl;
           return {

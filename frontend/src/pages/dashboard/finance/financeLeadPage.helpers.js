@@ -1,8 +1,9 @@
 import { LEAD_STATUSES, normalizeStatus } from "../../../constants/status.js";
+import { CUSTOMER_DOCUMENTS } from "../../../constants/customerDocuments.js";
 import { mutationUrlMatches } from "../../../hooks/useRealtimeRefresh.js";
 import { portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 
-export const documentTypes = ["Aadhaar", "PAN", "Salary Slip", "ITR", "Bank Statement", "Electricity Bill", "Rent Agreement", "Form 16"];
+export const documentTypes = CUSTOMER_DOCUMENTS;
 
 export const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/leads", "/dealer/dead-cases", "/bank/leads", "/gm/leads", "/documents"]);
 

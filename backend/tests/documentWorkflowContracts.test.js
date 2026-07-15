@@ -25,6 +25,20 @@ test("finance documents use a compact table and requested upload grid", () => {
   assert.equal(page.includes("Array.isArray(lead?.pendingDocumentsRequested)"), false);
   assert.equal(page.includes("min-h-28"), false);
   assert.equal(page.includes("grid gap-3 sm:grid-cols-2"), false);
+  assert.equal(page.includes("Not requested"), true);
+});
+
+test("customer document catalog including Other Document is shared across portals", () => {
+  const catalog = read("frontend/src/constants/customerDocuments.js");
+  const executive = read("frontend/src/pages/bank/loanExecutive.helpers.js");
+  const finance = read("frontend/src/pages/dashboard/finance/financeLeadPage.helpers.js");
+  const gm = read("frontend/src/pages/dashboard/gm/GmLeadDetailPage.jsx");
+  const admin = read("frontend/src/pages/dashboard/superAdmin/superAdmin.helpers.js");
+  assert.equal(catalog.includes('OTHER_CUSTOMER_DOCUMENT = "Other Document"'), true);
+  assert.equal(executive.includes("CUSTOMER_DOCUMENTS"), true);
+  assert.equal(finance.includes("CUSTOMER_DOCUMENTS"), true);
+  assert.equal(gm.includes("CUSTOMER_DOCUMENTS"), true);
+  assert.equal(admin.includes("CUSTOMER_DOCUMENTS"), true);
 });
 
 test("document upload enforces new request checklists with legacy compatibility", () => {

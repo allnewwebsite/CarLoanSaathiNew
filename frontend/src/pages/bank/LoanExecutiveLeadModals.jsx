@@ -79,7 +79,7 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
             <span className="font-semibold text-[#0d47a1]">{selected.length} selected</span>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            {[...docs, otherDocumentLabel].map((doc) => (
+            {docs.map((doc) => (
               <label key={doc} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2.5 text-sm ${selected.includes(doc) ? "border-amber-300 bg-amber-50 text-slate-900" : "border-slate-200 text-slate-700"}`}>
                 <input type="checkbox" checked={selected.includes(doc)} onChange={() => setSelected((current) => current.includes(doc) ? current.filter((item) => item !== doc) : [...current, doc])} />
                 <span className="font-medium">{doc}</span>

@@ -8,7 +8,7 @@ import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
 import { useRealtimeLeadDetailPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useLeadDetailRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
-import { loanExecutiveRemark } from "../../utils/portalDisplay.js";
+import { loanExecutiveRemark, pendingDocumentItems } from "../../utils/portalDisplay.js";
 import { PageTitle, Table } from "./LoanExecutivePanelParts.jsx";
 import { caseId, dateTime, display, executiveStatusLabel, leadMutationFilter, loanExecutiveDocs as docs } from "./loanExecutive.helpers.js";
 
@@ -43,6 +43,7 @@ export function LoanExecutiveLeadDetailPage() {
   if (loading && !lead) return <DetailPageSkeleton />;
   if (!lead) return <section className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500">Lead not found.</section>;
   const documents = lead.documents || [];
+  const visibleDocumentTypes = [...new Map([...docs, ...pendingDocumentItems(lead)].map((type) => [type.toLowerCase(), type])).values()];
   const bankDocuments = lead.bankDocuments || [];
   const sanctionDocument = bankDocuments.find((item) => String(item.documentType || item.type || "").toLowerCase().includes("sanction"));
   const sanctionUrl = sanctionDocument?.url || sanctionDocument?.fileUrl || lead.sanctionLetterUrl;
@@ -65,12 +66,12 @@ export function LoanExecutiveLeadDetailPage() {
       setUploadingSanction(false);
     }
   };
-  const rows = docs.map((type) => {
+  const rows = visibleDocumentTypes.map((type) => {
     const doc = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
     const url = doc?.url || doc?.fileUrl || doc?.downloadUrl;
     return { key: type, cells: [type, url ? <a key="preview" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Preview</a> : "Not uploaded", url ? <a key="zoom" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Zoom</a> : "-", url ? <a key="download" href={url} target="_blank" rel="noreferrer" className="text-[#0d47a1]">Download</a> : "-", dateTime(doc?.createdAt || doc?.uploadedAt)] };
   });
-  const mobileDocuments = docs.map((type) => {
+  const mobileDocuments = visibleDocumentTypes.map((type) => {
     const document = documents.find((item) => String(item.type || item.documentType || "").toLowerCase() === type.toLowerCase());
     return {
       type,
