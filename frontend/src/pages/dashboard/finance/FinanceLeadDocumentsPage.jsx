@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Eye, FileText, UploadCloud, X } from "lucide-react";
+import { Download, Eye, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { PendingDocumentsPanel } from "../../../components/PendingDocumentsPanel.jsx";
 import { useLeadDetailRealtime } from "../../../hooks/useRealtimeRefresh.js";
@@ -66,7 +66,7 @@ export function FinanceLeadDocumentsPage() {
 
   const uploaded = (type) => docs.find((doc) => String(doc.type || "").toLowerCase() === type.toLowerCase());
   const requestedTypes = pendingDocumentItems(lead);
-  const uploadTypes = requestedTypes.length ? requestedTypes : documentTypes;
+  const uploadTypes = [...new Map([...documentTypes, ...requestedTypes].map((type) => [String(type).toLowerCase(), String(type)])).values()];
   const openDocument = async (document, download = false) => {
     try {
       const response = await api.get(`/documents/${document.id}/view`);
@@ -95,45 +95,33 @@ export function FinanceLeadDocumentsPage() {
       </section>
       <PendingDocumentsPanel lead={lead} />
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3"><h2 className="text-base font-semibold text-slate-900">Customer Uploaded Documents</h2></div>
+        <div className="flex flex-col gap-1 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-base font-semibold text-slate-900">Customer Uploaded Documents</h2><p className="mt-1 text-xs text-slate-500">Upload requested customer documents from the same standard list visible to the Loan Executive.</p></div>
+          <span className="text-xs font-semibold text-slate-500">{uploadTypes.length} documents</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Document", "Status", "Uploaded", "Preview", "Download", "Upload Time", "Requested By"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{["Document", "Status", "Choose File", "Upload", "Preview", "Download", "Uploaded Timestamp"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {docs.map((document) => <tr key={document.id}><td className="px-4 py-3 font-medium text-slate-900">{document.type || "Document"}</td><td className="px-4 py-3 text-slate-600">{document.status || "Uploaded"}</td><td className="px-4 py-3 text-slate-600">{document.file || "Yes"}</td><td className="px-4 py-3"><button type="button" onClick={() => openDocument(document)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d47a1]"><Eye className="h-3.5 w-3.5" /> Preview</button></td><td className="px-4 py-3"><button type="button" onClick={() => openDocument(document, true)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d47a1]"><Download className="h-3.5 w-3.5" /> Download</button></td><td className="whitespace-nowrap px-4 py-3 text-slate-600">{dateTime(document.uploadedAt || document.createdAt)}</td><td className="px-4 py-3 text-slate-600">{display(lead?.pendingDocumentsRequestedBy || lead?.assignedExecutiveName || lead?.assignedExecutiveEmail)}</td></tr>)}
-              {!docs.length ? <tr><td colSpan="7" className="px-4 py-8 text-center text-slate-500">No customer documents uploaded yet.</td></tr> : null}
+              {uploadTypes.map((type) => {
+                const document = uploaded(type);
+                const file = files[type];
+                const percent = progress[type] || 0;
+                const isRequested = requestedTypes.some((item) => item.toLowerCase() === type.toLowerCase());
+                return (
+                  <tr key={type} className={isRequested ? "bg-amber-50/40" : "bg-white"}>
+                    <td className="min-w-40 px-4 py-3"><p className="font-medium text-slate-900">{type}</p>{isRequested ? <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Requested</span> : null}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{document ? document.status || "Uploaded" : "Not uploaded"}{percent < 0 ? <p className="text-xs text-red-600">Upload failed</p> : null}</td>
+                    <td className="min-w-56 px-4 py-3"><label className="flex h-9 cursor-pointer items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600"><span className="max-w-36 truncate">{file?.name || "Choose file"}</span>{file ? <button type="button" onClick={(event) => { event.preventDefault(); setFiles((current) => ({ ...current, [type]: null })); }} className="text-slate-400 hover:text-slate-700" aria-label={`Remove ${type} file`}><X className="h-3.5 w-3.5" /></button> : null}<input type="file" className="hidden" accept=".pdf,image/png,image/jpeg" onChange={(event) => setFiles((current) => ({ ...current, [type]: event.target.files?.[0] || null }))} /></label>{percent > 0 ? <div className="mt-2 h-1 rounded-full bg-slate-100"><div className={`h-1 rounded-full ${percent < 0 ? "bg-red-500" : "bg-[#0d47a1]"}`} style={{ width: `${Math.max(percent, 8)}%` }} /></div> : null}</td>
+                    <td className="px-4 py-3"><button type="button" onClick={() => upload(type)} disabled={!file} className="h-9 whitespace-nowrap rounded-md bg-[#0d47a1] px-3 text-xs font-semibold text-white disabled:opacity-40">{document ? "Replace" : percent < 0 ? "Retry" : "Upload"}</button></td>
+                    <td className="px-4 py-3">{document ? <button type="button" onClick={() => openDocument(document)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d47a1]"><Eye className="h-3.5 w-3.5" /> Preview</button> : <span className="text-slate-400">-</span>}</td>
+                    <td className="px-4 py-3">{document ? <button type="button" onClick={() => openDocument(document, true)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0d47a1]"><Download className="h-3.5 w-3.5" /> Download</button> : <span className="text-slate-400">-</span>}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{document ? dateTime(document.uploadedAt || document.createdAt) : "-"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      </section>
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3"><div><h2 className="text-base font-semibold text-slate-900">Upload Requested Documents</h2><p className="mt-1 text-sm text-slate-500">Compact upload workspace for this request.</p></div><span className="text-xs font-semibold text-slate-500">{uploadTypes.length} documents</span></div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {uploadTypes.map((type) => {
-          const doc = uploaded(type);
-          const file = files[type];
-          const percent = progress[type] || 0;
-          return (
-            <div key={type} className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div><h3 className="font-medium text-slate-900">{type}</h3><p className="mt-1 text-xs text-slate-500">{doc ? "Uploaded" : "Optional"}</p></div>
-                <FileText className="h-5 w-5 text-slate-400" />
-              </div>
-              <label className="mt-3 flex h-10 cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 text-xs text-slate-600">
-                <UploadCloud className="h-4 w-4 shrink-0" />
-                <span className="truncate">{file?.name || "Choose file"}</span>
-                <input type="file" className="hidden" accept=".pdf,image/png,image/jpeg" onChange={(e) => setFiles((current) => ({ ...current, [type]: e.target.files?.[0] || null }))} />
-              </label>
-              {percent > 0 ? <div className="mt-3 h-1.5 rounded-full bg-slate-100"><div className={`h-1.5 rounded-full ${percent < 0 ? "bg-red-500" : "bg-[#0d47a1]"}`} style={{ width: `${Math.max(percent, 8)}%` }} /></div> : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button onClick={() => upload(type)} disabled={!file} className="h-9 rounded-md bg-[#0d47a1] px-3 text-xs font-medium text-white disabled:opacity-50">{doc ? "Replace" : percent < 0 ? "Retry Upload" : "Upload"}</button>
-                {doc ? <button type="button" onClick={() => openDocument(doc)} className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-xs">Preview</button> : null}
-                <button type="button" onClick={() => setFiles((current) => ({ ...current, [type]: null }))} disabled={!file} className="inline-flex h-9 items-center gap-1 rounded-md border border-slate-200 px-3 text-xs disabled:opacity-40"><X className="h-3.5 w-3.5" /> Remove</button>
-              </div>
-              {doc ? <p className="mt-2 text-[11px] text-slate-500">Uploaded {dateTime(doc.uploadedAt || doc.createdAt)}</p> : null}
-            </div>
-          );
-        })}
         </div>
       </section>
       <section className="rounded-lg border border-slate-200 bg-white p-4">

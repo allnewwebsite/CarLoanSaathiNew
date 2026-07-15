@@ -18,11 +18,13 @@ test("loan executive has one pending-document request entry point", () => {
 test("finance documents use a compact table and requested upload grid", () => {
   const page = read("frontend/src/pages/dashboard/finance/FinanceLeadDocumentsPage.jsx");
   assert.equal(page.includes("Customer Uploaded Documents"), true);
-  assert.equal(page.includes("Upload Requested Documents"), true);
+  assert.equal(page.includes("Choose File"), true);
+  assert.equal(page.includes("Requested"), true);
   assert.equal(page.includes("/documents/${document.id}/view"), true);
   assert.equal(page.includes("pendingDocumentItems(lead)"), true);
   assert.equal(page.includes("Array.isArray(lead?.pendingDocumentsRequested)"), false);
   assert.equal(page.includes("min-h-28"), false);
+  assert.equal(page.includes("grid gap-3 sm:grid-cols-2"), false);
 });
 
 test("document upload enforces new request checklists with legacy compatibility", () => {
