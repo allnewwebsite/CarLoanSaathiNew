@@ -81,13 +81,13 @@ export function LeadTimeline({ leadId, compact = false }) {
               <input className="field h-10 pl-9 text-sm" placeholder="Search timeline" value={filters.search} onChange={(e) => updateFilter("search", e.target.value)} />
             </label>
             <select className="field h-10 text-sm" value={filters.date} onChange={(e) => updateFilter("date", e.target.value)}>
-              <option value="">All dates</option>
+          <option value="">Select Date</option>
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
               <option value="last7">Last 7 Days</option>
             </select>
             <select className="field h-10 text-sm" value={filters.eventType} onChange={(e) => updateFilter("eventType", e.target.value)}>
-              <option value="">All events</option>
+          <option value="">Select Event</option>
               <option value="lead-created">Lead created</option>
               <option value="document-uploaded">Documents</option>
               <option value="lead-sent-to-bank">Bank routing</option>

@@ -4,15 +4,16 @@ import { featuredCars } from "../data/platformData.js";
 import { calculateEmi, formatCurrency } from "../hooks/useEmi.js";
 
 export function MarketplacePage() {
-  const [brand, setBrand] = useState("All");
-  const brands = ["All", ...new Set(featuredCars.map((car) => car.brand))];
-  const cars = useMemo(() => brand === "All" ? featuredCars : featuredCars.filter((car) => car.brand === brand), [brand]);
+  const [brand, setBrand] = useState("");
+  const brands = [...new Set(featuredCars.map((car) => car.brand))];
+  const cars = useMemo(() => !brand ? featuredCars : featuredCars.filter((car) => car.brand === brand), [brand]);
 
   return (
     <main className="container-shell py-12">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <SectionHeading eyebrow="Marketplace" title="Cars with EMI previews and loan eligibility" />
         <select className="field md:w-56" value={brand} onChange={(e) => setBrand(e.target.value)}>
+          <option value="">Select Brand</option>
           {brands.map((item) => <option key={item}>{item}</option>)}
         </select>
       </div>

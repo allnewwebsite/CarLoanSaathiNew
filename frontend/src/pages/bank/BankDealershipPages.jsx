@@ -45,7 +45,7 @@ export function BankDealershipsPage() {
       <div className="flex justify-end">
         <label htmlFor="bank-dealership-filter" className="sr-only">Filter dealership activity</label>
         <select id="bank-dealership-filter" value={dealershipFilter} onChange={(event) => setDealershipFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-64">
-          <option value="">All Dealerships</option>
+          <option value="">Select Dealership</option>
           {dealershipOptions.map((dealership) => <option key={dealership.id} value={dealership.id}>{dealership.name}</option>)}
         </select>
       </div>

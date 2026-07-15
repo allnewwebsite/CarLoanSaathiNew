@@ -88,10 +88,12 @@ export function AvailableBanksPanel({
             />
             <div className="grid grid-cols-2 gap-3">
               <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                {uniqueCities.map((city) => <option key={city} value={city}>{city === "All" ? "All Cities" : city}</option>)}
+                <option value="">Select City</option>
+                {uniqueCities.filter((city) => city !== "All").map((city) => <option key={city} value={city}>{city}</option>)}
               </select>
               <select value={filterState} onChange={(e) => setFilterState(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
-                {uniqueStates.map((state) => <option key={state} value={state}>{state === "All" ? "All States" : state}</option>)}
+                <option value="">Select State</option>
+                {uniqueStates.filter((state) => state !== "All").map((state) => <option key={state} value={state}>{state}</option>)}
               </select>
             </div>
           </div>

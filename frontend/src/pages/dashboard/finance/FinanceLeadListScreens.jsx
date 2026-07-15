@@ -220,11 +220,11 @@ export function AllCasesScreen() {
       <SectionTitle title="All Cases" subtitle="Main dealership monitoring page with salesperson and Finance Manager filtering." />
       <div className="flex flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:justify-end">
         <select className="field h-11 sm:w-64" value={salespersonId} onChange={(event) => updateFilter({ salespersonId: event.target.value })}>
-          <option value="">Filter By Salesperson</option>
+          <option value="">Select Salesperson</option>
           {salespersons.map((person) => <option key={person.id} value={person.id}>{person.name} - {person.jobId}</option>)}
         </select>
         <select className="field h-11 sm:w-64" value={financeManagerId} onChange={(event) => updateFilter({ financeManagerId: event.target.value })}>
-          <option value="">Filter By Finance Manager</option>
+          <option value="">Select Finance Manager</option>
           {financeManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.name} - {manager.employeeId}</option>)}
         </select>
       </div>

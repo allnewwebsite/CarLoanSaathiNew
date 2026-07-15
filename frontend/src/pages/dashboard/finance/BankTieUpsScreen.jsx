@@ -134,11 +134,11 @@ export function BankTieUpsScreen() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search bank, IFSC, city, state" className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
             </div>
             <select value={city} onChange={(event) => setCity(event.target.value)} className="field h-10 rounded-md bg-white">
-              <option value="">All cities</option>
+              <option value="">Select City</option>
               {cities.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
             <select value={state} onChange={(event) => setState(event.target.value)} className="field h-10 rounded-md bg-white">
-              <option value="">All states</option>
+              <option value="">Select State</option>
               {states.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </div>

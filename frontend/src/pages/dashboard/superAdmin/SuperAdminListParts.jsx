@@ -11,7 +11,7 @@ export function Filters({ search, setSearch, status, setStatus, options = [] }) 
         <input className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#0d47a1]" placeholder="Search records" value={search} onChange={(event) => setSearch(event.target.value)} />
       </div>
       {options.length ? <select className="h-9 rounded-md border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#0d47a1]" value={status} onChange={(event) => setStatus(event.target.value)}>
-        <option value="">All statuses</option>
+        <option value="">Select Status</option>
         {options.map((item) => <option key={item} value={item}>{statusLabel(item) || item}</option>)}
       </select> : null}
     </div>

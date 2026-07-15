@@ -73,7 +73,7 @@ export function TotalLeadsPage() {
       <div className="flex justify-end">
         <label htmlFor="bank-lead-executive-filter" className="sr-only">Filter leads by executive</label>
         <select id="bank-lead-executive-filter" value={executiveFilter} onChange={(event) => setExecutiveFilter(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-64">
-          <option value="">All Executives</option>
+          <option value="">Select Executive</option>
           {knownExecutives.map((executive) => <option key={executive.id} value={executive.id}>{executive.name}</option>)}
         </select>
       </div>

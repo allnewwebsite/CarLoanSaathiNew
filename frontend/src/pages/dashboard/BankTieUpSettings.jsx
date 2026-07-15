@@ -30,8 +30,8 @@ export default function BankTieUpSettings() {
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterCity, setFilterCity] = useState("All");
-  const [filterState, setFilterState] = useState("All");
+  const [filterCity, setFilterCity] = useState("");
+  const [filterState, setFilterState] = useState("");
   const [selectedBankToAdd, setSelectedBankToAdd] = useState(null);
 
   // Modal & Confirmation State

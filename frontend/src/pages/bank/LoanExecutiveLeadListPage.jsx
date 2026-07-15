@@ -8,7 +8,6 @@ import { api } from "../../services/api.js";
 import {
   DocumentsSheet,
   LeadDetailsModal,
-  PendingDocsModal,
   RejectModal,
   StatusUpdateModal,
 } from "./LoanExecutiveLeadModals.jsx";
@@ -146,7 +145,6 @@ export function LoanExecutiveLeadListPage({ mode }) {
         display(lead.financeManagerMobile),
         executiveStatusLabel(lead),
         <button key="status-action" onClick={() => updateStatus(lead, "STATUS_UPDATE")} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Update</button>,
-        <button key="pending" onClick={() => setModal({ type: "docs", lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} className="inline-flex h-8 items-center justify-center rounded-md border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-700 hover:bg-amber-50">Request Docs</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
   }));
@@ -165,14 +163,14 @@ export function LoanExecutiveLeadListPage({ mode }) {
           disabled={!knownDealerships.length}
           className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 disabled:opacity-60 sm:w-64"
         >
-          <option value="">All Dealerships</option>
+          <option value="">Select Dealership</option>
           {knownDealerships.map((dealership) => <option key={dealership.value} value={dealership.value}>{dealership.label}</option>)}
         </select>
       </div>
       {mode === "status" ? <div className="flex gap-2 overflow-x-auto pb-1">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium sm:text-sm ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
       <div className="hidden lg:block">
-        <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Document Request", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+        <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
       </div>
       <div className="space-y-2 lg:hidden">
         {loading && !rows.length ? Array.from({ length: 3 }, (_, index) => <div key={index} className="h-48 animate-pulse rounded-lg border border-slate-200 bg-white" />) : null}
@@ -189,10 +187,9 @@ export function LoanExecutiveLeadListPage({ mode }) {
         {rows.length || page > 1 ? <CompactPagination page={page} total={total} hasMore={hasMore} onPage={onPage} /> : null}
       </div>
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
-      {modal?.type === "docs" ? <PendingDocsModal lead={modal.lead} status={modal.status} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
       {modal?.type === "details" ? <LeadDetailsModal lead={modal.lead} onClose={() => setModal(null)} /> : null}
-      {modal?.type === "document-actions" ? <DocumentsSheet lead={modal.lead} onClose={() => setModal(null)} onRequest={() => setModal({ type: "docs", lead: modal.lead, status: LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS })} /> : null}
+      {modal?.type === "document-actions" ? <DocumentsSheet lead={modal.lead} onClose={() => setModal(null)} /> : null}
     </section>
   );
 }

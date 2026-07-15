@@ -32,7 +32,7 @@ export function DeadCasesPage({ audience = "finance" }) {
             onChange={(event) => state.setReasonFilter(event.target.value)}
             className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-56"
           >
-            <option value="">All Reasons</option>
+            <option value="">Select Reason</option>
             {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
           </select>
           <button

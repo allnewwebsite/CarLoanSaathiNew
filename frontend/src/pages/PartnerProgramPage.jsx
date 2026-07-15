@@ -3,7 +3,7 @@ import { SectionHeading } from "../components/SectionHeading.jsx";
 
 const programs = [
   { title: "Join as dealership", body: "Run the dealership finance desk, manage salespersons internally, and send complete files to banks." },
-  { title: "Join as bank partner", body: "Process assigned dealer cases, request documents, approve or reject, and mark disbursements." },
+  { title: "Join as bank partner", body: "Process assigned dealer cases, update statuses, approve or reject, and mark disbursements." },
 ];
 
 export function PartnerProgramPage() {

@@ -9,7 +9,7 @@ import { Field, FinanceTable as Table, MobileInput, SectionTitle } from "./Finan
 
 const staffMutationFilter = (detail) => mutationUrlMatches(detail, ["/dealer/staff"]);
 
-const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "gm", branch: "", city: "" };
+const emptyStaff = { fullName: "", email: "", mobile: "", employeeId: "", role: "", branch: "", city: "" };
 
 export function StaffManagementScreen() {
   const navigate = useNavigate();
@@ -161,7 +161,7 @@ export function StaffManagementScreen() {
           <Field label="Official Email" error={submittedOnce ? errors.email : ""}><input aria-invalid={Boolean(submittedOnce && errors.email)} type="email" className="field mt-1.5 h-10 rounded-md" value={form.email} onChange={(event) => update("email", cleanEmail(event.target.value))} /></Field>
           <Field label="Mobile Number" error={submittedOnce ? errors.mobile : ""}><MobileInput value={form.mobile} error={submittedOnce ? errors.mobile : ""} onChange={(value) => update("mobile", value)} /></Field>
           <Field label="Employee ID" error={submittedOnce ? errors.employeeId : ""}><input aria-invalid={Boolean(submittedOnce && errors.employeeId)} className="field mt-1.5 h-10 rounded-md" value={form.employeeId} onChange={(event) => update("employeeId", event.target.value.replace(/[<>]/g, ""))} /></Field>
-          <Field label="Role" error={submittedOnce ? errors.role : ""}><select aria-invalid={Boolean(submittedOnce && errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onChange={(event) => update("role", event.target.value)}><option value="gm">GM</option></select></Field>
+          <Field label="Role" error={submittedOnce ? errors.role : ""}><select required aria-invalid={Boolean(submittedOnce && errors.role)} className="field mt-1.5 h-10 rounded-md" value={form.role} onChange={(event) => update("role", event.target.value)}><option value="">Select Role</option><option value="gm">GM</option></select></Field>
           <Field label="Branch / Location"><input className="field mt-1.5 h-10 rounded-md" value={form.branch} onChange={(event) => update("branch", event.target.value.replace(/[<>]/g, ""))} /></Field>
         </div>
         {message ? <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
