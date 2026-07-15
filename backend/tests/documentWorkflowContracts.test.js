@@ -25,7 +25,9 @@ test("finance documents use a compact table and requested upload grid", () => {
   assert.equal(page.includes("Array.isArray(lead?.pendingDocumentsRequested)"), false);
   assert.equal(page.includes("min-h-28"), false);
   assert.equal(page.includes("grid gap-3 sm:grid-cols-2"), false);
-  assert.equal(page.includes("Not requested"), true);
+  assert.equal(page.includes("Not Requested"), true);
+  assert.equal(page.includes("disabled={!canUpload}"), false);
+  assert.equal(page.includes("!file || !canUpload"), false);
 });
 
 test("customer document catalog including Other Document is shared across portals", () => {
@@ -41,11 +43,12 @@ test("customer document catalog including Other Document is shared across portal
   assert.equal(admin.includes("CUSTOMER_DOCUMENTS"), true);
 });
 
-test("document upload enforces new request checklists with legacy compatibility", () => {
+test("document upload authority is independent from the request checklist", () => {
   const controller = read("backend/controllers/document.controller.js");
-  assert.equal(controller.includes("function isRequestedDocumentType"), true);
-  assert.equal(controller.includes("if (!requested.length) return true"), true);
-  assert.equal(controller.includes("Only documents requested for this lead can be uploaded"), true);
+  assert.equal(controller.includes("function isRequestedDocumentType"), false);
+  assert.equal(controller.includes("Only documents requested for this lead can be uploaded"), false);
+  assert.equal(controller.includes("Only finance desk can upload customer documents"), true);
+  assert.equal(controller.includes("Document type is required"), true);
 });
 
 test("every platform select starts with an explicit empty option", () => {

@@ -25,23 +25,6 @@ function canUploadCustomerDocument(req, lead) {
   return !lead || lead.dealershipId === req.user?.dealershipId || lead.dealerEmail === email || lead.dealershipEmail === email || lead.createdBy === email;
 }
 
-function isRequestedDocumentType(lead, type) {
-  const requested = [];
-  const collect = (value) => {
-    if (Array.isArray(value)) return value.forEach(collect);
-    if (value && typeof value === "object") return collect(value.documents || value.document || value.pendingDocuments || value.documentType || value.type);
-    const normalized = String(value || "").trim().toLowerCase();
-    if (normalized) requested.push(normalized);
-  };
-  collect(lead?.pendingDocuments);
-  collect(lead?.pendingDocumentsRequested);
-  // Legacy pending-document records did not always persist the checklist. Keep
-  // them uploadable while enforcing the exact checklist for all new requests.
-  if (!requested.length) return true;
-  const normalizedType = String(type || "").trim().toLowerCase();
-  return requested.includes(normalizedType);
-}
-
 async function canReadCustomerDocument(req, lead) {
   if (req.user?.role === "super-admin") return true;
   const email = req.user?.email || req.user?.uid;
@@ -76,7 +59,7 @@ export async function uploadDocument(req, res, next) {
     if (!req.body.leadId || !lead) return res.status(404).json({ message: "Lead not found" });
     assertLeadMutable(lead);
     if (!canUploadCustomerDocument(req, lead)) return res.status(403).json({ message: "Only finance desk can upload customer documents" });
-    if (!req.body.type || !isRequestedDocumentType(lead, req.body.type)) return res.status(400).json({ message: "Only documents requested for this lead can be uploaded" });
+    if (!req.body.type) return res.status(400).json({ message: "Document type is required" });
     const uploaded = await uploadLeadDocument(req.file, req.body.leadId, {
       dealershipId: lead.dealershipId || req.user?.dealershipId,
       caseId: lead.caseId,

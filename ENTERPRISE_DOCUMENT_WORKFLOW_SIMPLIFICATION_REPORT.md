@@ -71,7 +71,7 @@ All JSX `<select>` controls now begin with an empty-value option. Creation/updat
 
 - Status updates remain restricted to Loan Executives by the existing bank route middleware and controller ownership checks.
 - Finance uploads remain restricted to Finance Desk and matching dealership ownership.
-- New checklist-aware validation prevents upload of a different document type when request metadata exists.
+- Finance Desk upload authority remains independent from the pending-document checklist; the checklist is informational and never disables or rejects an otherwise authorized upload.
 - Short-lived document URLs remain protected by authenticated document read authorization.
 
 ## Files modified
