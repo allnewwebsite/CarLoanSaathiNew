@@ -26,15 +26,20 @@ function canUploadCustomerDocument(req, lead) {
 }
 
 function isRequestedDocumentType(lead, type) {
-  const requested = [
-    ...(Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []),
-    ...(Array.isArray(lead?.pendingDocuments) ? lead.pendingDocuments : []),
-  ];
+  const requested = [];
+  const collect = (value) => {
+    if (Array.isArray(value)) return value.forEach(collect);
+    if (value && typeof value === "object") return collect(value.documents || value.document || value.pendingDocuments || value.documentType || value.type);
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized) requested.push(normalized);
+  };
+  collect(lead?.pendingDocuments);
+  collect(lead?.pendingDocumentsRequested);
   // Legacy pending-document records did not always persist the checklist. Keep
   // them uploadable while enforcing the exact checklist for all new requests.
   if (!requested.length) return true;
   const normalizedType = String(type || "").trim().toLowerCase();
-  return requested.some((item) => String(item || "").trim().toLowerCase() === normalizedType);
+  return requested.includes(normalizedType);
 }
 
 async function canReadCustomerDocument(req, lead) {

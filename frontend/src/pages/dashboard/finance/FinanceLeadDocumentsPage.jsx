@@ -5,7 +5,7 @@ import { PendingDocumentsPanel } from "../../../components/PendingDocumentsPanel
 import { useLeadDetailRealtime } from "../../../hooks/useRealtimeRefresh.js";
 import { useRealtimeLeadDetailPatch } from "../../../hooks/useRealtimeEntityPatch.js";
 import { api } from "../../../services/api.js";
-import { bankDocumentRows, loanExecutiveRemark } from "../../../utils/portalDisplay.js";
+import { bankDocumentRows, loanExecutiveRemark, pendingDocumentItems } from "../../../utils/portalDisplay.js";
 import { dateTime, display } from "../financeDesk.helpers.js";
 import { caseId, documentTypes, leadMutationFilter } from "./financeLeadPage.helpers.js";
 
@@ -65,10 +65,7 @@ export function FinanceLeadDocumentsPage() {
   };
 
   const uploaded = (type) => docs.find((doc) => String(doc.type || "").toLowerCase() === type.toLowerCase());
-  const requestedTypes = [...new Set([
-    ...(Array.isArray(lead?.pendingDocumentsRequested) ? lead.pendingDocumentsRequested : []),
-    ...(Array.isArray(lead?.pendingDocuments) ? lead.pendingDocuments : []),
-  ].filter(Boolean))];
+  const requestedTypes = pendingDocumentItems(lead);
   const uploadTypes = requestedTypes.length ? requestedTypes : documentTypes;
   const openDocument = async (document, download = false) => {
     try {

@@ -20,7 +20,8 @@ test("finance documents use a compact table and requested upload grid", () => {
   assert.equal(page.includes("Customer Uploaded Documents"), true);
   assert.equal(page.includes("Upload Requested Documents"), true);
   assert.equal(page.includes("/documents/${document.id}/view"), true);
-  assert.equal(page.includes("pendingDocumentsRequested"), true);
+  assert.equal(page.includes("pendingDocumentItems(lead)"), true);
+  assert.equal(page.includes("Array.isArray(lead?.pendingDocumentsRequested)"), false);
   assert.equal(page.includes("min-h-28"), false);
 });
 
