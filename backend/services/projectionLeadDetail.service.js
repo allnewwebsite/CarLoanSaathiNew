@@ -9,7 +9,7 @@ import {
   withProjectionMetadata,
 } from "./projectionShared.service.js";
 
-export async function syncLeadDetailProjection(lead = {}, extras = {}) {
+export function leadDetailProjectionPayload(lead = {}, extras = {}) {
   if (!lead?.id) return null;
   const updatedAt = latestTimestamp(lead.statusUpdatedAt, lead.updatedAt, lead.generatedAt, lead.createdAt) || new Date().toISOString();
   const documentCounts = extras.documentCounts || {
@@ -49,6 +49,12 @@ export async function syncLeadDetailProjection(lead = {}, extras = {}) {
   }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "lead-detail" });
   if (Array.isArray(extras.documents)) payload.documents = extras.documents;
   if (Array.isArray(extras.bankDocuments)) payload.bankDocuments = extras.bankDocuments;
+  return payload;
+}
+
+export async function syncLeadDetailProjection(lead = {}, extras = {}) {
+  const payload = leadDetailProjectionPayload(lead, extras);
+  if (!payload) return null;
   await upsertRecord("leadDetailsProjection", safeDocId(lead.id), payload);
   return payload;
 }

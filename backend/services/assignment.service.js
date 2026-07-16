@@ -6,11 +6,12 @@ import { getWorkflowSettings } from "./settings.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "./timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { countOpenExecutiveLeads } from "./leadQuery.service.js";
-import { removeLeadExecutiveProjection, syncLeadProjectionSoon } from "./projection.service.js";
+import { leadOwnershipProjectionPlan, syncLeadProjectionSoon } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 import { logError, logInfo } from "./logger.service.js";
 import { syncBankAnalyticsAggregate } from "./bankAnalyticsAggregate.service.js";
+import { clearCachedTags, clearCachedValue } from "./ttlCache.service.js";
 import {
   activeExecutive,
   bankMatchesExecutive,
@@ -209,12 +210,6 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   const executiveName = executive.name || executive.fullName || executive.email;
   const executiveEmail = executive.email || executive.officialEmail || executive.id || null;
   const executiveMobile = executive.mobile || null;
-  const previousExecutiveKeys = [
-    lead.assignedExecutiveId,
-    lead.assignedExecutiveEmail,
-    lead.assignedExecutiveMobile,
-    lead.executiveMobile,
-  ].filter(Boolean);
   const historyEntry = {
     transferredFrom: {
       executiveId: currentExecutive.id,
@@ -236,7 +231,16 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     bankIfsc: lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || executive.bankIfsc || executive.ifsc || null,
   };
 
-  const updated = await runRecordTransaction(async (transaction) => {
+  const activeAssignmentPage = await queryRecords("leadAssignments", {
+    where: [{ field: "leadId", value: leadId }, { field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
+    orderBy: "createdAt",
+    direction: "desc",
+    limit: 5,
+    maxLimit: 5,
+  });
+  const activeAssignment = activeAssignmentPage.data[0];
+
+  const transferResult = await runRecordTransaction(async (transaction) => {
     const latestLead = await transaction.get("leads", leadId);
     if (!latestLead) {
       const error = new Error("Lead not found");
@@ -247,6 +251,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
     const freshCurrent = {
       id: latestLead.assignedExecutiveId || null,
       email: latestLead.assignedExecutiveEmail || null,
+      name: latestLead.assignedExecutiveName || null,
       mobile: latestLead.assignedExecutiveMobile || latestLead.executiveMobile || null,
     };
     if (sameExecutive(freshCurrent, executive)) {
@@ -255,12 +260,22 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       error.code = "SAME_EXECUTIVE_REASSIGNMENT";
       throw error;
     }
+    const completedHistoryEntry = {
+      ...historyEntry,
+      transferredFrom: {
+        executiveId: freshCurrent.id,
+        executiveEmail: freshCurrent.email,
+        executiveName: freshCurrent.name,
+        executiveMobile: freshCurrent.mobile,
+      },
+    };
     const leadPatch = {
       assignedExecutiveId: executive.id,
       assignedExecutiveEmail: executiveEmail,
       assignedExecutiveName: executiveName,
       assignedExecutiveMobile: executiveMobile,
       executiveMobile,
+      ownerId: executive.id,
       assignmentStatus: "pending",
       status: LEAD_STATUSES.NEW,
       assignmentTimestamp: now,
@@ -269,17 +284,9 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       reassignedAt: now,
       reassignedBy: requestedBy,
       reassignmentReason: reason,
-      assignmentHistory: [...(latestLead.assignmentHistory || []), historyEntry],
+      assignmentHistory: [...(latestLead.assignmentHistory || []), completedHistoryEntry],
     };
     transaction.update("leads", leadId, leadPatch);
-    const activeAssignmentPage = await queryRecords("leadAssignments", {
-      where: [{ field: "leadId", value: leadId }, { field: "status", op: "in", value: ["pending", "accepted", "in-progress"] }],
-      orderBy: "createdAt",
-      direction: "desc",
-      limit: 5,
-      maxLimit: 5,
-    });
-    const activeAssignment = activeAssignmentPage.data[0];
     if (activeAssignment) {
       transaction.update("leadAssignments", activeAssignment.id, {
         previousExecutiveId: freshCurrent.id,
@@ -292,6 +299,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
         assignedExecutiveName: executiveName,
         executiveMobile,
         assignedExecutiveMobile: executiveMobile,
+        ownerId: executive.id,
         status: "pending",
         reassignedAt: now,
         reassignedBy: requestedBy,
@@ -315,6 +323,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
         assignedExecutiveName: executiveName,
         executiveMobile,
         assignedExecutiveMobile: executiveMobile,
+        ownerId: executive.id,
         status: "pending",
         reason,
         assignmentTimestamp: now,
@@ -340,22 +349,60 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       status: "reassigned",
       createdAt: now,
     });
-    return { ...latestLead, ...leadPatch, updatedAt: now };
+    const nextLead = { ...latestLead, ...leadPatch, updatedAt: now };
+    const previousPlan = leadOwnershipProjectionPlan(latestLead);
+    const nextPlan = leadOwnershipProjectionPlan(nextLead);
+    const nextExecutiveDocs = new Set(nextPlan.executiveDocIds);
+    previousPlan.executiveDocIds
+      .filter((docId) => !nextExecutiveDocs.has(docId))
+      .forEach((docId) => transaction.delete("executiveViews", docId));
+    nextPlan.writes.forEach((write) => transaction.set(write.collection, write.docId, write.payload));
+    return {
+      lead: nextLead,
+      previousExecutive: freshCurrent,
+      previousExecutiveKeys: [
+        freshCurrent.id,
+        freshCurrent.email,
+        freshCurrent.mobile,
+      ].filter(Boolean),
+      historyEntry: completedHistoryEntry,
+    };
   });
 
-  const assignmentRealtimeEvent = currentExecutive.id || currentExecutive.email || currentExecutive.mobile
+  const updated = transferResult.lead;
+  const transferredFrom = transferResult.previousExecutive;
+  const transferredFromKeys = transferResult.previousExecutiveKeys;
+  const completedHistoryEntry = transferResult.historyEntry;
+  const previousExecutiveRecord = executives.find((item) => sameExecutive(transferredFrom, item)) || {
+    ...previousExecutive,
+    ...transferredFrom,
+  };
+
+  const assignmentRealtimeEvent = transferredFrom.id || transferredFrom.email || transferredFrom.mobile
     ? REALTIME_EVENTS.EXECUTIVE_REASSIGNED
     : REALTIME_EVENTS.EXECUTIVE_ASSIGNED;
+  clearCachedValue("lead-query:");
+  clearCachedTags([
+    `lead:${leadId}`,
+    "lead:list",
+    "dashboard:fast",
+    "bank:summary",
+    "bank:executive-cases",
+    "bank:leads",
+    "notifications",
+  ]);
   publishRealtimeEvent({
     eventType: assignmentRealtimeEvent,
     lead: updated,
     actor: { email: requestedBy, role: "bank-manager" },
     data: {
       reason,
-      fromExecutiveId: currentExecutive.id || currentExecutive.email || "",
+      fromExecutiveId: transferredFrom.id || transferredFrom.email || "",
       toExecutiveId: executive.id,
-      previousExecutiveId: currentExecutive.id || currentExecutive.email || "",
+      previousExecutiveId: transferredFrom.id || transferredFrom.email || "",
+      previousExecutiveIds: transferredFromKeys,
       assignedExecutiveId: executive.id,
+      executiveId: executive.id,
       recipientId: executive.id,
     },
   });
@@ -363,19 +410,18 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   const runFollowUps = async () => {
     await syncBankAnalyticsAggregate(updated);
     syncLeadProjectionSoon(updated);
-    await Promise.all(previousExecutiveKeys.map((key) => removeLeadExecutiveProjection({ leadId, executiveId: key })));
     await Promise.all([
       refreshExecutiveSummary(executive),
-      refreshExecutiveSummary(previousExecutive),
+      refreshExecutiveSummary(previousExecutiveRecord),
     ]);
     await addTimelineEvent({
       leadId,
       eventType: TIMELINE_EVENTS.LEAD_REASSIGNED,
       title: "Case Reassigned",
-      description: `Case reassigned from ${currentExecutive.name || currentExecutive.email || "previous executive"} to ${executiveName}`,
+      description: `Case reassigned from ${transferredFrom.name || transferredFrom.email || "previous executive"} to ${executiveName}`,
       actorName: requestedBy,
       actorRole: "bank-manager",
-      metadata: { ...historyEntry, fromExecutiveId: currentExecutive.id || currentExecutive.email || null, toExecutiveId: executive.id },
+      metadata: { ...completedHistoryEntry, fromExecutiveId: transferredFrom.id || transferredFrom.email || null, toExecutiveId: executive.id },
       leadSnapshot: updated,
     });
     await createNotification({

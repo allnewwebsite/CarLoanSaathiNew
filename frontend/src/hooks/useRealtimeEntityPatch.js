@@ -99,7 +99,52 @@ function statusMatchesFilter(lead = {}, statusFilter = "") {
   return normalizeStatus(lead.status) === normalizeStatus(statusFilter);
 }
 
-export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", enabled = true, pageSize = 10 } = {}) {
+function normalizedOwnerIdentity(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const digits = text.replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : text;
+}
+
+function ownerIdentities(record = {}) {
+  return new Set([
+    record.uid,
+    record.id,
+    record.email,
+    record.officialEmail,
+    record.executiveId,
+    record.assignedExecutiveId,
+    record.mobile,
+    record.phone,
+    record.assignedExecutiveMobile,
+    record.executiveMobile,
+  ].map(normalizedOwnerIdentity).filter(Boolean));
+}
+
+function reassignmentDisposition(event = {}, user = {}) {
+  if ((event.eventType || event.event) !== "EXECUTIVE_REASSIGNED") return "unchanged";
+  const userIds = ownerIdentities(user);
+  if (!userIds.size) return "unchanged";
+  const previousIds = [
+    event.data?.previousExecutiveId,
+    ...(Array.isArray(event.data?.previousExecutiveIds) ? event.data.previousExecutiveIds : []),
+  ].map(normalizedOwnerIdentity).filter(Boolean);
+  const nextIds = [
+    event.assignedExecutiveId,
+    event.executiveId,
+    event.lead?.assignedExecutiveId,
+    event.lead?.assignedExecutiveEmail,
+    event.lead?.assignedExecutiveMobile,
+    event.data?.assignedExecutiveId,
+    event.data?.executiveId,
+  ].map(normalizedOwnerIdentity).filter(Boolean);
+  const isPreviousOwner = previousIds.some((id) => userIds.has(id));
+  const isNextOwner = nextIds.some((id) => userIds.has(id));
+  if (isPreviousOwner && !isNextOwner) return "remove";
+  if (isNextOwner) return "insert";
+  return "unchanged";
+}
+
+export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", enabled = true, pageSize = 10, user = null } = {}) {
   useEffect(() => {
     if (!enabled || typeof setRows !== "function") return undefined;
     const onRealtime = (event) => {
@@ -108,6 +153,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
       const patch = patchedLeadFromEvent(detail);
       if (!patch) return;
       const eventType = detail.eventType || detail.event;
+      const ownershipDisposition = reassignmentDisposition(detail, user || {});
       const canInsertPatchedRow = hasHydratedLeadPayload(detail)
         && patch.isDeadCase !== true
         && statusMatchesFilter(patch, statusFilter)
@@ -122,6 +168,13 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
         );
       setRows((current) => {
         if (!Array.isArray(current)) return current;
+        if (ownershipDisposition === "remove") {
+          const next = current.filter((row) => !sameLead(row, patch));
+          if (next.length !== current.length && typeof setTotal === "function") {
+            setTotal((value) => Math.max(0, Number(value || 0) - 1));
+          }
+          return next;
+        }
         let changed = false;
         let removed = false;
         const next = current
@@ -147,10 +200,10 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [enabled, pageSize, setRows, setTotal, statusFilter]);
+  }, [enabled, pageSize, setRows, setTotal, statusFilter, user]);
 }
 
-export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true } = {}) {
+export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true, user = null } = {}) {
   useEffect(() => {
     if (!enabled || !leadId || typeof setLead !== "function") return undefined;
     const onRealtime = (event) => {
@@ -159,6 +212,10 @@ export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true } =
       if (!patch) return;
       const ids = new Set(leadIdentity(patch));
       if (!ids.has(String(leadId))) return;
+      if (reassignmentDisposition(detail, user || {}) === "remove") {
+        setLead(null);
+        return;
+      }
       setLead((current) => {
         if (!current) return current;
         const next = { ...current, ...patch };
@@ -177,5 +234,5 @@ export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true } =
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [enabled, leadId, setLead]);
+  }, [enabled, leadId, setLead, user]);
 }

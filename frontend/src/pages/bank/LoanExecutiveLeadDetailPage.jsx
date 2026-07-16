@@ -5,6 +5,7 @@ import { PendingDocumentsPanel } from "../../components/PendingDocumentsPanel.js
 import { DetailPageSkeleton } from "../../components/ui/Loading.jsx";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { useRealtimeLeadDetailPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useLeadDetailRealtime } from "../../hooks/useRealtimeRefresh.js";
 import { api, findCachedGetItem, getCachedGetData } from "../../services/api.js";
@@ -13,6 +14,7 @@ import { PageTitle, Table } from "./LoanExecutivePanelParts.jsx";
 import { caseId, dateTime, display, executiveStatusLabel, leadMutationFilter, loanExecutiveDocs as docs } from "./loanExecutive.helpers.js";
 
 export function LoanExecutiveLeadDetailPage() {
+  const { user } = useAuth();
   const { leadId } = useParams();
   const cachedLead = getCachedGetData(`/bank/leads/${leadId}`)
     || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId);
@@ -37,7 +39,7 @@ export function LoanExecutiveLeadDetailPage() {
   useEffect(() => {
     loadLead();
   }, [loadLead]);
-  useRealtimeLeadDetailPatch({ leadId, setLead });
+  useRealtimeLeadDetailPatch({ leadId, setLead, user });
   useLeadDetailRealtime({ lead, leadId, onRefresh: loadLead, mutationFilter: leadMutationFilter });
 
   if (loading && !lead) return <DetailPageSkeleton />;

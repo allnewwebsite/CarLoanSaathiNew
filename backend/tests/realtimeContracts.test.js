@@ -139,6 +139,36 @@ test("assigned lead realtime reaches admin, bank manager, and target loan execut
   clients.forEach((client) => client.close());
 });
 
+test("reassignment realtime reaches both previous and new owner but no unrelated executive", () => {
+  const previous = mockConnection({ role: "loan-executive", uid: "executive-previous", email: "previous@example.com" });
+  const next = mockConnection({ role: "loan-executive", uid: "executive-next", email: "next@example.com" });
+  const unrelated = mockConnection({ role: "loan-executive", uid: "executive-unrelated", email: "unrelated@example.com" });
+
+  const event = publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.EXECUTIVE_REASSIGNED,
+    lead: {
+      id: "lead-owner-transfer",
+      caseId: "CLS-OWNER-TRANSFER",
+      assignedExecutiveId: "executive-next",
+      assignedExecutiveEmail: "next@example.com",
+    },
+    data: {
+      executiveId: "executive-next",
+      recipientId: "executive-next",
+      previousExecutiveId: "executive-previous",
+      previousExecutiveIds: ["executive-previous", "previous@example.com"],
+    },
+  });
+
+  assert.equal(previous.operationalEvents().length, 1);
+  assert.equal(next.operationalEvents().length, 1);
+  assert.equal(unrelated.operationalEvents().length, 0);
+  assert.deepEqual(event.data.previousExecutiveIds, ["executive-previous", "previous@example.com"]);
+  previous.close();
+  next.close();
+  unrelated.close();
+});
+
 test("SSE keeps one connection per user identity", () => {
   const user = {
     sessionId: "same-session",

@@ -110,19 +110,21 @@ export function executiveStrongIdentityValues(executive = {}) {
 }
 
 export function leadExecutiveStrongIdentityValues(lead = {}) {
-  return [
+  const canonical = [
     lead.assignedExecutiveId,
     lead.assignedExecutiveEmail,
-    lead.executiveEmail,
-    lead.loanExecutiveId,
-    lead.updatedByExecutiveId,
     lead.assignedExecutiveJobId,
-    lead.employeeId,
-    lead.employeeCode,
-    lead.jobId,
     normalizedMobile(lead.assignedExecutiveMobile),
     normalizedMobile(lead.executiveMobile),
     normalizedMobile(lead.assignedExecutivePhone),
+  ].filter(Boolean);
+  if (canonical.length) return canonical;
+  return [
+    lead.executiveEmail,
+    lead.loanExecutiveId,
+    lead.employeeId,
+    lead.employeeCode,
+    lead.jobId,
     normalizedMobile(lead.loanExecutiveMobile),
   ].filter(Boolean);
 }
@@ -194,6 +196,15 @@ export function bankManagerCanAccessLead(partner, lead) {
 export function loanExecutiveCanAccessLead(partner, lead) {
   const strongMatch = anyMatch(leadExecutiveStrongIdentityValues(lead), executiveStrongIdentityValues(partner));
   if (strongMatch) return true;
+
+  const hasCanonicalOwner = [
+    lead.assignedExecutiveId,
+    lead.assignedExecutiveEmail,
+    lead.assignedExecutiveJobId,
+    normalizedMobile(lead.assignedExecutiveMobile),
+    normalizedMobile(lead.executiveMobile),
+  ].some(Boolean);
+  if (hasCanonicalOwner) return false;
 
   const nameMatch = anyMatch([lead.assignedExecutiveName], executiveNameValues(partner));
   if (!nameMatch) return false;

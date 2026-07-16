@@ -6,6 +6,7 @@ import { recordMonitoringSignal } from "./monitoringCenter.service.js";
 import { clearCachedValue, getCachedValue, setCachedValue } from "./ttlCache.service.js";
 import { freshProjectionRows } from "./projectionFreshness.service.js";
 import { syncLeadDetailProjection } from "./projectionLeadDetail.service.js";
+import { leadDetailProjectionPayload } from "./projectionLeadDetail.service.js";
 import { removeBankDealershipLeadProjection, syncBankDealershipProjection } from "./projectionBankDealership.service.js";
 import {
   cacheDigest,
@@ -72,6 +73,29 @@ function leadTargets(lead = {}) {
     targets.push({ collection: "executiveViews", scopeType: "executive", scopeId: executiveScope, docId: safeDocId(`lead_${lead.id}_${executiveScope}`) });
   });
   return targets;
+}
+
+export function leadOwnershipProjectionPlan(lead = {}) {
+  if (!lead?.id) return { writes: [], executiveDocIds: [] };
+  const targets = leadTargets(lead);
+  const detailPayload = leadDetailProjectionPayload(lead);
+  return {
+    writes: [
+      ...targets.map((target) => ({
+        collection: target.collection,
+        docId: target.docId,
+        payload: projectionPayload(lead, target),
+      })),
+      ...(detailPayload ? [{
+        collection: "leadDetailsProjection",
+        docId: safeDocId(lead.id),
+        payload: detailPayload,
+      }] : []),
+    ],
+    executiveDocIds: targets
+      .filter((target) => target.collection === "executiveViews")
+      .map((target) => target.docId),
+  };
 }
 
 function rawLeadWhereForProjectionMiss({ role, where = [], query = {} } = {}) {

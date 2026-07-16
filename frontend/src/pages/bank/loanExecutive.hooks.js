@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BANK_STATUS_OPTIONS } from "../../constants/status.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
@@ -9,6 +10,7 @@ import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstant
 import { apiStatus, leadMutationFilter, LOAN_EXECUTIVE_PAGE_SIZE as pageSize, responseRows } from "./loanExecutive.helpers.js";
 
 export function useExecutiveLeads({ search, status }) {
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
   const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "" });
@@ -40,7 +42,7 @@ export function useExecutiveLeads({ search, status }) {
     scheduleLeadPrefetch("/bank/leads", BANK_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
-  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize });
+  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize, user });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };

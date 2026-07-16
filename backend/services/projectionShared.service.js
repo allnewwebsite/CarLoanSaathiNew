@@ -48,6 +48,7 @@ export const VIEW_LEAD_FIELDS = [
   "ifscCode",
   "assignedExecutiveId",
   "assignedExecutiveEmail",
+  "ownerId",
   "assignedExecutiveName",
   "assignedExecutiveMobile",
   "executiveMobile",

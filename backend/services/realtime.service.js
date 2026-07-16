@@ -598,7 +598,13 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
   const scopes = {
     dealershipIds: unique([...(leadScopes.dealershipIds || []), ...(notificationScopes.dealershipIds || []), data.dealershipId]),
     bankIds: unique([...(leadScopes.bankIds || []), ...(notificationScopes.bankIds || []), data.bankId]),
-    executiveIds: unique([...(leadScopes.executiveIds || []), ...(notificationScopes.executiveIds || []), data.executiveId]),
+    executiveIds: unique([
+      ...(leadScopes.executiveIds || []),
+      ...(notificationScopes.executiveIds || []),
+      data.executiveId,
+      data.previousExecutiveId,
+      ...(Array.isArray(data.previousExecutiveIds) ? data.previousExecutiveIds : []),
+    ]),
     recipientIds: unique([...(notificationScopes.recipientIds || []), data.recipientId]),
     branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.branchIfsc, data.bankIfsc, data.ifscCode, data.branchLocation]),
   };

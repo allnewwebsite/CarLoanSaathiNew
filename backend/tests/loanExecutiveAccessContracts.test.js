@@ -9,6 +9,7 @@ import {
   leadExecutiveStrongIdentityValues,
   loanExecutiveCanAccessLead,
 } from "../controllers/bankAccessShared.controller.js";
+import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(__dirname, "..", "..");
@@ -189,7 +190,7 @@ test("bank loan executive lead list does not hide assigned leads with alternate 
   assert.equal(bankAccessShared.includes("return anyMatch(leadBankValues(lead), partnerBankValues(partner));"), true);
 });
 
-test("loan executive reassignment removes every previous executive projection scope", () => {
+test("loan executive reassignment atomically replaces every previous executive projection scope", () => {
   const assignmentService = read("backend/services/assignment.service.js");
 
   [
@@ -197,8 +198,28 @@ test("loan executive reassignment removes every previous executive projection sc
     "lead.assignedExecutiveEmail",
     "lead.assignedExecutiveMobile",
     "lead.executiveMobile",
-    "previousExecutiveKeys.map((key) => removeLeadExecutiveProjection",
+    "const previousPlan = leadOwnershipProjectionPlan(latestLead)",
+    "previousPlan.executiveDocIds",
+    "transaction.delete(\"executiveViews\", docId)",
+    "nextPlan.writes.forEach((write) => transaction.set",
+    "ownerId: executive.id",
   ].forEach((snippet) => assert.equal(assignmentService.includes(snippet), true, `assignment service missing ${snippet}`));
+});
+
+test("canonical case ownership overrides stale legacy executive aliases", () => {
+  const canonicalLead = {
+    assignedExecutiveId: "new-owner",
+    assignedExecutiveEmail: "new@example.com",
+    assignedExecutiveMobile: "9999999999",
+    assignedExecutiveName: "New Owner",
+    updatedByExecutiveId: "old-owner",
+    executiveEmail: "old@example.com",
+    loanExecutiveId: "old-owner",
+  };
+  assert.equal(loanExecutiveMatchesLead({ id: "old-owner", email: "old@example.com" }, canonicalLead), false);
+  assert.equal(loanExecutiveMatchesLead({ id: "new-owner", email: "new@example.com" }, canonicalLead), true);
+  assert.equal(loanExecutiveCanAccessLead({ id: "old-owner", email: "old@example.com" }, canonicalLead), false);
+  assert.equal(loanExecutiveCanAccessLead({ id: "new-owner", email: "new@example.com" }, canonicalLead), true);
 });
 
 test("bank manager total leads include legacy bank-scoped rows without branch metadata", () => {

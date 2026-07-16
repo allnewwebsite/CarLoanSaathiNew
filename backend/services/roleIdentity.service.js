@@ -40,19 +40,21 @@ export function executiveNameValues(record = {}) {
 }
 
 export function leadExecutiveIdentityValues(lead = {}) {
-  return uniqueIdentities([
+  const canonical = uniqueIdentities([
     lead.assignedExecutiveId,
     lead.assignedExecutiveEmail,
-    lead.executiveEmail,
-    lead.loanExecutiveId,
-    lead.updatedByExecutiveId,
     lead.assignedExecutiveJobId,
-    lead.employeeId,
-    lead.employeeCode,
-    lead.jobId,
     normalizedMobile(lead.assignedExecutiveMobile),
     normalizedMobile(lead.executiveMobile),
     normalizedMobile(lead.assignedExecutivePhone),
+  ]);
+  if (canonical.length) return canonical;
+  return uniqueIdentities([
+    lead.executiveEmail,
+    lead.loanExecutiveId,
+    lead.employeeId,
+    lead.employeeCode,
+    lead.jobId,
     normalizedMobile(lead.loanExecutiveMobile),
   ]);
 }
@@ -64,6 +66,14 @@ export function valuesMatch(values = [], targets = []) {
 
 export function loanExecutiveMatchesLead(executive = {}, lead = {}, { allowName = true } = {}) {
   if (valuesMatch(leadExecutiveIdentityValues(lead), executiveIdentityValues(executive))) return true;
+  const hasCanonicalOwner = uniqueIdentities([
+    lead.assignedExecutiveId,
+    lead.assignedExecutiveEmail,
+    lead.assignedExecutiveJobId,
+    normalizedMobile(lead.assignedExecutiveMobile),
+    normalizedMobile(lead.executiveMobile),
+  ]).length > 0;
+  if (hasCanonicalOwner) return false;
   return allowName && valuesMatch([lead.assignedExecutiveName], executiveNameValues(executive));
 }
 
