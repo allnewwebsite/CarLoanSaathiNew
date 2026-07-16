@@ -112,10 +112,10 @@ export function AuthProvider({ children }) {
     return session;
   };
 
-  const sendPasswordReset = async (email) => {
+  const sendPasswordReset = async (email, portal) => {
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const api = await loadApiClient();
-    await api.post("/auth/password-reset/validate", { email: normalizedEmail });
+    await api.post("/auth/password-reset/validate", { email: normalizedEmail, portal });
     const { auth, sendPasswordResetEmail } = await loadFirebaseAuth();
     await sendPasswordResetEmail(auth, normalizedEmail, actionCodeSettings());
   };

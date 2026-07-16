@@ -88,29 +88,61 @@ import {
 
 void AUTH_SHARED_SENTINEL;
 export async function validatePasswordReset(req, res, next) {
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const requestedPortal = normalizeLoginPortal(req.body.portal);
+  const auditAttempt = async ({ success, reason, role = "unknown" }) => {
+    await writeAuditLog({
+      req,
+      actorId: email || "anonymous",
+      actorRole: role,
+      actionType: "PASSWORD_RESET_ATTEMPT",
+      targetEntity: "auth",
+      targetId: email || null,
+      sourcePortal: requestedPortal || String(req.body.portal || "").trim().toLowerCase() || "unknown",
+      meta: { success, reason, requestedPortal: requestedPortal || "invalid" },
+    }).catch(() => null);
+  };
+  const reject = async (status, payload, role) => {
+    await auditAttempt({ success: false, reason: payload.code || payload.message, role });
+    return res.status(status).json(payload);
+  };
   try {
-    const email = String(req.body.email || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
-    if (!firebaseAdmin) return res.status(503).json({ message: "Firebase Admin is not configured" });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reject(400, { message: "Enter a valid email address.", code: "INVALID_EMAIL" });
+    if (!requestedPortal) return reject(400, { message: "Select a valid portal before requesting a password reset.", code: "INVALID_PORTAL" });
+    const account = await accountForAnyPortal(email);
+    if (!account?.role) return reject(404, { message: "No account was found with this email address.", code: "NO_ACCOUNT" });
+    if (!loginPortalAllowsRole(requestedPortal, account.role)) {
+      return reject(403, {
+        message: "This account belongs to another portal.",
+        code: "WRONG_PORTAL",
+        correctPortal: loginPortalForRole(account.role),
+        redirectTo: roleGuidance(account.role).redirectTo,
+        actionLabel: roleGuidance(account.role).actionLabel,
+      }, account.role);
+    }
+    if (!accountActive(account)) {
+      return reject(403, { message: "Your account is inactive. Please contact your administrator.", code: "ACCOUNT_DISABLED" }, account.role);
+    }
+    if (!firebaseAdmin) return reject(503, { message: "Firebase Admin is not configured", code: "FIREBASE_UNAVAILABLE" }, account.role);
     let firebaseUser;
     try {
       firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
     } catch (error) {
-      if (error.code === "auth/user-not-found") return res.status(404).json({ message: "No account found with this email address." });
+      if (error.code === "auth/user-not-found") return reject(404, { message: "No account was found with this email address.", code: "NO_FIREBASE_ACCOUNT" }, account.role);
       throw error;
     }
     if (firebaseUser.emailVerified !== true) {
-      return res.status(403).json({ message: "Verify your email before resetting password.", code: "EMAIL_NOT_VERIFIED" });
+      return reject(403, { message: "Verify your email before resetting password.", code: "EMAIL_NOT_VERIFIED" }, account.role);
     }
-    const account = await resolveCanonicalIdentity({ uid: firebaseUser.uid, email })
+    const firebaseLinkedAccount = await resolveCanonicalIdentity({ uid: firebaseUser.uid, email })
       || (await findIdentityCandidates({ uid: firebaseUser.uid, email })).find((item) => item.role);
-    if (!account) return res.status(404).json({ message: "No account found with this email address." });
-    if (!accountActive(account)) {
-      const inactive = inactiveAccountMessage(account);
-      return res.status(403).json(inactive);
+    if (!firebaseLinkedAccount?.role || firebaseLinkedAccount.role !== account.role) {
+      return reject(403, { message: "The authentication account does not match this portal account.", code: "IDENTITY_MISMATCH" }, account.role);
     }
+    await auditAttempt({ success: true, reason: "VALIDATION_APPROVED", role: account.role });
     res.json({ ok: true });
   } catch (error) {
+    await auditAttempt({ success: false, reason: "VALIDATION_ERROR" });
     next(error);
   }
 }

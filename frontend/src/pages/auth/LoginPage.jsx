@@ -108,7 +108,7 @@ export function LoginPage({ portal = "dealer" }) {
     }
     setResetLoading(true);
     try {
-      await sendPasswordReset(email);
+      await sendPasswordReset(email, portal);
       setMessage("Password reset link sent successfully. Please check your inbox.");
     } catch (err) {
       const resolved = resolveAuthError(err, portal, "reset");

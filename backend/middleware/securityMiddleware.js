@@ -1,6 +1,7 @@
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { allowedOrigins } from "../config/env.js";
+import { writeAuditLog } from "../services/audit.service.js";
 
 function numberEnv(key, fallback) {
   const value = Number(process.env[key]);
@@ -11,6 +12,23 @@ function loadTestRateLimitBypass(req) {
   if (!req.headers["x-load-test-run"]) return false;
   return process.env.NODE_ENV !== "production"
     || process.env.ALLOW_LOAD_TEST_RATE_LIMIT_BYPASS === "true";
+}
+
+function passwordResetLimitHandler(message, reason) {
+  return (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    void writeAuditLog({
+      req,
+      actorId: email || "anonymous",
+      actorRole: "unknown",
+      actionType: "PASSWORD_RESET_ATTEMPT",
+      targetEntity: "auth",
+      targetId: email || null,
+      sourcePortal: String(req.body?.portal || "").trim().toLowerCase() || "unknown",
+      meta: { success: false, reason },
+    }).catch(() => null);
+    return res.status(429).json({ message, code: "PASSWORD_RESET_RATE_LIMITED" });
+  };
 }
 
 export const securityHeaders = helmet({
@@ -77,7 +95,16 @@ export const passwordResetRateLimit = rateLimit({
   limit: numberEnv("PASSWORD_RESET_RATE_LIMIT_MAX", 5),
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many password reset attempts. Try again later." },
+  handler: passwordResetLimitHandler("Too many password reset attempts from this network. Try again later.", "IP_RATE_LIMIT"),
+});
+
+export const passwordResetEmailRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: numberEnv("PASSWORD_RESET_RATE_LIMIT_MAX", 5),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => String(req.body?.email || "").trim().toLowerCase() || "missing-email",
+  handler: passwordResetLimitHandler("Too many password reset attempts for this email. Try again later.", "EMAIL_RATE_LIMIT"),
 });
 
 export const registrationRateLimit = rateLimit({

@@ -6,7 +6,7 @@ import { lookupAccountForLogin } from "../controllers/authLookup.controller.js";
 import { approvePendingGoogleAccount, rejectPendingGoogleAccount } from "../controllers/authGoogleApproval.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
-import { authLookupRateLimit, authRateLimit, loginFailureRateLimit, passwordResetRateLimit } from "../middleware/securityMiddleware.js";
+import { authLookupRateLimit, authRateLimit, loginFailureRateLimit, passwordResetEmailRateLimit, passwordResetRateLimit } from "../middleware/securityMiddleware.js";
 import { ROLES } from "../utils/constants.js";
 
 const router = Router();
@@ -16,7 +16,7 @@ router.post("/session/restore", authRateLimit, restoreSession);
 router.post("/session/refresh", authenticate, refreshSession);
 router.post("/account-lookup", authLookupRateLimit, lookupAccountForLogin);
 router.post("/login-failure", loginFailureRateLimit, recordLoginFailure);
-router.post("/password-reset/validate", passwordResetRateLimit, validatePasswordReset);
+router.post("/password-reset/validate", passwordResetRateLimit, passwordResetEmailRateLimit, validatePasswordReset);
 router.get("/session", authenticate, session);
 router.post("/password/change-complete", authenticate, completeForcedPasswordChange);
 router.get("/login-activity", authenticate, getLoginActivity);
