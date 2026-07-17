@@ -179,9 +179,14 @@ export async function changeAuthenticatedPassword(req, res, next) {
     };
     const device = deviceFromAgent(req.headers["user-agent"]);
     const browser = browserFromAgent(req.headers["user-agent"]);
+
+    // Password lifecycle state is part of the credential change transaction from
+    // the application's perspective. Do not report success while the canonical
+    // identity or its role-specific records still describe the old lifecycle.
+    await upsertCanonicalUser(uid, { ...(req.authAccount || {}), ...lifecyclePatch });
+    await updatePasswordLifecycleRecords(email, req.user.role, lifecyclePatch);
+
     const followUps = await Promise.allSettled([
-      upsertCanonicalUser(uid, { ...(req.authAccount || {}), ...lifecyclePatch }),
-      updatePasswordLifecycleRecords(email, req.user.role, lifecyclePatch),
       createNotification({
         type: "password-changed",
         title: "Password changed successfully",

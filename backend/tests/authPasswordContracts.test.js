@@ -37,3 +37,24 @@ test("authenticated password change is server verified and revokes every session
   assert.match(securitySource, /PASSWORD_CHANGE_RATE_LIMIT_MAX", 5/);
   assert.match(securitySource, /windowMs: 15 \* 60 \* 1000/);
 });
+
+test("authenticated password change persists lifecycle before best-effort follow-ups and success", async () => {
+  const passwordSource = await readFile(path.join(backendRoot, "controllers", "authPassword.controller.js"), "utf8");
+  const handlerStart = passwordSource.indexOf("export async function changeAuthenticatedPassword");
+  const handlerEnd = passwordSource.indexOf("export async function validatePasswordReset", handlerStart);
+  const handlerSource = passwordSource.slice(handlerStart, handlerEnd);
+
+  const canonicalWriteIndex = handlerSource.indexOf("await upsertCanonicalUser(uid");
+  const lifecycleWriteIndex = handlerSource.indexOf("await updatePasswordLifecycleRecords(email, req.user.role, lifecyclePatch)");
+  const followUpsIndex = handlerSource.indexOf("Promise.allSettled");
+  const successIndex = handlerSource.indexOf("return res.json");
+
+  assert.ok(canonicalWriteIndex > 0);
+  assert.ok(canonicalWriteIndex < lifecycleWriteIndex);
+  assert.ok(lifecycleWriteIndex < followUpsIndex);
+  assert.ok(followUpsIndex < successIndex);
+  assert.doesNotMatch(
+    handlerSource.slice(followUpsIndex, successIndex),
+    /upsertCanonicalUser|updatePasswordLifecycleRecords/,
+  );
+});
