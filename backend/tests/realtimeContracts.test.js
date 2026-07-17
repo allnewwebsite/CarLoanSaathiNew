@@ -169,6 +169,23 @@ test("reassignment realtime reaches both previous and new owner but no unrelated
   unrelated.close();
 });
 
+test("session revocation realtime targets only the affected authenticated identity", () => {
+  const target = mockConnection({ role: "bank-manager", uid: "password-user", email: "password-user@example.com", bankId: "bank-password" });
+  const unrelated = mockConnection({ role: "bank-manager", uid: "other-user", email: "other-user@example.com", bankId: "bank-password" });
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.SESSION_REVOKED,
+    data: {
+      recipientId: "password-user",
+      recipientIds: ["password-user", "password-user@example.com"],
+      reason: "password-changed",
+    },
+  });
+  assert.equal(target.operationalEvents().length, 1);
+  assert.equal(unrelated.operationalEvents().length, 0);
+  target.close();
+  unrelated.close();
+});
+
 test("SSE keeps one connection per user identity", () => {
   const user = {
     sessionId: "same-session",

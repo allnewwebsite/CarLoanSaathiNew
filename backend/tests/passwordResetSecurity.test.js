@@ -22,10 +22,11 @@ test("password reset portal mapping covers every authentication portal", () => {
 
 test("CarLoanSaathi account, role, and active state are validated before Firebase lookup", () => {
   const controller = read("backend/controllers/authPassword.controller.js");
-  const accountLookup = controller.indexOf("accountForAnyPortal(email)");
-  const portalCheck = controller.indexOf("loginPortalAllowsRole(requestedPortal, account.role)");
-  const activeCheck = controller.indexOf("accountActive(account)");
-  const firebaseLookup = controller.indexOf("firebaseAdmin.auth().getUserByEmail(email)");
+  const resetStart = controller.indexOf("export async function validatePasswordReset");
+  const accountLookup = controller.indexOf("accountForAnyPortal(email)", resetStart);
+  const portalCheck = controller.indexOf("loginPortalAllowsRole(requestedPortal, account.role)", resetStart);
+  const activeCheck = controller.indexOf("accountActive(account)", resetStart);
+  const firebaseLookup = controller.indexOf("firebaseAdmin.auth().getUserByEmail(email)", resetStart);
   assert.ok(accountLookup > 0 && accountLookup < portalCheck);
   assert.ok(portalCheck < activeCheck && activeCheck < firebaseLookup);
   assert.equal(controller.includes("No account was found with this email address."), true);

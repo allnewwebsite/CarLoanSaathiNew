@@ -62,6 +62,7 @@ import {
   portalAllowsRole,
   portalForRole,
   queryRecords,
+  revokeUserSessions,
   registrationProfile,
   resolveCanonicalIdentity,
   roleGuidance,
@@ -85,8 +86,149 @@ import {
   wrongLoginPortalPayload,
   wrongPortalPayload,
 } from './authShared.controller.js';
+import { createNotification } from "../services/notification.service.js";
+import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
+
+const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$/;
+const COMMON_WEAK_PASSWORDS = new Set(["12345678", "password", "admin", "abc123", "qwerty", "aaaaaaaa", "11111111"]);
+
+function passwordChangePortal(req) {
+  return String(req.headers["x-cls-portal"] || req.user?.portal || req.user?.scope || "unknown").trim().toLowerCase();
+}
+
+function validNewPassword(value) {
+  const password = String(value || "");
+  return PASSWORD_PATTERN.test(password) && !COMMON_WEAK_PASSWORDS.has(password.toLowerCase());
+}
+
+async function auditPasswordChange(req, { success, reason }) {
+  return writeAuditLog({
+    req,
+    actionType: "PASSWORD_CHANGE",
+    targetEntity: "auth",
+    targetId: req.user?.email || req.user?.uid || null,
+    sourcePortal: passwordChangePortal(req),
+    meta: {
+      success,
+      reason,
+      device: deviceFromAgent(req.headers["user-agent"]),
+      browser: browserFromAgent(req.headers["user-agent"]),
+    },
+  }).catch(() => null);
+}
 
 void AUTH_SHARED_SENTINEL;
+
+export async function changeAuthenticatedPassword(req, res, next) {
+  const currentPassword = String(req.body?.currentPassword || "");
+  const newPassword = String(req.body?.newPassword || "");
+  const confirmPassword = String(req.body?.confirmPassword || "");
+  const reject = async (status, message, code, reason = code) => {
+    await auditPasswordChange(req, { success: false, reason });
+    return res.status(status).json({ message, code });
+  };
+
+  try {
+    const email = String(req.user?.email || "").trim().toLowerCase();
+    const uid = String(req.user?.uid || "").trim();
+    if (!email || !uid) return reject(401, "Login again before changing your password.", "AUTH_REQUIRED");
+    if (!currentPassword) return reject(400, "Current password is required.", "CURRENT_PASSWORD_REQUIRED");
+    if (!newPassword) return reject(400, "New password is required.", "NEW_PASSWORD_REQUIRED");
+    if (newPassword !== confirmPassword) return reject(400, "Passwords do not match.", "PASSWORD_MISMATCH");
+    if (newPassword === currentPassword) {
+      return reject(400, "New password must be different from your current password.", "PASSWORD_REUSED");
+    }
+    if (!validNewPassword(newPassword)) {
+      return reject(400, "Password does not meet security requirements.", "WEAK_PASSWORD");
+    }
+    if (!firebaseAdmin) return reject(503, "Unable to change password. Please try again.", "FIREBASE_UNAVAILABLE");
+
+    try {
+      await signInWithFirebasePassword(email, currentPassword);
+    } catch (error) {
+      if (["auth/invalid-credential", "INVALID_PASSWORD", "INVALID_LOGIN_CREDENTIALS"].includes(error.code) || error.status === 401) {
+        return reject(401, "Current password is incorrect.", "CURRENT_PASSWORD_INCORRECT");
+      }
+      if (error.status === 429) {
+        return reject(429, "Too many incorrect attempts. Please try again later.", "PASSWORD_CHANGE_RATE_LIMITED", "FIREBASE_RATE_LIMIT");
+      }
+      throw error;
+    }
+
+    const firebaseUser = await firebaseAdmin.auth().getUserByEmail(email);
+    if (firebaseUser.uid !== uid && uid !== email) {
+      return reject(403, "Unable to change password. Please try again.", "IDENTITY_MISMATCH");
+    }
+
+    await firebaseAdmin.auth().updateUser(firebaseUser.uid, { password: newPassword });
+    await firebaseAdmin.auth().revokeRefreshTokens(firebaseUser.uid);
+    await revokeUserSessions(email, "password-changed");
+
+    const now = new Date().toISOString();
+    const passwordExpiresAt = addDays(new Date(now), PASSWORD_VALID_DAYS).toISOString();
+    const lifecyclePatch = {
+      passwordChangedAt: now,
+      passwordExpiresAt,
+      passwordExpired: false,
+      passwordDaysRemaining: PASSWORD_VALID_DAYS,
+      firstLoginRequired: false,
+      forcePasswordReset: false,
+      temporaryPasswordRequired: false,
+      temporaryPasswordHash: null,
+      temporaryPasswordIssuedAt: null,
+    };
+    const device = deviceFromAgent(req.headers["user-agent"]);
+    const browser = browserFromAgent(req.headers["user-agent"]);
+    const followUps = await Promise.allSettled([
+      upsertCanonicalUser(uid, { ...(req.authAccount || {}), ...lifecyclePatch }),
+      updatePasswordLifecycleRecords(email, req.user.role, lifecyclePatch),
+      createNotification({
+        type: "password-changed",
+        title: "Password changed successfully",
+        message: "Your password was changed successfully.",
+        recipientRole: req.user.role,
+        recipientId: uid,
+        recipientEmail: email,
+        userId: uid,
+        priority: "high",
+        entityType: "security",
+        entityId: uid,
+        meta: { changedAt: now, device, browser, ip: req.ip || null, dedupeKey: `password-change-${now}` },
+        source: "security",
+        requestId: req.requestId || null,
+      }),
+      auditPasswordChange(req, { success: true, reason: "PASSWORD_CHANGED" }),
+      writeLoginActivity({ email, role: req.user.role, status: "password-changed", req }),
+    ]);
+    followUps.forEach((result, index) => {
+      if (result.status === "rejected") {
+        logError("Password change follow-up failed after credentials were secured", {
+          userId: uid,
+          followUpIndex: index,
+          error: result.reason?.message || "unknown",
+        });
+      }
+    });
+
+    publishRealtimeEvent({
+      eventType: REALTIME_EVENTS.SESSION_REVOKED,
+      actor: { uid, email, role: req.user.role },
+      data: { recipientId: uid, recipientIds: [uid, email], reason: "password-changed", timestamp: now },
+    });
+    clearAuthCookie(res);
+    return res.json({
+      ok: true,
+      message: "Password changed successfully. Please log in again using your new password.",
+      code: "PASSWORD_CHANGED",
+    });
+  } catch (error) {
+    await auditPasswordChange(req, { success: false, reason: error.code || "PASSWORD_CHANGE_FAILED" });
+    if (error.status && error.status < 500) {
+      return res.status(error.status).json({ message: "Unable to change password. Please try again.", code: error.code || "PASSWORD_CHANGE_FAILED" });
+    }
+    next(error);
+  }
+}
 export async function validatePasswordReset(req, res, next) {
   const email = String(req.body.email || "").trim().toLowerCase();
   const requestedPortal = normalizeLoginPortal(req.body.portal);

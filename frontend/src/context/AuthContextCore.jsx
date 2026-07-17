@@ -138,7 +138,17 @@ export function AuthProvider({ children }) {
     return { sent: true };
   };
 
-  const changeCurrentPassword = async ({ currentPassword, newPassword }) => {
+  const changeCurrentPassword = async ({ currentPassword, newPassword, confirmPassword = newPassword }) => {
+    if (user?.firstLoginRequired !== true && user?.passwordExpired !== true) {
+      const api = await loadApiClient();
+      const response = await api.post("/auth/password/change", {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      await clearLocalSession({ signOutFirebase: true, reason: "password-changed" });
+      return response.data;
+    }
     const {
       auth,
       browserSessionPersistence,
@@ -177,6 +187,16 @@ export function AuthProvider({ children }) {
     const refreshed = await validateSession({ silent: false, showLoading: false });
     return refreshed || response.data;
   };
+
+  useEffect(() => {
+    const onRealtimeEvent = (event) => {
+      const detail = event?.detail || {};
+      if ((detail.eventType || detail.event) !== "SESSION_REVOKED") return;
+      clearLocalSession({ signOutFirebase: true, reason: detail.data?.reason || "session-revoked" });
+    };
+    window.addEventListener("cls:realtime-event", onRealtimeEvent);
+    return () => window.removeEventListener("cls:realtime-event", onRealtimeEvent);
+  });
 
   const validateSession = async ({ silent = true, showLoading = false } = {}) => {
     const token = getStoredToken();

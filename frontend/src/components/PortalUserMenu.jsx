@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { CreditCard, LogOut, MoreVertical, PlayCircle, UserRound, X } from "lucide-react";
+import { CreditCard, LockKeyhole, LogOut, MoreVertical, PlayCircle, UserRound, X } from "lucide-react";
 import { PlanBillingModal } from "./PlanBillingModal.jsx";
+import { ChangePasswordDialog } from "./ChangePasswordDialog.jsx";
 import { useOnboarding } from "../context/OnboardingContext.jsx";
 
 const ROLE_LABELS = {
@@ -183,6 +184,7 @@ export function PortalUserMenu({ user, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [billingOpen, setBillingOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const { replayProductTour } = useOnboarding();
   const rows = useMemo(() => profileRows(user), [user]);
   const canReplayTour = ["finance-desk", "gm", "bank-manager", "loan-executive"].includes(user?.role);
@@ -262,6 +264,18 @@ export function PortalUserMenu({ user, onLogout }) {
                 Replay Product Tour
               </button>
             ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                setPasswordOpen(true);
+              }}
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <LockKeyhole className="h-4 w-4 text-slate-500" />
+              Change Password
+            </button>
             <div className="my-1 border-t border-slate-100" />
             <button
               type="button"
@@ -286,6 +300,7 @@ export function PortalUserMenu({ user, onLogout }) {
         rows={rows}
       />
       {user?.role === "finance-desk" ? <PlanBillingModal open={billingOpen} onClose={() => setBillingOpen(false)} user={user} /> : null}
+      <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} user={user} />
     </>
   );
 }

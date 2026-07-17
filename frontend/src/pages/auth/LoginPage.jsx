@@ -30,6 +30,11 @@ export function LoginPage({ portal = "dealer" }) {
       setEmail(remembered.email);
       setRememberMe(true);
     }
+    const securityMessage = sessionStorage.getItem("cls_auth_security_message");
+    if (securityMessage) {
+      setMessage(securityMessage);
+      sessionStorage.removeItem("cls_auth_security_message");
+    }
   }, [portal]);
 
   useEffect(() => {

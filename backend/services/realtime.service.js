@@ -250,6 +250,7 @@ function lightweightLeadPatch(lead = {}, data = {}) {
 }
 
 function eventKind(eventType = "") {
+  if (eventType.includes("SESSION_REVOKED") || eventType.includes("FORCE_LOGOUT")) return "session";
   if (eventType.includes("SUBSCRIPTION")) return "subscription";
   if (eventType.includes("DOCUMENT")) return "document";
   if (eventType.includes("NOTIFICATION")) return "notification";
@@ -285,6 +286,11 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
 
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
+  if (event.kind === "session") {
+    const recipients = unique(event.scopes?.recipientIds || []);
+    const userIds = unique([user.uid, user.email]);
+    return userIds.some((id) => recipients.includes(id));
+  }
   if (event.kind === "notification" && event.notification?.recipientRole) {
     const expectedRole = scope(event.notification.recipientRole);
     const directRecipients = unique([
@@ -605,7 +611,11 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
       data.previousExecutiveId,
       ...(Array.isArray(data.previousExecutiveIds) ? data.previousExecutiveIds : []),
     ]),
-    recipientIds: unique([...(notificationScopes.recipientIds || []), data.recipientId]),
+    recipientIds: unique([
+      ...(notificationScopes.recipientIds || []),
+      data.recipientId,
+      ...(Array.isArray(data.recipientIds) ? data.recipientIds : []),
+    ]),
     branchIds: unique([...(leadScopes.branchIds || []), data.branchId, data.branchIfsc, data.bankIfsc, data.ifscCode, data.branchLocation]),
   };
   const dedupeKey = dedupeKeyForEvent({ eventType, leadSummary, notification, document, data });

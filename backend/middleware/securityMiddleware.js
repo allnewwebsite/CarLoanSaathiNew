@@ -31,6 +31,21 @@ function passwordResetLimitHandler(message, reason) {
   };
 }
 
+function passwordChangeLimitHandler(req, res) {
+  void writeAuditLog({
+    req,
+    actionType: "PASSWORD_CHANGE",
+    targetEntity: "auth",
+    targetId: req.user?.email || req.user?.uid || null,
+    sourcePortal: req.user?.portal || req.user?.scope || "unknown",
+    meta: { success: false, reason: "RATE_LIMIT" },
+  }).catch(() => null);
+  return res.status(429).json({
+    message: "Too many incorrect attempts. Please try again later.",
+    code: "PASSWORD_CHANGE_RATE_LIMITED",
+  });
+}
+
 export const securityHeaders = helmet({
   contentSecurityPolicy: {
     useDefaults: true,
@@ -105,6 +120,22 @@ export const passwordResetEmailRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => String(req.body?.email || "").trim().toLowerCase() || "missing-email",
   handler: passwordResetLimitHandler("Too many password reset attempts for this email. Try again later.", "EMAIL_RATE_LIMIT"),
+});
+
+const passwordChangeLimitOptions = {
+  windowMs: 15 * 60 * 1000,
+  limit: numberEnv("PASSWORD_CHANGE_RATE_LIMIT_MAX", 5),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: passwordChangeLimitHandler,
+};
+
+export const passwordChangeIpRateLimit = rateLimit(passwordChangeLimitOptions);
+
+export const passwordChangeAccountRateLimit = rateLimit({
+  ...passwordChangeLimitOptions,
+  keyGenerator: (req) => String(req.user?.email || req.user?.uid || "missing-account").trim().toLowerCase(),
 });
 
 export const registrationRateLimit = rateLimit({
