@@ -62,16 +62,17 @@ function SalespersonsScreen() {
 function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const archiveTerminal = params.get("archiveTerminal") || "";
   const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
   const page = pageFromParams(params);
-  const { leads, total, hasMore, loading } = useGmLeads({ status, page });
+  const { leads, total, hasMore, loading } = useGmLeads({ status, page, archiveTerminal });
   const choose = (nextStatus) => {
     setParams({ status: nextStatus, page: "1" });
   };
   const pageTo = (nextPage) => {
-    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)) });
+    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)), ...(archiveTerminal ? { archiveTerminal } : {}) });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (

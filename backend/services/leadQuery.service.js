@@ -3,6 +3,7 @@ import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
 import { normalizedIdentity, uniqueIdentities } from "./roleIdentity.service.js";
+import { currentWorkflowLocation } from "./automationPolicy.service.js";
 
 const LEAD_FIELDS = [
   "id",
@@ -122,8 +123,10 @@ function localFilters(leads, query = {}) {
   ].filter(Boolean));
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
+  const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
+  const globalSearch = ["1", "true"].includes(String(query.globalSearch || "").toLowerCase());
   return leads.filter((lead) => {
-    if (lead.isDeadCase === true) return false;
+    if (lead.isDeadCase === true && !(search && globalSearch)) return false;
     const normalizedQueryStatus = normalizeStatus(status);
     const financeStatus = normalizeFinanceStatus(lead.status);
     const leadStatus = normalizeStatus(lead.status);
@@ -151,8 +154,11 @@ function localFilters(leads, query = {}) {
     const bankOk = !bank || bankText === bank || bankText.includes(bank);
     const cityOk = !city || String(lead.city || "").toLowerCase() === city;
     const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
-    return statusOk && salespersonOk && financeManagerOk && bankOk && cityOk && dateOk;
-  });
+    const location = currentWorkflowLocation(lead);
+    const terminalStatus = [LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(leadStatus);
+    const locationOk = !terminalStatus || (archiveTerminal ? location !== "active" : location === "active") || Boolean(search && globalSearch);
+    return statusOk && salespersonOk && financeManagerOk && bankOk && cityOk && dateOk && locationOk;
+  }).map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) }));
 }
 
 function statusValuesForQuery(status) {
@@ -317,7 +323,9 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     allowGlobal: true,
   });
   return pageResponse({
-    data: result.data.filter((lead) => lead.isDeadCase !== true),
+    data: result.data
+      .filter((lead) => lead.isDeadCase !== true || Boolean(String(query.search || "").trim() && ["1", "true"].includes(String(query.globalSearch || "").toLowerCase())))
+      .map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) })),
     limit,
     nextCursor: result.nextCursor,
   });

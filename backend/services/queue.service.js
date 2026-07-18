@@ -12,6 +12,7 @@ export const QUEUE_NAMES = Object.freeze({
   WHATSAPP: "whatsapp-jobs",
   CLEANUP: "cleanup-jobs",
   BILLING: "billing-jobs",
+  AUTOMATION: "automation-jobs",
 });
 
 const priorityMap = { critical: 1, high: 2, medium: 5, low: 9 };

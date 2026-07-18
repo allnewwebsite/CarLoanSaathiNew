@@ -16,6 +16,7 @@ import { clearCachedTags } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
+import { statusAutomationPatch } from "../services/automationPolicy.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -376,6 +377,7 @@ export async function updateLeadStatus(req, res, next) {
       status: nextStatus,
       statusUpdatedAt: new Date().toISOString(),
       statusUpdatedBy: req.user?.email || req.user?.uid || null,
+      ...statusAutomationPatch(nextStatus, new Date().toISOString(), existing),
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
     clearLeadMutationCaches(req.params.id);

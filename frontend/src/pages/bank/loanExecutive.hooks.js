@@ -13,7 +13,8 @@ export function useExecutiveLeads({ search, status }) {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "" });
+  const archiveTerminal = params.get("archiveTerminal") || "";
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "", archiveTerminal });
   const apiFilterStatus = status ? apiStatus(status) : "";
   const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status: apiFilterStatus, search, limit: pageSize });
   const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
@@ -27,7 +28,7 @@ export function useExecutiveLeads({ search, status }) {
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
       const requestPage = requestPageForPage(targetPage);
-      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, status: apiFilterStatus, ...cursorParamsForPage(requestPage) } });
+      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status: apiFilterStatus, archiveTerminal, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -36,7 +37,7 @@ export function useExecutiveLeads({ search, status }) {
     } finally {
       if (!options.silent) setLoading(false);
     }
-  }, [page, search, apiFilterStatus, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
+  }, [page, search, apiFilterStatus, archiveTerminal, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {
     scheduleLeadPrefetch("/bank/leads", BANK_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });

@@ -4,6 +4,7 @@ import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { createNotification } from "./notification.service.js";
 import { syncLeadProjection } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
+import { addCalendarMonths } from "./automationPolicy.service.js";
 import { clearCachedTags } from "./ttlCache.service.js";
 import { DEAD_CASE_REASONS } from "../utils/deadCase.js";
 
@@ -183,6 +184,7 @@ export async function moveLeadToDeadCase({ req, leadId, reason, notes }) {
     patch: {
       isDeadCase: true,
       deadCaseDate: lead.deadCaseDate || now,
+      retentionDueAt: addCalendarMonths(lead.deadCaseDate || now),
       deadCaseBy: actor,
       deadCaseByRole: req.user?.role || "finance-desk",
       deadCaseReason: assertDeadReason(reason),
@@ -221,6 +223,7 @@ export async function restoreDeadCase({ req, leadId }) {
     lead,
     patch: {
       isDeadCase: false,
+      retentionDueAt: null,
       deadCaseUpdatedAt: new Date().toISOString(),
       restoredFromDeadCaseAt: new Date().toISOString(),
       restoredFromDeadCaseBy: req.user?.email || req.user?.uid || "finance-desk",

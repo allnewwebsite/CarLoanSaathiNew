@@ -23,6 +23,7 @@ import {
   withProjectionMetadata,
 } from "./projectionShared.service.js";
 import { executiveIdentityValues } from "./roleIdentity.service.js";
+import { currentWorkflowLocation } from "./automationPolicy.service.js";
 
 export { PROJECTION_VERSION } from "./projectionShared.service.js";
 const projectionMissBackfills = new Set();
@@ -362,9 +363,18 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
         return null;
       }
       const mapStartedAt = Date.now();
+      const search = String(query.search || "").trim();
+      const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
+      const globalSearch = ["1", "true"].includes(String(query.globalSearch || "").toLowerCase());
       const data = freshRows
-        .filter((item) => item.isDeadCase !== true)
-        .map((item) => ({ ...item, id: item.sourceId || item.id }));
+        .filter((item) => item.isDeadCase !== true || Boolean(search && globalSearch))
+        .filter((item) => {
+          const status = normalizeStatus(item.status);
+          if (![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(status) || (search && globalSearch)) return true;
+          const location = currentWorkflowLocation(item);
+          return archiveTerminal ? location !== "active" : location === "active";
+        })
+        .map((item) => ({ ...item, id: item.sourceId || item.id, currentLocation: currentWorkflowLocation(item) }));
       const mapEndedAt = Date.now();
       const shapeStartedAt = Date.now();
       const response = pageResponse({ data, limit, nextCursor: result.nextCursor });

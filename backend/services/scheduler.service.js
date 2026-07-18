@@ -7,6 +7,7 @@ import { markWorkerHealth } from "./health.service.js";
 import { processSubscriptionLifecycle } from "./subscription.service.js";
 import { reconcileSubscriptionPayments } from "./paymentReconciliation.service.js";
 import { validateRecentLeadDistribution } from "./assignmentIntegrity.service.js";
+import { runEnterpriseAutomation } from "./automationEngine.service.js";
 
 const scheduled = [];
 
@@ -66,6 +67,16 @@ export function registerScheduledOperations() {
     markWorkerHealth("assignmentIntegrityLastRunAt");
     markWorkerHealth("assignmentIntegrityLastSummary", summary);
     return summary;
+  });
+
+  const automationTask = () => addQueueJob(QUEUE_NAMES.AUTOMATION, "enterprise-lifecycle", {}, {
+    priority: "high",
+    jobId: `enterprise-lifecycle-${Math.floor(Date.now() / Number(process.env.AUTOMATION_INTERVAL_MS || 15 * 60 * 1000))}`,
+    fallback: () => runEnterpriseAutomation(),
+  });
+  schedule("enterprise-automation", Number(process.env.AUTOMATION_INTERVAL_MS || 15 * 60 * 1000), automationTask);
+  Promise.resolve().then(automationTask).catch((error) => {
+    logWarn("Initial enterprise automation failed", { error: error.message });
   });
 
   schedule("subscription-lifecycle", Number(process.env.SUBSCRIPTION_LIFECYCLE_INTERVAL_MS || 6 * 60 * 60 * 1000), processSubscriptionLifecycle);

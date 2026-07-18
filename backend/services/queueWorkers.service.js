@@ -6,6 +6,7 @@ import { cleanupExpiredNotifications } from "./cleanup.service.js";
 import { applyLeadCreatedMetrics, applyLeadAssignedMetrics, applyStatusChangedMetrics } from "./analyticsEngine.service.js";
 import { markWorkerHealth } from "./health.service.js";
 import { reconcileSubscriptionPayments } from "./paymentReconciliation.service.js";
+import { runEnterpriseAutomation } from "./automationEngine.service.js";
 
 export function registerQueueWorkers() {
   registerWorker(QUEUE_NAMES.NOTIFICATIONS, async (payload) => {
@@ -18,6 +19,7 @@ export function registerQueueWorkers() {
   registerWorker(QUEUE_NAMES.WHATSAPP, async (payload) => processWhatsAppQueue({ queueId: payload?.queueId }), { concurrency: 2 });
   registerWorker(QUEUE_NAMES.CLEANUP, async () => cleanupExpiredNotifications(), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.BILLING, async (payload) => reconcileSubscriptionPayments(payload), { concurrency: 1 });
+  registerWorker(QUEUE_NAMES.AUTOMATION, async () => runEnterpriseAutomation(), { concurrency: 1 });
   registerWorker(QUEUE_NAMES.METRICS, async (payload) => {
     if (payload.type === "lead-created") return applyLeadCreatedMetrics(payload.lead);
     if (payload.type === "status-changed") return applyStatusChangedMetrics(payload);

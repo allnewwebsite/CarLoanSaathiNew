@@ -113,13 +113,15 @@ import {
   validateBankLocation,
   writeAuditLog,
 } from './bankShared.controller.js';
+import { acceptedAutomationPatch, statusAutomationPatch } from "../services/automationPolicy.service.js";
 
 void ACTIVE_EXPORT_SENTINEL;
 export async function acceptBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
-    const updated = await updateRecord("leads", lead.id, { status: nextStatus, assignmentStatus: "accepted" });
+    const acceptedAt = new Date().toISOString();
+    const updated = await updateRecord("leads", lead.id, { status: nextStatus, ...acceptedAutomationPatch(acceptedAt) });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
@@ -132,7 +134,7 @@ export async function acceptBankLead(req, res, next) {
       maxLimit: 25,
     }).catch(() => ({ data: [] }));
     const assignment = assignments.data.find((item) => item.partnerId === partner.id || item.partnerId === partner.email);
-    if (assignment) await updateRecord("leadAssignments", assignment.id, { status: "accepted", acceptedAt: new Date().toISOString() });
+    if (assignment) await updateRecord("leadAssignments", assignment.id, { status: "accepted", acceptedAt, acceptanceDueAt: null });
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.EXECUTIVE_ACCEPTED,
@@ -160,7 +162,7 @@ export async function rejectBankLead(req, res, next) {
     if (!reason) return res.status(400).json({ message: "Rejection reason is required" });
     const { partner, lead } = await requireAssignedLead(req);
     const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.REJECTED);
-    const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks });
+    const updated = await updateRecord("leads", lead.id, { status: nextStatus, rejectionReason: reason, rejectionRemarks: remarks, ...statusAutomationPatch(nextStatus, new Date().toISOString(), lead) });
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
@@ -261,6 +263,7 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
   const statusPayload = {
     status: normalizedStatus,
+    ...statusAutomationPatch(normalizedStatus, now, lead),
     updatedAt: now,
     statusUpdatedAt: now,
     updatedByExecutiveId: partner.id || partner.email || req.user?.email,

@@ -12,6 +12,7 @@ import { LEAD_STATUSES } from "../utils/status.constants.js";
 import { logError, logInfo } from "./logger.service.js";
 import { syncBankAnalyticsAggregate } from "./bankAnalyticsAggregate.service.js";
 import { clearCachedTags, clearCachedValue } from "./ttlCache.service.js";
+import { AUTOMATION_POLICY, addMilliseconds, assignmentAutomationPatch } from "./automationPolicy.service.js";
 import {
   activeExecutive,
   bankMatchesExecutive,
@@ -276,7 +277,7 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       assignedExecutiveMobile: executiveMobile,
       executiveMobile,
       ownerId: executive.id,
-      assignmentStatus: "pending",
+      ...assignmentAutomationPatch(now),
       status: LEAD_STATUSES.NEW,
       assignmentTimestamp: now,
       assignedAt: now,
@@ -301,6 +302,8 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
         assignedExecutiveMobile: executiveMobile,
         ownerId: executive.id,
         status: "pending",
+        acceptanceDueAt: addMilliseconds(now, AUTOMATION_POLICY.acceptanceSlaMs),
+        acceptedAt: null,
         reassignedAt: now,
         reassignedBy: requestedBy,
         reason,
@@ -325,6 +328,8 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
         assignedExecutiveMobile: executiveMobile,
         ownerId: executive.id,
         status: "pending",
+        acceptanceDueAt: addMilliseconds(now, AUTOMATION_POLICY.acceptanceSlaMs),
+        acceptedAt: null,
         reason,
         assignmentTimestamp: now,
         createdAt: now,
@@ -424,10 +429,10 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
       metadata: { ...completedHistoryEntry, fromExecutiveId: transferredFrom.id || transferredFrom.email || null, toExecutiveId: executive.id },
       leadSnapshot: updated,
     });
-    await createNotification({
+    if (reason !== "lead-created-auto-assignment") await createNotification({
       type: "executive-reassigned",
       title: "Lead reassigned",
-      message: `Lead ${updated.caseId || leadId} reassigned to ${executiveName}`,
+      message: `Lead ${updated.caseId || leadId} reassigned to ${executiveName}. Accept it within 5 hours to keep the assignment.`,
       leadId,
       recipientRole: "loan-executive",
       recipientId: executive.id,

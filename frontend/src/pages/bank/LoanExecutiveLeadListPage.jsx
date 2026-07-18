@@ -23,7 +23,8 @@ import {
   statusFilters,
 } from "./loanExecutive.helpers.js";
 
-function LeadCard({ lead, onUpdate, onDocs, onDetails }) {
+function LeadCard({ lead, onAccept, onUpdate, onDocs, onDetails }) {
+  const awaitingAcceptance = String(lead.assignmentStatus || "").toLowerCase() === "pending";
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -42,7 +43,7 @@ function LeadCard({ lead, onUpdate, onDocs, onDetails }) {
         <p className="max-w-[45%] truncate text-right text-xs font-medium text-slate-600">{executiveStatusLabel(lead)}</p>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <button type="button" onClick={onUpdate} className="h-9 rounded-md bg-[#0d47a1] px-2 text-xs font-semibold text-white">Update</button>
+        <button type="button" onClick={awaitingAcceptance ? onAccept : onUpdate} className="h-9 rounded-md bg-[#0d47a1] px-2 text-xs font-semibold text-white">{awaitingAcceptance ? "Accept" : "Update"}</button>
         <button type="button" onClick={onDocs} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700"><FileText className="h-3.5 w-3.5" /> Docs</button>
         <button type="button" onClick={onDetails} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700">Details <ChevronRight className="h-3.5 w-3.5" /></button>
       </div>
@@ -112,6 +113,16 @@ export function LoanExecutiveLeadListPage({ mode }) {
     }
   };
 
+  const acceptLead = async (lead) => {
+    setStatusError("");
+    try {
+      await api.patch(`/bank/leads/${lead.id}/accept`);
+      await load(page);
+    } catch (error) {
+      setStatusError(error.response?.data?.message || error.message || "Lead acceptance failed. Please retry.");
+    }
+  };
+
   const displayedLeads = useMemo(() => {
     if (!dealershipFilter) return rows;
     return rows.filter((lead) => dealershipValue(lead) === dealershipFilter);
@@ -144,7 +155,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.financeManagerMobile),
         executiveStatusLabel(lead),
-        <button key="status-action" onClick={() => updateStatus(lead, "STATUS_UPDATE")} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Update</button>,
+        <button key="status-action" onClick={() => String(lead.assignmentStatus || "").toLowerCase() === "pending" ? acceptLead(lead) : updateStatus(lead, "STATUS_UPDATE")} className={`rounded-md px-3 py-1.5 text-xs font-medium ${String(lead.assignmentStatus || "").toLowerCase() === "pending" ? "bg-[#0d47a1] text-white" : "border border-slate-200 text-slate-700"}`}>{String(lead.assignmentStatus || "").toLowerCase() === "pending" ? "Accept Lead" : "Update"}</button>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
       ],
   }));
@@ -179,6 +190,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
           <LeadCard
             key={lead.id}
             lead={lead}
+            onAccept={() => acceptLead(lead)}
             onUpdate={() => updateStatus(lead, "STATUS_UPDATE")}
             onDocs={() => setModal({ type: "document-actions", lead })}
             onDetails={() => setModal({ type: "details", lead })}

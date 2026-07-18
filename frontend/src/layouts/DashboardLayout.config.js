@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, FileX2, Landmark, Users } from "lucide-react";
+import { Activity, BarChart3, Building2, ClipboardCheck, ClipboardList, FileClock, FileText, FileX2, Landmark, MoreHorizontal, Users } from "lucide-react";
 import { prefetchGet } from "../services/api.js";
 
 export const navByRole = {
@@ -8,6 +8,10 @@ export const navByRole = {
     { label: "All Salespersons", to: "/gm/salespersons", icon: Users },
     { label: "All Cases", to: "/gm/cases", icon: FileText },
     { label: "Dead Cases", to: "/gm/dead-cases", icon: FileX2 },
+    { label: "More", icon: MoreHorizontal, children: [
+      { label: "Rejected", to: "/gm/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
+      { label: "Disbursed", to: "/gm/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+    ] },
   ],
   "finance-desk": [
     { label: "Total Leads", to: "/finance/total-leads", icon: ClipboardList },
@@ -20,6 +24,10 @@ export const navByRole = {
     { label: "All Cases", to: "/finance/cases", icon: FileText },
     { label: "Bank Tie-Ups", to: "/finance/bank-tieups", icon: Landmark },
     { label: "Dead Cases", to: "/finance/dead-cases", icon: FileX2 },
+    { label: "More", icon: MoreHorizontal, children: [
+      { label: "Rejected", to: "/finance/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
+      { label: "Disbursed", to: "/finance/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+    ] },
   ],
   "bank-manager": [
     { label: "Total Leads", to: "/bank-manager/leads", icon: ClipboardList },
@@ -29,11 +37,19 @@ export const navByRole = {
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },
     { label: "All Dealerships", to: "/bank-manager/dealerships", icon: Building2 },
     { label: "Dead Cases", to: "/bank-manager/dead-cases", icon: FileX2 },
+    { label: "More", icon: MoreHorizontal, children: [
+      { label: "Rejected", to: "/bank-manager/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
+      { label: "Disbursed", to: "/bank-manager/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+    ] },
   ],
   "loan-executive": [
     { label: "Total Leads", to: "/loan-executive/leads", icon: ClipboardList },
     { label: "Status", to: "/loan-executive/status", icon: FileClock },
     { label: "Dead Cases", to: "/loan-executive/dead-cases", icon: FileX2 },
+    { label: "More", icon: MoreHorizontal, children: [
+      { label: "Rejected", to: "/loan-executive/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
+      { label: "Disbursed", to: "/loan-executive/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+    ] },
   ],
   "super-admin": [
     { label: "Approved Dealerships", to: "/admin/dealerships", icon: Building2 },
@@ -42,6 +58,10 @@ export const navByRole = {
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
     { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
     { label: "Monitoring", to: "/admin/monitoring", icon: Activity },
+    { label: "More", icon: MoreHorizontal, children: [
+      { label: "Rejected", to: "/admin/leads?status=REJECTED&archiveTerminal=1", icon: FileX2 },
+      { label: "Disbursed", to: "/admin/leads?status=DISBURSED&archiveTerminal=1", icon: FileText },
+    ] },
   ],
 };
 

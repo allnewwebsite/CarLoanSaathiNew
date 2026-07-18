@@ -16,7 +16,8 @@ const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/ba
 export function useBankLeads(search, status = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status });
+  const archiveTerminal = params.get("archiveTerminal") || "";
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, archiveTerminal });
   const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status, search, limit: pageSize });
   const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
   const [rows, setRows] = useState(() => cachedRows);
@@ -30,7 +31,7 @@ export function useBankLeads(search, status = "") {
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
       const requestPage = requestPageForPage(targetPage);
-      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, status, ...cursorParamsForPage(requestPage) } });
+      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status, archiveTerminal, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -39,7 +40,7 @@ export function useBankLeads(search, status = "") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
+  }, [page, search, status, archiveTerminal, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {

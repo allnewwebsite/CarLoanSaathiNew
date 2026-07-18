@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
@@ -60,6 +60,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(readSidebarState);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(() => new URLSearchParams(window.location.search).get("archiveTerminal") === "1");
 
   useEffect(() => {
     try {
@@ -95,7 +96,7 @@ export function DashboardLayout() {
 
   useEffect(() => {
     const handles = [];
-    nav.forEach((item, index) => {
+    nav.flatMap((item) => item.children || [item]).forEach((item, index) => {
       const timeoutHandle = window.setTimeout(() => {
       const idleHandle = scheduleIdle(() => prefetchDashboardRoute(item.to));
       handles.push(idleHandle);
@@ -158,6 +159,23 @@ export function DashboardLayout() {
         <div className="mt-6 min-h-0 flex-1 space-y-1 overflow-y-auto pb-3">
           {nav.map((item) => {
             const Icon = item.icon;
+            if (item.children?.length) {
+              return (
+                <div key={item.label}>
+                  <button type="button" onClick={() => { if (collapsed) setCollapsed(false); setMoreOpen((value) => !value); }} aria-expanded={moreOpen} className="group flex min-h-10 w-full items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]">
+                    <Icon className="h-5 w-5 shrink-0" />
+                    <span className={`min-w-0 flex-1 truncate text-left ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""} ${collapsed ? "lg:hidden" : ""}`} />
+                  </button>
+                  {moreOpen && !collapsed ? <div className="ml-5 space-y-1 border-l border-slate-200 pl-2">
+                    {item.children.map((child) => {
+                      const ChildIcon = child.icon;
+                      return <NavLink key={child.to} to={child.to} onClick={() => setMobileOpen(false)} className="flex min-h-9 items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"><ChildIcon className="h-4 w-4" />{child.label}</NavLink>;
+                    })}
+                  </div> : null}
+                </div>
+              );
+            }
             return (
               <NavLink key={item.to} to={item.to} onMouseEnter={() => prefetchDashboardRoute(item.to)} onFocus={() => prefetchDashboardRoute(item.to)} onPointerDown={() => prefetchDashboardRoute(item.to)} title={collapsed ? item.label : undefined} className={() => `group flex min-h-10 items-center gap-3 overflow-hidden rounded-md px-3 py-2.5 text-sm font-medium transition-[background-color,color,padding,transform] duration-200 ease-out ${collapsed ? "lg:justify-center lg:px-2" : ""} ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}>
                 <Icon className="h-5 w-5 shrink-0 transition-transform duration-200 ease-out group-hover:scale-105" /> <span className={`truncate whitespace-nowrap transition-[opacity,transform,width] duration-200 ease-out ${collapsed ? "lg:w-0 lg:-translate-x-1 lg:opacity-0" : "lg:w-auto lg:translate-x-0 lg:opacity-100"}`}>{item.label}</span>
@@ -218,7 +236,7 @@ export function DashboardLayout() {
         </header>
         <div className={`border-b border-slate-200 bg-white px-4 py-2 lg:hidden ${loanExecutiveMobile ? "hidden" : ""}`}>
           <div className="flex gap-2 overflow-x-auto">
-            {nav.map((item) => (
+            {nav.flatMap((item) => item.children || [item]).map((item) => (
               <NavLink key={item.to} to={item.to} onTouchStart={() => prefetchDashboardRoute(item.to)} onFocus={() => prefetchDashboardRoute(item.to)} className={() => `whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium ${isNavActive(item.to) ? "bg-[#0d47a1] text-white" : "bg-slate-100 text-slate-600"}`}>
                 {item.label}
               </NavLink>

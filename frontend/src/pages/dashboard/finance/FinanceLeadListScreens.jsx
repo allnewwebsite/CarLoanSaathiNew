@@ -237,17 +237,18 @@ export function StatusScreen() {
   const [params, setParams] = useSearchParams();
   const page = Math.max(Number(params.get("page") || 1), 1);
   const requestedStatus = params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0];
+  const archiveTerminal = params.get("archiveTerminal") || "";
   const status = CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
     : CURRENT_WORKFLOW_STATUS_OPTIONS[0];
-  const { leads, total, hasMore, loading } = useDealerLeads({ status, page });
+  const { leads, total, hasMore, loading } = useDealerLeads({ status, page, archiveTerminal });
   const choose = (value) => {
     const next = { status: value, page: "1" };
     Object.keys(next).forEach((key) => !next[key] && delete next[key]);
     setParams(next);
   };
   const pageTo = (nextPage) => {
-    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)) });
+    setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)), ...(archiveTerminal ? { archiveTerminal } : {}) });
   };
   const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (

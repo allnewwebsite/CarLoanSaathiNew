@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useRoleLeadRealtime } from "../../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../../services/api.js";
 import { normalizeRows } from "../../../services/apiResponse.js";
@@ -15,11 +16,15 @@ function adminPanelRequest(mode, search) {
   if (mode === "approval-dealerships") return { url: "/admin/approvals/dealerships", params: { status: "pending", search } };
   if (mode === "banks") return { url: "/admin/approvals/banks", params: { status: "approved", search } };
   if (mode === "approval-banks") return { url: "/admin/approvals/banks", params: { status: "pending", search } };
-  return { url: "/admin/leads", params: { search } };
+  return { url: "/admin/leads", params: { search, globalSearch: search ? "1" : "" } };
 }
 
 export function useAdminPanelData(mode, search) {
+  const [urlParams] = useSearchParams();
+  const status = mode === "leads" ? urlParams.get("status") || "" : "";
+  const archiveTerminal = mode === "leads" ? urlParams.get("archiveTerminal") || "" : "";
   const initialRequest = adminPanelRequest(mode, search);
+  if (initialRequest.url === "/admin/leads") initialRequest.params = { ...initialRequest.params, status, archiveTerminal };
   const cached = getCachedGetData(initialRequest.url, initialRequest.params);
   const fallbackRows = !cached && initialRequest.url === "/admin/leads"
     ? cachedLeadRows("/admin/leads", { search, limit: pageSize })
@@ -31,12 +36,13 @@ export function useAdminPanelData(mode, search) {
     if (!silent) setLoading(true);
     try {
       const request = adminPanelRequest(mode, search);
+      if (request.url === "/admin/leads") request.params = { ...request.params, status, archiveTerminal };
       const response = await api.get(request.url, { params: request.params });
       setRows(responseRows(response));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [mode, search]);
+  }, [mode, search, status, archiveTerminal]);
 
   useEffect(() => { load({ silent: true }); }, [load]);
 
