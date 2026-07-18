@@ -1,6 +1,7 @@
 import { Download, Plus } from "lucide-react";
 import { useMemo } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
+import { PolicyInformationBanner } from "../../components/LifecycleArchiveHeader.jsx";
 import { DEAD_CASE_REASONS } from "../../constants/deadCaseReasons.js";
 import { AUDIENCE_LABELS, PAGE_SIZE, downloadCsv } from "./deadCases.helpers.js";
 import { useDeadCasesPageState } from "./deadCases.hooks.js";
@@ -18,15 +19,21 @@ export function DeadCasesPage({ audience = "finance" }) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-            {AUDIENCE_LABELS[audience] || AUDIENCE_LABELS.finance}
-          </p>
-          <h1 className="mt-1 text-xl font-semibold text-slate-900">Dead Cases</h1>
-          <p className="mt-1 text-sm text-slate-500">Cases manually moved out of active workflow by Finance Desk.</p>
-        </div>
-        <div className="flex flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+          {AUDIENCE_LABELS[audience] || AUDIENCE_LABELS.finance}
+        </p>
+        <h1 className="mt-1 text-xl font-semibold text-slate-900">Dead Cases</h1>
+        <p className="mt-1 text-sm text-slate-500">Cases removed from the active loan workflow for lifecycle reference.</p>
+      </div>
+
+      <PolicyInformationBanner
+        title="Dead Case Policy"
+        description="Cases automatically move to Dead Cases when there is no status update for 7 calendar days after a Loan Executive accepts ownership. Dead Cases remain available in the CarLoanSaathi ecosystem for 3 calendar months for reference and search purposes. After 3 calendar months, all customer information, uploaded documents, workflow history, notifications, assignments, and related records are permanently deleted from the system. Deleted cases cannot be recovered. If the customer returns in the future, the Dealership Finance Manager must create a completely new case."
+      />
+
+      <div className="flex justify-end">
+        <div className="flex w-full flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:w-auto sm:flex-row sm:items-center">
           <select
             value={state.reasonFilter}
             onChange={(event) => state.setReasonFilter(event.target.value)}

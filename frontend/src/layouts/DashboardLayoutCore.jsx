@@ -13,6 +13,10 @@ const SIDEBAR_STORAGE_KEY = "cls_sidebar_collapsed";
 const scheduleIdle = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 180));
 const cancelIdle = window.cancelIdleCallback || window.clearTimeout;
 
+function isLifecycleArchivePath(pathname = "") {
+  return /\/(rejected|disbursed)\/?$/.test(String(pathname));
+}
+
 function DashboardContentFallback() {
   return (
     <section className="space-y-4" aria-busy="true">
@@ -60,7 +64,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(readSidebarState);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(true);
+  const [moreOpen, setMoreOpen] = useState(() => isLifecycleArchivePath(window.location.pathname));
 
   useEffect(() => {
     try {
@@ -74,6 +78,10 @@ export function DashboardLayout() {
     markRouteChangeStart(`${location.pathname}${location.search}`);
     setMobileOpen(false);
   }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    setMoreOpen(isLifecycleArchivePath(location.pathname));
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!mobileOpen) return undefined;

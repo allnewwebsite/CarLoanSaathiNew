@@ -42,3 +42,20 @@ test("archive pages share one retention banner and existing archive API filter",
   assert.match(fs.readFileSync(path.join(src, "pages/bank/BankLeadListPages.jsx"), "utf8"), /useBankLeads\(debouncedSearch, status, "1"\)/);
   assert.match(fs.readFileSync(path.join(src, "pages/bank/bankManager.hooks.js"), "utf8"), /archiveTerminal/);
 });
+
+test("Dead Cases reuses the shared blue policy banner with its own lifecycle copy", () => {
+  const header = fs.readFileSync(path.join(src, "components/LifecycleArchiveHeader.jsx"), "utf8");
+  const deadCases = fs.readFileSync(path.join(src, "pages/dashboard/DeadCasesPageCore.jsx"), "utf8");
+  assert.match(header, /export function PolicyInformationBanner/);
+  assert.match(deadCases, /<PolicyInformationBanner/);
+  assert.match(deadCases, /Dead Case Policy/);
+  assert.match(deadCases, /no status update for 7 calendar days/);
+  assert.match(deadCases, /must create a completely new case/);
+});
+
+test("More is session-local, collapsed by default, and route-expanded only for archive pages", () => {
+  const layout = fs.readFileSync(path.join(src, "layouts/DashboardLayoutCore.jsx"), "utf8");
+  assert.match(layout, /useState\(\(\) => isLifecycleArchivePath\(window\.location\.pathname\)\)/);
+  assert.match(layout, /setMoreOpen\(isLifecycleArchivePath\(location\.pathname\)\)/);
+  assert.doesNotMatch(layout, /localStorage\.(?:getItem|setItem)\([^\n]*more/i);
+});
