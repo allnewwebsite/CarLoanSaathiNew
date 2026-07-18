@@ -7,8 +7,8 @@ export function PageTitle({ title }) {
   return <h1 className="text-lg font-semibold text-slate-950 lg:text-xl">{title}</h1>;
 }
 
-export function Table({ title, headers, rows, loading, page, total, hasMore, onPage }) {
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} />;
+export function Table({ title, headers, rows, loading, page, total, hasMore, onPage, emptyMessage }) {
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} pageSize={pageSize} emptyMessage={emptyMessage} />;
 }
 
 export function Modal({ title, children, onClose, sheet = false }) {

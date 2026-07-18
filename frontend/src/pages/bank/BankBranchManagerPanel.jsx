@@ -3,12 +3,13 @@ import { AnalyticsPage } from "./BankAnalyticsPage.jsx";
 import { BankDealershipDisbursedPage, BankDealershipsPage } from "./BankDealershipPages.jsx";
 import { ManageExecutivePage } from "./BankExecutiveManagementPage.jsx";
 import { AllExecutivesPage, ExecutiveCasesPage } from "./BankExecutivesPage.jsx";
-import { StatusPage, TotalLeadsPage } from "./BankLeadListPages.jsx";
+import { ArchiveCasesPage, StatusPage, TotalLeadsPage } from "./BankLeadListPages.jsx";
 
 export function BankBranchManagerPanel({ mode = "leads" }) {
   usePageLatency("BankManager", { mode });
   if (mode === "analytics") return <AnalyticsPage />;
   if (mode === "status") return <StatusPage />;
+  if (mode === "rejected" || mode === "disbursed") return <ArchiveCasesPage kind={mode} />;
   if (mode === "manage-executive") return <ManageExecutivePage />;
   if (mode === "executives") return <AllExecutivesPage />;
   if (mode === "executive-cases") return <ExecutiveCasesPage />;

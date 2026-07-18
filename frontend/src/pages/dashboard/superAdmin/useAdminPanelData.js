@@ -21,8 +21,9 @@ function adminPanelRequest(mode, search) {
 
 export function useAdminPanelData(mode, search) {
   const [urlParams] = useSearchParams();
-  const status = mode === "leads" ? urlParams.get("status") || "" : "";
-  const archiveTerminal = mode === "leads" ? urlParams.get("archiveTerminal") || "" : "";
+  const archiveMode = mode === "rejected" || mode === "disbursed";
+  const status = archiveMode ? mode.toUpperCase() : mode === "leads" ? urlParams.get("status") || "" : "";
+  const archiveTerminal = archiveMode ? "1" : mode === "leads" ? urlParams.get("archiveTerminal") || "" : "";
   const initialRequest = adminPanelRequest(mode, search);
   if (initialRequest.url === "/admin/leads") initialRequest.params = { ...initialRequest.params, status, archiveTerminal };
   const cached = getCachedGetData(initialRequest.url, initialRequest.params);

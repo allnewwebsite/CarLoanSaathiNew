@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
+import { LifecycleArchiveHeader, lifecycleArchiveCopy } from "../../components/LifecycleArchiveHeader.jsx";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { api } from "../../services/api.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
@@ -31,6 +32,8 @@ function AdminListPage({ mode }) {
   const debouncedSearch = useDebouncedValue(search, 180);
   const [updatingId, setUpdatingId] = useState("");
   const pageData = useAdminPanelData(mode, debouncedSearch);
+  const archived = mode === "rejected" || mode === "disbursed";
+  const archiveCopy = archived ? lifecycleArchiveCopy(mode) : null;
   const refresh = pageData.load;
 
   const approveApplication = async (type, item) => {
@@ -136,18 +139,17 @@ function AdminListPage({ mode }) {
       };
     }
     return {
-      title: "Total Leads",
+      title: archiveCopy?.title || "Total Leads",
       headers: ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", "Dealership Name", "Dealer City", LEAD_TABLE_LABELS.generatedDate, "Assigned Bank Name", "Assigned Bank IFSC Code", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Documents"],
       rows: records.map((lead) => ({ key: lead.id, cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), `Rs. ${money.format(Number(lead.onRoadPrice || lead.carOnRoadPrice || lead.carPrice || 0))}`, `Rs. ${money.format(Number(lead.loanAmount || lead.requiredLoanAmount || 0))}`, assignmentDisplay(lead.dealershipName || lead.dealerName || lead.dealerEmail, "Pending"), display(lead.dealershipCity || lead.city), generatedAt(lead.createdAt), assignmentDisplay(lead.assignedBankName || lead.bankPartner || lead.assignedPartnerId), bankIfscDisplay(lead), assignmentDisplay(lead.assignedExecutiveName || lead.assignedExecutiveEmail), assignmentDisplay(lead.assignedExecutiveMobile || lead.executiveMobile), enterpriseLeadStatus(lead), formatDate(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt), <button key="docs" onClick={() => navigate(`/admin/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>] })),
     };
-  }, [mode, navigate, pageData.rows, updatingId]);
+  }, [archiveCopy?.title, mode, navigate, pageData.rows, updatingId]);
 
   const { page, pageRows, onPage } = usePagedRows(config.rows);
   return (
     <section className="space-y-4">
-      <PageTitle mode={mode} />
-      <Filters search={search} setSearch={setSearch} status="" setStatus={() => {}} options={[]} />
-      <DataTable title={config.title} headers={config.headers} rows={pageRows} loading={pageData.loading} page={page} total={config.rows.length} onPage={onPage} onExport={() => downloadCsv(config.title.toLowerCase().replace(/\s+/g, "-"), config.headers, config.rows.map((row) => row.cells.map((cell) => typeof cell === "string" || typeof cell === "number" ? cell : "")))} />
+      {archived ? <LifecycleArchiveHeader kind={mode} search={search} onSearch={setSearch} /> : <><PageTitle mode={mode} /><Filters search={search} setSearch={setSearch} status="" setStatus={() => {}} options={[]} /></>}
+      <DataTable title={config.title} headers={config.headers} rows={pageRows} loading={pageData.loading} page={page} total={config.rows.length} onPage={onPage} emptyMessage={archiveCopy?.empty} onExport={() => downloadCsv(config.title.toLowerCase().replace(/\s+/g, "-"), config.headers, config.rows.map((row) => row.cells.map((cell) => typeof cell === "string" || typeof cell === "number" ? cell : "")))} />
     </section>
   );
 }

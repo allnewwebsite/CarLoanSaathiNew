@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { LEAD_TABLE_LABELS } from "../../../constants/leadTableLabels.js";
+import { LifecycleArchiveHeader, lifecycleArchiveCopy } from "../../../components/LifecycleArchiveHeader.jsx";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../../constants/status.js";
 import { portalLeadStatusLabel } from "../../../utils/portalDisplay.js";
 import { dateTime, display, moneyValue } from "../financeDesk.helpers.js";
@@ -259,5 +261,25 @@ export function StatusScreen() {
       </div>
       <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
+  );
+}
+
+export function ArchiveCasesScreen({ kind }) {
+  const [params, setParams] = useSearchParams();
+  const [search, setSearch] = useState(params.get("search") || "");
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const page = Math.max(Number(params.get("page") || 1), 1);
+  const status = kind === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED;
+  const copy = lifecycleArchiveCopy(kind);
+  const { leads, total, hasMore, loading } = useDealerLeads({ status, archiveTerminal: "1", search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
+  const pageTo = (nextPage) => setParams({ page: String(Math.max(Number(nextPage || 1), 1)), ...(search ? { search } : {}) });
+  const headers = kind === "rejected"
+    ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"]
+    : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"];
+  return (
+    <section className="space-y-4">
+      <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams(value ? { search: value, page: "1" } : { page: "1" }); }} />
+      <Table title={copy.title} headers={headers} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={copy.empty} />
+    </section>
   );
 }

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, FileText, MapPin } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
+import { LifecycleArchiveHeader, lifecycleArchiveCopy } from "../../components/LifecycleArchiveHeader.jsx";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
-import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
 import { api } from "../../services/api.js";
 import {
   DocumentsSheet,
@@ -82,11 +84,17 @@ export function LoanExecutiveLeadListPage({ mode }) {
   const [statusError, setStatusError] = useState("");
   const [dealershipFilter, setDealershipFilter] = useState("");
   const [knownDealerships, setKnownDealerships] = useState([]);
-  const requestedStatus = mode === "status" ? params.get("status") || BANK_STATUS_OPTIONS[0] : "";
-  const status = mode === "status" && BANK_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
+  const archived = mode === "rejected" || mode === "disbursed";
+  const statusMode = mode === "status" || archived;
+  const archiveKind = archived ? mode : "";
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const requestedStatus = archived ? (mode === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED) : mode === "status" ? params.get("status") || CURRENT_WORKFLOW_STATUS_OPTIONS[0] : "";
+  const status = archived ? normalizeStatus(requestedStatus) : statusMode && CURRENT_WORKFLOW_STATUS_OPTIONS.includes(normalizeStatus(requestedStatus))
     ? normalizeStatus(requestedStatus)
-    : mode === "status" ? BANK_STATUS_OPTIONS[0] : "";
-  const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search: "", status });
+    : mode === "status" ? CURRENT_WORKFLOW_STATUS_OPTIONS[0] : "";
+  const archiveCopy = archived ? lifecycleArchiveCopy(archiveKind) : null;
+  const { rows, total, hasMore, loading, page, onPage, load } = useExecutiveLeads({ search: debouncedSearch, status, archiveTerminal: archived ? "1" : "" });
 
   useEffect(() => {
     setKnownDealerships((current) => {
@@ -130,7 +138,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
 
   const tableRows = displayedLeads.map((lead) => ({
     key: lead.id,
-    cells: mode === "status"
+    cells: statusMode
       ? [
         caseId(lead),
         display(lead.fullName || lead.customerName),
@@ -141,7 +149,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.financeManagerMobile),
         dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
-        ...(status === "REJECTED_REASON" ? [display(lead.rejectionReason || lead.loanRejectionReason), dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
+        ...(normalizeStatus(status) === LEAD_STATUSES.REJECTED ? [display(lead.rejectionReason || lead.loanRejectionReason), dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
       ]
       : [
@@ -160,14 +168,15 @@ export function LoanExecutiveLeadListPage({ mode }) {
       ],
   }));
 
-  const statusHeaders = status === "REJECTED_REASON"
+  const statusHeaders = normalizeStatus(status) === LEAD_STATUSES.REJECTED
     ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", "Rejection Timestamp", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
     : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Documents"];
 
   return (
     <section className="space-y-3 lg:space-y-4">
+      {archived ? <LifecycleArchiveHeader kind={archiveKind} search={search} onSearch={setSearch} /> : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="hidden lg:block"><PageTitle title={mode === "status" ? "Status" : "Total Leads"} /></div>
+        <div className="hidden lg:block">{!archived ? <PageTitle title={mode === "status" ? "Status" : "Total Leads"} /> : null}</div>
         <select
           value={dealershipFilter}
           onChange={(event) => setDealershipFilter(event.target.value)}
@@ -181,11 +190,11 @@ export function LoanExecutiveLeadListPage({ mode }) {
       {mode === "status" ? <div className="flex gap-2 overflow-x-auto pb-1">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium sm:text-sm ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
       <div className="hidden lg:block">
-        <Table title={mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={mode === "status" ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} />
+        <Table title={archived ? archiveCopy.title : mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={statusMode ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} emptyMessage={archiveCopy?.empty} />
       </div>
       <div className="space-y-2 lg:hidden">
         {loading && !rows.length ? Array.from({ length: 3 }, (_, index) => <div key={index} className="h-48 animate-pulse rounded-lg border border-slate-200 bg-white" />) : null}
-        {!loading && !displayedLeads.length ? <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No assigned leads found.</div> : null}
+        {!loading && !displayedLeads.length ? <div className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">{archiveCopy?.empty || "No assigned leads found."}</div> : null}
         {displayedLeads.map((lead) => (
           <LeadCard
             key={lead.id}

@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { LifecycleArchiveHeader, lifecycleArchiveCopy } from "../../components/LifecycleArchiveHeader.jsx";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { LEAD_TABLE_LABELS } from "../../constants/leadTableLabels.js";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as standardStatusLabel } from "../../constants/status.js";
 import { usePageLatency } from "../../services/frontendLatency.js";
@@ -86,6 +89,24 @@ function StatusScreen() {
   );
 }
 
+function ArchiveCasesScreen({ kind }) {
+  const [params, setParams] = useSearchParams();
+  const [search, setSearch] = useState(params.get("search") || "");
+  const debouncedSearch = useDebouncedValue(search, 180);
+  const page = pageFromParams(params);
+  const status = kind === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED;
+  const copy = lifecycleArchiveCopy(kind);
+  const { leads, total, hasMore, loading } = useGmLeads({ status, archiveTerminal: "1", search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
+  const rejected = kind === "rejected";
+  const pageTo = (nextPage) => setParams({ page: String(Math.max(Number(nextPage || 1), 1)), ...(search ? { search } : {}) });
+  return (
+    <section className="space-y-4">
+      <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams(value ? { search: value, page: "1" } : { page: "1" }); }} />
+      <Table title={copy.title} headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={copy.empty} />
+    </section>
+  );
+}
+
 function AllCasesScreen() {
   const [params, setParams] = useSearchParams();
   const page = pageFromParams(params);
@@ -134,6 +155,7 @@ export function GmTrackingPanel({ mode = "total" }) {
   usePageLatency("GmDashboard", { mode });
   if (mode === "salespersons") return <SalespersonsScreen />;
   if (mode === "status") return <StatusScreen />;
+  if (mode === "rejected" || mode === "disbursed") return <ArchiveCasesScreen kind={mode} />;
   if (mode === "cases") return <AllCasesScreen />;
   if (mode === "salesperson-cases") return <SalespersonCasesScreen />;
   return <TotalLeadsScreen />;

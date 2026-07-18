@@ -370,9 +370,9 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
         .filter((item) => item.isDeadCase !== true || Boolean(search && globalSearch))
         .filter((item) => {
           const status = normalizeStatus(item.status);
-          if (![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(status) || (search && globalSearch)) return true;
+          if (![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(status)) return true;
           const location = currentWorkflowLocation(item);
-          return archiveTerminal ? location !== "active" : location === "active";
+          return archiveTerminal ? location !== "active" : (location === "active" || Boolean(search && globalSearch));
         })
         .map((item) => ({ ...item, id: item.sourceId || item.id, currentLocation: currentWorkflowLocation(item) }));
       const mapEndedAt = Date.now();

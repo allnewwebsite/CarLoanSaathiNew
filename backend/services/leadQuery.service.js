@@ -156,7 +156,8 @@ function localFilters(leads, query = {}) {
     const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
     const location = currentWorkflowLocation(lead);
     const terminalStatus = [LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(leadStatus);
-    const locationOk = !terminalStatus || (archiveTerminal ? location !== "active" : location === "active") || Boolean(search && globalSearch);
+    const locationOk = !terminalStatus
+      || (archiveTerminal ? location !== "active" : (location === "active" || Boolean(search && globalSearch)));
     return statusOk && salespersonOk && financeManagerOk && bankOk && cityOk && dateOk && locationOk;
   }).map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) }));
 }

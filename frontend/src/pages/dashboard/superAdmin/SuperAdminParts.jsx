@@ -19,9 +19,9 @@ export const MetricCard = memo(function MetricCard({ label, value, icon: Icon, o
   );
 });
 
-export function DataTable({ title, headers, rows, loading, page, total, onPage, onExport }) {
+export function DataTable({ title, headers, rows, loading, page, total, onPage, onExport, emptyMessage }) {
   const action = onExport ? <button onClick={onExport} className="inline-flex items-center gap-2 rounded-md bg-[#0d47a1] px-3 py-2 text-xs font-medium text-white"><Download className="h-3.5 w-3.5" /> Export</button> : null;
-  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} action={action} />;
+  return <OperationalTable title={title} headers={headers} rows={rows} loading={loading} page={page} total={total} onPage={onPage} pageSize={pageSize} action={action} emptyMessage={emptyMessage} />;
 }
 
 export function PageTitle({ mode }) {

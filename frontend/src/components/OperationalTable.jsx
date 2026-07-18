@@ -131,6 +131,7 @@ export const OperationalTable = memo(function OperationalTable({
   gridTemplateColumns: gridTemplateColumnsOverride = "",
   tableMinWidth: tableMinWidthOverride = "",
   fitToWidth = false,
+  emptyMessage = "No records found.",
 }) {
   const renderInfo = useMemo(() => markTableRenderStart({ component: "OperationalTable", title }), [title, rows?.length]);
   useRenderDiagnostics("OperationalTable", { title: title || "", rowCount: rows?.length || 0 });
@@ -168,7 +169,7 @@ export const OperationalTable = memo(function OperationalTable({
           </div>
 
           {loading && !hasRows && <TableSkeletonRows headers={headers} gridTemplateColumns={gridTemplateColumns} />}
-          {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">No records found.</div>}
+          {!loading && !hasRows && <div className="px-3 py-8 text-center text-slate-500">{emptyMessage}</div>}
 
           {hasRows && useVirtual && (
             <List
@@ -194,7 +195,7 @@ export const OperationalTable = memo(function OperationalTable({
         </div>
         {hasRows ? <MemoMobileRows headers={headers} rows={mobileRows} /> : null}
         {loading && !hasRows ? <MobileSkeletonRows /> : null}
-        {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">No records found.</div> : null}
+        {!loading && !hasRows ? <div className="px-3 py-8 text-center text-sm text-slate-500 md:hidden">{emptyMessage}</div> : null}
       </div>
       {onPage ? (
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-3 py-1.5">

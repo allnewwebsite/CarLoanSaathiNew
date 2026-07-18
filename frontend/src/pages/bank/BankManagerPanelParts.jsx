@@ -3,7 +3,7 @@ import { OperationalTable } from "../../components/OperationalTable.jsx";
 
 export const BANK_MANAGER_PAGE_SIZE = 10;
 
-export function BankManagerTable({ title, headers, rows, loading, page, total, hasMore, onPage }) {
+export function BankManagerTable({ title, headers, rows, loading, page, total, hasMore, onPage, emptyMessage }) {
   return (
     <OperationalTable
       title={title}
@@ -15,6 +15,7 @@ export function BankManagerTable({ title, headers, rows, loading, page, total, h
       hasMore={hasMore}
       onPage={onPage}
       pageSize={BANK_MANAGER_PAGE_SIZE}
+      emptyMessage={emptyMessage}
     />
   );
 }

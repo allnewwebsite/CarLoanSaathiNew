@@ -60,7 +60,7 @@ export function DashboardLayout() {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(readSidebarState);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(() => new URLSearchParams(window.location.search).get("archiveTerminal") === "1");
+  const [moreOpen, setMoreOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -170,7 +170,7 @@ export function DashboardLayout() {
                   {moreOpen && !collapsed ? <div className="ml-5 space-y-1 border-l border-slate-200 pl-2">
                     {item.children.map((child) => {
                       const ChildIcon = child.icon;
-                      return <NavLink key={child.to} to={child.to} onClick={() => setMobileOpen(false)} className="flex min-h-9 items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"><ChildIcon className="h-4 w-4" />{child.label}</NavLink>;
+                      return <NavLink key={child.to} to={child.to} onClick={() => setMobileOpen(false)} className={() => `flex min-h-9 items-center gap-2 rounded-md px-3 py-2 text-sm ${isNavActive(child.to) ? "bg-blue-50 font-semibold text-[#0d47a1]" : "text-slate-600 hover:bg-slate-50 hover:text-[#0d47a1]"}`}><ChildIcon className="h-4 w-4" />{child.label}</NavLink>;
                     })}
                   </div> : null}
                 </div>

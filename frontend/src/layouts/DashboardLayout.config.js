@@ -9,8 +9,8 @@ export const navByRole = {
     { label: "All Cases", to: "/gm/cases", icon: FileText },
     { label: "Dead Cases", to: "/gm/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/gm/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
-      { label: "Disbursed", to: "/gm/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+      { label: "Rejected", to: "/gm/rejected", icon: FileX2 },
+      { label: "Disbursed", to: "/gm/disbursed", icon: FileText },
     ] },
   ],
   "finance-desk": [
@@ -25,8 +25,8 @@ export const navByRole = {
     { label: "Bank Tie-Ups", to: "/finance/bank-tieups", icon: Landmark },
     { label: "Dead Cases", to: "/finance/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/finance/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
-      { label: "Disbursed", to: "/finance/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+      { label: "Rejected", to: "/finance/rejected", icon: FileX2 },
+      { label: "Disbursed", to: "/finance/disbursed", icon: FileText },
     ] },
   ],
   "bank-manager": [
@@ -38,8 +38,8 @@ export const navByRole = {
     { label: "All Dealerships", to: "/bank-manager/dealerships", icon: Building2 },
     { label: "Dead Cases", to: "/bank-manager/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/bank-manager/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
-      { label: "Disbursed", to: "/bank-manager/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+      { label: "Rejected", to: "/bank-manager/rejected", icon: FileX2 },
+      { label: "Disbursed", to: "/bank-manager/disbursed", icon: FileText },
     ] },
   ],
   "loan-executive": [
@@ -47,8 +47,8 @@ export const navByRole = {
     { label: "Status", to: "/loan-executive/status", icon: FileClock },
     { label: "Dead Cases", to: "/loan-executive/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/loan-executive/status?status=REJECTED&archiveTerminal=1", icon: FileX2 },
-      { label: "Disbursed", to: "/loan-executive/status?status=DISBURSED&archiveTerminal=1", icon: FileText },
+      { label: "Rejected", to: "/loan-executive/rejected", icon: FileX2 },
+      { label: "Disbursed", to: "/loan-executive/disbursed", icon: FileText },
     ] },
   ],
   "super-admin": [
@@ -59,8 +59,8 @@ export const navByRole = {
     { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
     { label: "Monitoring", to: "/admin/monitoring", icon: Activity },
     { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/admin/leads?status=REJECTED&archiveTerminal=1", icon: FileX2 },
-      { label: "Disbursed", to: "/admin/leads?status=DISBURSED&archiveTerminal=1", icon: FileText },
+      { label: "Rejected", to: "/admin/rejected", icon: FileX2 },
+      { label: "Disbursed", to: "/admin/disbursed", icon: FileText },
     ] },
   ],
 };
@@ -79,6 +79,11 @@ function withCommonPrefetch(specs = []) {
 
 export function prefetchSpecsForRoute(to) {
   const path = String(to || "").split("?")[0];
+  const archiveStatus = path.endsWith("/rejected") ? "REJECTED" : path.endsWith("/disbursed") ? "DISBURSED" : "";
+  if (archiveStatus && path.startsWith("/admin")) return withCommonPrefetch([{ url: "/admin/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
+  if (archiveStatus && (path.startsWith("/bank-manager") || path.startsWith("/loan-executive"))) return withCommonPrefetch([{ url: "/bank/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
+  if (archiveStatus && path.startsWith("/finance")) return withCommonPrefetch([{ url: "/dealer/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
+  if (archiveStatus && path.startsWith("/gm")) return withCommonPrefetch([{ url: "/gm/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
   if (path === "/finance/dead-cases") return withCommonPrefetch([{ url: "/dealer/dead-cases", params: { page: 1, limit: 20 } }]);
   if (path === "/gm/dead-cases") return withCommonPrefetch([{ url: "/gm/dead-cases", params: { page: 1, limit: 20 } }]);
   if (path === "/bank-manager/dead-cases" || path === "/loan-executive/dead-cases") return withCommonPrefetch([{ url: "/bank/dead-cases", params: { page: 1, limit: 20 } }]);

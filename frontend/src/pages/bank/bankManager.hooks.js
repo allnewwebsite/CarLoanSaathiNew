@@ -13,10 +13,10 @@ const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/ba
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
 const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks"]);
 
-export function useBankLeads(search, status = "") {
+export function useBankLeads(search, status = "", archiveOverride = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
-  const archiveTerminal = params.get("archiveTerminal") || "";
+  const archiveTerminal = archiveOverride || params.get("archiveTerminal") || "";
   const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, archiveTerminal });
   const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status, search, limit: pageSize });
   const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;

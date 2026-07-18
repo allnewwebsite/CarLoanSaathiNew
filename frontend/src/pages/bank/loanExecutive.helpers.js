@@ -1,4 +1,4 @@
-import { BANK_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { CUSTOMER_DOCUMENTS, OTHER_CUSTOMER_DOCUMENT } from "../../constants/customerDocuments.js";
 import { mutationUrlMatches } from "../../hooks/useRealtimeRefresh.js";
 import { normalizeRows } from "../../services/apiResponse.js";
@@ -20,7 +20,7 @@ export const statusOptions = [
   LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
 ].map((value) => ({ label: leadStatusLabel(value), value }));
 
-export const statusFilters = BANK_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
+export const statusFilters = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
 
 export function display(value) {
   return value || "-";
