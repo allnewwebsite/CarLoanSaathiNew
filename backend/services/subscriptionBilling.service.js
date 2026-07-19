@@ -7,6 +7,7 @@ import {
 } from "./subscriptionPlan.service.js";
 import { getDealershipSubscription } from "./subscriptionLifecycle.service.js";
 import { cached } from "./ttlCache.service.js";
+import { logWarn } from "./logger.service.js";
 
 const BILLING_CACHE_TTL_MS = Number(process.env.BILLING_OVERVIEW_CACHE_TTL_MS || 30000);
 
@@ -14,7 +15,8 @@ export async function billingHistory(dealershipId, { limit = 25, cursor = null }
   const id = cleanId(dealershipId);
   const cacheKey = `billing:history:${id}:${JSON.stringify({ limit, cursor: cursor || "" })}`;
   return cached(cacheKey, BILLING_CACHE_TTL_MS, async () => {
-    const [payments, invoices, failures, refunds, orders] = await Promise.all([
+    const channels = ["payments", "invoices", "failures", "refunds", "orders"];
+    const results = await Promise.allSettled([
       queryRecords("subscriptionPayments", {
         where: [{ field: "dealershipId", value: id }],
         orderBy: "paidAt",
@@ -56,13 +58,28 @@ export async function billingHistory(dealershipId, { limit = 25, cursor = null }
         cursor,
       }),
     ]);
+    const pages = Object.fromEntries(results.map((result, index) => {
+      const channel = channels[index];
+      if (result.status === "fulfilled") return [channel, result.value];
+      logWarn("Billing history channel unavailable", {
+        dealershipId: id,
+        channel,
+        error: result.reason?.code || result.reason?.message || "unknown",
+      });
+      return [channel, { data: [], nextCursor: null }];
+    }));
+    const unavailableChannels = results
+      .map((result, index) => result.status === "rejected" ? channels[index] : null)
+      .filter(Boolean);
     return {
-      payments: payments.data,
-      invoices: invoices.data,
-      failures: failures.data,
-      refunds: refunds.data,
-      pendingOrders: orders.data.filter((order) => ["CREATED", "PENDING"].includes(order.status)),
-      nextCursor: payments.nextCursor || invoices.nextCursor || failures.nextCursor || refunds.nextCursor || orders.nextCursor || null,
+      payments: pages.payments.data,
+      invoices: pages.invoices.data,
+      failures: pages.failures.data,
+      refunds: pages.refunds.data,
+      pendingOrders: pages.orders.data.filter((order) => ["CREATED", "PENDING"].includes(order.status)),
+      nextCursor: pages.payments.nextCursor || pages.invoices.nextCursor || pages.failures.nextCursor || pages.refunds.nextCursor || pages.orders.nextCursor || null,
+      partial: unavailableChannels.length > 0,
+      unavailableChannels,
     };
   }, { tags: [`billing:${id}`] });
 }

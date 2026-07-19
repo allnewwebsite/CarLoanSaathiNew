@@ -42,6 +42,12 @@ test("billing history exposes failed and pending attempts for financial audit", 
   assert.match(billing, /queryRecords\("subscriptionRefunds"/);
 });
 
+test("optional billing history channels cannot take down the subscription overview", () => {
+  assert.match(billing, /Promise\.allSettled/);
+  assert.match(billing, /unavailableChannels/);
+  assert.match(billing, /partial: unavailableChannels\.length > 0/);
+});
+
 test("signed refund events are persisted and require explicit financial review", () => {
   assert.match(webhook, /subscriptionRefunds/);
   assert.match(webhook, /ADMIN_REVIEW_REQUIRED/);

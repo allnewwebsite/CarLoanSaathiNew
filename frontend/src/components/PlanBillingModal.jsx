@@ -120,7 +120,9 @@ export function PlanBillingModal({ open, onClose, user }) {
       const response = await api.get("/dealer/billing");
       setData(response.data || null);
     } catch (requestError) {
-      setError(requestError.response?.data?.message || "Unable to load billing information.");
+      const requestId = requestError.response?.data?.requestId || requestError.requestId;
+      const message = requestError.response?.data?.message || "Unable to load billing information.";
+      setError(requestId ? `${message} Request ID: ${requestId}` : message);
     } finally {
       setLoading(false);
     }
@@ -204,10 +206,20 @@ export function PlanBillingModal({ open, onClose, user }) {
 
         <div className="overflow-y-auto p-5">
           {loading && !data ? <div className="flex min-h-52 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#0d47a1]" /></div> : null}
-          {error ? <p className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p> : null}
+          {error ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              <span>{error}</span>
+              {!data ? <button type="button" onClick={load} disabled={loading} className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">Try Again</button> : null}
+            </div>
+          ) : null}
           {message ? <p className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{message}</p> : null}
           {data ? (
             <div className="space-y-6">
+              {data.history?.partial ? (
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                  Your plan details are available, but some billing history is temporarily unavailable. Please try again later.
+                </p>
+              ) : null}
               <div className={`flex flex-col gap-4 rounded-md border px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${statusTone(statusToneValue)}`}>
                 {activeTrial ? (
                   <div>
