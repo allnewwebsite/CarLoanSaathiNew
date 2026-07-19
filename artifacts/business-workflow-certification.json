@@ -1,0 +1,277 @@
+{
+  "generatedAt": "2026-07-19T06:53:52.613Z",
+  "certification": "FAIL",
+  "recommendation": "Business Workflow Certification: FAIL",
+  "strict": false,
+  "scenarios": [
+    {
+      "number": 1,
+      "name": "Lead creation",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "invariants"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 2,
+      "name": "Lead distribution",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "statusSync",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 3,
+      "name": "Loan Executive acceptance",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 4,
+      "name": "Status progression",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "statusSync",
+        "frontend",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 5,
+      "name": "Document workflow",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "authorization"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 6,
+      "name": "Reassignment",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "realtime",
+        "authorization"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 7,
+      "name": "Dead case",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 8,
+      "name": "Rejected lifecycle",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "statusSync"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 9,
+      "name": "Disbursed lifecycle",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "statusSync"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 10,
+      "name": "Archive and deletion",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "invariants"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 11,
+      "name": "Login and authentication",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "authorization"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied",
+        "mobile source/evidence unavailable"
+      ]
+    },
+    {
+      "number": 12,
+      "name": "Payments and subscriptions",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "payments",
+        "subscriptions"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 13,
+      "name": "Realtime synchronization",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied",
+        "mobile source/evidence unavailable"
+      ]
+    },
+    {
+      "number": 14,
+      "name": "Lifecycle search",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 15,
+      "name": "Permissions and tenant isolation",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "authorization"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied"
+      ]
+    },
+    {
+      "number": 16,
+      "name": "Error recovery",
+      "status": "WARNING",
+      "detail": "",
+      "evidence": [
+        "backend",
+        "frontend",
+        "realtime"
+      ],
+      "gaps": [
+        "authenticated deployed multi-portal evidence not supplied",
+        "mobile source/evidence unavailable"
+      ]
+    }
+  ],
+  "executableEvidence": {
+    "backend": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "oansaathi-api\",\"environment\":\"development\",\"release\":\"0.1.0\",\"tag\":\"SSE_EVENT_PUBLISHED\",\"eventType\":\"LEAD_CREATED\",\"leadId\":\"lead-single-connection\",\"dealershipId\":\"dealer-single-connection\",\"bankId\":\"\",\"branchId\":\"\",\"affectedPortals\":[\"admin\",\"finance\",\"gm\"]}\n# {\"level\":\"info\",\"message\":\"SSE_EVENT_DELIVERED\",\"timestamp\":\"2026-07-19T06:53:42.072Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"0.1.0\",\"tag\":\"SSE_EVENT_DELIVERED\",\"eventType\":\"LEAD_CREATED\",\"delivered\":1,\"errors\":0,\"candidateClients\":1,\"activeClients\":1,\"eventId\":1784444022071762}\n# Subtest: SSE status dispatch targets operational tenant buckets without leaking to admin or unrelated clients\nok 76 - SSE status dispatch targets operational tenant buckets without leaking to admin or unrelated clients\n  ---\n  duration_ms: 19.9045\n  type: 'test'\n  ...\n# Subtest: assigned lead realtime reaches admin, bank manager, and target loan executive\nok 77 - assigned lead realtime reaches admin, bank manager, and target loan executive\n  ---\n  duration_ms: 2.7615\n  type: 'test'\n  ...\n# Subtest: reassignment realtime reaches both previous and new owner but no unrelated executive\nok 78 - reassignment realtime reaches both previous and new owner but no unrelated executive\n  ---\n  duration_ms: 5.9518\n  type: 'test'\n  ...\n# Subtest: session revocation realtime targets only the affected authenticated identity\nok 79 - session revocation realtime targets only the affected authenticated identity\n  ---\n  duration_ms: 1.5674\n  type: 'test'\n  ...\n# Subtest: SSE keeps one connection per user identity\nok 80 - SSE keeps one connection per user identity\n  ---\n  duration_ms: 1.8658\n  type: 'test'\n  ...\n# Subtest: realtime connection tickets are short-lived one-use credentials\nok 81 - realtime connection tickets are short-lived one-use credentials\n  ---\n  duration_ms: 1.2103\n  type: 'test'\n  ...\n# Subtest: SSE requests canonical reconciliation when replay history has a gap\nok 82 - SSE requests canonical reconciliation when replay history has a gap\n  ---\n  duration_ms: 0.9653\n  type: 'test'\n  ...\n# Subtest: realtime registry documents every event and health stats expose audit reports\nok 83 - realtime registry documents every event and health stats expose audit reports\n  ---\n  duration_ms: 0.8457\n  type: 'test'\n  ...\n# Subtest: upload validation accepts matching PDF, JPEG, and PNG signatures\nok 84 - upload validation accepts matching PDF, JPEG, and PNG signatures\n  ---\n  duration_ms: 24.545\n  type: 'test'\n  ...\n# Subtest: upload validation rejects MIME-spoofed content and removes its temporary file\nok 85 - upload validation rejects MIME-spoofed content and removes its temporary file\n  ---\n  duration_ms: 5.2882\n  type: 'test'\n  ...\n# Subtest: storage rules require bank managers to match both bank and branch\nok 86 - storage rules require bank managers to match both bank and branch\n  ---\n  duration_ms: 0.889\n  type: 'test'\n  ...\n# Subtest: document uploads persist branch metadata for Storage authorization\nok 87 - document uploads persist branch metadata for Storage authorization\n  ---\n  duration_ms: 0.8433\n  type: 'test'\n  ...\n# Subtest: cache tags clear related entries without clearing unrelated entries\nok 88 - cache tags clear related entries without clearing unrelated entries\n  ---\n  duration_ms: 4.3465\n  type: 'test'\n  ...\n# Subtest: lead list tag clears portal list caches\nok 89 - lead list tag clears portal list caches\n  ---\n  duration_ms: 1.1242\n  type: 'test'\n  ...\n# Subtest: pending cache loads do not repopulate after invalidation\nok 90 - pending cache loads do not repopulate after invalidation\n  ---\n  duration_ms: 8.4557\n  type: 'test'\n  ...\n# Subtest: cache pruning removes expired and least-recently-used entries without stale tags\nok 91 - cache pruning removes expired and least-recently-used entries without stale tags\n  ---\n  duration_ms: 16.3556\n  type: 'test'\n  ...\n1..91\n# tests 91\n# suites 0\n# pass 91\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 7556.2276"
+    },
+    "frontend": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "ead Cases reuses the shared blue policy banner with its own lifecycle copy\nok 18 - Dead Cases reuses the shared blue policy banner with its own lifecycle copy\n  ---\n  duration_ms: 0.6813\n  type: 'test'\n  ...\n# Subtest: More is session-local, collapsed by default, and route-expanded only for archive pages\nok 19 - More is session-local, collapsed by default, and route-expanded only for archive pages\n  ---\n  duration_ms: 0.8182\n  type: 'test'\n  ...\n# Subtest: onboarding local state is scoped to account and role\nok 20 - onboarding local state is scoped to account and role\n  ---\n  duration_ms: 1.9785\n  type: 'test'\n  ...\n# Subtest: onboarding auto-opens before the async status check for unseen users\nok 21 - onboarding auto-opens before the async status check for unseen users\n  ---\n  duration_ms: 12.5994\n  type: 'test'\n  ...\n# Subtest: shared platform branding uses the favicon logo instead of text tiles\nok 22 - shared platform branding uses the favicon logo instead of text tiles\n  ---\n  duration_ms: 4.1882\n  type: 'test'\n  ...\n# Subtest: bank registration password field has a visibility toggle\nok 23 - bank registration password field has a visibility toggle\n  ---\n  duration_ms: 3.6607\n  type: 'test'\n  ...\n# Subtest: GET cache invalidation stays scoped to the active portal identity\nok 24 - GET cache invalidation stays scoped to the active portal identity\n  ---\n  duration_ms: 2.4689\n  type: 'test'\n  ...\n# Subtest: idle status prefetch is cancellable and never fans out searched queries\nok 25 - idle status prefetch is cancellable and never fans out searched queries\n  ---\n  duration_ms: 2.1487\n  type: 'test'\n  ...\n# Subtest: realtime lead mutations match every lead dashboard refresh filter\nok 26 - realtime lead mutations match every lead dashboard refresh filter\n  ---\n  duration_ms: 9.7943\n  type: 'test'\n  ...\n# Subtest: dead-case realtime patches preserve explicit restore state\nok 27 - dead-case realtime patches preserve explicit restore state\n  ---\n  duration_ms: 2.2164\n  type: 'test'\n  ...\n# Subtest: SSE client uses bounded dedupe, exact backoff, and patch-first lead tables\nok 28 - SSE client uses bounded dedupe, exact backoff, and patch-first lead tables\n  ---\n  duration_ms: 5.6263\n  type: 'test'\n  ...\n# Subtest: smoke route paths are unique\nok 29 - smoke route paths are unique\n  ---\n  duration_ms: 1.7649\n  type: 'test'\n  ...\n# Subtest: public and login smoke routes are present in the router\nok 30 - public and login smoke routes are present in the router\n  ---\n  duration_ms: 0.9993\n  type: 'test'\n  ...\n# Subtest: registration lifecycle routes are present in the router\nok 31 - registration lifecycle routes are present in the router\n  ---\n  duration_ms: 1.6482\n  type: 'test'\n  ...\n# Subtest: protected smoke routes have expected role login contracts\nok 32 - protected smoke routes have expected role login contracts\n  ---\n  duration_ms: 0.9891\n  type: 'test'\n  ...\n# Subtest: forced first-login password routes are present for staff roles\nok 33 - forced first-login password routes are present for staff roles\n  ---\n  duration_ms: 1.2063\n  type: 'test'\n  ...\n# Subtest: route smoke modules exist on disk\nok 34 - route smoke modules exist on disk\n  ---\n  duration_ms: 12.2616\n  type: 'test'\n  ...\n# Subtest: super admin dealership approval labels and realtime filters stay aligned\nok 35 - super admin dealership approval labels and realtime filters stay aligned\n  ---\n  duration_ms: 4.7378\n  type: 'test'\n  ...\n# Subtest: GM staff removal uses the product confirmation modal and purges staff cache\nok 36 - GM staff removal uses the product confirmation modal and purges staff cache\n  ---\n  duration_ms: 10.192\n  type: 'test'\n  ...\n# Subtest: temporary password page prefers backend error messages over generic Axios text\nok 37 - temporary password page prefers backend error messages over generic Axios text\n  ---\n  duration_ms: 4.4345\n  type: 'test'\n  ...\n1..37\n# tests 37\n# suites 0\n# pass 37\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 643.5045"
+    },
+    "statusSync": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "LATENCY\",\"collection\":\"executiveViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":4,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.181Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"executiveViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":4,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.183Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"adminViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.183Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"financeViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.183Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"gmViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.184Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"bankViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.184Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"executiveViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\n{\"level\":\"info\",\"message\":\"Firestore memory query completed\",\"timestamp\":\"2026-07-19T06:53:46.184Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"PROJECTION-LATENCY\",\"collection\":\"executiveViews\",\"queryType\":\"memory-query\",\"durationMs\":0,\"resultCount\":5,\"cacheHit\":false,\"cacheMiss\":true,\"fallbackTriggered\":false,\"where\":[{\"field\":\"viewType\",\"op\":\"==\"},{\"field\":\"scopeId\",\"op\":\"==\"},{\"field\":\"sourceId\",\"op\":\"==\"}],\"orderBy\":\"updatedAt\",\"direction\":\"desc\",\"limit\":5,\"search\":false}\nStatus synchronization workflow verification passed."
+    },
+    "realtime": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "{\"level\":\"info\",\"message\":\"SSE_EVENT_PUBLISHED\",\"timestamp\":\"2026-07-19T06:53:46.490Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_PUBLISHED\",\"eventType\":\"LEAD_STATUS_UPDATED\",\"leadId\":\"lead-realtime-1\",\"dealershipId\":\"dealer-rt@example.com\",\"bankId\":\"BANK-RT-1\",\"branchId\":\"\",\"affectedPortals\":[\"finance\",\"gm\",\"bank-manager\",\"loan-executive\"]}\n{\"level\":\"info\",\"message\":\"SSE_EVENT_DELIVERED\",\"timestamp\":\"2026-07-19T06:53:46.493Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_DELIVERED\",\"eventType\":\"LEAD_STATUS_UPDATED\",\"delivered\":4,\"errors\":0,\"candidateClients\":4,\"activeClients\":6,\"eventId\":1784444026490765}\nRealtime architecture verification passed."
+    },
+    "subscriptions": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "{\"level\":\"info\",\"message\":\"Domain event handler registered\",\"timestamp\":\"2026-07-19T06:53:48.903Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"type\":\"notification.requested\"}\nSubscription billing verification passed."
+    },
+    "payments": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "ted\":1,\"idempotent\":0,\"noCapturedPayment\":1,\"integrityIssues\":0,\"failures\":0,\"repairedAudits\":3}\n{\"level\":\"info\",\"message\":\"SSE_EVENT_PUBLISHED\",\"timestamp\":\"2026-07-19T06:53:51.387Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_PUBLISHED\",\"eventType\":\"SUBSCRIPTION_RENEWED\",\"leadId\":\"\",\"dealershipId\":\"webhook-dealer-simultaneous\",\"bankId\":\"\",\"branchId\":\"\",\"affectedPortals\":[\"admin\",\"finance\",\"gm\",\"loan-executive\"]}\n{\"level\":\"info\",\"message\":\"SSE_EVENT_DELIVERED\",\"timestamp\":\"2026-07-19T06:53:51.387Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_DELIVERED\",\"eventType\":\"SUBSCRIPTION_RENEWED\",\"delivered\":0,\"errors\":0,\"candidateClients\":0,\"activeClients\":0,\"eventId\":1784444031387867}\n{\"level\":\"info\",\"message\":\"SSE_EVENT_PUBLISHED\",\"timestamp\":\"2026-07-19T06:53:51.388Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_PUBLISHED\",\"eventType\":\"NOTIFICATION_CREATED\",\"leadId\":\"\",\"dealershipId\":\"webhook-dealer-simultaneous\",\"bankId\":\"\",\"branchId\":\"\",\"affectedPortals\":[\"admin\",\"finance\",\"gm\",\"loan-executive\"]}\n{\"level\":\"info\",\"message\":\"SSE_EVENT_DELIVERED\",\"timestamp\":\"2026-07-19T06:53:51.389Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"tag\":\"SSE_EVENT_DELIVERED\",\"eventType\":\"NOTIFICATION_CREATED\",\"delivered\":0,\"errors\":0,\"candidateClients\":0,\"activeClients\":0,\"eventId\":1784444031388414}\n{\"level\":\"info\",\"message\":\"Notification created\",\"timestamp\":\"2026-07-19T06:53:51.389Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"notificationId\":\"notification_c3Vic2NyaXB0aW9uLWFjdGl2YXRlZC1wYXlfc2ltdWx0YW5lb3VzfGZpbmFuY2UtZGVza3xzaW11bHRhbmVvdXNAZXhhbXBsZS5jb218c3Vic2NyaXB0aW9uLWFjdGl2YXRlZHxzdWJzY3JpcHRpb258d2ViaG9vay1kZWFsZXItc2ltdWx0\",\"type\":\"subscription-activated\",\"recipientRole\":\"finance-desk\",\"recipientId\":\"simultaneous@example.com\",\"caseId\":null}\n{\n  \"ok\": true,\n  \"webhookFirstThenFrontend\": \"idempotent\",\n  \"frontendFirstThenWebhook\": \"idempotent\",\n  \"duplicateWebhook\": \"idempotent\",\n  \"failedPayment\": \"recorded without activation\",\n  \"refund\": \"recorded for admin review without automatic entitlement mutation\",\n  \"missingPaymentAndInvoiceRepair\": \"repaired without extension\",\n  \"browserClosedReconciliation\": \"activated\",\n  \"delayedWebhookAfterReconciliation\": \"idempotent\",\n  \"simultaneousFrontendAndWebhook\": \"single activation\",\n  \"serverRestartRecovery\": \"covered by persisted order reconciliation\",\n  \"paymentCountPerRenewal\": 1,\n  \"invoiceCountPerRenewal\": 1,\n  \"extensionDays\": 30,\n  \"webhookHealth\": \"healthy\"\n}\n\n{\"level\":\"error\",\"message\":\"3 invalid Razorpay webhook signatures were received within 15 minutes\",\"timestamp\":\"2026-07-19T06:53:51.327Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"severity\":\"high\",\"component\":\"billing\",\"type\":\"razorpay_webhook_signature_failures\",\"title\":\"Repeated Razorpay webhook signature failures\",\"entityId\":\"razorpay-webhook-signature\",\"requestId\":null,\"deliveryStatus\":\"pending\",\"channels\":{\"sentry\":false,\"emailReady\":false,\"slackReady\":false,\"whatsappReady\":false,\"smsReady\":false},\"meta\":{\"count\":3,\"eventId\":\"evt_invalid_signature_3\"},\"createdAt\":\"2026-07-19T06:53:51.327Z\"}\n{\"level\":\"error\",\"message\":\"Razorpay reported a refund. Automatic entitlement changes are blocked pending financial review.\",\"timestamp\":\"2026-07-19T06:53:51.346Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"local\",\"severity\":\"high\",\"component\":\"billing\",\"type\":\"subscription_refund_requires_review\",\"title\":\"Subscription refund requires review\",\"entityId\":\"rfnd_webhook_first\",\"requestId\":null,\"deliveryStatus\":\"pending\",\"channels\":{\"sentry\":false,\"emailReady\":false,\"slackReady\":false,\"whatsappReady\":false,\"smsReady\":false},\"meta\":{\"paymentId\":\"pay_webhook-first\",\"dealershipId\":\"webhook-dealer-webhook-first\",\"amountPaise\":\"[redacted-number]\"},\"createdAt\":\"2026-07-19T06:53:51.346Z\"}"
+    },
+    "authorization": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "> security:authz-audit\n> node scripts/audit-authorization.js\n\n┌─────────┬──────────────────────────────────────────────────────────────────────────────┬────────┐\n│ (index) │ check                                                                        │ status │\n├─────────┼──────────────────────────────────────────────────────────────────────────────┼────────┤\n│ 0       │ 'frontend super-admin cannot bypass every portal'                            │ 'PASS' │\n│ 1       │ 'role mismatch does not auto-switch portals'                                 │ 'PASS' │\n│ 2       │ 'finance route allows only finance-desk'                                     │ 'PASS' │\n│ 3       │ 'gm route allows only gm'                                                    │ 'PASS' │\n│ 4       │ 'bank manager route allows only bank-manager'                                │ 'PASS' │\n│ 5       │ 'loan executive route allows only loan-executive'                            │ 'PASS' │\n│ 6       │ 'admin route allows only super-admin'                                        │ 'PASS' │\n│ 7       │ 'backend requireRole has no wildcard super-admin bypass'                     │ 'PASS' │\n│ 8       │ 'backend auth verifies Firestore user'                                       │ 'PASS' │\n│ 9       │ 'backend auth rejects unverified email'                                      │ 'PASS' │\n│ 10      │ 'single active identity is enforced per email'                               │ 'PASS' │\n│ 11      │ 'session refresh does not mask identity collision'                           │ 'PASS' │\n│ 12      │ 'tab focus cannot auto-clear session on network failure'                     │ 'PASS' │\n│ 13      │ 'stored JWT renders without blocking session spinner'                        │ 'PASS' │\n│ 14      │ 'email login avoids duplicate Firebase client sign-in'                       │ 'PASS' │\n│ 15      │ 'login enforces exact portal role before session mutation'                   │ 'PASS' │\n│ 16      │ 'cross-tab logout is portal scoped'                                          │ 'PASS' │\n│ 17      │ 'identity collision clears stale frontend session'                           │ 'PASS' │\n│ 18      │ 'API client caches GET and App Check token for fast tab switching'           │ 'PASS' │\n│ 19      │ 'tables retain rows during refresh'                                          │ 'PASS' │\n│ 20      │ 'portal list pages hydrate from cached data on first paint'                  │ 'PASS' │\n│ 21      │ 'CORS allows portal header required by login'                                │ 'PASS' │\n│ 22      │ 'timeline list is tenant-scoped beyond role visibility'                      │ 'PASS' │\n│ 23      │ 'timeline lead access reuses tenant-scoped helper'                           │ 'PASS' │\n│ 24      │ 'timeline events without visibility are not visible to non-admins'           │ 'PASS' │\n│ 25      │ 'authenticated lead creation ignores client dealershipId'                    │ 'PASS' │\n│ 26      │ 'bank manager lead access requires same bank and scoped branch when present' │ 'PASS' │\n│ 27      │ 'bank branch matching excludes bank-level ids'                               │ 'PASS' │\n│ 28      │ 'Firestore denies default wildcard'                                          │ 'PASS' │\n│ 29      │ 'Firestore protects system counters'                                         │ 'PASS' │\n│ 30      │ 'Firestore audit logs are immutable from client'                             │ 'PASS' │\n│ 31      │ 'Firestore user role fields immutable for self update'                       │ 'PASS' │\n│ 32      │ 'Storage denies default wildcard'                                            │ 'PASS' │\n│ 33      │ 'Storage validates customer file type and size'                              │ 'PASS' │\n└─────────┴──────────────────────────────────────────────────────────────────────────────┴────────┘\n\nAuthorization audit passed."
+    },
+    "invariants": {
+      "status": "PASS",
+      "exitCode": 0,
+      "output": "> validate:regression\n> node scripts/validate-production-invariants.js\n\nPASS frontend lint uses ESLint 9 flat config\nPASS uploads directory is created before Multer writes\nPASS production auth logging does not expose token or session details\nPASS SSE is the only dashboard realtime transport\nPASS executive lifecycle propagates over SSE\nPASS monitoring detects repeated API and SSE disconnect failures\nPASS production App Check is not accidentally bypassed\nPASS frontend API base URL is environment driven\nPASS frontend keeps Firestore and Storage out of the initial registration bundles\nPASS frontend app shell keeps dashboard, Sentry, and motion out of startup\nPASS Firestore direct-id collections avoid fallback query chains\nPASS lead creation and lead status APIs remain registered\nPASS subscription billing is server-verified and blocks only lead creation\nPASS SSE ticket, stream, ack, and cleanup contracts remain present\nPASS bank executive management exposes only view and permanent delete\nPASS bank case reassignment uses explicit same-branch executive selection\nPASS bank analytics uses maintained aggregate data\nPASS WhatsApp business notifications are idempotent and backend-only\nPASS Redis cache, queues, and realtime pubsub are explicit opt-in\nPASS registration email verification gates remain enforced\nPASS dealership GSTIN is restored while bank GSTIN stays removed\nPASS public header hides dealership menu while preserving dealer entry points\nPASS dashboard Firestore cost optimizations stay in place\nPASS scale-critical Firestore indexes are declared\nPASS auth hot path avoids avoidable Firestore reads and writes\nPASS performance certification fails closed on deployment evidence\n\n26 production invariant checks passed."
+    }
+  }
+}
