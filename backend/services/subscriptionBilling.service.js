@@ -14,7 +14,7 @@ export async function billingHistory(dealershipId, { limit = 25, cursor = null }
   const id = cleanId(dealershipId);
   const cacheKey = `billing:history:${id}:${JSON.stringify({ limit, cursor: cursor || "" })}`;
   return cached(cacheKey, BILLING_CACHE_TTL_MS, async () => {
-    const [payments, invoices] = await Promise.all([
+    const [payments, invoices, failures, refunds, orders] = await Promise.all([
       queryRecords("subscriptionPayments", {
         where: [{ field: "dealershipId", value: id }],
         orderBy: "paidAt",
@@ -31,11 +31,38 @@ export async function billingHistory(dealershipId, { limit = 25, cursor = null }
         maxLimit: 50,
         cursor,
       }),
+      queryRecords("subscriptionPaymentFailures", {
+        where: [{ field: "dealershipId", value: id }],
+        orderBy: "failedAt",
+        direction: "desc",
+        limit,
+        maxLimit: 50,
+        cursor,
+      }),
+      queryRecords("subscriptionRefunds", {
+        where: [{ field: "dealershipId", value: id }],
+        orderBy: "processedAt",
+        direction: "desc",
+        limit,
+        maxLimit: 50,
+        cursor,
+      }),
+      queryRecords("subscriptionOrders", {
+        where: [{ field: "dealershipId", value: id }],
+        orderBy: "createdAt",
+        direction: "desc",
+        limit,
+        maxLimit: 50,
+        cursor,
+      }),
     ]);
     return {
       payments: payments.data,
       invoices: invoices.data,
-      nextCursor: payments.nextCursor || invoices.nextCursor || null,
+      failures: failures.data,
+      refunds: refunds.data,
+      pendingOrders: orders.data.filter((order) => ["CREATED", "PENDING"].includes(order.status)),
+      nextCursor: payments.nextCursor || invoices.nextCursor || failures.nextCursor || refunds.nextCursor || orders.nextCursor || null,
     };
   }, { tags: [`billing:${id}`] });
 }

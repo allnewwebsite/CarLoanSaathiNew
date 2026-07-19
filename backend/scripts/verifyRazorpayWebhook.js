@@ -54,12 +54,51 @@ async function seedScenario(suffix) {
     id: orderId,
     dealershipId,
     amountPaise,
+    monthlyAmount: subscriptionAmounts().monthlyAmount,
+    gstRate: subscriptionAmounts().gstRate,
+    gstAmount: subscriptionAmounts().gstAmount,
     currency: "INR",
     status: "CREATED",
     razorpayOrderId: orderId,
     createdAt: new Date().toISOString(),
   });
   return { dealershipId, orderId, paymentId, event: capturedEvent(orderId, paymentId) };
+}
+
+function failedEvent(orderId, paymentId) {
+  return {
+    event: "payment.failed",
+    payload: {
+      payment: {
+        entity: {
+          id: paymentId,
+          order_id: orderId,
+          amount: amountPaise,
+          currency: "INR",
+          status: "failed",
+          error_code: "BAD_REQUEST_ERROR",
+          error_reason: "payment_failed",
+        },
+      },
+    },
+  };
+}
+
+function refundEvent(paymentId, refundId) {
+  return {
+    event: "refund.processed",
+    payload: {
+      refund: {
+        entity: {
+          id: refundId,
+          payment_id: paymentId,
+          amount: amountPaise,
+          currency: "INR",
+          status: "processed",
+        },
+      },
+    },
+  };
 }
 
 async function counts(dealershipId) {
@@ -106,6 +145,13 @@ assert.equal((await counts(webhookFirst.dealershipId)).payments, 1);
 assert.equal((await counts(webhookFirst.dealershipId)).invoices, 1);
 const webhookEnd = (await getRecord("dealershipSubscriptions", webhookFirst.dealershipId)).subscriptionEndDate;
 
+const refundId = "rfnd_webhook_first";
+const refundScenario = { ...webhookFirst, event: refundEvent(webhookFirst.paymentId, refundId) };
+const refundResult = await sendWebhook(refundScenario, "evt_refund_webhook_first");
+assert.equal(refundResult.entitlementAdjusted, false);
+assert.equal((await getRecord("dealershipSubscriptions", webhookFirst.dealershipId)).subscriptionEndDate, webhookEnd);
+assert.equal((await getRecord("subscriptionRefunds", refundId)).entitlementAdjustmentStatus, "ADMIN_REVIEW_REQUIRED");
+
 const frontendAfterWebhook = await finalizeSubscriptionPayment({
   dealershipId: webhookFirst.dealershipId,
   razorpayOrderId: webhookFirst.orderId,
@@ -117,6 +163,14 @@ const frontendAfterWebhook = await finalizeSubscriptionPayment({
 assert.equal(frontendAfterWebhook.idempotent, true);
 assert.equal((await getRecord("dealershipSubscriptions", webhookFirst.dealershipId)).subscriptionEndDate, webhookEnd);
 assert.deepEqual(await counts(webhookFirst.dealershipId), { payments: 1, invoices: 1 });
+
+const failed = await seedScenario("failed");
+failed.event = failedEvent(failed.orderId, failed.paymentId);
+const failedResult = await sendWebhook(failed, "evt_payment_failed");
+assert.equal(failedResult.activated, false);
+assert.equal((await getRecord("dealershipSubscriptions", failed.dealershipId)).paymentStatus, "NOT_PAID");
+assert.ok(await getRecord("subscriptionPaymentFailures", failed.paymentId));
+assert.deepEqual(await counts(failed.dealershipId), { payments: 0, invoices: 0 });
 
 const duplicateWebhook = await sendWebhook(webhookFirst, "evt_webhook_first");
 assert.equal(duplicateWebhook.idempotent, true);
@@ -203,6 +257,8 @@ console.log(JSON.stringify({
   webhookFirstThenFrontend: "idempotent",
   frontendFirstThenWebhook: "idempotent",
   duplicateWebhook: "idempotent",
+  failedPayment: "recorded without activation",
+  refund: "recorded for admin review without automatic entitlement mutation",
   missingPaymentAndInvoiceRepair: "repaired without extension",
   browserClosedReconciliation: "activated",
   delayedWebhookAfterReconciliation: "idempotent",

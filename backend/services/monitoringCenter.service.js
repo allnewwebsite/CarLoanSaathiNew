@@ -152,11 +152,13 @@ function apiSummary(apiItems) {
   const grouped = groupBy(
     apiItems,
     (item) => `${item.method} ${item.endpoint}`,
-    () => ({ count: 0, durations: [], errors: 0, responseBytes: 0 }),
+    () => ({ count: 0, durations: [], errors: 0, failures: 0, timeouts: 0, responseBytes: 0 }),
     (row, item) => {
       row.count += 1;
       row.durations.push(item.durationMs);
       row.errors += item.statusCode >= 500 ? 1 : 0;
+      row.failures += item.statusCode >= 400 ? 1 : 0;
+      row.timeouts += [408, 504].includes(item.statusCode) ? 1 : 0;
       row.responseBytes += item.responseBytes || 0;
     },
   ).map((row) => ({
@@ -164,23 +166,63 @@ function apiSummary(apiItems) {
     count: row.count,
     averageMs: average(row.durations),
     p95Ms: percentile(row.durations),
+    p99Ms: percentile(row.durations, 99),
     maxMs: Math.max(...row.durations, 0),
     errors: row.errors,
+    failures: row.failures,
+    timeouts: row.timeouts,
+    errorRate: row.count ? Number(((row.failures / row.count) * 100).toFixed(1)) : 0,
     responseBytes: row.responseBytes,
   }));
 
   return {
     averageMs: average(durations),
     p95Ms: percentile(durations),
+    p99Ms: percentile(durations, 99),
     maxMs: Math.max(...durations, 0),
     slowRequestCount: apiItems.filter((item) => item.durationMs >= SLOW_API_MS).length,
     errorCount: apiItems.filter((item) => item.statusCode >= 500).length,
+    failureCount: apiItems.filter((item) => item.statusCode >= 400).length,
+    timeoutCount: apiItems.filter((item) => [408, 504].includes(item.statusCode)).length,
+    unauthorizedCount: apiItems.filter((item) => item.statusCode === 401).length,
+    forbiddenCount: apiItems.filter((item) => item.statusCode === 403).length,
+    rateLimitedCount: apiItems.filter((item) => item.statusCode === 429).length,
+    requestCount: apiItems.length,
+    errorRate: apiItems.length ? Number(((apiItems.filter((item) => item.statusCode >= 400).length / apiItems.length) * 100).toFixed(1)) : 0,
     topSlowApis: [...grouped].sort((a, b) => b.p95Ms - a.p95Ms || b.maxMs - a.maxMs).slice(0, 10),
     topCalledApis: [...grouped].sort((a, b) => b.count - a.count).slice(0, 10),
   };
 }
 
+function portalSummary(apiItems, currentStats = {}) {
+  const roleLabels = {
+    "finance-desk": "Dealership Finance",
+    gm: "Finance Head",
+    "bank-manager": "Bank Manager",
+    "loan-executive": "Loan Executive Web/App",
+    "super-admin": "Admin",
+  };
+  const activeByRole = currentStats.activeConnectionsByRole || {};
+  return Object.entries(roleLabels).map(([role, portal]) => {
+    const samples = apiItems.filter((item) => item.role === role);
+    const failures = samples.filter((item) => item.statusCode >= 400).length;
+    const activeUsers = Number(activeByRole[role] || 0);
+    return {
+      role,
+      portal,
+      status: activeUsers > 0 ? "online" : "idle",
+      activeUsers,
+      requestCount: samples.length,
+      averageResponseMs: average(samples.map((item) => item.durationMs)),
+      p95Ms: percentile(samples.map((item) => item.durationMs)),
+      errorRate: samples.length ? Number(((failures / samples.length) * 100).toFixed(1)) : 0,
+    };
+  });
+}
+
 function firestoreSummary(readItems, signalItems) {
+  const minuteCutoff = Date.now() - 60_000;
+  const recentItems = readItems.filter((item) => Date.parse(item.at || "") >= minuteCutoff);
   const topReadEndpoints = groupBy(
     readItems,
     (item) => `${item.method} ${item.endpoint}`,
@@ -211,6 +253,9 @@ function firestoreSummary(readItems, signalItems) {
   return {
     estimatedReadsToday: readItems.reduce((sum, item) => sum + item.totalEstimatedReads, 0),
     estimatedWritesToday: readItems.reduce((sum, item) => sum + item.totalEstimatedWrites, 0),
+    estimatedDeletesToday: readItems.reduce((sum, item) => sum + Number(item.writeOperations?.delete || 0), 0),
+    readsPerMinute: recentItems.reduce((sum, item) => sum + item.totalEstimatedReads, 0),
+    writesPerMinute: recentItems.reduce((sum, item) => sum + item.totalEstimatedWrites, 0),
     topReadEndpoints,
     topWriteEndpoints,
     readReductionScore: before > 0 ? Math.max(0, Math.round(((before - after) / before) * 100)) : null,
@@ -453,6 +498,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
   const realtime = realtimeSummary(realtimeItems, realtimeStats);
   const branches = branchSummary(signalItems, realtimeItems);
   const dealers = dealerSummary(signalItems, realtimeItems);
+  const portals = portalSummary(apiItems, realtimeStats);
 
   return {
     generatedAt: nowIso(),
@@ -470,6 +516,7 @@ export function monitoringTelemetrySummary({ realtimeStats = {} } = {}) {
     realtime,
     branches,
     dealers,
+    portals,
     statuses: {
       api: api.repeatedFailuresDetected ? "critical" : statusFromThreshold(api.p95Ms, 1000, 2000),
       firestore: statusFromThreshold(firestore.estimatedReadsToday, 50000, 150000),

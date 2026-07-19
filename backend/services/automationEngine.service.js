@@ -56,12 +56,23 @@ async function scanLeads(where = []) {
   return page.data || [];
 }
 
-export async function processAcceptanceSla(now = new Date()) {
-  const pending = await scanLeads([{ field: "assignmentStatus", value: "pending" }]).catch(() => []);
-  const due = pending.filter((lead) => {
-    const deadline = new Date(lead.acceptanceDueAt || 0).getTime();
-    return deadline > 0 && deadline <= now.getTime();
+async function scanDueLeads(deadlineField, now, where = []) {
+  const deadline = now.toISOString();
+  const page = await queryRecords("leads", {
+    where: [...where, { field: deadlineField, op: "<=", value: deadline }],
+    orderBy: deadlineField,
+    direction: "asc",
+    limit: AUTOMATION_SCAN_LIMIT,
+    maxLimit: AUTOMATION_SCAN_LIMIT,
+    allowGlobal: true,
   });
+  return page.data || [];
+}
+
+export async function processAcceptanceSla(now = new Date()) {
+  const due = await scanDueLeads("acceptanceDueAt", now, [
+    { field: "assignmentStatus", value: "pending" },
+  ]);
   let reassigned = 0;
   for (const lead of due) {
     if (lead.isDeadCase === true || lead.assignmentStatus !== "pending") continue;
@@ -134,7 +145,10 @@ export async function backfillAutomationMetadata() {
 }
 
 export async function processAcceptedLeadInactivity(now = new Date()) {
-  const accepted = await scanLeads([{ field: "assignmentStatus", value: "accepted" }]).catch(() => []);
+  const inactivityCutoff = new Date(now.getTime() - AUTOMATION_POLICY.inactivitySlaMs);
+  const accepted = await scanDueLeads("lastWorkflowActionAt", inactivityCutoff, [
+    { field: "assignmentStatus", value: "accepted" },
+  ]);
   let movedToDead = 0;
   for (const lead of accepted) {
     if (lead.isDeadCase === true) continue;
@@ -158,8 +172,8 @@ export async function processAcceptedLeadInactivity(now = new Date()) {
 
 export async function processTerminalLocations(now = new Date()) {
   const terminalLeads = await Promise.all([
-    scanLeads([{ field: "status", value: LEAD_STATUSES.REJECTED }]),
-    scanLeads([{ field: "status", value: LEAD_STATUSES.DISBURSED }]),
+    scanDueLeads("terminalVisibleUntil", now, [{ field: "status", value: LEAD_STATUSES.REJECTED }]),
+    scanDueLeads("terminalVisibleUntil", now, [{ field: "status", value: LEAD_STATUSES.DISBURSED }]),
   ]).then((pages) => pages.flat());
   let moved = 0;
   for (const lead of terminalLeads) {
@@ -214,11 +228,7 @@ export async function permanentlyDeleteLead(lead) {
 }
 
 export async function processRetentionDeletion(now = new Date()) {
-  const candidates = await Promise.all([
-    scanLeads([{ field: "isDeadCase", value: true }]),
-    scanLeads([{ field: "status", value: LEAD_STATUSES.REJECTED }]),
-    scanLeads([{ field: "status", value: LEAD_STATUSES.DISBURSED }]),
-  ]).then((pages) => [...new Map(pages.flat().map((lead) => [lead.id, lead])).values()]);
+  const candidates = await scanDueLeads("retentionDueAt", now);
   let deleted = 0;
   for (const lead of candidates) {
     if (!retentionDue(lead, now.getTime())) continue;

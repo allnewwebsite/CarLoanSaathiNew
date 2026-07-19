@@ -17,13 +17,27 @@ export function cachedLeadRows(url, { status = "", search = "", limit = 10 } = {
 }
 
 export function scheduleLeadPrefetch(url, statusOptions = [], baseParams = {}) {
-  if (typeof window === "undefined" || !statusOptions.length) return;
-  const schedule = window.requestIdleCallback || ((callback) => window.setTimeout(callback, 400));
-  schedule(() => {
+  if (typeof window === "undefined" || !statusOptions.length || String(baseParams.search || "").trim()) return () => {};
+  const timers = new Set();
+  let cancelled = false;
+  const usesIdleCallback = typeof window.requestIdleCallback === "function";
+  const schedule = usesIdleCallback ? window.requestIdleCallback.bind(window) : (callback) => window.setTimeout(callback, 400);
+  const idleHandle = schedule(() => {
+    if (cancelled) return;
     statusOptions.forEach((status, index) => {
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
+        timers.delete(timer);
+        if (cancelled) return;
         prefetchGet(url, { page: 1, limit: baseParams.limit || 10, ...baseParams, status });
       }, index * 120);
+      timers.add(timer);
     });
   });
+  return () => {
+    cancelled = true;
+    timers.forEach((timer) => window.clearTimeout(timer));
+    timers.clear();
+    if (usesIdleCallback && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idleHandle);
+    else window.clearTimeout(idleHandle);
+  };
 }

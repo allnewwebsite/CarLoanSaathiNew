@@ -38,5 +38,11 @@ test("Firestore indexes include scale-critical background job contracts", () => 
     "subscriptionInvoices:dealershipId:ASCENDING|paymentDate:DESCENDING",
     "bankExecutiveAnalytics:scopeId:ASCENDING|assignedLeads:DESCENDING",
     "bankRecentCases:scopeId:ASCENDING|activityAt:DESCENDING",
+    "leads:assignmentStatus:ASCENDING|acceptanceDueAt:ASCENDING",
+    "leads:assignmentStatus:ASCENDING|lastWorkflowActionAt:ASCENDING",
+    "leads:status:ASCENDING|terminalVisibleUntil:ASCENDING",
+    "subscriptionOrders:dealershipId:ASCENDING|createdAt:DESCENDING",
+    "subscriptionPaymentFailures:dealershipId:ASCENDING|failedAt:DESCENDING",
+    "subscriptionRefunds:dealershipId:ASCENDING|processedAt:DESCENDING",
   ].forEach((signature) => assert.equal(signatures.has(signature), true, `Missing index ${signature}`));
 });

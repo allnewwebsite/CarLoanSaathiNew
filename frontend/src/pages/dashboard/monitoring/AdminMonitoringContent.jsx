@@ -11,11 +11,12 @@ import {
   SystemAlertsSection,
   WhatsappMonitoringSection,
 } from "./AdminMonitoringSections.jsx";
-import { dateTime, percent } from "./monitoring.helpers.js";
+import { dateTime, percent, rows } from "./monitoring.helpers.js";
 
 export function AdminMonitoringContent({
   alerts,
   apiPerf,
+  business,
   branchCapacityRows,
   branchLocationRows,
   branches,
@@ -30,13 +31,17 @@ export function AdminMonitoringContent({
   firestore,
   load,
   loading,
+  leads,
   notifications,
   overview,
   projection,
   projectionCollections,
+  portals,
   queue,
   queueRows,
   realtime,
+  security,
+  services,
   sendWhatsappTest,
   setWhatsappTestPhone,
   snapshot,
@@ -51,6 +56,66 @@ export function AdminMonitoringContent({
 
       <MonitoringStatusGrid cards={cards} icons={{ Activity, CreditCard, Database, Radio, RefreshCw, Server, ShieldCheck, Zap }} />
       <PlatformOverviewSection overview={overview} snapshot={snapshot} />
+
+      <Section title="Enterprise Service Health" subtitle="Current process and dependency health from the backend health registry.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <MetricTile label="Backend" value={services.backend || "unknown"} />
+          <MetricTile label="Firestore" value={services.firestore || "unknown"} />
+          <MetricTile label="Redis / Queues" value={services.redis || "unknown"} />
+          <MetricTile label="Scheduler" value={services.scheduler || "unknown"} />
+          <MetricTile label="Notifications" value={services.notifications || "unknown"} />
+          <MetricTile label="Projections" value={services.projections || "unknown"} />
+          <MetricTile label="Razorpay Webhook" value={services.razorpayWebhook || "unknown"} />
+          <MetricTile label="Payment Reconciliation" value={services.paymentReconciliation || "unknown"} />
+          <MetricTile label="RSS Memory" value={`${services.memory?.rssMb || 0} MB`} />
+          <MetricTile label="Heap Used" value={`${services.memory?.heapUsedMb || 0} MB`} />
+          <MetricTile label="CPU Cores" value={services.cpu?.cpuCount || 0} />
+          <MetricTile label="CPU Load (1m)" value={services.cpu?.loadAverage?.[0]?.toFixed?.(2) || "0.00"} />
+        </div>
+      </Section>
+
+      <Section title="Portal Health" subtitle="Role-scoped request telemetry and live SSE presence; idle means no current authenticated SSE connection.">
+        <OperationalTable
+          title="Portals"
+          headers={["Portal", "Status", "Active Users", "Requests", "Average", "P95", "Error Rate"]}
+          rows={rows(portals || [], (item) => [item.portal, item.status, item.activeUsers, item.requestCount, `${item.averageResponseMs}ms`, `${item.p95Ms}ms`, `${item.errorRate}%`])}
+          loading={loading}
+        />
+      </Section>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Section title="Lead Operations">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricTile label="Total Leads" value={leads.total || 0} />
+            <MetricTile label="Pending" value={leads.pending || 0} />
+            <MetricTile label="Accepted / Assigned" value={leads.acceptedOrAssigned || 0} />
+            <MetricTile label="Pending Documents" value={leads.pendingDocuments || 0} />
+            <MetricTile label="Bank Process" value={leads.bankProcess || 0} />
+            <MetricTile label="Rejected" value={leads.rejected || 0} />
+            <MetricTile label="Disbursed" value={leads.disbursed || 0} />
+            <MetricTile label="Completed" value={leads.completed || 0} />
+          </div>
+        </Section>
+        <Section title="Business Health">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <MetricTile label="Dealerships" value={business.dealerships || 0} />
+            <MetricTile label="Banks" value={business.banks || 0} />
+            <MetricTile label="Conversion Rate" value={`${business.conversionRate || 0}%`} />
+            <MetricTile label="Rejection Rate" value={`${business.rejectionRate || 0}%`} />
+            <MetricTile label="Avg Processing" value={`${business.averageProcessingMinutes || 0} min`} />
+          </div>
+        </Section>
+      </div>
+
+      <Section title="Security Monitoring" subtitle="Authentication and authorization outcomes from the bounded API telemetry window.">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricTile label="Unauthorized (401)" value={security.unauthorizedRequests || 0} />
+          <MetricTile label="Permission Denials (403)" value={security.permissionDenials || 0} />
+          <MetricTile label="Rate Limited (429)" value={security.rateLimitEvents || 0} />
+          <MetricTile label="All Failed Requests" value={security.suspiciousRequestFailures || 0} />
+        </div>
+      </Section>
+
       <ApiPerformanceSection apiPerf={apiPerf} loading={loading} snapshot={snapshot} />
       <FirestoreMonitoringSection firestore={firestore} loading={loading} projection={projection} />
 
@@ -180,6 +245,22 @@ export function AdminMonitoringContent({
       </Section>
 
       <SystemAlertsSection alerts={alerts} />
+
+      <Section title="Enterprise Audit Stream" subtitle="Latest bounded operational events recorded by backend workflows and infrastructure services.">
+        <OperationalTable
+          title="Recent Events"
+          headers={["Time", "Type", "Component", "Entity", "Message"]}
+          rows={rows(snapshot?.operationalEvents || [], (item) => [
+            dateTime(item.createdAt),
+            item.type || item.action || "event",
+            item.component || item.module || "platform",
+            item.entityId || item.leadId || item.caseId || "-",
+            item.message || item.title || "-",
+          ])}
+          loading={loading}
+          virtualizeAt={20}
+        />
+      </Section>
 
       <CallFrequencySection apiPerf={apiPerf} loading={loading} />
 

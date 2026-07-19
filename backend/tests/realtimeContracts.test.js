@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 import { connectRealtimeClient, publishRealtimeEvent, realtimeStats, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { REALTIME_EVENT_REGISTRY, realtimeEventRegistryReport, realtimeRoleDeliveryMatrix } from "../services/realtimeEvents.service.js";
+import { consumeRealtimeTicket, createRealtimeTicket } from "../services/realtimeTicket.service.js";
 
 function mockConnection(user) {
   const req = new EventEmitter();
@@ -210,6 +211,47 @@ test("SSE keeps one connection per user identity", () => {
   assert.equal(second.operationalEvents().length, 1);
   first.close();
   second.close();
+});
+
+test("realtime connection tickets are short-lived one-use credentials", async () => {
+  const previousRedisFlag = process.env.ENABLE_REALTIME_REDIS;
+  process.env.ENABLE_REALTIME_REDIS = "false";
+  try {
+    const user = { sessionId: "ticket-session", role: "finance-desk", uid: "ticket-user" };
+    const issued = await createRealtimeTicket(user);
+    assert.equal(Boolean(issued.ticket), true);
+    assert.equal(issued.expiresInMs, 60_000);
+    assert.deepEqual(await consumeRealtimeTicket(issued.ticket), user);
+    assert.equal(await consumeRealtimeTicket(issued.ticket), null);
+  } finally {
+    if (previousRedisFlag === undefined) delete process.env.ENABLE_REALTIME_REDIS;
+    else process.env.ENABLE_REALTIME_REDIS = previousRedisFlag;
+  }
+});
+
+test("SSE requests canonical reconciliation when replay history has a gap", () => {
+  const req = new EventEmitter();
+  req.headers = {};
+  req.query = { lastEventId: "1" };
+  const writes = [];
+  const res = {
+    writeHead() {},
+    write(chunk) { writes.push(String(chunk)); },
+    end() {},
+  };
+  connectRealtimeClient({
+    user: {
+      sessionId: "reconcile-session",
+      role: "finance-desk",
+      uid: "reconcile-user",
+      dealershipId: "dealer-reconcile",
+    },
+    req,
+    res,
+  });
+  assert.equal(writes.some((chunk) => chunk.includes("event: reconcile-required")), true);
+  assert.equal(writes.some((chunk) => chunk.includes("replay-buffer-overflow") || chunk.includes("replay-buffer-unavailable")), true);
+  req.emit("close");
 });
 
 test("realtime registry documents every event and health stats expose audit reports", () => {

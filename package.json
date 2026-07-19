@@ -42,6 +42,8 @@
     "load:report": "node scripts/summarize-k6-results.js",
     "certify:performance": "node scripts/certify-performance-readiness.js",
     "certify:performance:strict": "node scripts/certify-performance-readiness.js --strict",
+    "certify:production": "node scripts/certify-production-readiness.js",
+    "certify:production:strict": "node scripts/certify-production-readiness.js --strict",
     "prepare": "node scripts/prepare-husky.js"
   },
   "lint-staged": {

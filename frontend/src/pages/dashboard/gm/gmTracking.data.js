@@ -47,7 +47,7 @@ export function useGmLeads(filters = {}) {
     load({ silent: true });
   }, [load]);
   useEffect(() => {
-    scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
+    return scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
   useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, pageSize });

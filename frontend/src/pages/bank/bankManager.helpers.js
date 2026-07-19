@@ -1,6 +1,6 @@
-import { LEAD_STATUSES, normalizeStatus } from "../../constants/status.js";
+import { LEAD_STATUSES } from "../../constants/status.js";
 import { normalizeRows } from "../../services/apiResponse.js";
-import { formatPortalDateTime, portalLeadStatusLabel } from "../../utils/portalDisplay.js";
+import { formatPortalDateTime, formatPortalMoney, portalCaseId, portalGeneratedAt, portalLeadStatusLabel, portalWorkflowStatus } from "../../utils/portalDisplay.js";
 
 const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
@@ -29,11 +29,11 @@ export function executiveDeleteId(executive = {}) {
 }
 
 export function caseId(lead = {}) {
-  return lead.caseId || lead.id;
+  return portalCaseId(lead);
 }
 
 export function moneyValue(value) {
-  return `Rs. ${money.format(Number(value || 0))}`;
+  return formatPortalMoney(value);
 }
 
 export function numberValue(value) {
@@ -45,17 +45,11 @@ export function dateTime(value) {
 }
 
 export function generatedAt(lead = {}) {
-  return dateTime(lead.generatedAt || lead.createdAt);
+  return portalGeneratedAt(lead);
 }
 
 export function workflowStatus(value) {
-  const normalized = normalizeStatus(value);
-  if (normalized === LEAD_STATUSES.ASSIGNED) return LEAD_STATUSES.NEW;
-  if ([LEAD_STATUSES.ACCEPTED, LEAD_STATUSES.UNDER_REVIEW, LEAD_STATUSES.APPROVED].includes(normalized)) {
-    return LEAD_STATUSES.UNDER_BANK_PROCESS;
-  }
-  if (normalized === LEAD_STATUSES.DOCS_PENDING) return LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS;
-  return normalized;
+  return portalWorkflowStatus(value);
 }
 
 export function leadStatusLabel(lead) {

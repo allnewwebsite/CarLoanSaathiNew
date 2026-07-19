@@ -33,6 +33,17 @@ service firebase.storage {
         && data.bankId == request.auth.token.bankId;
     }
 
+    function sameBranch(data) {
+      return approved()
+        && (request.auth.token.branchId != null || request.auth.token.branchCity != null)
+        && (
+          data.branchId == request.auth.token.branchId
+          || data.branchCity == request.auth.token.branchId
+          || data.branchId == request.auth.token.branchCity
+          || data.branchCity == request.auth.token.branchCity
+        );
+    }
+
     function assignedExecutive(data) {
       return approved()
         && (
@@ -44,7 +55,7 @@ service firebase.storage {
     function canReadPrivateFile(data) {
       return role() == "super-admin"
         || sameDealership(data)
-        || sameBank(data)
+        || (role() == "bank-manager" && sameBank(data) && sameBranch(data))
         || assignedExecutive(data);
     }
 

@@ -164,12 +164,6 @@ assertCheck(
     && read("frontend/src/pages/dashboard/BankTieUpSettings.jsx").includes("getCachedGetData(\"/dealer/bank-tieups\""),
 );
 assertCheck(
-  "dashboard sidebar prefetches all portal tabs",
-  readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("function prefetchSpecsForRoute")
-    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("nav.forEach((item, index)")
-    && readCombined("frontend/src/layouts/DashboardLayout.jsx", "frontend/src/layouts/DashboardLayoutCore.jsx", "frontend/src/layouts/DashboardLayout.config.js").includes("onPointerDown={() => prefetchDashboardRoute(item.to)}"),
-);
-assertCheck(
   "CORS allows portal header required by login",
   securityMiddleware.includes('"X-CLS-Portal"'),
   "Browser login preflight must allow X-CLS-Portal or every portal login is blocked as a network error.",

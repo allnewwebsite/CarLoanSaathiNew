@@ -20,7 +20,7 @@ import {
   RECONNECT_DELAYS_MS,
   TAB_ID,
 } from "./realtimeClient.constants.js";
-import { invalidateRealtimeCaches, mutationPayload } from "./realtimeClient.events.js";
+import { invalidateAllRealtimeCaches, invalidateRealtimeCaches, mutationPayload } from "./realtimeClient.events.js";
 
 let source = null;
 let connectPromise = null;
@@ -180,7 +180,10 @@ function dispatchRealtimeEvent(event = {}, { remote = false } = {}) {
   if (!remote) broadcastRealtimeEvent(event);
   invalidateRealtimeCaches(event);
   if (!event.leadId && !event.caseId && PHASE_ONE_EVENTS.has(event.eventType || event.event)) {
-    console.info("SSE_EVENT_IGNORED", { tag: "SSE_EVENT_IGNORED", eventType: event.eventType || event.event, reason: "missing_lead_identity" });
+    dispatchRealtimeLifecycle("ignored", {
+      reason: "missing-lead-identity",
+      eventType: event.eventType || event.event || "",
+    });
     return;
   }
   window.dispatchEvent(new CustomEvent("cls:realtime-event", { detail: event }));
@@ -297,6 +300,30 @@ async function connect() {
         } catch {
           // Ignore malformed realtime messages.
         }
+      });
+      nextSource.addEventListener("reconcile-required", (message) => {
+        if (!active || expectedGeneration !== connectionGeneration || expectedIdentity !== activeIdentity) return;
+        let detail = {};
+        try {
+          detail = JSON.parse(message.data || "{}");
+        } catch {
+          detail = { reason: "replay-gap" };
+        }
+        invalidateAllRealtimeCaches();
+        window.dispatchEvent(new CustomEvent("cls:data-mutated", {
+          detail: {
+            realtime: true,
+            kind: "platform",
+            url: "/realtime-reconcile",
+            canonicalUrl: "/realtime-reconcile",
+            event: "SSE_RECONCILIATION_REQUIRED",
+            eventType: "SSE_RECONCILIATION_REQUIRED",
+            at: Date.now(),
+            source: "sse-replay-gap",
+            ...detail,
+          },
+        }));
+        dispatchRealtimeLifecycle("reconciliation-required", detail);
       });
       nextSource.addEventListener("heartbeat", () => {
         if (!active || expectedGeneration !== connectionGeneration || expectedIdentity !== activeIdentity) return;

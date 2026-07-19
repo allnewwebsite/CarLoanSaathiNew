@@ -11,6 +11,7 @@ import { logError } from "../services/logger.service.js";
 import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "../services/whatsapp.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
 import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
+import { discardUploadedFile } from "../middleware/upload.js";
 
 function runDocumentSideEffect(label, task) {
   Promise.resolve()
@@ -56,14 +57,25 @@ export async function uploadDocument(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ message: "Document file is required" });
     const lead = req.body.leadId ? await getRecord("leads", req.body.leadId) : null;
-    if (!req.body.leadId || !lead) return res.status(404).json({ message: "Lead not found" });
+    if (!req.body.leadId || !lead) {
+      discardUploadedFile(req.file);
+      return res.status(404).json({ message: "Lead not found" });
+    }
     assertLeadMutable(lead);
-    if (!canUploadCustomerDocument(req, lead)) return res.status(403).json({ message: "Only finance desk can upload customer documents" });
-    if (!req.body.type) return res.status(400).json({ message: "Document type is required" });
+    if (!canUploadCustomerDocument(req, lead)) {
+      discardUploadedFile(req.file);
+      return res.status(403).json({ message: "Only finance desk can upload customer documents" });
+    }
+    if (!req.body.type) {
+      discardUploadedFile(req.file);
+      return res.status(400).json({ message: "Document type is required" });
+    }
     const uploaded = await uploadLeadDocument(req.file, req.body.leadId, {
       dealershipId: lead.dealershipId || req.user?.dealershipId,
       caseId: lead.caseId,
       bankId: lead.bankId,
+      branchId: lead.branchId || lead.bankBranchId,
+      branchCity: lead.bankBranchCity || lead.branchCity,
       assignedExecutiveId: lead.assignedExecutiveId,
       assignedExecutiveEmail: lead.assignedExecutiveEmail,
       uploadedBy: req.user?.email,
@@ -116,6 +128,7 @@ export async function uploadDocument(req, res, next) {
     publishRealtimeEvent({ eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user });
     res.status(201).json(document);
   } catch (error) {
+    discardUploadedFile(req.file);
     next(error);
   }
 }

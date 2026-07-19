@@ -5,6 +5,7 @@ import {
   finalizeSubscriptionPayment,
 } from "./subscription.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
+import { createNotification } from "./notification.service.js";
 import {
   ALERT_SEVERITY,
   emitOperationalAlert,
@@ -146,6 +147,7 @@ export async function processRazorpayWebhook({
 
   const eventType = String(event?.event || "");
   const payment = event?.payload?.payment?.entity || {};
+  const refund = event?.payload?.refund?.entity || {};
   const orderId = String(payment.order_id || "");
   const paymentId = String(payment.id || "");
   const existingEvent = await getRecord(EVENT_COLLECTION, eventId).catch(() => null);
@@ -168,6 +170,104 @@ export async function processRazorpayWebhook({
       paymentId,
       status: "RECEIVED",
     });
+  }
+
+  if (["refund.processed", "refund.created"].includes(eventType)) {
+    const refundId = String(refund.id || "");
+    const refundedPaymentId = String(refund.payment_id || "");
+    if (!refundId || !refundedPaymentId) {
+      const error = new Error("Refund webhook is missing refund or payment ID");
+      error.status = 400;
+      error.code = "WEBHOOK_REFUND_ID_MISSING";
+      throw error;
+    }
+    const originalPayment = await getRecord("subscriptionPayments", refundedPaymentId).catch(() => null);
+    const processedAt = new Date().toISOString();
+    await Promise.all([
+      upsertRecord("subscriptionRefunds", refundId, {
+        refundId,
+        paymentId: refundedPaymentId,
+        orderId: originalPayment?.razorpayOrderId || null,
+        dealershipId: originalPayment?.dealershipId || null,
+        amountPaise: Number(refund.amount || 0),
+        currency: String(refund.currency || originalPayment?.currency || "").toUpperCase(),
+        status: String(refund.status || eventType.split(".")[1] || "unknown").toUpperCase(),
+        providerCreatedAt: refund.created_at || null,
+        eventId,
+        processedAt,
+        entitlementAdjustmentStatus: "ADMIN_REVIEW_REQUIRED",
+      }),
+      upsertRecord(EVENT_COLLECTION, eventId, { status: "PROCESSED", processedAt }),
+      updateHealth({ status: "degraded", lastReceivedAt: processedAt, lastEventId: eventId, lastEventType: eventType }),
+      emitOperationalAlert({
+        type: "subscription_refund_requires_review",
+        severity: ALERT_SEVERITY.HIGH,
+        component: "billing",
+        title: "Subscription refund requires review",
+        message: "Razorpay reported a refund. Automatic entitlement changes are blocked pending financial review.",
+        entityId: refundId,
+        requestId: req?.requestId,
+        meta: { paymentId: refundedPaymentId, dealershipId: originalPayment?.dealershipId || null, amountPaise: Number(refund.amount || 0) },
+      }),
+    ]);
+    return { accepted: true, ignored: false, refunded: true, entitlementAdjusted: false, eventId, eventType, refundId };
+  }
+
+  if (eventType === "payment.failed") {
+    const order = orderId ? await getRecord("subscriptionOrders", orderId).catch(() => null) : null;
+    const failedAt = new Date().toISOString();
+    await Promise.allSettled([
+      upsertRecord("subscriptionPaymentFailures", paymentId || eventId, {
+        eventId,
+        orderId: orderId || null,
+        paymentId: paymentId || null,
+        dealershipId: order?.dealershipId || null,
+        status: "FAILED",
+        providerStatus: payment.status || "failed",
+        providerErrorCode: payment.error_code || null,
+        providerErrorReason: payment.error_reason || null,
+        amountPaise: Number(payment.amount || order?.amountPaise || 0),
+        currency: String(payment.currency || order?.currency || "").toUpperCase(),
+        failedAt,
+      }),
+      upsertRecord(EVENT_COLLECTION, eventId, { status: "PROCESSED", processedAt: failedAt }),
+      order ? upsertRecord("subscriptionOrders", order.id, {
+        lastFailedPaymentId: paymentId || null,
+        lastPaymentFailureAt: failedAt,
+        lastPaymentFailureCode: payment.error_code || null,
+      }) : null,
+      order ? createNotification({
+        type: "subscription-payment-failed",
+        title: "Subscription payment failed",
+        message: "Your payment was not completed and no subscription was activated. You can try again safely.",
+        recipientRole: "finance-desk",
+        recipientId: order.requestedBy || order.dealershipId,
+        dealerEmail: order.dealershipId,
+        dealershipId: order.dealershipId,
+        priority: "high",
+        entityType: "subscriptionPayment",
+        entityId: paymentId || eventId,
+        meta: { paymentId, orderId, dedupeKey: `subscription-payment-failed-${paymentId || eventId}` },
+      }) : null,
+      recordOperationalEvent({
+        type: "subscription_payment_failed",
+        severity: ALERT_SEVERITY.LOW,
+        component: "billing",
+        message: "Razorpay reported a failed subscription payment; no entitlement was activated",
+        entityId: paymentId || eventId,
+        requestId: req?.requestId,
+        meta: { orderId, paymentId, dealershipId: order?.dealershipId || null, errorCode: payment.error_code || null },
+      }),
+      updateHealth({
+        status: "healthy",
+        lastReceivedAt: failedAt,
+        lastEventId: eventId,
+        lastEventType: eventType,
+        lastFailedPaymentAt: failedAt,
+        lastFailedPaymentId: paymentId || null,
+      }),
+    ]);
+    return { accepted: true, ignored: false, failed: true, activated: false, eventId, eventType };
   }
 
   if (eventType !== "payment.captured") {
@@ -303,5 +403,7 @@ export async function razorpayWebhookHealth() {
     lastFailureReason: state?.lastFailureReason || null,
     lastEventId: state?.lastEventId || null,
     signatureFailureCount: Number(state?.signatureFailureCount || 0),
+    lastFailedPaymentAt: state?.lastFailedPaymentAt || null,
+    lastFailedPaymentId: state?.lastFailedPaymentId || null,
   };
 }

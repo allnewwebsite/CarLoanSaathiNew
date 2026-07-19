@@ -26,6 +26,8 @@ export async function uploadLeadDocument(file, leadId, metadata = {}) {
         leadId,
         dealershipId: metadata.dealershipId || "",
         bankId: metadata.bankId || "",
+        branchId: metadata.branchId || "",
+        branchCity: metadata.branchCity || "",
         assignedExecutiveId: metadata.assignedExecutiveId || "",
         assignedExecutiveEmail: metadata.assignedExecutiveEmail || "",
         uploadedBy: metadata.uploadedBy || "",

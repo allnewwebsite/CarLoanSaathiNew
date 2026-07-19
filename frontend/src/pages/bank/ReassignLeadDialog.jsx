@@ -13,10 +13,9 @@ import {
   responseRows,
 } from "./bankManager.helpers.js";
 
+// CASE_REASSIGNMENT_EXECUTIVE_FILTER: this eligibility contract must remain same-branch-first.
 function reassignmentDiagnostics(lead = {}, rows = []) {
   const currentIds = new Set(currentExecutiveIdentity(lead));
-  const caseBranch = lead.branchId || lead.bankBranchId || lead.bankBranchCity || lead.branchCity || lead.branchLocation || lead.bankBranchLocation || lead.city || "";
-  const caseIfsc = lead.assignedBankIfsc || lead.bankIfsc || lead.ifscCode || "";
   const diagnostics = rows.map((executive) => {
     const status = String(executive.status || "").trim().toLowerCase();
     const active = executive.active !== false && !["inactive", "deleted", "removed", "suspended", "disabled"].includes(status);
@@ -35,16 +34,6 @@ function reassignmentDiagnostics(lead = {}, rows = []) {
       eligibleFallback: active && !current,
       reason: reasons.join(", ") || "eligible",
     };
-  });
-  console.info("CASE_REASSIGNMENT_EXECUTIVE_FILTER", {
-    caseId: caseId(lead),
-    caseBranch,
-    caseIfsc,
-    currentExecutive: lead.assignedExecutiveName || lead.assignedExecutiveEmail || lead.assignedExecutiveId || "",
-    foundExecutives: rows.length,
-    filteredExecutives: diagnostics,
-    eligibleStrict: diagnostics.filter((item) => item.eligibleStrict).map((item) => item.name),
-    eligibleFallback: diagnostics.filter((item) => item.eligibleFallback).map((item) => item.name),
   });
   return diagnostics;
 }

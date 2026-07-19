@@ -35,7 +35,7 @@ export function AdminMonitoringCenter() {
     load({ silent: Boolean(initialCachedRef.current) });
     const refreshFromEvent = () => {
       invalidateGetCache({ url: "/admin/monitoring", purge: true });
-      load({ silent: true, force: true });
+      load({ silent: true });
     };
     const refreshWhenVisible = () => {
       if (!document.hidden) refreshFromEvent();
@@ -94,6 +94,11 @@ export function AdminMonitoringCenter() {
   const branches = snapshot?.branchMonitoring || {};
   const dealers = snapshot?.dealerMonitoring || {};
   const alerts = snapshot?.systemAlerts || [];
+  const portals = snapshot?.portalHealth || [];
+  const leads = snapshot?.leadMonitoring || {};
+  const business = snapshot?.businessMonitoring || {};
+  const security = snapshot?.securityMonitoring || {};
+  const services = snapshot?.serviceHealth || {};
 
   const projectionCollections = useMemo(() => rows(projection.collections || [], (item) => [
     item.key,
@@ -178,6 +183,7 @@ export function AdminMonitoringCenter() {
     <AdminMonitoringContent
       alerts={alerts}
       apiPerf={apiPerf}
+      business={business}
       branchCapacityRows={branchCapacityRows}
       branchLocationRows={branchLocationRows}
       branches={branches}
@@ -192,12 +198,16 @@ export function AdminMonitoringCenter() {
       firestore={firestore}
       load={load}
       loading={loading}
+      leads={leads}
       overview={overview}
       projection={projection}
       projectionCollections={projectionCollections}
+      portals={portals}
       queue={queue}
       queueRows={queueRows}
       realtime={realtime}
+      security={security}
+      services={services}
       notifications={notifications}
       sendWhatsappTest={sendWhatsappTest}
       setWhatsappTestPhone={setWhatsappTestPhone}

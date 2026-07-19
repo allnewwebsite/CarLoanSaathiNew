@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { api } from "../../services/api.js";
-
-function dateTime(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
+import { formatPortalDateTime } from "../../utils/portalDisplay.js";
 
 function display(value) {
   return value || "-";
@@ -32,13 +28,13 @@ export function LoginActivityPage() {
       <OperationalTable
         title="Active and Recent Sessions"
         headers={["Login Time", "Device", "Browser", "IP", "Last Active", "Status"]}
-        rows={payload.sessions.map((session) => ({ key: session.id, cells: [dateTime(session.loginAt), display(session.device), display(session.browser), display(session.ipAddress), dateTime(session.lastSeenAt), session.revoked ? "Revoked" : "Active"] }))}
+        rows={payload.sessions.map((session) => ({ key: session.id, cells: [formatPortalDateTime(session.loginAt), display(session.device), display(session.browser), display(session.ipAddress), formatPortalDateTime(session.lastSeenAt), session.revoked ? "Revoked" : "Active"] }))}
         loading={loading}
       />
       <OperationalTable
         title="Security Events"
         headers={["Time", "Status", "Reason", "Role", "IP", "User Agent"]}
-        rows={payload.activities.map((event) => ({ key: event.id, cells: [dateTime(event.createdAt), display(event.status), display(event.reason), display(event.role), display(event.ipAddress), display(event.userAgent)] }))}
+        rows={payload.activities.map((event) => ({ key: event.id, cells: [formatPortalDateTime(event.createdAt), display(event.status), display(event.reason), display(event.role), display(event.ipAddress), display(event.userAgent)] }))}
         loading={loading}
       />
     </section>

@@ -1,5 +1,7 @@
 import { LEAD_STATUSES, normalizeStatus, statusLabel } from "../constants/status.js";
 
+const portalMoneyFormatter = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
+
 export function toDate(value) {
   if (!value) return null;
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
@@ -51,6 +53,18 @@ export function cleanPortalText(value) {
 export function displayPortalText(value, fallback = "-") {
   const text = cleanPortalText(value);
   return text || fallback;
+}
+
+export function formatPortalMoney(value) {
+  return `Rs. ${portalMoneyFormatter.format(Number(value || 0))}`;
+}
+
+export function portalCaseId(lead = {}) {
+  return lead.caseId || lead.id;
+}
+
+export function portalGeneratedAt(lead = {}) {
+  return formatPortalDateTime(lead.generatedAt || lead.createdAt);
 }
 
 export function portalWorkflowStatus(value) {

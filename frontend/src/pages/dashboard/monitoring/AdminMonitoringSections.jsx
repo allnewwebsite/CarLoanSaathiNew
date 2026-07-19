@@ -55,17 +55,22 @@ export function PlatformOverviewSection({ overview, snapshot }) {
 export function ApiPerformanceSection({ apiPerf, loading, snapshot }) {
   return (
     <Section title="API Performance">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-9">
         <MetricTile label="Average API" value={`${apiPerf.averageApiResponseTime || 0}ms`} />
         <MetricTile label="P95 API" value={`${apiPerf.p95ApiResponseTime || 0}ms`} />
+        <MetricTile label="P99 API" value={`${apiPerf.p99ApiResponseTime || 0}ms`} />
+        <MetricTile label="Requests" value={apiPerf.requestCount || 0} />
+        <MetricTile label="Failures" value={apiPerf.failureCount || 0} />
+        <MetricTile label="Timeouts" value={apiPerf.timeoutCount || 0} />
+        <MetricTile label="Error Rate" value={`${apiPerf.errorRate || 0}%`} />
         <MetricTile label="Slow Requests" value={apiPerf.slowRequestCount || 0} />
         <MetricTile label="API Errors" value={apiPerf.apiErrorCount || 0} />
         <MetricTile label="Samples" value={snapshot?.sampleWindow?.apiSamples || 0} />
       </div>
       <OperationalTable
         title="Top Slow APIs"
-        headers={["Endpoint", "Count", "Average", "P95", "Max", "Errors"]}
-        rows={rows(apiPerf.topSlowApis || [], (item) => [item.endpoint, item.count, `${item.averageMs}ms`, `${item.p95Ms}ms`, `${item.maxMs}ms`, item.errors])}
+        headers={["Endpoint", "Count", "Average", "P95", "P99", "Max", "Failures", "Timeouts", "Error Rate"]}
+        rows={rows(apiPerf.topSlowApis || [], (item) => [item.endpoint, item.count, `${item.averageMs}ms`, `${item.p95Ms}ms`, `${item.p99Ms || 0}ms`, `${item.maxMs}ms`, item.failures || 0, item.timeouts || 0, `${item.errorRate || 0}%`])}
         loading={loading}
         virtualizeAt={20}
       />
@@ -76,9 +81,12 @@ export function ApiPerformanceSection({ apiPerf, loading, snapshot }) {
 export function FirestoreMonitoringSection({ firestore, loading, projection }) {
   return (
     <Section title="Firestore Monitoring">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 xl:grid-cols-9">
         <MetricTile label="Reads Today" value={firestore.estimatedReadsToday || 0} />
         <MetricTile label="Writes Today" value={firestore.estimatedWritesToday || 0} />
+        <MetricTile label="Deletes Today" value={firestore.estimatedDeletesToday || 0} />
+        <MetricTile label="Reads / Minute" value={firestore.readsPerMinute || 0} />
+        <MetricTile label="Writes / Minute" value={firestore.writesPerMinute || 0} />
         <MetricTile label="Read Reduction" value={percent(firestore.readReductionScore)} />
         <MetricTile label="Projection Hit" value={percent(projection.projectionHitRate)} />
         <MetricTile label="Cache Hit" value={percent(firestore.cacheHitRate)} />

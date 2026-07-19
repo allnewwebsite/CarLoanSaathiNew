@@ -1,4 +1,4 @@
-import { createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { bulkUpsertRecords, createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
 import { buildWhatsAppMessage, queueWhatsAppNotification } from "./whatsapp.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { logError, logInfo } from "./logger.service.js";
@@ -371,7 +371,8 @@ export async function markAllNotificationsRead(actor = {}) {
   });
   const visibleUnread = result.data.filter((item) => item.read === false && canAccessNotification(item, actor));
   const readAt = new Date().toISOString();
-  const updatedItems = await Promise.all(visibleUnread.map((item) => updateRecord("notifications", item.id, { read: true, readAt })));
+  const updatedItems = visibleUnread.map((item) => ({ ...item, read: true, readAt, updatedAt: readAt }));
+  await bulkUpsertRecords("notifications", updatedItems);
   updatedItems.forEach((item) => syncNotificationProjectionSoon(item));
   markBufferedNotificationRead(updatedItems.map((item) => item.id), readAt);
   clearCachedTags(["notifications", ...notificationActorTags(actor), "dashboard:fast"]);

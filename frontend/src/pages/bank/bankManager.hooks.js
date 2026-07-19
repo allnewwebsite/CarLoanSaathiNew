@@ -44,7 +44,7 @@ export function useBankLeads(search, status = "", archiveOverride = "") {
 
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {
-    scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
+    return scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status, pageSize });

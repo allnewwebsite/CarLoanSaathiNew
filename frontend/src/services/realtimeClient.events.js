@@ -93,3 +93,18 @@ export function invalidateRealtimeCaches(event = {}) {
     "/dashboard",
   ].forEach((prefix) => invalidateGetCache({ prefix, purge: true }));
 }
+
+export function invalidateAllRealtimeCaches() {
+  [
+    "/admin",
+    "/bank",
+    "/dealer",
+    "/gm",
+    "/executive",
+    "/catalog",
+    "/timeline",
+    "/notifications",
+    "/dashboard",
+    "/documents",
+  ].forEach((prefix) => invalidateGetCache({ prefix, purge: true }));
+}

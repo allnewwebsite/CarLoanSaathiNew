@@ -1,0 +1,307 @@
+{
+  "generatedAt": "2026-07-19T06:43:54.137Z",
+  "certification": "RED",
+  "recommendation": "PRODUCTION NOT READY",
+  "strict": false,
+  "gates": [
+    {
+      "name": "backend_tests",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js --prefix backend test",
+        "output": "ansaathi-api\",\"environment\":\"development\",\"release\":\"0.1.0\",\"tag\":\"SSE_EVENT_PUBLISHED\",\"eventType\":\"LEAD_CREATED\",\"leadId\":\"lead-single-connection\",\"dealershipId\":\"dealer-single-connection\",\"bankId\":\"\",\"branchId\":\"\",\"affectedPortals\":[\"admin\",\"finance\",\"gm\"]}\n# {\"level\":\"info\",\"message\":\"SSE_EVENT_DELIVERED\",\"timestamp\":\"2026-07-19T06:43:30.013Z\",\"service\":\"carloansaathi-api\",\"environment\":\"development\",\"release\":\"0.1.0\",\"tag\":\"SSE_EVENT_DELIVERED\",\"eventType\":\"LEAD_CREATED\",\"delivered\":1,\"errors\":0,\"candidateClients\":1,\"activeClients\":1,\"eventId\":1784443410013408}\n# Subtest: SSE status dispatch targets operational tenant buckets without leaking to admin or unrelated clients\nok 76 - SSE status dispatch targets operational tenant buckets without leaking to admin or unrelated clients\n  ---\n  duration_ms: 18.5572\n  type: 'test'\n  ...\n# Subtest: assigned lead realtime reaches admin, bank manager, and target loan executive\nok 77 - assigned lead realtime reaches admin, bank manager, and target loan executive\n  ---\n  duration_ms: 3.3243\n  type: 'test'\n  ...\n# Subtest: reassignment realtime reaches both previous and new owner but no unrelated executive\nok 78 - reassignment realtime reaches both previous and new owner but no unrelated executive\n  ---\n  duration_ms: 3.3099\n  type: 'test'\n  ...\n# Subtest: session revocation realtime targets only the affected authenticated identity\nok 79 - session revocation realtime targets only the affected authenticated identity\n  ---\n  duration_ms: 1.5197\n  type: 'test'\n  ...\n# Subtest: SSE keeps one connection per user identity\nok 80 - SSE keeps one connection per user identity\n  ---\n  duration_ms: 1.9098\n  type: 'test'\n  ...\n# Subtest: realtime connection tickets are short-lived one-use credentials\nok 81 - realtime connection tickets are short-lived one-use credentials\n  ---\n  duration_ms: 1.2124\n  type: 'test'\n  ...\n# Subtest: SSE requests canonical reconciliation when replay history has a gap\nok 82 - SSE requests canonical reconciliation when replay history has a gap\n  ---\n  duration_ms: 0.9872\n  type: 'test'\n  ...\n# Subtest: realtime registry documents every event and health stats expose audit reports\nok 83 - realtime registry documents every event and health stats expose audit reports\n  ---\n  duration_ms: 0.8664\n  type: 'test'\n  ...\n# Subtest: upload validation accepts matching PDF, JPEG, and PNG signatures\nok 84 - upload validation accepts matching PDF, JPEG, and PNG signatures\n  ---\n  duration_ms: 15.3785\n  type: 'test'\n  ...\n# Subtest: upload validation rejects MIME-spoofed content and removes its temporary file\nok 85 - upload validation rejects MIME-spoofed content and removes its temporary file\n  ---\n  duration_ms: 4.3315\n  type: 'test'\n  ...\n# Subtest: storage rules require bank managers to match both bank and branch\nok 86 - storage rules require bank managers to match both bank and branch\n  ---\n  duration_ms: 0.8609\n  type: 'test'\n  ...\n# Subtest: document uploads persist branch metadata for Storage authorization\nok 87 - document uploads persist branch metadata for Storage authorization\n  ---\n  duration_ms: 0.8623\n  type: 'test'\n  ...\n# Subtest: cache tags clear related entries without clearing unrelated entries\nok 88 - cache tags clear related entries without clearing unrelated entries\n  ---\n  duration_ms: 4.6759\n  type: 'test'\n  ...\n# Subtest: lead list tag clears portal list caches\nok 89 - lead list tag clears portal list caches\n  ---\n  duration_ms: 0.8489\n  type: 'test'\n  ...\n# Subtest: pending cache loads do not repopulate after invalidation\nok 90 - pending cache loads do not repopulate after invalidation\n  ---\n  duration_ms: 7.455\n  type: 'test'\n  ...\n# Subtest: cache pruning removes expired and least-recently-used entries without stale tags\nok 91 - cache pruning removes expired and least-recently-used entries without stale tags\n  ---\n  duration_ms: 28.2125\n  type: 'test'\n  ...\n1..91\n# tests 91\n# suites 0\n# pass 91\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 7244.0346"
+      }
+    },
+    {
+      "name": "frontend_tests",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js --prefix frontend test",
+        "output": "ad Cases reuses the shared blue policy banner with its own lifecycle copy\nok 18 - Dead Cases reuses the shared blue policy banner with its own lifecycle copy\n  ---\n  duration_ms: 0.6652\n  type: 'test'\n  ...\n# Subtest: More is session-local, collapsed by default, and route-expanded only for archive pages\nok 19 - More is session-local, collapsed by default, and route-expanded only for archive pages\n  ---\n  duration_ms: 0.7025\n  type: 'test'\n  ...\n# Subtest: onboarding local state is scoped to account and role\nok 20 - onboarding local state is scoped to account and role\n  ---\n  duration_ms: 1.8238\n  type: 'test'\n  ...\n# Subtest: onboarding auto-opens before the async status check for unseen users\nok 21 - onboarding auto-opens before the async status check for unseen users\n  ---\n  duration_ms: 9.5451\n  type: 'test'\n  ...\n# Subtest: shared platform branding uses the favicon logo instead of text tiles\nok 22 - shared platform branding uses the favicon logo instead of text tiles\n  ---\n  duration_ms: 4.3237\n  type: 'test'\n  ...\n# Subtest: bank registration password field has a visibility toggle\nok 23 - bank registration password field has a visibility toggle\n  ---\n  duration_ms: 3.4387\n  type: 'test'\n  ...\n# Subtest: GET cache invalidation stays scoped to the active portal identity\nok 24 - GET cache invalidation stays scoped to the active portal identity\n  ---\n  duration_ms: 2.3868\n  type: 'test'\n  ...\n# Subtest: idle status prefetch is cancellable and never fans out searched queries\nok 25 - idle status prefetch is cancellable and never fans out searched queries\n  ---\n  duration_ms: 1.6205\n  type: 'test'\n  ...\n# Subtest: realtime lead mutations match every lead dashboard refresh filter\nok 26 - realtime lead mutations match every lead dashboard refresh filter\n  ---\n  duration_ms: 10.3931\n  type: 'test'\n  ...\n# Subtest: dead-case realtime patches preserve explicit restore state\nok 27 - dead-case realtime patches preserve explicit restore state\n  ---\n  duration_ms: 2.2108\n  type: 'test'\n  ...\n# Subtest: SSE client uses bounded dedupe, exact backoff, and patch-first lead tables\nok 28 - SSE client uses bounded dedupe, exact backoff, and patch-first lead tables\n  ---\n  duration_ms: 5.1305\n  type: 'test'\n  ...\n# Subtest: smoke route paths are unique\nok 29 - smoke route paths are unique\n  ---\n  duration_ms: 1.8299\n  type: 'test'\n  ...\n# Subtest: public and login smoke routes are present in the router\nok 30 - public and login smoke routes are present in the router\n  ---\n  duration_ms: 1.0663\n  type: 'test'\n  ...\n# Subtest: registration lifecycle routes are present in the router\nok 31 - registration lifecycle routes are present in the router\n  ---\n  duration_ms: 1.2394\n  type: 'test'\n  ...\n# Subtest: protected smoke routes have expected role login contracts\nok 32 - protected smoke routes have expected role login contracts\n  ---\n  duration_ms: 0.4722\n  type: 'test'\n  ...\n# Subtest: forced first-login password routes are present for staff roles\nok 33 - forced first-login password routes are present for staff roles\n  ---\n  duration_ms: 1.4393\n  type: 'test'\n  ...\n# Subtest: route smoke modules exist on disk\nok 34 - route smoke modules exist on disk\n  ---\n  duration_ms: 15.7747\n  type: 'test'\n  ...\n# Subtest: super admin dealership approval labels and realtime filters stay aligned\nok 35 - super admin dealership approval labels and realtime filters stay aligned\n  ---\n  duration_ms: 8.8899\n  type: 'test'\n  ...\n# Subtest: GM staff removal uses the product confirmation modal and purges staff cache\nok 36 - GM staff removal uses the product confirmation modal and purges staff cache\n  ---\n  duration_ms: 10.9121\n  type: 'test'\n  ...\n# Subtest: temporary password page prefers backend error messages over generic Axios text\nok 37 - temporary password page prefers backend error messages over generic Axios text\n  ---\n  duration_ms: 2.1782\n  type: 'test'\n  ...\n1..37\n# tests 37\n# suites 0\n# pass 37\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 700.0813"
+      }
+    },
+    {
+      "name": "frontend_lint",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js --prefix frontend run lint",
+        "output": "> car-loan-saathi-frontend@0.1.0 lint\n> eslint ."
+      }
+    },
+    {
+      "name": "frontend_build",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js --prefix frontend run build",
+        "output": "          \u001b[39m\u001b[1m\u001b[2m  4.29 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  1.51 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ExecutiveChangePasswordPage-CJRP026Y.js  \u001b[39m\u001b[1m\u001b[2m  5.28 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.18 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/SubscriptionActivationPage-CItb72aH.js   \u001b[39m\u001b[1m\u001b[2m  5.51 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.31 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/OperationalTable-oJj3biNn.js             \u001b[39m\u001b[1m\u001b[2m  7.09 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.47 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/BankManagerLeadDetailPage-BmOqvgpA.js    \u001b[39m\u001b[1m\u001b[2m  7.16 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.49 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/ReassignLeadDialog-BcOmSTGv.js           \u001b[39m\u001b[1m\u001b[2m  7.22 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.49 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/PublicConversionCtas-C_5vVhSm.js         \u001b[39m\u001b[1m\u001b[2m  7.50 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.74 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/FinanceLeadDocumentsPage-B8Mslb96.js     \u001b[39m\u001b[1m\u001b[2m  7.78 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  2.68 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/LoginPage-BjfcPrVN.js                    \u001b[39m\u001b[1m\u001b[2m 11.81 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  4.06 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/LegalPages-MfqHfZ0j.js                   \u001b[39m\u001b[1m\u001b[2m 12.20 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  4.39 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/GmTrackingPanel-QGzdn_62.js              \u001b[39m\u001b[1m\u001b[2m 13.84 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  4.28 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/DeadCasesPage-S-yFRTiB.js                \u001b[39m\u001b[1m\u001b[2m 16.54 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  5.22 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/HowItWorksPage-mWNcWzGP.js               \u001b[39m\u001b[1m\u001b[2m 23.39 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  6.87 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/BankRegistration-5g7KHnOA.js             \u001b[39m\u001b[1m\u001b[2m 27.47 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  7.16 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/PlansBillingPage-CSY5KuAp.js             \u001b[39m\u001b[1m\u001b[2m 27.88 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  7.61 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/AdminMonitoringCenter-CL2lStvc.js        \u001b[39m\u001b[1m\u001b[2m 27.89 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  7.78 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/SuperAdminDashboard-C2z_02D5.js          \u001b[39m\u001b[1m\u001b[2m 28.25 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  8.13 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/DashboardLayout-BAjqZCAw.js              \u001b[39m\u001b[1m\u001b[2m 29.07 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  8.26 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/LoanExecutivePanel-CgIIj3Bz.js           \u001b[39m\u001b[1m\u001b[2m 30.13 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  8.71 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/PortalUserMenu-tPE8PMx0.js               \u001b[39m\u001b[1m\u001b[2m 31.33 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  8.75 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/HomePage-CdTDLJfH.js                     \u001b[39m\u001b[1m\u001b[2m 31.84 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  7.68 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/BankBranchManagerPanel-CoIKjvP7.js       \u001b[39m\u001b[1m\u001b[2m 32.26 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  8.81 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/DealerRegistrationPage-C413zczR.js       \u001b[39m\u001b[1m\u001b[2m 36.30 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip:  9.55 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/FinanceDeskPanel-BL_VHVmj.js             \u001b[39m\u001b[1m\u001b[2m 42.23 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 10.47 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/axios-DcNlVx-A.js                        \u001b[39m\u001b[1m\u001b[2m 42.33 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 16.66 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/firebase-storage-CkBAogfu.js             \u001b[39m\u001b[1m\u001b[2m 45.04 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 11.13 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/firebase-core-Y1rce4HQ.js                \u001b[39m\u001b[1m\u001b[2m 47.78 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 11.82 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/app-runtime-SCWa_7s-.js                  \u001b[39m\u001b[1m\u001b[2m 60.36 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 19.22 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/index-CSCvSrAe.js                        \u001b[39m\u001b[1m\u001b[2m 69.07 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 18.59 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/firebase-auth-Cl0eatn9.js                \u001b[39m\u001b[1m\u001b[2m197.37 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 39.48 kB\u001b[22m\n\u001b[2mdist/\u001b[22m\u001b[36massets/react-C3gljhFh.js                        \u001b[39m\u001b[1m\u001b[2m295.12 kB\u001b[22m\u001b[1m\u001b[22m\u001b[2m │ gzip: 94.63 kB\u001b[22m\n\u001b[32m✓ built in 12.50s\u001b[39m"
+      }
+    },
+    {
+      "name": "secret_scan",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run security:scan",
+        "output": "> security:scan\n> node scripts/scan-secrets.js\n\nSecret scan passed."
+      }
+    },
+    {
+      "name": "authorization_audit",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run security:authz-audit",
+        "output": "> security:authz-audit\n> node scripts/audit-authorization.js\n\n┌─────────┬──────────────────────────────────────────────────────────────────────────────┬────────┐\n│ (index) │ check                                                                        │ status │\n├─────────┼──────────────────────────────────────────────────────────────────────────────┼────────┤\n│ 0       │ 'frontend super-admin cannot bypass every portal'                            │ 'PASS' │\n│ 1       │ 'role mismatch does not auto-switch portals'                                 │ 'PASS' │\n│ 2       │ 'finance route allows only finance-desk'                                     │ 'PASS' │\n│ 3       │ 'gm route allows only gm'                                                    │ 'PASS' │\n│ 4       │ 'bank manager route allows only bank-manager'                                │ 'PASS' │\n│ 5       │ 'loan executive route allows only loan-executive'                            │ 'PASS' │\n│ 6       │ 'admin route allows only super-admin'                                        │ 'PASS' │\n│ 7       │ 'backend requireRole has no wildcard super-admin bypass'                     │ 'PASS' │\n│ 8       │ 'backend auth verifies Firestore user'                                       │ 'PASS' │\n│ 9       │ 'backend auth rejects unverified email'                                      │ 'PASS' │\n│ 10      │ 'single active identity is enforced per email'                               │ 'PASS' │\n│ 11      │ 'session refresh does not mask identity collision'                           │ 'PASS' │\n│ 12      │ 'tab focus cannot auto-clear session on network failure'                     │ 'PASS' │\n│ 13      │ 'stored JWT renders without blocking session spinner'                        │ 'PASS' │\n│ 14      │ 'email login avoids duplicate Firebase client sign-in'                       │ 'PASS' │\n│ 15      │ 'login enforces exact portal role before session mutation'                   │ 'PASS' │\n│ 16      │ 'cross-tab logout is portal scoped'                                          │ 'PASS' │\n│ 17      │ 'identity collision clears stale frontend session'                           │ 'PASS' │\n│ 18      │ 'API client caches GET and App Check token for fast tab switching'           │ 'PASS' │\n│ 19      │ 'tables retain rows during refresh'                                          │ 'PASS' │\n│ 20      │ 'portal list pages hydrate from cached data on first paint'                  │ 'PASS' │\n│ 21      │ 'CORS allows portal header required by login'                                │ 'PASS' │\n│ 22      │ 'timeline list is tenant-scoped beyond role visibility'                      │ 'PASS' │\n│ 23      │ 'timeline lead access reuses tenant-scoped helper'                           │ 'PASS' │\n│ 24      │ 'timeline events without visibility are not visible to non-admins'           │ 'PASS' │\n│ 25      │ 'authenticated lead creation ignores client dealershipId'                    │ 'PASS' │\n│ 26      │ 'bank manager lead access requires same bank and scoped branch when present' │ 'PASS' │\n│ 27      │ 'bank branch matching excludes bank-level ids'                               │ 'PASS' │\n│ 28      │ 'Firestore denies default wildcard'                                          │ 'PASS' │\n│ 29      │ 'Firestore protects system counters'                                         │ 'PASS' │\n│ 30      │ 'Firestore audit logs are immutable from client'                             │ 'PASS' │\n│ 31      │ 'Firestore user role fields immutable for self update'                       │ 'PASS' │\n│ 32      │ 'Storage denies default wildcard'                                            │ 'PASS' │\n│ 33      │ 'Storage validates customer file type and size'                              │ 'PASS' │\n└─────────┴──────────────────────────────────────────────────────────────────────────────┴────────┘\n\nAuthorization audit passed."
+      }
+    },
+    {
+      "name": "production_invariants",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run validate:regression",
+        "output": "> validate:regression\n> node scripts/validate-production-invariants.js\n\nPASS frontend lint uses ESLint 9 flat config\nPASS uploads directory is created before Multer writes\nPASS production auth logging does not expose token or session details\nPASS SSE is the only dashboard realtime transport\nPASS executive lifecycle propagates over SSE\nPASS monitoring detects repeated API and SSE disconnect failures\nPASS production App Check is not accidentally bypassed\nPASS frontend API base URL is environment driven\nPASS frontend keeps Firestore and Storage out of the initial registration bundles\nPASS frontend app shell keeps dashboard, Sentry, and motion out of startup\nPASS Firestore direct-id collections avoid fallback query chains\nPASS lead creation and lead status APIs remain registered\nPASS subscription billing is server-verified and blocks only lead creation\nPASS SSE ticket, stream, ack, and cleanup contracts remain present\nPASS bank executive management exposes only view and permanent delete\nPASS bank case reassignment uses explicit same-branch executive selection\nPASS bank analytics uses maintained aggregate data\nPASS WhatsApp business notifications are idempotent and backend-only\nPASS Redis cache, queues, and realtime pubsub are explicit opt-in\nPASS registration email verification gates remain enforced\nPASS dealership GSTIN is restored while bank GSTIN stays removed\nPASS public header hides dealership menu while preserving dealer entry points\nPASS dashboard Firestore cost optimizations stay in place\nPASS scale-critical Firestore indexes are declared\nPASS auth hot path avoids avoidable Firestore reads and writes\nPASS performance certification fails closed on deployment evidence\n\n26 production invariant checks passed."
+      }
+    },
+    {
+      "name": "production_blockers",
+      "status": "PASS",
+      "detail": "Verification passed",
+      "evidence": {
+        "command": "C:\\Program Files\\nodejs\\node.exe C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js run security:production-blockers",
+        "output": "> security:production-blockers\n> node scripts/audit-production-blockers.js\n\n┌─────────┬───────────────────────────────────────────────────────────────────────────────────┬────────┐\n│ (index) │ check                                                                             │ status │\n├─────────┼───────────────────────────────────────────────────────────────────────────────────┼────────┤\n│ 0       │ 'public catalog routes are rate limited'                                          │ 'PASS' │\n│ 1       │ 'public banks are projected through a sanitizer'                                  │ 'PASS' │\n│ 2       │ 'public banks do not merge raw Firestore bank records'                            │ 'PASS' │\n│ 3       │ 'public branch list requires approved active records'                             │ 'PASS' │\n│ 4       │ 'new approved bank branches carry public approval state'                          │ 'PASS' │\n│ 5       │ 'bank executive deletion uses batched cleanup'                                    │ 'PASS' │\n│ 6       │ 'bank executive deletion no longer relies on a single 100-row affected lead page' │ 'PASS' │\n│ 7       │ 'dealer staff deletion resolves projection and source identifiers'                │ 'PASS' │\n│ 8       │ 'dealer staff permanent deletion cleans legacy identity records'                  │ 'PASS' │\n│ 9       │ 'finance staff actions use canonical email before projection id'                  │ 'PASS' │\n│ 10      │ 'backup and restore npm scripts are available at root'                            │ 'PASS' │\n│ 11      │ 'backup and restore npm scripts are available in backend'                         │ 'PASS' │\n│ 12      │ 'backend/scripts/backupFirestore.js exists'                                       │ 'PASS' │\n│ 13      │ 'backend/scripts/restoreFirestore.js exists'                                      │ 'PASS' │\n│ 14      │ 'backend/scripts/verifyBackup.js exists'                                          │ 'PASS' │\n└─────────┴───────────────────────────────────────────────────────────────────────────────────┴────────┘\nProduction blocker regression audit passed."
+      }
+    },
+    {
+      "name": "performance_evidence",
+      "status": "FAIL",
+      "detail": "Performance certification is RED",
+      "evidence": {
+        "report": {
+          "generatedAt": "2026-07-19T06:43:54.106Z",
+          "overall": "RED",
+          "strict": false,
+          "gates": [
+            {
+              "gate": "staging_load",
+              "status": "PENDING",
+              "detail": "k6 evidence is older than 14 days",
+              "evidence": {
+                "runs": [
+                  {
+                    "file": "load-tests\\results\\k6-1782060876696-summary.json",
+                    "generatedAt": "2026-06-21T16:54:36.705Z",
+                    "failedRate": 0,
+                    "p95": 0,
+                    "p99": null,
+                    "requests": null,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782050534219-summary.json",
+                    "generatedAt": "2026-06-21T14:02:14.389Z",
+                    "failedRate": 0,
+                    "p95": 0,
+                    "p99": null,
+                    "requests": null,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782050368036-summary.json",
+                    "generatedAt": "2026-06-21T13:59:28.756Z",
+                    "failedRate": 1,
+                    "p95": 564.15402,
+                    "p99": null,
+                    "requests": 5,
+                    "thresholdFailures": [
+                      "http_req_failed:rate<0.02"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782050236139-summary.json",
+                    "generatedAt": "2026-06-21T13:57:16.292Z",
+                    "failedRate": 1,
+                    "p95": 437.29142,
+                    "p99": null,
+                    "requests": 5,
+                    "thresholdFailures": [
+                      "http_req_failed:rate<0.02"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782045825406-summary.json",
+                    "generatedAt": "2026-06-21T12:43:45.425Z",
+                    "failedRate": 0,
+                    "p95": 0,
+                    "p99": null,
+                    "requests": null,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782045008261-summary.json",
+                    "generatedAt": "2026-06-21T12:30:08.289Z",
+                    "failedRate": 0,
+                    "p95": 33.36079999999984,
+                    "p99": null,
+                    "requests": 4288,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782044582101-summary.json",
+                    "generatedAt": "2026-06-21T12:23:02.108Z",
+                    "failedRate": 0,
+                    "p95": 273.85448999999977,
+                    "p99": null,
+                    "requests": 114,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782044438338-summary.json",
+                    "generatedAt": "2026-06-21T12:20:38.367Z",
+                    "failedRate": 0,
+                    "p95": 519.5560299999992,
+                    "p99": null,
+                    "requests": 102,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782044350490-summary.json",
+                    "generatedAt": "2026-06-21T12:19:10.499Z",
+                    "failedRate": 0,
+                    "p95": 556.397335,
+                    "p99": null,
+                    "requests": 2,
+                    "thresholdFailures": []
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782044150966-summary.json",
+                    "generatedAt": "2026-06-21T12:15:50.974Z",
+                    "failedRate": 1,
+                    "p95": 15.91802,
+                    "p99": null,
+                    "requests": 2,
+                    "thresholdFailures": [
+                      "http_req_failed:rate<0.02",
+                      "checks:rate>0.98"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782044032553-summary.json",
+                    "generatedAt": "2026-06-21T12:13:52.566Z",
+                    "failedRate": 1,
+                    "p95": 5.468724999999997,
+                    "p99": null,
+                    "requests": 142,
+                    "thresholdFailures": [
+                      "checks:rate>0.98",
+                      "http_req_failed:rate<0.02"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782043644025-summary.json",
+                    "generatedAt": "2026-06-21T12:07:24.035Z",
+                    "failedRate": 0.9683894420736526,
+                    "p95": 6.7191199999999895,
+                    "p99": null,
+                    "requests": 6327,
+                    "thresholdFailures": [
+                      "http_req_failed:rate<0.02",
+                      "checks:rate>0.98"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782043089878-summary.json",
+                    "generatedAt": "2026-06-21T11:58:09.895Z",
+                    "failedRate": 0.8098360655737705,
+                    "p95": 24.191319999999934,
+                    "p99": null,
+                    "requests": 915,
+                    "thresholdFailures": [
+                      "checks:rate>0.98",
+                      "http_req_duration:p(99)<4000",
+                      "http_req_failed:rate<0.02"
+                    ]
+                  },
+                  {
+                    "file": "load-tests\\results\\k6-1782041984271-summary.json",
+                    "generatedAt": "2026-06-21T11:39:44.280Z",
+                    "failedRate": 1,
+                    "p95": 0,
+                    "p99": null,
+                    "requests": 1977,
+                    "thresholdFailures": [
+                      "checks:rate>0.98",
+                      "http_req_failed:rate<0.02"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "gate": "read_meter",
+              "status": "PENDING",
+              "detail": "Set PERFORMANCE_READ_METER_LOG to a representative production log export",
+              "evidence": {}
+            },
+            {
+              "gate": "projection_freshness",
+              "status": "PENDING",
+              "detail": "Set PROJECTION_FRESHNESS_REPORT to a deployed freshness report",
+              "evidence": {}
+            },
+            {
+              "gate": "distributed_runtime",
+              "status": "FAIL",
+              "detail": "Multi-instance certification requires Redis cache, queue, and realtime pub/sub",
+              "evidence": {
+                "urlConfigured": false,
+                "enabled": {
+                  "cache": false,
+                  "queue": false,
+                  "realtime": false
+                }
+              }
+            },
+            {
+              "gate": "sse_proxy_contract",
+              "status": "PASS",
+              "detail": "SSE anti-buffering, heartbeat, and distributed pub/sub contracts are present",
+              "evidence": {}
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "deployment_manifest",
+      "status": "PASS",
+      "detail": "Required production variables are declared without exposing values",
+      "evidence": {
+        "missing": []
+      }
+    },
+    {
+      "name": "mobile_application",
+      "status": "PENDING",
+      "detail": "Loan Executive mobile application source is not present in this workspace",
+      "evidence": {
+        "present": []
+      }
+    },
+    {
+      "name": "deployed_evidence",
+      "status": "PENDING",
+      "detail": "Deployed evidence inputs are not configured",
+      "evidence": {
+        "missing": [
+          "readMeter",
+          "projectionFreshness"
+        ]
+      }
+    }
+  ]
+}

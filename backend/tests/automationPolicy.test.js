@@ -70,3 +70,20 @@ test("engine reuses the existing assignment, dead-case, queue, notification and 
   assert.match(engine, /removeLeadProjections/);
   assert.doesNotMatch(engine, /createRecord\(["'](?:automation|archive|deleted)/i);
 });
+
+test("automation scans deadline indexes instead of filtering broad status pages", () => {
+  const engine = fs.readFileSync(path.resolve(__dirname, "../services/automationEngine.service.js"), "utf8");
+  assert.match(engine, /scanDueLeads\("acceptanceDueAt"/);
+  assert.match(engine, /scanDueLeads\("lastWorkflowActionAt"/);
+  assert.match(engine, /scanDueLeads\("terminalVisibleUntil"/);
+  assert.match(engine, /scanDueLeads\("retentionDueAt"/);
+  assert.match(engine, /op:\s*"<="/);
+  assert.doesNotMatch(engine, /scanDueLeads\([\s\S]{0,160}\.catch\(\(\) => \[\]\)/);
+});
+
+test("mark-all notifications uses a bulk write without per-item readbacks", () => {
+  const service = fs.readFileSync(path.resolve(__dirname, "../services/notification.service.js"), "utf8");
+  const markAll = service.slice(service.indexOf("export async function markAllNotificationsRead"));
+  assert.match(markAll, /bulkUpsertRecords\("notifications", updatedItems\)/);
+  assert.doesNotMatch(markAll.split("export async function", 2)[0], /visibleUnread\.map\(.*updateRecord/s);
+});

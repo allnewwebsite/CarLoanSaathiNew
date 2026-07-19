@@ -12,7 +12,7 @@ import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "..
 import { logError, logInfo, logSecurity } from "../services/logger.service.js";
 import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon } from "../services/projection.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
-import { clearCachedTags } from "../services/ttlCache.service.js";
+import { cached, clearCachedTags } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
@@ -57,7 +57,9 @@ async function loanExecutiveActor(user = {}) {
   if (user?.role !== "loan-executive") return user;
   const email = user.email || user.uid;
   if (!email) return user;
-  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  const executive = await cached(`identity:loan-executive:${String(email).toLowerCase()}`, 15000, () =>
+    getRecord("loanExecutives", email).catch(() => null)
+  );
   return executive ? { ...user, ...executive } : user;
 }
 
@@ -324,9 +326,11 @@ export async function getLeads(req, res, next) {
   try {
     queryStarted = Date.now();
     let payload;
-    const projected = await queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null);
+    const [projected, actor] = await Promise.all([
+      queryLeadProjectionForUser({ user: req.user, query: req.query }).catch(() => null),
+      req.user?.role === "loan-executive" ? loanExecutiveActor(req.user) : Promise.resolve(req.user),
+    ]);
     if (req.user?.role === "loan-executive") {
-      const actor = await loanExecutiveActor(req.user);
       const canonical = await queryExecutiveLeads({ ...executiveQueryArgs(actor), query: req.query });
       if (projected?.data?.length) {
         const byId = new Map();

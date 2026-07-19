@@ -484,6 +484,18 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /subscriptionOrderIntents/{id} {
+      allow read, write: if false;
+    }
+
+    match /subscriptionPaymentFailures/{id} {
+      allow read, write: if false;
+    }
+
+    match /subscriptionRefunds/{id} {
+      allow read, write: if false;
+    }
+
     match /razorpayWebhookEvents/{id} {
       allow read, write: if false;
     }

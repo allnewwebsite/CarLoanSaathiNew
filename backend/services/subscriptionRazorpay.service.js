@@ -1,10 +1,14 @@
 import crypto from "node:crypto";
 import {
+  getRecord,
   runRecordTransaction,
   upsertRecord,
 } from "./firestore.service.js";
 import { REALTIME_EVENTS } from "./realtime.service.js";
 import { AUDIT_ACTIONS, writeAuditLogOnce } from "./audit.service.js";
+import { createNotification } from "./notification.service.js";
+import { ALERT_SEVERITY, recordOperationalEvent } from "./observability.service.js";
+import { logError } from "./logger.service.js";
 import {
   addDays,
   cleanId,
@@ -107,34 +111,100 @@ export async function createSubscriptionOrder({ dealershipId, requestedBy, refun
     throw error;
   }
   const amounts = subscriptionAmounts();
+  const intentToken = crypto.randomUUID();
+  const existingOrderId = await runRecordTransaction(async (transaction) => {
+    const intent = await transaction.get("subscriptionOrderIntents", id);
+    const active = intent?.expiresAt && new Date(intent.expiresAt).getTime() > Date.now();
+    if (active && intent.status === "CREATED" && intent.orderId) return intent.orderId;
+    if (active && intent.status === "CREATING") {
+      const error = new Error("A subscription payment order is already being created");
+      error.status = 409;
+      error.code = "PAYMENT_ORDER_IN_PROGRESS";
+      throw error;
+    }
+    transaction.set("subscriptionOrderIntents", id, {
+      dealershipId: id,
+      status: "CREATING",
+      intentToken,
+      requestedBy,
+      expiresAt: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString(),
+    }, { merge: true });
+    return null;
+  });
+  if (existingOrderId) {
+    const existingOrder = await getRecord("subscriptionOrders", existingOrderId);
+    if (existingOrder?.status === "CREATED") {
+      return {
+        keyId: razorpayCredentials().keyId,
+        orderId: existingOrder.id,
+        amount: existingOrder.amount,
+        amountPaise: existingOrder.amountPaise,
+        currency: existingOrder.currency,
+        planName: existingOrder.planName,
+        dealershipName: subscription.dealershipName,
+        financeDeskEmail: subscription.financeDeskEmail,
+        financeDeskMobile: subscription.financeDeskMobile,
+        refundPolicy: "Subscription fees are non-refundable once payment is captured and subscription access is activated.",
+        idempotent: true,
+      };
+    }
+  }
   const receipt = `cls_${crypto.createHash("sha256").update(`${id}:${Date.now()}`).digest("hex").slice(0, 28)}`;
-  const { order, keyId } = await createRazorpayOrder({
-    amount: amounts.finalAmount * 100,
-    currency: SUBSCRIPTION_PLAN.currency,
-    receipt,
-    notes: {
-      plan: SUBSCRIPTION_PLAN.name,
-      dealershipRef: crypto.createHash("sha256").update(id).digest("hex").slice(0, 20),
-      refundPolicy: "non-refundable-after-capture-and-activation",
-    },
-  });
-  await upsertRecord("subscriptionOrders", order.id, {
-    dealershipId: id,
-    requestedBy,
-    planName: SUBSCRIPTION_PLAN.name,
-    amount: amounts.finalAmount,
-    amountPaise: amounts.finalAmount * 100,
-    currency: SUBSCRIPTION_PLAN.currency,
-    receipt,
-    status: "CREATED",
-    razorpayOrderId: order.id,
-    providerStatus: order.status || "created",
-    refundPolicy: "NON_REFUNDABLE",
-    refundPolicyAcceptedAt,
-    refundPolicyAcceptedBy: requestedBy,
-    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-    createdAt: new Date().toISOString(),
-  });
+  let order;
+  let keyId;
+  try {
+    ({ order, keyId } = await createRazorpayOrder({
+      amount: amounts.finalAmount * 100,
+      currency: SUBSCRIPTION_PLAN.currency,
+      receipt,
+      notes: {
+        plan: SUBSCRIPTION_PLAN.name,
+        dealershipRef: crypto.createHash("sha256").update(id).digest("hex").slice(0, 20),
+        refundPolicy: "non-refundable-after-capture-and-activation",
+      },
+    }));
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    await runRecordTransaction(async (transaction) => {
+      transaction.set("subscriptionOrders", order.id, {
+        dealershipId: id,
+        requestedBy,
+        planName: SUBSCRIPTION_PLAN.name,
+        monthlyAmount: amounts.monthlyAmount,
+        gstRate: amounts.gstRate,
+        gstAmount: amounts.gstAmount,
+        amount: amounts.finalAmount,
+        amountPaise: amounts.finalAmount * 100,
+        currency: SUBSCRIPTION_PLAN.currency,
+        receipt,
+        status: "CREATED",
+        razorpayOrderId: order.id,
+        providerStatus: order.status || "created",
+        refundPolicy: "NON_REFUNDABLE",
+        refundPolicyAcceptedAt,
+        refundPolicyAcceptedBy: requestedBy,
+        expiresAt,
+        createdAt: new Date().toISOString(),
+      }, { merge: true });
+      transaction.set("subscriptionOrderIntents", id, {
+        dealershipId: id,
+        status: "CREATED",
+        intentToken,
+        orderId: order.id,
+        expiresAt,
+      }, { merge: true });
+    });
+  } catch (error) {
+    await upsertRecord("subscriptionOrderIntents", id, {
+      dealershipId: id,
+      status: "FAILED",
+      intentToken,
+      failedAt: new Date().toISOString(),
+      failureCode: error.code || "PAYMENT_ORDER_CREATION_FAILED",
+      expiresAt: new Date().toISOString(),
+    }).catch(() => null);
+    throw error;
+  }
   return {
     keyId,
     orderId: order.id,
@@ -224,11 +294,9 @@ export async function finalizeSubscriptionPayment({
 }) {
   const now = new Date();
   const paidAt = now.toISOString();
-  const amounts = subscriptionAmounts();
+  const configuredAmounts = subscriptionAmounts();
   const providerMatches = providerPayment?.id === razorpayPaymentId
     && providerPayment?.order_id === razorpayOrderId
-    && Number(providerPayment?.amount) === amounts.finalAmount * 100
-    && String(providerPayment?.currency || "").toUpperCase() === SUBSCRIPTION_PLAN.currency
     && providerPayment?.status === "captured";
   if (!providerMatches) {
     const error = new Error("Razorpay payment is not captured or does not match the subscription order");
@@ -241,12 +309,44 @@ export async function finalizeSubscriptionPayment({
     const existingPayment = await transaction.get("subscriptionPayments", razorpayPaymentId);
     const activation = await transaction.get("subscriptionPaymentActivations", razorpayPaymentId);
     const id = cleanId(dealershipId || order?.dealershipId);
-    if (!order || !id || order.dealershipId !== id || Number(order.amountPaise) !== amounts.finalAmount * 100) {
+    if (!order || !id || order.dealershipId !== id) {
       const error = new Error("Payment order does not match this dealership");
       error.status = 409;
       error.code = "PAYMENT_ORDER_MISMATCH";
       throw error;
     }
+    const orderAmountPaise = Number(order.amountPaise);
+    const orderCurrency = String(order.currency || "").toUpperCase();
+    if (!Number.isSafeInteger(orderAmountPaise)
+      || orderAmountPaise <= 0
+      || Number(providerPayment.amount) !== orderAmountPaise
+      || orderCurrency !== SUBSCRIPTION_PLAN.currency
+      || String(providerPayment.currency || "").toUpperCase() !== orderCurrency) {
+      const error = new Error("Captured payment amount or currency does not match the immutable subscription order");
+      error.status = 409;
+      error.code = "PAYMENT_ORDER_AMOUNT_MISMATCH";
+      throw error;
+    }
+    const paymentBoundElsewhere = existingPayment && (
+      existingPayment.dealershipId !== id
+      || existingPayment.razorpayOrderId !== razorpayOrderId
+    );
+    const activationBoundElsewhere = activation && (
+      activation.dealershipId !== id
+      || activation.razorpayOrderId !== razorpayOrderId
+    );
+    if (paymentBoundElsewhere || activationBoundElsewhere) {
+      const error = new Error("Payment has already been bound to another subscription order");
+      error.status = 409;
+      error.code = "PAYMENT_REPLAY_DETECTED";
+      throw error;
+    }
+    const amounts = {
+      monthlyAmount: Number(order.monthlyAmount ?? configuredAmounts.monthlyAmount),
+      gstRate: Number(order.gstRate ?? configuredAmounts.gstRate),
+      gstAmount: Number(order.gstAmount ?? configuredAmounts.gstAmount),
+      finalAmount: orderAmountPaise / 100,
+    };
     const current = await transaction.get(SUBSCRIPTION_COLLECTION, id);
     const counter = await transaction.get("systemCounters", "subscriptionInvoices");
     if (order.status === "PAID" && order.paymentId !== razorpayPaymentId) {
@@ -396,6 +496,14 @@ export async function finalizeSubscriptionPayment({
       paidAt,
       updatedAt: paidAt,
     }, { merge: true });
+    transaction.set("subscriptionOrderIntents", id, {
+      dealershipId: id,
+      status: "PAID",
+      orderId: razorpayOrderId,
+      paymentId: razorpayPaymentId,
+      paidAt,
+      expiresAt: paidAt,
+    }, { merge: true });
     transaction.set("subscriptionPayments", razorpayPaymentId, payment, { merge: false });
     transaction.set("subscriptionInvoices", number, invoice, { merge: false });
     transaction.set("subscriptionPaymentActivations", razorpayPaymentId, {
@@ -418,6 +526,44 @@ export async function finalizeSubscriptionPayment({
   if (!result.idempotent) {
     await syncSubscriptionSummary(result.subscription);
     publishSubscription(result.subscription, actor, REALTIME_EVENTS.SUBSCRIPTION_RENEWED);
+    const sideEffects = await Promise.allSettled([
+      createNotification({
+        type: "subscription-activated",
+        title: "Professional subscription activated",
+        message: `Payment verified. Your subscription is active until ${String(result.subscription.subscriptionEndDate || "").slice(0, 10)}.`,
+        recipientRole: "finance-desk",
+        recipientId: result.subscription.financeDeskEmail || result.subscription.dealershipId,
+        dealerEmail: result.subscription.dealershipId,
+        dealershipId: result.subscription.dealershipId,
+        priority: "normal",
+        entityType: "subscription",
+        entityId: result.subscription.dealershipId,
+        meta: {
+          paymentId: result.payment.id,
+          orderId: result.payment.razorpayOrderId,
+          invoiceNumber: result.invoice?.invoiceNumber,
+          dedupeKey: `subscription-activated-${result.payment.id}`,
+        },
+      }),
+      recordOperationalEvent({
+        type: "subscription_payment_activated",
+        severity: ALERT_SEVERITY.LOW,
+        component: "billing",
+        message: "Verified payment activated a subscription",
+        entityId: result.payment.id,
+        meta: {
+          dealershipId: result.payment.dealershipId,
+          orderId: result.payment.razorpayOrderId,
+          invoiceNumber: result.invoice?.invoiceNumber,
+          amount: result.payment.finalAmount,
+          currency: result.payment.currency,
+          verificationSource: result.verificationSource,
+        },
+      }),
+    ]);
+    sideEffects.forEach((settled, index) => {
+      if (settled.status === "rejected") logError("Post-payment side effect failed", { paymentId: result.payment.id, sideEffect: index, error: settled.reason?.message });
+    });
   }
   if (result.payment?.id) {
     await ensureSubscriptionPaymentAudits({
@@ -450,11 +596,17 @@ export async function verifySubscriptionPayment({
     error.code = "INVALID_PAYMENT_SIGNATURE";
     throw error;
   }
-  const amounts = subscriptionAmounts();
+  const order = await getRecord("subscriptionOrders", razorpayOrderId);
+  if (!order || cleanId(order.dealershipId) !== cleanId(dealershipId)) {
+    const error = new Error("Payment order does not match this dealership");
+    error.status = 409;
+    error.code = "PAYMENT_ORDER_MISMATCH";
+    throw error;
+  }
   const providerPayment = await verifiedRazorpayPayment({
     paymentId: razorpayPaymentId,
     orderId: razorpayOrderId,
-    amountPaise: amounts.finalAmount * 100,
+    amountPaise: Number(order.amountPaise),
   });
   return finalizeSubscriptionPayment({
     dealershipId,

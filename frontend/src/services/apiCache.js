@@ -285,6 +285,7 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
     const now = Date.now();
     for (const [key, entry] of getCache.entries()) {
       if (!entry) continue;
+      if (!belongsToCurrentIdentity(key)) continue;
       const matches = url ? entry.url === url : prefix ? String(entry.url || "").startsWith(prefix) : true;
       if (!matches) continue;
       if (purge) {

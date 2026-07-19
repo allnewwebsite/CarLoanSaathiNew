@@ -467,7 +467,33 @@ export function connectRealtimeClient({ user, req, res }) {
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
   });
-  res.write(`event: connected\ndata: ${JSON.stringify({ clientId, timestamp: new Date().toISOString() })}\n\n`);
+  const oldestBufferedEventId = eventBuffer[0]?.id || null;
+  const latestBufferedEventId = eventBuffer[eventBuffer.length - 1]?.id || null;
+  const replayGap = Number.isFinite(lastEventId) && lastEventId > 0
+    && (!oldestBufferedEventId || lastEventId < oldestBufferedEventId);
+  res.write(`event: connected\ndata: ${JSON.stringify({
+    clientId,
+    instanceId,
+    timestamp: new Date().toISOString(),
+    replayGap,
+    oldestBufferedEventId,
+    latestBufferedEventId,
+  })}\n\n`);
+  if (replayGap) {
+    res.write(`event: reconcile-required\ndata: ${JSON.stringify({
+      reason: oldestBufferedEventId ? "replay-buffer-overflow" : "replay-buffer-unavailable",
+      instanceId,
+      lastEventId,
+      oldestBufferedEventId,
+      latestBufferedEventId,
+      timestamp: new Date().toISOString(),
+    })}\n\n`);
+    auditRealtimeEvent("reconciliation_required", {}, {
+      userId: user?.uid || user?.email || "",
+      role: user?.role || "",
+      reason: oldestBufferedEventId ? "replay-buffer-overflow" : "replay-buffer-unavailable",
+    });
+  }
   const heartbeat = setInterval(() => {
     try {
       res.write(`event: heartbeat\ndata: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
@@ -863,9 +889,15 @@ function productionReadinessScore() {
 }
 
 export function realtimeStats() {
+  const activeConnectionsByRole = [...clients.values()].reduce((counts, client) => {
+    const role = client.user?.role || "unknown";
+    counts[role] = (counts[role] || 0) + 1;
+    return counts;
+  }, {});
   return {
     clients: clients.size,
     connectedUsers: clientsByIdentity.size,
+    activeConnectionsByRole,
     disconnectedUsers: realtimeCounters.disconnected,
     reconnectCount: realtimeCounters.reconnects,
     failedEvents: realtimeCounters.failed,

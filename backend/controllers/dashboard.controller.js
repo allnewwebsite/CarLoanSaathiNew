@@ -21,7 +21,9 @@ async function loanExecutiveActor(user = {}) {
   if (user?.role !== ROLES.LOAN_EXECUTIVE) return user;
   const email = user.email || user.uid;
   if (!email) return user;
-  const executive = await getRecord("loanExecutives", email).catch(() => null);
+  const executive = await cached(`identity:loan-executive:${String(email).toLowerCase()}`, 15000, () =>
+    getRecord("loanExecutives", email).catch(() => null)
+  );
   return executive ? { ...user, ...executive } : user;
 }
 
@@ -65,9 +67,11 @@ const RECENT_LEAD_FIELDS = [
 
 async function recentLeadsForUser(user = {}) {
   const query = { page: 1, limit: 8 };
-  const projected = await queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null);
+  const [projected, actor] = await Promise.all([
+    queryLeadProjectionForUser({ user, query, fields: RECENT_LEAD_FIELDS }).catch(() => null),
+    user.role === ROLES.LOAN_EXECUTIVE ? loanExecutiveActor(user) : Promise.resolve(user),
+  ]);
   if (user.role === ROLES.LOAN_EXECUTIVE) {
-    const actor = await loanExecutiveActor(user);
     const canonical = await queryExecutiveLeads({ ...executiveQueryArgs(actor), query, fields: RECENT_LEAD_FIELDS });
     if (!projected?.data?.length) return canonical;
     const byId = new Map();

@@ -3,7 +3,7 @@ import { logRealtimeTicketStep, logRealtimeTicketSummary } from "../services/rea
 
 export async function createRealtimeConnectionTicket(req, res, next) {
   try {
-    const ticket = createRealtimeTicket(req.user);
+    const ticket = await createRealtimeTicket(req.user);
     const responseStartedAt = Date.now();
     res.set("Cache-Control", "no-store").json(ticket);
     logRealtimeTicketStep("response_creation", Date.now() - responseStartedAt, {
@@ -21,7 +21,7 @@ export async function createRealtimeConnectionTicket(req, res, next) {
 
 export async function streamRealtimeEvents(req, res) {
   const ticket = String(req.query.ticket || "").trim();
-  const user = consumeRealtimeTicket(ticket);
+  const user = await consumeRealtimeTicket(ticket);
   if (!user) {
     return res.status(401).json({ message: "Realtime ticket is invalid or expired" });
   }

@@ -46,7 +46,7 @@ export function useDealerLeads(filters = {}) {
     loadLeads({ silent: true });
   }, [loadLeads]);
   useEffect(() => {
-    scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
+    return scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
   useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, pageSize });

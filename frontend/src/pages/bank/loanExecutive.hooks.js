@@ -74,7 +74,7 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     return () => window.removeEventListener("cls:realtime-event", reconcileOwnership);
   }, [page, refreshLatest]);
   useEffect(() => {
-    scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
+    return scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => refreshLatest(page, { silent: true }), [page, refreshLatest]);
   useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize, user });
