@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileText, MapPin } from "lucide-react";
+import { ChevronRight, FileText, LoaderCircle, MapPin } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
 import { LifecycleArchiveHeader, lifecycleArchiveCopy } from "../../components/LifecycleArchiveHeader.jsx";
@@ -45,7 +45,7 @@ export function canAcceptAssignedLead(lead = {}, user = {}) {
     && (!Number.isFinite(deadline) || deadline > Date.now());
 }
 
-function LeadCard({ lead, user, onAccept, onUpdate, onDocs, onDetails }) {
+function LeadCard({ lead, user, accepting, onAccept, onUpdate, onDocs, onDetails }) {
   const awaitingAcceptance = canAcceptAssignedLead(lead, user);
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -65,7 +65,7 @@ function LeadCard({ lead, user, onAccept, onUpdate, onDocs, onDetails }) {
         <p className="max-w-[45%] truncate text-right text-xs font-medium text-slate-600">{executiveStatusLabel(lead)}</p>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <button type="button" onClick={awaitingAcceptance ? onAccept : onUpdate} className="h-9 rounded-md bg-[#0d47a1] px-2 text-xs font-semibold text-white">{awaitingAcceptance ? "Accept" : "Update"}</button>
+        <button type="button" disabled={accepting} onClick={awaitingAcceptance ? onAccept : onUpdate} className="inline-flex h-9 items-center justify-center gap-1 rounded-md bg-[#0d47a1] px-2 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-70">{accepting ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Accepting</> : awaitingAcceptance ? "Accept" : "Update"}</button>
         <button type="button" onClick={onDocs} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700"><FileText className="h-3.5 w-3.5" /> Docs</button>
         <button type="button" onClick={onDetails} className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-700">Details <ChevronRight className="h-3.5 w-3.5" /></button>
       </div>
@@ -104,6 +104,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
   const [params, setParams] = useSearchParams();
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
+  const [acceptingLeadId, setAcceptingLeadId] = useState("");
   const [dealershipFilter, setDealershipFilter] = useState("");
   const [knownDealerships, setKnownDealerships] = useState([]);
   const archived = mode === "rejected" || mode === "disbursed";
@@ -116,7 +117,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
     ? normalizeStatus(requestedStatus)
     : mode === "status" ? CURRENT_WORKFLOW_STATUS_OPTIONS[0] : "";
   const archiveCopy = archived ? lifecycleArchiveCopy(archiveKind) : null;
-  const { rows, total, hasMore, loading, page, onPage, load, applyLeadPatch } = useExecutiveLeads({ search: debouncedSearch, status, archiveTerminal: archived ? "1" : "" });
+  const { rows, total, hasMore, loading, page, onPage, load, refreshLatest, applyLeadPatch } = useExecutiveLeads({ search: debouncedSearch, status, archiveTerminal: archived ? "1" : "" });
 
   useEffect(() => {
     setKnownDealerships((current) => {
@@ -144,13 +145,22 @@ export function LoanExecutiveLeadListPage({ mode }) {
   };
 
   const acceptLead = async (lead) => {
+    if (acceptingLeadId) return;
     setStatusError("");
+    setAcceptingLeadId(lead.id);
     try {
       const response = await api.patch(`/bank/leads/${lead.id}/accept`);
       applyLeadPatch(response.data?.lead || { ...lead, assignmentStatus: "accepted", ownershipStatus: "ACCEPTED", accepted: true, acceptanceDueAt: null, slaRunning: false });
-      load(page, { silent: true });
+      await refreshLatest(page, { silent: true });
     } catch (error) {
-      setStatusError(error.response?.data?.message || error.message || "Lead acceptance failed. Please retry.");
+      const code = String(error.response?.data?.code || "");
+      const message = String(error.response?.data?.message || "").toLowerCase();
+      if (code === "LEAD_ALREADY_ACCEPTED" || message.includes("already accepted")) setStatusError("Case already accepted.");
+      else if (code === "LEAD_REASSIGNED" || message.includes("reassigned") || message.includes("not assigned")) setStatusError("Case reassigned.");
+      else if (error.code === "ERR_NETWORK" || !error.response) setStatusError("Network error. Check your connection and try again.");
+      else setStatusError("Case unavailable. Refresh the list and try again.");
+    } finally {
+      setAcceptingLeadId("");
     }
   };
 
@@ -187,7 +197,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         display(lead.financeManagerMobile),
         executiveStatusLabel(lead),
         <div key="status-action" className="flex flex-col items-start gap-1">
-          <button onClick={() => canAcceptAssignedLead(lead, user) ? acceptLead(lead) : updateStatus(lead, "STATUS_UPDATE")} className={`rounded-md px-3 py-1.5 text-xs font-medium ${canAcceptAssignedLead(lead, user) ? "bg-[#0d47a1] text-white" : "border border-slate-200 text-slate-700"}`}>{canAcceptAssignedLead(lead, user) ? "Accept Lead" : "Update"}</button>
+          <button disabled={acceptingLeadId === lead.id} onClick={() => canAcceptAssignedLead(lead, user) ? acceptLead(lead) : updateStatus(lead, "STATUS_UPDATE")} className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium disabled:cursor-wait disabled:opacity-70 ${canAcceptAssignedLead(lead, user) ? "bg-[#0d47a1] text-white" : "border border-slate-200 text-slate-700"}`}>{acceptingLeadId === lead.id ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Accepting</> : canAcceptAssignedLead(lead, user) ? "Accept Lead" : "Update"}</button>
           {canAcceptAssignedLead(lead, user) ? <span className="text-[10px] font-medium text-amber-700">5-hour SLA</span> : null}
         </div>,
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">View Documents</button>,
@@ -226,6 +236,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
             key={lead.id}
             lead={lead}
             user={user}
+            accepting={acceptingLeadId === lead.id}
             onAccept={() => acceptLead(lead)}
             onUpdate={() => updateStatus(lead, "STATUS_UPDATE")}
             onDocs={() => setModal({ type: "document-actions", lead })}

@@ -111,6 +111,7 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
   }
 
   function cachedResponse(config) {
+    if (config?.skipCache === true) return null;
     hydrateGetCache();
     const key = cacheKey(config);
     if (!key) return null;
@@ -126,6 +127,7 @@ export function createApiCache({ axios, api, apiBaseUrl, requestPortalHeader, au
   }
 
   function coalesceGetRequest(config) {
+    if (config?.skipCache === true) return false;
     const key = cacheKey(config);
     if (!key || config.adapter) return false;
     const pending = pendingGetRequests.get(key);

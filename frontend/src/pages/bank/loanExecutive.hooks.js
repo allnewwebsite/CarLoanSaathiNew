@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS } from "../../constants/status.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
 import { useRoleLeadRealtime } from "../../hooks/useRealtimeRefresh.js";
-import { api, getCachedGetData } from "../../services/api.js";
+import { api, getCachedGetData, invalidateGetCache } from "../../services/api.js";
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { apiStatus, leadMutationFilter, LOAN_EXECUTIVE_PAGE_SIZE as pageSize, responseRows } from "./loanExecutive.helpers.js";
 
@@ -22,13 +22,18 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(false);
+  const freshRequestRef = useRef(null);
   const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || ""]);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
       const requestPage = requestPageForPage(targetPage);
-      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status: apiFilterStatus, archiveTerminal, ...cursorParamsForPage(requestPage) } });
+      invalidateGetCache({ prefix: "/bank/leads", purge: true });
+      const response = await api.get("/bank/leads", {
+        skipCache: true,
+        params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status: apiFilterStatus, archiveTerminal, ...cursorParamsForPage(requestPage) },
+      });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -38,11 +43,40 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
       if (!options.silent) setLoading(false);
     }
   }, [page, search, apiFilterStatus, archiveTerminal, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
-  useEffect(() => { load(page, { silent: true }); }, [load, page]);
+  const refreshLatest = useCallback((nextPage = page, options = { silent: true }) => {
+    if (freshRequestRef.current) return freshRequestRef.current;
+    const request = load(nextPage, options).finally(() => {
+      if (freshRequestRef.current === request) freshRequestRef.current = null;
+    });
+    freshRequestRef.current = request;
+    return request;
+  }, [load, page]);
+  useEffect(() => { refreshLatest(page, { silent: true }); }, [page, refreshLatest]);
+  useEffect(() => {
+    const refreshVisiblePage = () => {
+      if (document.visibilityState && document.visibilityState !== "visible") return;
+      refreshLatest(page, { silent: true });
+    };
+    window.addEventListener("focus", refreshVisiblePage);
+    document.addEventListener("visibilitychange", refreshVisiblePage);
+    return () => {
+      window.removeEventListener("focus", refreshVisiblePage);
+      document.removeEventListener("visibilitychange", refreshVisiblePage);
+    };
+  }, [page, refreshLatest]);
+  useEffect(() => {
+    const reconcileOwnership = (event) => {
+      const eventType = String(event?.detail?.eventType || event?.detail?.event || "");
+      if (!["LEAD_ASSIGNED", "EXECUTIVE_ASSIGNED", "LEAD_REASSIGNED", "EXECUTIVE_REASSIGNED", "LEAD_ACCEPTED", "LEAD_STATUS_UPDATED", "STATUS_UPDATED", "DEAD_CASE_CREATED", "LEAD_MARKED_DEAD", "LEAD_DISBURSED", "LEAD_REJECTED"].includes(eventType)) return;
+      refreshLatest(page, { silent: true });
+    };
+    window.addEventListener("cls:realtime-event", reconcileOwnership);
+    return () => window.removeEventListener("cls:realtime-event", reconcileOwnership);
+  }, [page, refreshLatest]);
   useEffect(() => {
     scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
-  const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
+  const realtimeRefresh = useCallback(() => refreshLatest(page, { silent: true }), [page, refreshLatest]);
   useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize, user });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const applyLeadPatch = useCallback((lead = {}) => {
@@ -54,5 +88,5 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     }));
   }, []);
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, hasMore, loading, page, onPage, load, applyLeadPatch };
+  return { rows, total, hasMore, loading, page, onPage, load, refreshLatest, applyLeadPatch };
 }
