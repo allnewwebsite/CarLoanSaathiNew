@@ -20,7 +20,46 @@ export const NOTIFICATION_TYPES = Object.freeze({
   SYSTEM_ALERT: "system-alert",
 });
 
+const TYPE_ALIASES = Object.freeze({
+  NEW_LEAD: "lead-created",
+  LEAD_CREATED: "lead-created",
+  NEW_LEAD_ASSIGNED: "lead-assigned",
+  EXECUTIVE_ASSIGNED: "lead-assigned",
+  "executive-assigned": "lead-assigned",
+  STATUS_CHANGED: "status-updated",
+  STATUS_UPDATE: "status-updated",
+  PENDING_DOCUMENTS: "pending-documents",
+  DOCUMENTS_REQUIRED: "pending-documents",
+  "documents-required": "pending-documents",
+  DOCUMENT_REQUESTED: "pending-documents",
+  DOCUMENTS_UPLOADED: "documents-uploaded",
+  DOCUMENT_UPLOADED: "documents-uploaded",
+  DEAD_CASE: "dead-case",
+  REJECTED: "rejection",
+  CASE_REJECTED: "rejection",
+  DISBURSEMENT: "disbursed",
+  CASE_DISBURSED: "disbursed",
+  PASSWORD_CHANGED: "password-changed",
+  SUBSCRIPTION_ACTIVATED: "subscription-activated",
+  PAYMENT_CAPTURED: "subscription-activated",
+});
+
+export function canonicalNotificationType(type = "") {
+  const raw = String(type || "").trim();
+  const key = raw.replace(/-/g, "_").toUpperCase();
+  return TYPE_ALIASES[key] || raw.toLowerCase().replace(/_/g, "-") || "system";
+}
+
+function caseLine(caseId) {
+  return `Case ID: ${caseId || "-"}`;
+}
+
 const templates = {
+  "lead-created": {
+    title: "New lead received",
+    message: ({ caseId }) => caseLine(caseId),
+    priority: "high",
+  },
   [NOTIFICATION_TYPES.NEW_LEAD_ASSIGNED]: {
     title: "New Lead Assigned",
     message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
@@ -77,28 +116,53 @@ const templates = {
     priority: "low",
   },
   [NOTIFICATION_TYPES.LEAD_ASSIGNED]: {
-    title: "New Lead Assigned",
-    message: ({ caseId }) => `Case ${caseId || ""} has been assigned to you.`,
+    title: "New case assigned",
+    message: ({ caseId }) => caseLine(caseId),
     priority: "high",
   },
   [NOTIFICATION_TYPES.STATUS_UPDATED]: {
-    title: "Lead status updated",
-    message: ({ caseId, status }) => `Lead ${caseId || ""} status changed to ${status || "updated"}.`,
+    title: "Case status updated",
+    message: ({ caseId }) => caseLine(caseId),
     priority: "medium",
   },
   [NOTIFICATION_TYPES.PENDING_DOCUMENTS]: {
-    title: "Documents pending",
-    message: ({ caseId }) => `Lead ${caseId || ""} requires pending documents.`,
+    title: "Customer documents requested",
+    message: ({ caseId }) => caseLine(caseId),
     priority: "high",
   },
   [NOTIFICATION_TYPES.REJECTION]: {
-    title: "Loan rejected",
-    message: ({ caseId, reason }) => `Lead ${caseId || ""} was rejected${reason ? `: ${reason}` : "."}`,
+    title: "Case rejected",
+    message: ({ caseId }) => caseLine(caseId),
     priority: "high",
   },
   [NOTIFICATION_TYPES.DISBURSED]: {
-    title: "Loan disbursed",
-    message: ({ caseId }) => `Lead ${caseId || ""} has been disbursed.`,
+    title: "Loan disbursed successfully",
+    message: ({ caseId }) => caseLine(caseId),
+    priority: "high",
+  },
+  "documents-uploaded": {
+    title: "Customer documents uploaded",
+    message: ({ caseId }) => caseLine(caseId),
+    priority: "high",
+  },
+  "dead-case": {
+    title: "Case moved to Dead Cases",
+    message: ({ caseId }) => caseLine(caseId),
+    priority: "medium",
+  },
+  "executive-reassigned": {
+    title: "Case reassigned",
+    message: ({ caseId }) => caseLine(caseId),
+    priority: "high",
+  },
+  "subscription-activated": {
+    title: "Subscription activated",
+    message: () => "Subscription activated successfully.",
+    priority: "success",
+  },
+  "password-changed": {
+    title: "Password changed",
+    message: () => "Your password has been changed successfully.",
     priority: "high",
   },
   [NOTIFICATION_TYPES.SYSTEM_ALERT]: {
@@ -109,10 +173,12 @@ const templates = {
 };
 
 export function renderNotificationTemplate(type, data = {}) {
-  const template = templates[type] || templates[NOTIFICATION_TYPES.STATUS_UPDATED];
+  const canonicalType = canonicalNotificationType(type);
+  const template = templates[canonicalType] || templates[type] || templates[NOTIFICATION_TYPES.SYSTEM];
+  const standardized = Boolean(templates[canonicalType]);
   return {
-    title: data.title || template.title,
-    message: data.message || template.message(data),
+    title: standardized ? template.title : data.title || template.title,
+    message: standardized ? template.message(data) : data.message || template.message(data),
     priority: data.priority || template.priority,
   };
 }

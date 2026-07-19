@@ -82,6 +82,7 @@ export function NotificationCenter() {
   const [toast, setToast] = useState("");
   const [desktopPermission, setDesktopPermission] = useState(() => desktopPermissionState());
   const seenIds = useRef(new Set());
+  const processedRealtimeEvents = useRef(new Set());
   const loadRef = useRef(null);
   const inFlightRef = useRef(false);
   const lastRefreshAtRef = useRef(0);
@@ -191,6 +192,12 @@ export function NotificationCenter() {
         return;
       }
       if (!notification?.id) return;
+      const realtimeKey = [eventType, notification.id, notification.readAt || notification.createdAt || notification.updatedAt || ""].join(":");
+      if (processedRealtimeEvents.current.has(realtimeKey)) return;
+      processedRealtimeEvents.current.add(realtimeKey);
+      if (processedRealtimeEvents.current.size > 500) {
+        processedRealtimeEvents.current = new Set([...processedRealtimeEvents.current].slice(-250));
+      }
       seenIds.current.add(notification.id);
       let shouldIncrementUnread = false;
       let shouldDecrementUnread = false;

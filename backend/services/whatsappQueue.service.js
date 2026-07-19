@@ -1,4 +1,4 @@
-import { getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { getRecord, queryRecords, runRecordTransaction, updateRecord } from "./firestore.service.js";
 import { logError, logInfo } from "./logger.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { getWorkflowSettings } from "./settings.service.js";
@@ -44,7 +44,7 @@ export async function queueWhatsAppNotification({
   const resolvedEventType = eventType || type || "WHATSAPP_MESSAGE";
   const identity = notificationIdentity({ leadId, caseId: rawCaseId, eventType: resolvedEventType, phoneNumber: phone, metadata });
   const existingQueueItem = await getRecord("whatsappQueue", identity.notificationKey).catch(() => null);
-  if (existingQueueItem && (isTerminalNotificationStatus(existingQueueItem.status) || existingQueueItem.messageSid)) {
+  if (existingQueueItem) {
     pushRuntimeEvent({
       status: "deduped",
       eventType: identity.canonicalType,
@@ -82,7 +82,7 @@ export async function queueWhatsAppNotification({
   }
 
   const timestamp = nowIso();
-  const record = await upsertRecord("whatsappQueue", identity.notificationKey, {
+  const queuePayload = {
     id: identity.notificationKey,
     notificationKey: identity.notificationKey,
     type: type || resolvedEventType,
@@ -104,7 +104,24 @@ export async function queueWhatsAppNotification({
     deliveryResult: null,
     queuedAt: timestamp,
     timestamp,
+  };
+  const creation = await runRecordTransaction(async (transaction) => {
+    const existing = await transaction.get("whatsappQueue", identity.notificationKey);
+    if (existing) return { created: false, record: existing };
+    await transaction.set("whatsappQueue", identity.notificationKey, queuePayload, { merge: false });
+    return { created: true, record: queuePayload };
   });
+  if (!creation.created) {
+    logInfo("WHATSAPP_NOTIFICATION_DEDUPED", {
+      notificationKey: identity.notificationKey,
+      eventType: identity.canonicalType,
+      caseId: identity.caseId,
+      recipient: identity.recipient,
+      status: creation.record.status,
+    });
+    return { ...creation.record, deduped: true };
+  }
+  const record = creation.record;
 
   whatsappRuntime.queued += 1;
   whatsappRuntime.pending += phone ? 1 : 0;
@@ -186,16 +203,22 @@ export async function processWhatsAppQueue({ limit = 25, queueId = null } = {}) 
     processingWhatsAppKeys.add(lockKey);
     try {
       const notificationKey = lockKey;
-      await updateRecord("whatsappQueue", item.id, {
-        status: "processing",
-        processingStartedAt: nowIso(),
-        lastAttemptAt: nowIso(),
+      const claimed = await runRecordTransaction(async (transaction) => {
+        const current = await transaction.get("whatsappQueue", item.id);
+        if (!current || !["queued", "failed"].includes(String(current.status || "").toLowerCase()) || current.messageSid || Number(current.retryCount || 0) >= maxRetries) return null;
+        const processingStartedAt = nowIso();
+        await transaction.set("whatsappQueue", item.id, { status: "processing", processingStartedAt, lastAttemptAt: processingStartedAt }, { merge: true });
+        return { ...current, status: "processing", processingStartedAt, lastAttemptAt: processingStartedAt };
       });
-      const result = await sendViaProvider(item);
+      if (!claimed) {
+        results.push({ id: item.id, status: "skipped-claimed" });
+        continue;
+      }
+      const result = await sendViaProvider(claimed);
       const failed = !result.ok;
       const sidReceived = Boolean(result.messageSid);
       const nextStatus = failed && !sidReceived ? "failed" : sidReceived ? "sent" : "sent";
-      const retryCount = failed ? Number(item.retryCount || 0) + 1 : Number(item.retryCount || 0);
+      const retryCount = failed ? Number(claimed.retryCount || 0) + 1 : Number(claimed.retryCount || 0);
       if (whatsappRuntime.pending > 0) whatsappRuntime.pending -= 1;
       await updateRecord("whatsappQueue", item.id, {
         status: nextStatus,

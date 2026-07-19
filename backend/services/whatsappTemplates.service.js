@@ -5,64 +5,29 @@ function formatAmount(value) {
 }
 
 export function buildWhatsAppMessage(type, payload = {}) {
-  const customer = payload.customerName || payload.fullName || "Customer";
   const leadId = payload.caseId || payload.leadId || payload.id || "-";
+  const customer = payload.customerName || payload.fullName || "Customer";
   const loanAmount = payload.loanAmount ? formatAmount(payload.loanAmount) : "-";
+  const concise = (heading, action = "Please login to review the case.") => [
+    "CarLoanSaathi",
+    "",
+    heading,
+    "",
+    `Case ID: ${leadId}`,
+    ...(action ? ["", action] : []),
+  ];
 
   const templates = {
-    LEAD_ASSIGNED: [
-      "CarLoanSaathi Lead Assigned",
-      "",
-      `Case ID: ${leadId}`,
-      `Customer: ${customer}`,
-      `Dealer: ${payload.dealershipName || payload.dealer || "-"}`,
-      `Bank Branch: ${payload.bankName || "-"} ${payload.branchLocation ? `- ${payload.branchLocation}` : ""}`,
-      `Loan Amount: ${loanAmount}`,
-      "",
-      "Please review this case in the dashboard.",
-    ],
-    DOCUMENTS_REQUIRED: [
-      "CarLoanSaathi Documents Required",
-      "",
-      `Case ID: ${leadId}`,
-      `Customer: ${customer}`,
-      `Required: ${(payload.documents || []).join(", ") || "Pending documents"}`,
-      "",
-      "Please coordinate with the customer and upload documents.",
-    ],
-    STATUS_UPDATED: [
-      "CarLoanSaathi Status Updated",
-      "",
-      `Case ID: ${leadId}`,
-      `Customer: ${customer}`,
-      `Current Status: ${payload.statusLabel || payload.status || "-"}`,
-      "",
-      "Please check the dashboard for details.",
-    ],
-    DOCUMENTS_UPLOADED: [
-      "CarLoanSaathi Documents Uploaded",
-      "",
-      `Case ID: ${leadId}`,
-      `Customer: ${customer}`,
-      `Uploaded: ${(payload.documents || []).join(", ") || "Document"}`,
-      "",
-      "Please review the uploaded document.",
-    ],
-    "new-lead-assigned": [
-      "New Lead Assigned",
-      "",
-      `Customer: ${customer}`,
-      `Dealer: ${payload.dealershipName || payload.dealer || "-"}`,
-      `Bank: ${payload.bankName || payload.bankPartner || payload.preferredBank || "-"}`,
-      `Loan Amount: ${loanAmount}`,
-      "",
-      "Please review this case in the dashboard.",
-    ],
-    "executive-reassigned": ["Lead Reassigned", "", `Lead ID: ${leadId}`, `Executive: ${payload.executiveName || "-"}`, "Please review this case in the dashboard."],
-    "pending-documents": ["Pending Document Alert", "", `Lead ID: ${leadId}`, `Customer: ${customer}`, "", "Required:", ...((payload.documents || []).map((doc) => `- ${doc}`))],
+    LEAD_ASSIGNED: concise("New Case Assigned", "Please login to process the case."),
+    DOCUMENTS_REQUIRED: concise("Customer Documents Requested", "Please login to upload the documents."),
+    STATUS_UPDATED: concise("Case Status Updated"),
+    DOCUMENTS_UPLOADED: concise("Customer Documents Uploaded", "Please login to review the documents."),
+    "new-lead-assigned": concise("New Case Assigned", "Please login to process the case."),
+    "executive-reassigned": concise("Case Reassigned", "Please login to process the case."),
+    "pending-documents": concise("Customer Documents Requested", "Please login to upload the documents."),
     approval: ["Loan Approved", "", `Customer: ${customer}`, `Bank: ${payload.bankName || payload.bankPartner || "-"}`, `Sanction Amount: ${payload.sanctionAmount ? formatAmount(payload.sanctionAmount) : loanAmount}`],
-    rejection: ["Loan Rejected", "", `Lead ID: ${leadId}`, `Customer: ${customer}`, `Reason: ${payload.reason || payload.rejectionReason || "-"}`],
-    disbursement: ["Loan Disbursed", "", `Lead ID: ${leadId}`, `Customer: ${customer}`, `Amount: ${payload.disbursedAmount ? formatAmount(payload.disbursedAmount) : loanAmount}`],
+    rejection: concise("Case Rejected", null),
+    disbursement: concise("Loan Disbursed Successfully", null),
     escalation: ["Escalation Alert", "", `Lead ID: ${leadId}`, payload.message || "Action required by manager."],
     "daily-summary": ["Daily Summary", "", `Total Leads: ${payload.totalLeads ?? 0}`, `Approved: ${payload.approved ?? 0}`, `Pending: ${payload.pending ?? 0}`, `Disbursed: ${payload.disbursed ?? 0}`],
   };

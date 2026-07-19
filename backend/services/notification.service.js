@@ -1,10 +1,10 @@
-import { bulkUpsertRecords, createRecord, getRecord, queryRecords, updateRecord, upsertRecord } from "./firestore.service.js";
+import { bulkUpsertRecords, createRecord, getRecord, queryRecords, runRecordTransaction, updateRecord } from "./firestore.service.js";
 import { buildWhatsAppMessage, queueWhatsAppNotification } from "./whatsapp.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { logError, logInfo } from "./logger.service.js";
 import { GOVERNANCE_LIMITS } from "../config/governance.js";
 import { DOMAIN_EVENTS, emitDomainEvent, onDomainEvent } from "./eventBus.service.js";
-import { renderNotificationTemplate } from "./notificationTemplates.service.js";
+import { canonicalNotificationType, renderNotificationTemplate } from "./notificationTemplates.service.js";
 import { writeAuditLog, AUDIT_ACTIONS } from "./audit.service.js";
 import { addQueueJob, QUEUE_NAMES } from "./queue.service.js";
 import { syncNotificationProjectionSoon } from "./projection.service.js";
@@ -25,7 +25,7 @@ function notificationDedupeId({ type, recipientRole, recipientId, entityType, en
     meta.notificationId || meta.dedupeKey || "",
     recipientRole || "",
     recipientId || "",
-    type || "",
+    canonicalNotificationType(type),
     entityType || "",
     entityId || "",
     caseId || "",
@@ -136,11 +136,8 @@ export async function createNotification({
     caseId,
     meta: mergedMeta,
   });
-  const existing = await getRecord("notifications", notificationId).catch(() => null);
-  if (existing) return existing;
-
   const now = new Date().toISOString();
-  const notification = await upsertRecord("notifications", notificationId, {
+  const notificationPayload = {
     id: notificationId,
     recipientId: targetUserId,
     recipientEmail: targetEmail || targetUserId,
@@ -181,7 +178,18 @@ export async function createNotification({
       assignedUser: mergedMeta.assignedUser || mergedMeta.executiveName || lead?.assignedExecutiveName || lead?.assignedExecutiveEmail || null,
       status: mergedMeta.status || lead?.status || null,
     },
+  };
+  const creation = await runRecordTransaction(async (transaction) => {
+    const existing = await transaction.get("notifications", notificationId);
+    if (existing) return { created: false, notification: existing };
+    await transaction.set("notifications", notificationId, notificationPayload, { merge: false });
+    return { created: true, notification: notificationPayload };
   });
+  if (!creation.created) {
+    logInfo("Notification deduplicated", { notificationId, type, recipientRole, recipientId: targetUserId, caseId });
+    return creation.notification;
+  }
+  const notification = creation.notification;
   clearCachedTags([...notificationCacheTags(notification), "dashboard:fast"]);
   syncNotificationProjectionSoon(notification);
   publishRealtimeEvent({
