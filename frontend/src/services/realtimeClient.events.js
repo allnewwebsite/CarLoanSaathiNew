@@ -80,7 +80,6 @@ export function invalidateRealtimeCaches(event = {}) {
     return;
   }
   [
-    "/admin/leads",
     "/bank/leads",
     "/bank/dead-cases",
     "/bank/analytics",

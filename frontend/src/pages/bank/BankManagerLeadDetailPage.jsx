@@ -11,7 +11,7 @@ import { caseId, dateTime, display, leadStatusLabel } from "./bankManager.helper
 import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 
 const pageSize = 10;
-const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents"]);
 const customerDocumentTypes = [
   "Aadhaar",
   "PAN",

@@ -11,7 +11,6 @@ test("realtime lead mutations match every lead dashboard refresh filter", async 
 
   assert.match(source, /const leadRealtimeMutation = detail\?\.kind === "lead"/);
   [
-    "/admin/leads",
     "/dealer/leads",
     "/gm/leads",
     "/bank/leads",

@@ -56,12 +56,7 @@ export const navByRole = {
     { label: "Pending Dealerships", to: "/admin/approvals/dealerships", icon: ClipboardCheck },
     { label: "Approved Banks", to: "/admin/banks", icon: Landmark },
     { label: "Pending Approval Banks", to: "/admin/approvals/banks", icon: ClipboardCheck },
-    { label: "Total Leads", to: "/admin/leads", icon: ClipboardList },
     { label: "Monitoring", to: "/admin/monitoring", icon: Activity },
-    { label: "More", icon: MoreHorizontal, children: [
-      { label: "Rejected", to: "/admin/rejected", icon: FileX2 },
-      { label: "Disbursed", to: "/admin/disbursed", icon: FileText },
-    ] },
   ],
 };
 
@@ -80,7 +75,6 @@ function withCommonPrefetch(specs = []) {
 export function prefetchSpecsForRoute(to) {
   const path = String(to || "").split("?")[0];
   const archiveStatus = path.endsWith("/rejected") ? "REJECTED" : path.endsWith("/disbursed") ? "DISBURSED" : "";
-  if (archiveStatus && path.startsWith("/admin")) return withCommonPrefetch([{ url: "/admin/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
   if (archiveStatus && (path.startsWith("/bank-manager") || path.startsWith("/loan-executive"))) return withCommonPrefetch([{ url: "/bank/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
   if (archiveStatus && path.startsWith("/finance")) return withCommonPrefetch([{ url: "/dealer/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);
   if (archiveStatus && path.startsWith("/gm")) return withCommonPrefetch([{ url: "/gm/leads", params: { page: 1, limit: 10, status: archiveStatus, archiveTerminal: "1" } }]);

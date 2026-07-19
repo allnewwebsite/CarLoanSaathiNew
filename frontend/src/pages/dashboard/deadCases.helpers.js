@@ -74,20 +74,3 @@ export function sameLead(left = {}, right = {}) {
   const rightIds = new Set(leadIds(right));
   return leadIds(left).some((id) => rightIds.has(id));
 }
-
-function escapeCsv(input) {
-  const text = String(input ?? "");
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-export function downloadCsv(rows, audience, columns) {
-  const data = rows.map((lead) => columns.map((column) => column.csv(lead)));
-  const csv = [columns.map((column) => column.header), ...data].map((row) => row.map(escapeCsv).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${audience}-dead-cases.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}

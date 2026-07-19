@@ -11,7 +11,7 @@ export const ROLE_ROUTES = {
   [ROLES.GM]: "/gm/total-leads",
   [ROLES.BANK_MANAGER]: "/bank-manager/leads",
   [ROLES.LOAN_EXECUTIVE]: "/loan-executive/leads",
-  [ROLES.SUPER_ADMIN]: "/admin/leads",
+  [ROLES.SUPER_ADMIN]: "/admin/dealerships",
 };
 
 export const ROLE_LOGIN_ROUTES = {

@@ -50,7 +50,7 @@ test("protected smoke routes have expected role login contracts", () => {
   assert.equal(dashboardPathForRole(ROLES.GM), "/gm/total-leads");
   assert.equal(dashboardPathForRole(ROLES.BANK_MANAGER), "/bank-manager/leads");
   assert.equal(dashboardPathForRole(ROLES.LOAN_EXECUTIVE), "/loan-executive/leads");
-  assert.equal(dashboardPathForRole(ROLES.SUPER_ADMIN), "/admin/leads");
+  assert.equal(dashboardPathForRole(ROLES.SUPER_ADMIN), "/admin/dealerships");
 });
 
 test("forced first-login password routes are present for staff roles", () => {

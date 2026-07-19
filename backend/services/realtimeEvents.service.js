@@ -39,6 +39,7 @@ export const REALTIME_EVENTS = {
   NOTIFICATION_UPDATED: "NOTIFICATION_UPDATED",
   NOTIFICATION_READ: "NOTIFICATION_READ",
   NOTIFICATION_MARK_ALL_READ: "NOTIFICATION_MARK_ALL_READ",
+  NOTIFICATIONS_CLEANED: "NOTIFICATIONS_CLEANED",
   PAYMENT_UPDATED: "PAYMENT_UPDATED",
   STAFF_CHANGED: "STAFF_CHANGED",
   FINANCE_MANAGER_CHANGED: "FINANCE_MANAGER_CHANGED",
@@ -251,6 +252,15 @@ const DETAILED_REALTIME_EVENT_REGISTRY = Object.freeze({
     roles: ROLE_GROUPS.notification,
     scopes: ["dealershipIds", "bankIds", "executiveIds", "recipientIds"],
     payload: ["recipientId", "recipientRole"],
+    patches: ["notification-list", "unread-counter"],
+  }),
+  [REALTIME_EVENTS.NOTIFICATIONS_CLEANED]: eventDefinition({
+    eventType: REALTIME_EVENTS.NOTIFICATIONS_CLEANED,
+    module: "notifications",
+    description: "Previous-day system notifications were permanently removed.",
+    roles: ROLE_GROUPS.notification,
+    scopes: ["authenticated-platform"],
+    payload: ["cleaned", "cutoff", "dayKey", "timeZone"],
     patches: ["notification-list", "unread-counter"],
   }),
   [REALTIME_EVENTS.PAYMENT_UPDATED]: eventDefinition({

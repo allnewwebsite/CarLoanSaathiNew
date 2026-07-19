@@ -6,7 +6,7 @@ const ADMIN_IGNORED_OPERATIONAL_EVENTS = new Set(["LEAD_STATUS_UPDATED", "STATUS
 
 export const adminLeadMutationFilter = (detail = {}) => (
   !ADMIN_IGNORED_OPERATIONAL_EVENTS.has(detail.eventType || detail.event)
-  && mutationUrlMatches(detail, ["/admin/leads", "/bank/leads", "/dealer/leads", "/documents"])
+  && mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents"])
 );
 export const adminPlatformMutationFilter = (detail = {}) => (
   adminLeadMutationFilter(detail)

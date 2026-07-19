@@ -285,6 +285,7 @@ export async function deleteRecord(collection, id) {
 }
 
 export async function deleteRecordsByIds(collection, ids = []) {
+  const startedAt = Date.now();
   const uniqueIds = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
   if (!uniqueIds.length) return 0;
   if (!firestore) {
@@ -292,7 +293,10 @@ export async function deleteRecordsByIds(collection, ids = []) {
     memoryStore[collection] = (memoryStore[collection] || []).filter((item) => !uniqueIds.includes(String(item.id || "")));
     return before - memoryStore[collection].length;
   }
-  await Promise.all(uniqueIds.map((id) => deleteRecord(collection, id)));
+  const writer = firestore.bulkWriter();
+  uniqueIds.forEach((id) => writer.delete(firestore.collection(collection).doc(id)));
+  await writer.close();
+  recordWriteMetric({ collection, operation: "bulk-delete", documentsWritten: uniqueIds.length, startedAt });
   return uniqueIds.length;
 }
 

@@ -89,9 +89,9 @@ export function NotificationCenter() {
   const lastLocalPatchAtRef = useRef(initialPayload?.data?.length ? Date.now() : 0);
   const toastTimerRef = useRef(0);
 
-  const load = useCallback(async ({ silent = false } = {}) => {
+  const load = useCallback(async ({ silent = false, skipCache = false } = {}) => {
     logNotificationRefresh({ component: "NotificationCenter", refreshTriggered: true, eventType: "load", silent, filter });
-    const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined } });
+    const response = await api.get("/notifications", { params: { limit: 20, unread: filter === "unread" ? "true" : undefined }, skipCache });
     const nextItems = response.data.data || [];
     setItems(nextItems);
     setUnread(response.data.unread || 0);
@@ -108,7 +108,7 @@ export function NotificationCenter() {
     lastRefreshAtRef.current = Date.now();
     try {
       const previous = seenIds.current;
-      const nextItems = await loadRef.current?.({ silent: true }).catch(() => []) || [];
+      const nextItems = await loadRef.current?.({ silent: true, skipCache: force }).catch(() => []) || [];
       const fresh = nextItems.find((item) => !previous.has(item.id));
       nextItems.forEach((item) => previous.add(item.id));
       if (fresh && !fresh.read) {
@@ -184,6 +184,11 @@ export function NotificationCenter() {
     const onRealtime = (event) => {
       const eventType = event?.detail?.eventType || event?.detail?.event || "";
       const notification = event?.detail?.notification;
+      if (eventType === "NOTIFICATIONS_CLEANED") {
+        refreshNotifications({ force: true }).catch(() => {});
+        lastLocalPatchAtRef.current = Date.now();
+        return;
+      }
       if (eventType === "NOTIFICATION_MARK_ALL_READ") {
         setItems((current) => filter === "unread" ? [] : current.map((item) => ({ ...item, read: true, readAt: item.readAt || new Date().toISOString() })));
         setUnread(0);

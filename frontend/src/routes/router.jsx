@@ -67,7 +67,6 @@ const GmLeadDetailPage = lazyPage(pageModules.gmTracking, "GmLeadDetailPage");
 const SuperAdminDashboard = lazyPage(pageModules.superAdmin, "SuperAdminDashboard");
 const SuperAdminDealershipDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminDealershipDetailPage");
 const SuperAdminApprovalDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminApprovalDetailPage");
-const SuperAdminLeadDetailPage = lazyPage(pageModules.superAdmin, "SuperAdminLeadDetailPage");
 const AdminMonitoringCenter = lazyPage(pageModules.adminMonitoring, "AdminMonitoringCenter");
 const DeadCasesPage = lazyPage(pageModules.deadCases, "DeadCasesPage");
 const LegalPage = lazyPage(pageModules.legal, "LegalPage");
@@ -271,16 +270,10 @@ export const router = createBrowserRouter([
       {
         element: <DashboardLayout />,
         children: [
-          { path: "dashboard", element: <Navigate to="/admin/leads" replace /> },
+          { path: "dashboard", element: <Navigate to="/admin/dealerships" replace /> },
           { path: "dealerships", element: <SuperAdminDashboard mode="dealerships" /> },
           { path: "dealerships/:id", element: <SuperAdminDealershipDetailPage /> },
           { path: "banks", element: <SuperAdminDashboard mode="banks" /> },
-          { path: "status", element: <Navigate to="/admin/leads" replace /> },
-          { path: "leads", element: <SuperAdminDashboard mode="leads" /> },
-          { path: "rejected", element: <SuperAdminDashboard mode="rejected" /> },
-          { path: "disbursed", element: <SuperAdminDashboard mode="disbursed" /> },
-          { path: "dead-cases", element: <Navigate to="/admin/leads" replace /> },
-          { path: "leads/:leadId", element: <SuperAdminLeadDetailPage /> },
           { path: "monitoring", element: <AdminMonitoringCenter /> },
           { path: "approvals/dealerships", element: <SuperAdminDashboard mode="approval-dealerships" /> },
           { path: "approvals/dealerships/:id", element: <SuperAdminApprovalDetailPage type="dealerships" /> },

@@ -45,9 +45,17 @@ export function registerScheduledOperations() {
 
   markWorkerHealth("scheduledOperationsRegisteredAt");
 
-  schedule("notification-cleanup", Number(process.env.NOTIFICATION_CLEANUP_INTERVAL_MS || 6 * 60 * 60 * 1000), () => (
-    addQueueJob(QUEUE_NAMES.CLEANUP, "notification-cleanup", {}, { fallback: cleanupExpiredNotifications })
-  ));
+  const notificationCleanupIntervalMs = Number(process.env.NOTIFICATION_CLEANUP_INTERVAL_MS || 15 * 60 * 1000);
+  const notificationCleanupTask = () => {
+    const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: process.env.NOTIFICATION_TIME_ZONE || "Asia/Kolkata" }).format(new Date());
+    const executionBucket = Math.floor(Date.now() / notificationCleanupIntervalMs);
+    return addQueueJob(QUEUE_NAMES.CLEANUP, "notification-cleanup", {}, {
+      jobId: `notification-cleanup-${dayKey}-${executionBucket}`,
+      fallback: cleanupExpiredNotifications,
+    });
+  };
+  schedule("notification-cleanup", notificationCleanupIntervalMs, notificationCleanupTask);
+  Promise.resolve().then(notificationCleanupTask).catch((error) => logWarn("Initial notification cleanup failed", { error: error.message }));
 
   schedule("metrics-integrity", Number(process.env.METRICS_INTEGRITY_INTERVAL_MS || 60 * 60 * 1000), validateMetricsIntegrity);
 

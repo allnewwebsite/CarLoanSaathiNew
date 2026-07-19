@@ -7,7 +7,7 @@ function sleep(ms) {
 
 function portalWarmupPath(role) {
   const normalized = String(role || "").trim().toLowerCase();
-  if (normalized === "super-admin") return "/admin/leads";
+  if (normalized === "super-admin") return "/admin/approvals/dealerships?status=approved";
   if (normalized === "bank-manager" || normalized === "loan-executive") return "/bank/leads";
   if (normalized === "gm") return "/gm/leads";
   if (normalized === "finance-desk" || normalized === "dealer") return "/dealer/leads";

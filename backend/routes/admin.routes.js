@@ -10,7 +10,6 @@ import {
   suspendBankApproval,
   suspendDealershipApproval,
 } from "../controllers/adminApprovals.controller.js";
-import { getAdminLead, getAdminLeads } from "../controllers/adminLead.controller.js";
 import { deleteDealershipPermanently } from "../controllers/adminDealer.controller.js";
 import { deleteBankPermanently } from "../controllers/adminBank.controller.js";
 import { freezeAdminPartner, getAdminOnboardingRequests, getAdminWorkflowLogs, getAdminWorkflowSettings, updateAdminOnboardingRequest, updateAdminWorkflowSettings } from "../controllers/adminWorkflow.controller.js";
@@ -71,8 +70,6 @@ router.post("/approvals/banks/:id/approve", approveBankApproval);
 router.post("/approvals/banks/:id/reject", rejectBankApproval);
 router.post("/approvals/banks/:id/suspend", suspendBankApproval);
 router.get("/approvals/logs", getApprovalLogs);
-router.get("/leads", getAdminLeads);
-router.get("/leads/:id", getAdminLead);
 router.get("/analytics", getAdminAnalytics);
 router.get("/ecosystem", getAdminEcosystem);
 router.get("/monitoring", getAdminMonitoringCenterLazy);

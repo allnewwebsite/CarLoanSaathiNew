@@ -58,7 +58,7 @@ export function LeadTimeline({ leadId, compact = false }) {
   useTimelineRealtime({
     leadId,
     onRefresh: () => load({ ...filters, silent: true }),
-    mutationFilter: (detail) => mutationUrlMatches(detail, ["/timeline", "/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]),
+    mutationFilter: (detail) => mutationUrlMatches(detail, ["/timeline", "/bank/leads", "/dealer/leads", "/documents"]),
   });
 
   const updateFilter = (field, value) => {

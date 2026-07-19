@@ -286,6 +286,7 @@ function affectedPortalsForScopes({ dealershipIds = [], bankIds = [], executiveI
 
 function canReceiveEvent(user = {}, event = {}) {
   if (!user?.role) return false;
+  if (event.data?.broadcastAllAuthenticated === true) return ["super-admin", "finance-desk", "gm", "bank-manager", "loan-executive"].includes(user.role);
   if (event.kind === "session") {
     const recipients = unique(event.scopes?.recipientIds || []);
     const userIds = unique([user.uid, user.email]);
@@ -380,6 +381,9 @@ function dispatchKeysForClient(user = {}) {
 
 function candidateKeysForEvent(event = {}) {
   const keys = new Set();
+  if (event.data?.broadcastAllAuthenticated === true) {
+    ["super-admin", "finance-desk", "gm", "bank-manager", "loan-executive"].forEach((role) => keys.add(dispatchKey("role", role)));
+  }
   if (adminCanReceiveEvent(event)) keys.add(dispatchKey("role", "super-admin"));
   const scopes = event.scopes || {};
   if (event.kind === "bank" && event.publicCatalog === true) {

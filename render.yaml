@@ -32,6 +32,12 @@ services:
         sync: false
       - key: ENABLE_PAYMENT_RECONCILIATION
         value: "true"
+      - key: ENABLE_SCHEDULED_OPERATIONS
+        value: "true"
+      - key: NOTIFICATION_TIME_ZONE
+        value: Asia/Kolkata
+      - key: NOTIFICATION_CLEANUP_INTERVAL_MS
+        value: "900000"
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET

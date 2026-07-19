@@ -10,8 +10,8 @@ import { BANK_MANAGER_PAGE_SIZE as pageSize } from "./BankManagerPanelParts.jsx"
 import { responseRows } from "./bankManager.helpers.js";
 
 const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
-const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents"]);
-const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/admin/leads", "/documents", "/banks"]);
+const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents"]);
+const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents", "/banks"]);
 
 export function useBankLeads(search, status = "", archiveOverride = "") {
   const [params, setParams] = useSearchParams();

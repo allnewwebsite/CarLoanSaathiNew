@@ -1,9 +1,9 @@
-import { Download, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PolicyInformationBanner } from "../../components/LifecycleArchiveHeader.jsx";
 import { DEAD_CASE_REASONS } from "../../constants/deadCaseReasons.js";
-import { AUDIENCE_LABELS, PAGE_SIZE, downloadCsv } from "./deadCases.helpers.js";
+import { AUDIENCE_LABELS, PAGE_SIZE } from "./deadCases.helpers.js";
 import { useDeadCasesPageState } from "./deadCases.hooks.js";
 import { roleColumns } from "./deadCases.columns.jsx";
 import { DeadCaseDialogs } from "./DeadCaseDialogs.jsx";
@@ -42,15 +42,6 @@ export function DeadCasesPage({ audience = "finance" }) {
             <option value="">Select Reason</option>
             {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
           </select>
-          <button
-            type="button"
-            onClick={() => downloadCsv(state.rows, audience, columns)}
-            disabled={!state.rows.length}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 shadow-sm disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </button>
           {state.canModify ? (
             <button
               type="button"

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { useRoleLeadRealtime } from "../../../hooks/useRealtimeRefresh.js";
 import { api, getCachedGetData } from "../../../services/api.js";
 import { normalizeRows } from "../../../services/apiResponse.js";
-import { cachedLeadRows } from "../../../services/leadInstantData.js";
 import { SUPER_ADMIN_PAGE_SIZE as pageSize } from "./superAdmin.helpers.js";
 import { adminPlatformMutationFilter } from "./superAdmin.hooks.js";
 
@@ -16,34 +14,25 @@ function adminPanelRequest(mode, search) {
   if (mode === "approval-dealerships") return { url: "/admin/approvals/dealerships", params: { status: "pending", search } };
   if (mode === "banks") return { url: "/admin/approvals/banks", params: { status: "approved", search } };
   if (mode === "approval-banks") return { url: "/admin/approvals/banks", params: { status: "pending", search } };
-  return { url: "/admin/leads", params: { search, globalSearch: search ? "1" : "" } };
+  return { url: "/admin/approvals/dealerships", params: { status: "approved", search } };
 }
 
 export function useAdminPanelData(mode, search) {
-  const [urlParams] = useSearchParams();
-  const archiveMode = mode === "rejected" || mode === "disbursed";
-  const status = archiveMode ? mode.toUpperCase() : mode === "leads" ? urlParams.get("status") || "" : "";
-  const archiveTerminal = archiveMode ? "1" : mode === "leads" ? urlParams.get("archiveTerminal") || "" : "";
   const initialRequest = adminPanelRequest(mode, search);
-  if (initialRequest.url === "/admin/leads") initialRequest.params = { ...initialRequest.params, status, archiveTerminal };
   const cached = getCachedGetData(initialRequest.url, initialRequest.params);
-  const fallbackRows = !cached && initialRequest.url === "/admin/leads"
-    ? cachedLeadRows("/admin/leads", { search, limit: pageSize })
-    : [];
-  const [rows, setRows] = useState(() => (cached ? responseRows({ data: cached }) : fallbackRows));
+  const [rows, setRows] = useState(() => (cached ? responseRows({ data: cached }) : []));
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const request = adminPanelRequest(mode, search);
-      if (request.url === "/admin/leads") request.params = { ...request.params, status, archiveTerminal };
       const response = await api.get(request.url, { params: request.params });
       setRows(responseRows(response));
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [mode, search, status, archiveTerminal]);
+  }, [mode, search]);
 
   useEffect(() => { load({ silent: true }); }, [load]);
 

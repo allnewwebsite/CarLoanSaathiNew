@@ -6,7 +6,6 @@ function isLeadMutationUrl(url = "") {
   return path.startsWith("/bank/leads/")
     || path.startsWith("/dealer/leads")
     || path.startsWith("/gm/leads")
-    || path.startsWith("/admin/leads")
     || path.startsWith("/documents/");
 }
 
@@ -36,7 +35,6 @@ export function createApiMutationEvents({ invalidateGetCache, requestPortalHeade
 
   function invalidateLeadCaches() {
     [
-      "/admin/leads",
       "/bank/leads",
       "/bank/analytics",
       "/dealer/leads",

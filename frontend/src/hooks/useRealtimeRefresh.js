@@ -103,7 +103,6 @@ export function mutationUrlMatches(detail = {}, prefixes = []) {
   if (!urls.length) return true;
   const leadRealtimeMutation = detail?.kind === "lead" || detail?.kind === "document" || urls.includes("/lead-mutation");
   if (leadRealtimeMutation && prefixes.some((prefix) => [
-    "/admin/leads",
     "/bank/leads",
     "/dealer/leads",
     "/gm/leads",

@@ -10,11 +10,13 @@ const router = fs.readFileSync(path.join(src, "routes/router.jsx"), "utf8");
 const nav = fs.readFileSync(path.join(src, "layouts/DashboardLayout.config.js"), "utf8");
 const statuses = fs.readFileSync(path.join(src, "constants/status.js"), "utf8");
 
-test("every operational portal exposes dedicated rejected and disbursed pages", () => {
-  for (const portal of ["gm", "finance", "bank-manager", "loan-executive", "admin"]) {
+test("operational workflow portals retain rejected and disbursed while Super Admin archives are removed", () => {
+  for (const portal of ["gm", "finance", "bank-manager", "loan-executive"]) {
     assert.match(nav, new RegExp(`/${portal}/rejected`));
     assert.match(nav, new RegExp(`/${portal}/disbursed`));
   }
+  assert.doesNotMatch(nav, /\/admin\/(?:rejected|disbursed|leads)/);
+  assert.doesNotMatch(router, /path: "(?:leads|rejected|disbursed)"[\s\S]{0,80}SuperAdminDashboard/);
   assert.doesNotMatch(nav, /status\?status=(?:REJECTED|DISBURSED)/);
   assert.match(router, /mode="rejected"/);
   assert.match(router, /mode="disbursed"/);
@@ -35,7 +37,6 @@ test("archive pages share one retention banner and existing archive API filter",
     "pages/dashboard/finance/FinanceLeadListScreens.jsx",
     "pages/dashboard/GmTrackingPanel.jsx",
     "pages/bank/LoanExecutiveLeadListPage.jsx",
-    "pages/dashboard/superAdmin/useAdminPanelData.js",
   ]) {
     assert.match(fs.readFileSync(path.join(src, relative), "utf8"), /archiveTerminal/);
   }
