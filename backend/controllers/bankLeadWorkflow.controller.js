@@ -114,18 +114,22 @@ import {
   writeAuditLog,
 } from './bankShared.controller.js';
 import { acceptedAutomationPatch, statusAutomationPatch } from "../services/automationPolicy.service.js";
+import { assertLeadAcceptanceEligible } from "../services/automationPolicy.service.js";
+import { runRecordTransaction } from "../services/firestore.service.js";
+import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 void ACTIVE_EXPORT_SENTINEL;
 export async function acceptBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
-    const nextStatus = assertValidStatusTransition(lead.status, LEAD_STATUSES.ACCEPTED);
+    if (req.user?.role !== "loan-executive" || partner.roleType !== "loan-executive") {
+      throw Object.assign(new Error("Only the assigned loan executive can accept this lead."), { status: 403, code: "LOAN_EXECUTIVE_REQUIRED" });
+    }
+    if (partner.active === false || partner.frozen === true || String(partner.status || "").toLowerCase() === "inactive") {
+      throw Object.assign(new Error("Loan executive account is inactive."), { status: 403, code: "EXECUTIVE_INACTIVE" });
+    }
     const acceptedAt = new Date().toISOString();
-    const updated = await updateRecord("leads", lead.id, { status: nextStatus, ...acceptedAutomationPatch(acceptedAt) });
-    clearLeadDetailCaches(lead.id);
-    clearBankSummaryCaches();
-    await syncLeadProjection(updated);
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead: updated, actor: req.user, data: { status: nextStatus, previousStatus: lead.status } });
+    const executive = { ...req.user, ...partner };
     const assignments = await queryRecords("leadAssignments", {
       where: [{ field: "leadId", value: lead.id }],
       orderBy: "leadId",
@@ -133,8 +137,30 @@ export async function acceptBankLead(req, res, next) {
       limit: 25,
       maxLimit: 25,
     }).catch(() => ({ data: [] }));
-    const assignment = assignments.data.find((item) => item.partnerId === partner.id || item.partnerId === partner.email);
-    if (assignment) await updateRecord("leadAssignments", assignment.id, { status: "accepted", acceptedAt, acceptanceDueAt: null });
+    const assignmentId = assignments.data.find((item) => String(item.status || "").toLowerCase() === "pending" && loanExecutiveMatchesLead(executive, item))?.id || null;
+    const updated = await runRecordTransaction(async (transaction) => {
+      const latestLead = await transaction.get("leads", lead.id);
+      const latestAssignment = assignmentId ? await transaction.get("leadAssignments", assignmentId) : null;
+      if (!latestLead) throw Object.assign(new Error("Lead not found."), { status: 404, code: "LEAD_NOT_FOUND" });
+      assertLeadAcceptanceEligible({
+        lead: latestLead,
+        ownsLead: loanExecutiveMatchesLead(executive, latestLead),
+        now: Date.now(),
+      });
+      const patch = acceptedAutomationPatch(acceptedAt, executive);
+      if (assignmentId) {
+        if (!latestAssignment || String(latestAssignment.status || "").toLowerCase() !== "pending" || !loanExecutiveMatchesLead(executive, latestAssignment)) {
+          throw Object.assign(new Error("Lead reassigned."), { status: 409, code: "LEAD_REASSIGNED" });
+        }
+      }
+      transaction.update("leads", latestLead.id, patch);
+      if (assignmentId) transaction.update("leadAssignments", assignmentId, { ...patch, status: "accepted" });
+      return { ...latestLead, ...patch, updatedAt: acceptedAt };
+    });
+    clearLeadDetailCaches(lead.id);
+    clearBankSummaryCaches();
+    await syncLeadProjection(updated);
+    publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_ACCEPTED, lead: updated, actor: req.user, data: { ownershipStatus: updated.ownershipStatus, acceptedAt: updated.acceptedAt, acceptedExecutiveId: updated.acceptedExecutiveId, slaRunning: false } });
     await addTimelineEvent({
       leadId: lead.id,
       eventType: TIMELINE_EVENTS.EXECUTIVE_ACCEPTED,
@@ -143,12 +169,10 @@ export async function acceptBankLead(req, res, next) {
       actorName: partner.email || partner.name || partner.fullName,
       actorRole: req.user?.role || "bank",
       branchId: partner.branchId || null,
-      metadata: { status: nextStatus, customerName: lead.fullName },
-      leadSnapshot: lead,
+      metadata: { status: lead.status, ownershipStatus: "ACCEPTED", acceptedAt, customerName: lead.fullName },
+      leadSnapshot: updated,
     });
-    await writeAuditLog({ req, actionType: "BANK_ACCEPT", newValue: nextStatus, leadId: lead.id });
-    Promise.resolve(queueStatusUpdatedWhatsApp({ lead: updated, statusLabel: STATUS_LABELS[nextStatus] || nextStatus }))
-      .catch((error) => logError("Bank accept WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
+    await writeAuditLog({ req, actionType: "BANK_ACCEPT", newValue: { ownershipStatus: "ACCEPTED", acceptedAt, acceptedExecutiveId: updated.acceptedExecutiveId }, leadId: lead.id });
     res.json({ message: "Lead accepted", lead: updated });
   } catch (error) {
     next(error);

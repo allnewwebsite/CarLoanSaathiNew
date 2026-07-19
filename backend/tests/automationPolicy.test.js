@@ -7,6 +7,7 @@ import { LEAD_STATUSES } from "../utils/status.constants.js";
 import {
   AUTOMATION_POLICY,
   acceptedAutomationPatch,
+  assertLeadAcceptanceEligible,
   addCalendarMonths,
   assignmentAutomationPatch,
   currentWorkflowLocation,
@@ -24,14 +25,27 @@ test("new assignments receive the five-hour acceptance SLA", () => {
   assert.equal(AUTOMATION_POLICY.acceptanceSlaMs, 5 * 60 * 60 * 1000);
 });
 
-test("acceptance cancels the acceptance deadline and starts activity tracking", () => {
+test("acceptance records ownership without changing the business status", () => {
   const acceptedAt = "2026-01-01T12:00:00.000Z";
-  assert.deepEqual(acceptedAutomationPatch(acceptedAt), {
-    assignmentStatus: "accepted",
-    acceptedAt,
-    acceptanceDueAt: null,
-    lastWorkflowActionAt: acceptedAt,
-  });
+  const patch = acceptedAutomationPatch(acceptedAt, { id: "exec-1", email: "exec@example.com" });
+  assert.equal(patch.assignmentStatus, "accepted");
+  assert.equal(patch.ownershipStatus, "ACCEPTED");
+  assert.equal(patch.accepted, true);
+  assert.equal(patch.acceptedAt, acceptedAt);
+  assert.equal(patch.acceptedBy, "exec@example.com");
+  assert.equal(patch.acceptedExecutiveId, "exec-1");
+  assert.equal(patch.acceptanceDueAt, null);
+  assert.equal(patch.slaRunning, false);
+  assert.equal(Object.hasOwn(patch, "status"), false);
+});
+
+test("only the assigned executive can accept a pending NEW lead before its SLA", () => {
+  const lead = { status: LEAD_STATUSES.NEW, assignmentStatus: "pending", acceptanceDueAt: "2026-01-01T15:00:00.000Z" };
+  assert.equal(assertLeadAcceptanceEligible({ lead, ownsLead: true, now: Date.parse("2026-01-01T12:00:00.000Z") }), true);
+  assert.throws(() => assertLeadAcceptanceEligible({ lead, ownsLead: false, now: Date.parse("2026-01-01T12:00:00.000Z") }), /not assigned/i);
+  assert.throws(() => assertLeadAcceptanceEligible({ lead: { ...lead, accepted: true }, ownsLead: true }), /already accepted/i);
+  assert.throws(() => assertLeadAcceptanceEligible({ lead, ownsLead: true, now: Date.parse("2026-01-01T15:00:00.000Z") }), /SLA expired/i);
+  assert.throws(() => assertLeadAcceptanceEligible({ lead: { ...lead, status: LEAD_STATUSES.REJECTED }, ownsLead: true }), /closed/i);
 });
 
 test("terminal statuses remain active for seven days then move to their archive location", () => {

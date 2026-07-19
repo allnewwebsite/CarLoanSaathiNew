@@ -45,6 +45,14 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
   useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize, user });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
+  const applyLeadPatch = useCallback((lead = {}) => {
+    const identity = String(lead.id || lead.leadId || lead.caseId || "");
+    if (!identity) return;
+    setRows((current) => current.map((row) => {
+      const rowIdentity = String(row.id || row.leadId || row.caseId || "");
+      return rowIdentity === identity ? { ...row, ...lead } : row;
+    }));
+  }, []);
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
-  return { rows, total, hasMore, loading, page, onPage, load };
+  return { rows, total, hasMore, loading, page, onPage, load, applyLeadPatch };
 }

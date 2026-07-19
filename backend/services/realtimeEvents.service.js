@@ -149,6 +149,15 @@ const DETAILED_REALTIME_EVENT_REGISTRY = Object.freeze({
     scopes: ["dealershipIds", "bankIds", "executiveIds", "branchIds"],
     payload: ["leadId", "caseId", "status", "previousStatus", "lead"],
   }),
+  [REALTIME_EVENTS.LEAD_ACCEPTED]: eventDefinition({
+    eventType: REALTIME_EVENTS.LEAD_ACCEPTED,
+    module: "assignment",
+    description: "The assigned loan executive accepted ownership without changing the loan workflow status.",
+    roles: ROLE_GROUPS.assignedExecutive,
+    scopes: ["dealershipIds", "bankIds", "executiveIds", "recipientIds", "branchIds"],
+    payload: ["leadId", "caseId", "ownershipStatus", "acceptedAt", "acceptedExecutiveId", "lead"],
+    patches: ["table-row", "detail", "acceptance-sla", "notification-badge"],
+  }),
   [REALTIME_EVENTS.STATUS_UPDATED]: eventDefinition({
     eventType: REALTIME_EVENTS.STATUS_UPDATED,
     module: "workflow",
