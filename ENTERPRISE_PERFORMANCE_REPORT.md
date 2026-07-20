@@ -27,7 +27,6 @@ No authentication, authorization, permission, workflow, or SSE architecture was 
 
 - Retained maintained aggregate collections; no live lead scan was introduced.
 - Added a 15-second identity- and cursor-scoped cache with shared in-flight promises.
-- Added mutation-driven `bank:analytics` invalidation.
 - Parallelized independent recent-case and executive-metric reads.
 - Parallelized independent transactional summary/executive document reads.
 - Added bounded executive pagination: default 20, maximum 50, cursor based.

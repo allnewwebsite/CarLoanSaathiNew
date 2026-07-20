@@ -11,7 +11,6 @@ import { responseRows } from "./bankManager.helpers.js";
 
 const bankExecutiveMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/executives"]);
 const leadMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents"]);
-const bankAnalyticsMutationFilter = (detail) => mutationUrlMatches(detail, ["/bank/leads", "/dealer/leads", "/documents", "/banks"]);
 
 export function useBankLeads(search, status = "", archiveOverride = "") {
   const [params, setParams] = useSearchParams();
@@ -51,31 +50,6 @@ export function useBankLeads(search, status = "", archiveOverride = "") {
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));
   return { rows, total, hasMore, loading, page, onPage, load };
-}
-
-export function useBankAnalytics() {
-  const cachedAnalytics = getCachedGetData("/bank/analytics");
-  const [data, setData] = useState(() => cachedAnalytics);
-  const [loading, setLoading] = useState(() => !cachedAnalytics);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
-    setError("");
-    try {
-      const response = await api.get("/bank/analytics");
-      const payload = response.data || {};
-      setData(payload);
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || "Unable to load bank analytics");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load({ silent: Boolean(cachedAnalytics) }); }, [load]);
-  useRoleLeadRealtime({ onRefresh: () => load({ silent: true }), pageSize, mutationFilter: bankAnalyticsMutationFilter });
-  return { data, loading, error, load };
 }
 
 export function useExecutives() {

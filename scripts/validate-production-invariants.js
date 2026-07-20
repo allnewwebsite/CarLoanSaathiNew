@@ -382,49 +382,6 @@ check("bank case reassignment uses explicit same-branch executive selection", ()
   includesAll(projectionService, ["removeLeadExecutiveProjection"], "old executive projection cleanup");
 });
 
-check("bank analytics uses maintained aggregate data", () => {
-  const bankController = readCombined("backend/controllers/bank.controller.js", "backend/controllers/bank.controller.impl.js", "backend/controllers/bankShared.controller.js", "backend/controllers/bankAnalytics.controller.js");
-  const aggregateService = read("backend/services/bankAnalyticsAggregate.service.js");
-  const firestoreService = readCombined(
-    "backend/services/firestore.service.js",
-    "backend/services/firestoreCore.service.js",
-    "backend/services/firestoreProjectionWrite.service.js",
-  );
-  const bankPanel = readCombined(
-    "frontend/src/pages/bank/BankBranchManagerPanel.jsx",
-    "frontend/src/pages/bank/bankManager.hooks.js",
-    "frontend/src/pages/bank/BankAnalyticsPage.jsx",
-  );
-  const apiService = readCombined("frontend/src/services/api.js", "frontend/src/services/apiMutationEvents.js", "frontend/src/services/apiCache.js");
-  const realtimeClient = readRealtimeClient();
-  includesAll(bankController, [
-    "getBankAnalyticsAggregate",
-    "source: \"bank-analytics-aggregates\"",
-    "aggregateReady: Boolean(aggregate)",
-    "executivePagination",
-  ], "bank analytics backend");
-  includesAll(aggregateService, [
-    "bankAnalyticsSummaries",
-    "bankAnalyticsLeadStates",
-    "bankExecutiveAnalytics",
-    "bankRecentCases",
-    "rebuildBankAnalyticsAggregates",
-  ], "bank analytics aggregate service");
-  includesAll(firestoreService, [
-    "syncBankAnalyticsAggregate(record)",
-    "bulkUpsertRecords",
-  ], "bank analytics write synchronization");
-  assert(!bankController.includes("collectLiveBankAnalyticsLeads"), "bank analytics must not scan live leads");
-  assert(!bankController.includes("getBankAnalyticsFromLeadScan"), "legacy bank analytics lead scan must be removed");
-  includesAll(bankPanel, [
-    "bankAnalyticsMutationFilter",
-    "data?.branches ?? data?.branchMetrics?.length",
-    "data?.executives ?? data?.executivePerformance?.length",
-  ], "bank analytics frontend");
-  includesAll(apiService, ["\"/bank/analytics\""], "api lead cache invalidation");
-  includesAll(realtimeClient, ["\"/bank/analytics\""], "SSE lead cache invalidation");
-});
-
 check("WhatsApp business notifications are idempotent and backend-only", () => {
   const whatsappService = readCombined(
     "backend/services/whatsapp.service.js",

@@ -77,6 +77,13 @@ function patchedLeadFromEvent(event = {}) {
     deadCaseReason: lead.deadCaseReason || event.deadCaseReason || event.data?.deadCaseReason || "",
     deadCaseNotes: lead.deadCaseNotes || event.deadCaseNotes || event.data?.deadCaseNotes || "",
     deadCaseUpdatedAt: lead.deadCaseUpdatedAt || event.deadCaseUpdatedAt || event.data?.deadCaseUpdatedAt || "",
+    workflowLocation: lead.workflowLocation || event.workflowLocation || "",
+    archivedAt: lead.archivedAt || event.archivedAt || "",
+    terminalStatusAt: lead.terminalStatusAt || event.terminalStatusAt || "",
+    rejectedAt: lead.rejectedAt || event.rejectedAt || "",
+    rejectedBy: lead.rejectedBy || event.rejectedBy || "",
+    rejectionReason: lead.rejectionReason || event.rejectionReason || "",
+    rejectionRemarks: lead.rejectionRemarks || event.rejectionRemarks || "",
   };
 }
 
@@ -95,7 +102,9 @@ function hasHydratedLeadPayload(event = {}) {
 }
 
 function statusMatchesFilter(lead = {}, statusFilter = "") {
-  if (!statusFilter) return true;
+  if (!statusFilter) {
+    return !["REJECTED", "DISBURSED"].includes(normalizeStatus(lead.status));
+  }
   return normalizeStatus(lead.status) === normalizeStatus(statusFilter);
 }
 
@@ -164,7 +173,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
           || eventType === "BANK_ASSIGNED"
           || eventType === "EXECUTIVE_ASSIGNED"
           || eventType === "EXECUTIVE_REASSIGNED"
-          || (statusFilter && ["LEAD_STATUS_UPDATED", "STATUS_UPDATED"].includes(eventType))
+          || (statusFilter && ["LEAD_STATUS_UPDATED", "STATUS_UPDATED", "LEAD_REJECTED", "LEAD_DISBURSED"].includes(eventType))
         );
       setRows((current) => {
         if (!Array.isArray(current)) return current;

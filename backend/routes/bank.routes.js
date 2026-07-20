@@ -4,7 +4,6 @@ import { getBankDealershipDisbursedCases, getBankDealerships, getBankLead, getBa
 import { acceptBankLead, reassignBankLead, rejectBankLead, updateBankLeadRemarks, updateBankLeadStatus } from "../controllers/bankLeadWorkflow.controller.js";
 import { createBankExecutive, getBankExecutiveCases, getBankExecutives, removeBankExecutive } from "../controllers/bankExecutive.controller.js";
 import { deleteBankLeadDocument, uploadBankLeadDocument } from "../controllers/bankDocument.controller.js";
-import { getBankAnalytics } from "../controllers/bankAnalytics.controller.js";
 import { getBankDeadCases } from "../controllers/deadCase.controller.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRole } from "../middleware/requireRole.js";
@@ -27,7 +26,6 @@ router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);
 router.post("/executives", requireRole(ROLES.BANK_MANAGER), createBankExecutive);
 router.delete("/executives/:executiveId", requireRole(ROLES.BANK_MANAGER), removeBankExecutive);
 router.get("/executives/:executiveId/cases", requireRole(ROLES.BANK_MANAGER), getBankExecutiveCases);
-router.get("/analytics", getBankAnalytics);
 router.get("/notifications", getBankNotifications);
 router.get("/leads/:id", getBankLead);
 router.patch("/leads/:id/accept", requireRole(ROLES.LOAN_EXECUTIVE), acceptBankLead);

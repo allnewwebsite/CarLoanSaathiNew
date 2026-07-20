@@ -30,6 +30,16 @@ test("dead-case realtime patches preserve explicit restore state", async () => {
   assert.match(source, /event\.data\?\.isDeadCase === true/);
 });
 
+test("terminal lifecycle events patch immediately and reconcile every role list", async () => {
+  const patchSource = await readFile(path.join(srcDir, "hooks", "useRealtimeEntityPatch.js"), "utf8");
+  const refreshSource = await readFile(path.join(srcDir, "hooks", "useRealtimeRefresh.js"), "utf8");
+
+  assert.match(patchSource, /!\["REJECTED", "DISBURSED"\]\.includes\(normalizeStatus\(lead\.status\)\)/);
+  assert.match(patchSource, /"LEAD_REJECTED", "LEAD_DISBURSED"/);
+  assert.match(refreshSource, /const terminalLifecycleEvent = detail\.realtime === true/);
+  assert.match(refreshSource, /if \(!refreshOnMutation && !terminalLifecycleEvent\) return/);
+});
+
 test("SSE client uses bounded dedupe, exact backoff, and patch-first lead tables", async () => {
   const constants = await readFile(path.join(srcDir, "services", "realtimeClient.constants.js"), "utf8");
   const client = await readFile(path.join(srcDir, "services", "realtimeClientCore.js"), "utf8");

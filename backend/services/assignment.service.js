@@ -10,7 +10,6 @@ import { leadOwnershipProjectionPlan, syncLeadProjectionSoon } from "./projectio
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
 import { LEAD_STATUSES } from "../utils/status.constants.js";
 import { logError, logInfo } from "./logger.service.js";
-import { syncBankAnalyticsAggregate } from "./bankAnalyticsAggregate.service.js";
 import { clearCachedTags, clearCachedValue } from "./ttlCache.service.js";
 import { AUTOMATION_POLICY, addMilliseconds, assignmentAutomationPatch } from "./automationPolicy.service.js";
 import {
@@ -423,7 +422,6 @@ export async function reassignLeadToNextBranchExecutive(leadId, reason = "manage
   });
 
   const runFollowUps = async () => {
-    await syncBankAnalyticsAggregate(updated);
     syncLeadProjectionSoon(updated);
     await Promise.all([
       refreshExecutiveSummary(executive),

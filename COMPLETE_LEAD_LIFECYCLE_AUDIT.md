@@ -229,7 +229,7 @@ The main bank status workflow asynchronously creates three notifications: Bank M
 
 ### Cache invalidation
 
-Mutations clear combinations of `lead:list`, `lead:<id>`, `admin:summary`, `bank:summary`, `bank:analytics`, `bank:notifications`, `bank:executives`, dealership/bank lead tags, and detail caches. Firestore service writes also clear record/query caches and projection writes update views. Invalidation is tag-based and not transactionally coupled to all asynchronous side effects.
+Mutations clear combinations of `lead:list`, `lead:<id>`, `admin:summary`, `bank:summary`, `bank:notifications`, `bank:executives`, dealership/bank lead tags, and detail caches. Firestore service writes also clear record/query caches and projection writes update views. Invalidation is tag-based and not transactionally coupled to all asynchronous side effects.
 
 ### Counters/analytics
 

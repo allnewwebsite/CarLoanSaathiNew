@@ -246,6 +246,13 @@ function lightweightLeadPatch(lead = {}, data = {}) {
     deadCaseReason: lead.deadCaseReason || "",
     deadCaseNotes: lead.deadCaseNotes || "",
     deadCaseUpdatedAt: lead.deadCaseUpdatedAt || "",
+    workflowLocation: lead.workflowLocation || "",
+    archivedAt: lead.archivedAt || "",
+    terminalStatusAt: lead.terminalStatusAt || "",
+    rejectedAt: lead.rejectedAt || "",
+    rejectedBy: lead.rejectedBy || "",
+    rejectionReason: lead.rejectionReason || lead.loanRejectionReason || "",
+    rejectionRemarks: lead.rejectionRemarks || "",
   };
 }
 
@@ -689,6 +696,13 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
     bankBranchId: leadSummary?.bankBranchId || "",
     bankBranchCity: leadSummary?.bankBranchCity || "",
     branchCity: leadSummary?.branchCity || "",
+    workflowLocation: leadSummary?.workflowLocation || "",
+    archivedAt: leadSummary?.archivedAt || "",
+    terminalStatusAt: leadSummary?.terminalStatusAt || "",
+    rejectedAt: leadSummary?.rejectedAt || "",
+    rejectedBy: leadSummary?.rejectedBy || "",
+    rejectionReason: leadSummary?.rejectionReason || "",
+    rejectionRemarks: leadSummary?.rejectionRemarks || "",
     assignedExecutiveId: leadSummary?.assignedExecutiveId || "",
     assignedExecutiveName: leadSummary?.assignedExecutiveName || "",
     assignedExecutiveMobile: leadSummary?.assignedExecutiveMobile || "",

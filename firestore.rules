@@ -548,30 +548,6 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /bankAnalyticsSummaries/{id} {
-      allow read: if isSuperAdmin()
-        || (isBankManager() && resource.data.bankId == bankId());
-      allow write: if false;
-    }
-
-    match /bankExecutiveAnalytics/{id} {
-      allow read: if isSuperAdmin()
-        || (isBankManager() && resource.data.bankId == bankId())
-        || (isLoanExecutive() && resource.data.executiveId == request.auth.uid);
-      allow write: if false;
-    }
-
-    match /bankRecentCases/{id} {
-      allow read: if isSuperAdmin()
-        || (isBankManager() && resource.data.bankId == bankId())
-        || (isLoanExecutive() && resource.data.executiveId == request.auth.uid);
-      allow write: if false;
-    }
-
-    match /bankAnalyticsLeadStates/{id} {
-      allow read, write: if false;
-    }
-
     match /operationalMetrics/{id} {
       allow read: if isSuperAdmin();
       allow write: if false;

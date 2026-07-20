@@ -47,7 +47,6 @@ import {
   firebaseUserVerified,
   findRecordsByField,
   generateTemporaryPassword,
-  getBankAnalyticsAggregate,
   getLeadDetailProjection,
   getRecord,
   getTimelineForLead,

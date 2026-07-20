@@ -62,8 +62,7 @@ function PageTitle({ title }) {
 export function BankManagerLeadDetailPage() {
   const { leadId } = useParams();
   const cachedLead = getCachedGetData(`/bank/leads/${leadId}`)
-    || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId)
-    || findCachedGetItem("/bank/analytics", (item) => item.id === leadId || item.caseId === leadId);
+    || findCachedGetItem("/bank/leads", (item) => item.id === leadId || item.caseId === leadId);
   const [lead, setLead] = useState(() => cachedLead);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState("");

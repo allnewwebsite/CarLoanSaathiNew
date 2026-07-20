@@ -623,31 +623,6 @@
       ]
     },
     {
-      "collectionGroup": "bankExecutiveAnalytics",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "scopeId", "order": "ASCENDING" },
-        { "fieldPath": "assignedLeads", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "bankRecentCases",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "scopeId", "order": "ASCENDING" },
-        { "fieldPath": "activityAt", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "bankRecentCases",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "scopeId", "order": "ASCENDING" },
-        { "fieldPath": "executiveId", "order": "ASCENDING" },
-        { "fieldPath": "activityAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [

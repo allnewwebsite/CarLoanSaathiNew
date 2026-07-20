@@ -106,10 +106,6 @@ export async function syncWriteProjections(collection, record = {}) {
     const projection = bankBranchCatalogProjection(collection, record);
     if (projection) await writeProjectionRecord("bankBranchCatalog", projection.id, projection);
   }
-  if (collection === "leads" && record?.id) {
-    const { syncBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
-    await syncBankAnalyticsAggregate(record);
-  }
   if (["dealerStaff", "salespersons", "financeManagers"].includes(collection) && record?.id) {
     const { syncMemberViewProjection, syncSalespersonSummaryProjection, syncStaffViewProjection } = await import("./projection.service.js");
     if (collection === "dealerStaff") {

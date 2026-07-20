@@ -16,6 +16,16 @@ function read(relativePath) {
   return fs.readFileSync(path.join(workspaceRoot, relativePath), "utf8");
 }
 
+test("Bank Manager analytics endpoint and aggregate write path are fully removed", () => {
+  const routes = read("backend/routes/bank.routes.js");
+  const projectionWrites = read("backend/services/firestoreProjectionWrite.service.js");
+  const firestoreCore = read("backend/services/firestoreCore.service.js");
+  assert.doesNotMatch(routes, /\/analytics|bankAnalytics/i);
+  assert.doesNotMatch(`${projectionWrites}\n${firestoreCore}`, /bankAnalytics|syncBankAnalyticsAggregate|removeBankAnalyticsAggregate/i);
+  assert.equal(fs.existsSync(path.join(workspaceRoot, "backend/controllers/bankAnalytics.controller.js")), false);
+  assert.equal(fs.existsSync(path.join(workspaceRoot, "backend/services/bankAnalyticsAggregate.service.js")), false);
+});
+
 test("assignment integrity requires complete bank, executive, dealership, and finance ownership fields", () => {
   assert.deepEqual(REQUIRED_ASSIGNMENT_FIELDS, [
     "assignedBankId",
@@ -92,13 +102,11 @@ test("executive assignment realtime is emitted before slower assignment follow-u
   const eventIndex = source.indexOf("const assignmentRealtimeEvent");
   const publishIndex = source.indexOf("publishRealtimeEvent({", eventIndex);
   const deferIndex = source.indexOf("options.deferFollowUps === true", publishIndex);
-  const analyticsIndex = source.indexOf("await syncBankAnalyticsAggregate(updated)", publishIndex);
   const notificationIndex = source.indexOf("await createNotification({", publishIndex);
 
   assert.equal(eventIndex >= 0, true);
   assert.equal(publishIndex > eventIndex, true);
   assert.equal(deferIndex > publishIndex, true);
-  assert.equal(analyticsIndex > publishIndex, true);
   assert.equal(notificationIndex > publishIndex, true);
   assert.equal(source.includes("REALTIME_EVENTS.EXECUTIVE_ASSIGNED"), true);
   assert.equal(source.includes("REALTIME_EVENTS.EXECUTIVE_REASSIGNED"), true);

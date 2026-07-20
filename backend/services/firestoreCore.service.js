@@ -264,23 +264,14 @@ export async function bulkUpsertRecords(collection, records = []) {
 
 export async function deleteRecord(collection, id) {
   const startedAt = Date.now();
-  const deletedLead = collection === "leads" ? await getRecord(collection, id).catch(() => null) : null;
   if (!firestore) {
     memoryStore[collection] = (memoryStore[collection] || []).filter((item) => item.id !== id);
-    if (deletedLead) {
-      const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
-      await removeBankAnalyticsAggregate(deletedLead);
-    }
     recordWriteMetric({ collection, operation: "delete", id, startedAt });
     return true;
   }
   const ref = await resolveDocumentRef(collection, id);
   await ref.delete();
   recordWriteMetric({ collection, operation: "delete", id, startedAt });
-  if (deletedLead) {
-    const { removeBankAnalyticsAggregate } = await import("./bankAnalyticsAggregate.service.js");
-    await removeBankAnalyticsAggregate(deletedLead);
-  }
   return true;
 }
 

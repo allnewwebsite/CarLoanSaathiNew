@@ -36,8 +36,6 @@ test("Firestore indexes include scale-critical background job contracts", () => 
     "subscriptionOrders:status:ASCENDING|createdAt:ASCENDING",
     "subscriptionPayments:dealershipId:ASCENDING|paidAt:DESCENDING",
     "subscriptionInvoices:dealershipId:ASCENDING|paymentDate:DESCENDING",
-    "bankExecutiveAnalytics:scopeId:ASCENDING|assignedLeads:DESCENDING",
-    "bankRecentCases:scopeId:ASCENDING|activityAt:DESCENDING",
     "leads:assignmentStatus:ASCENDING|acceptanceDueAt:ASCENDING",
     "leads:assignmentStatus:ASCENDING|lastWorkflowActionAt:ASCENDING",
     "leads:status:ASCENDING|terminalVisibleUntil:ASCENDING",

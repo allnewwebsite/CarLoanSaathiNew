@@ -84,6 +84,45 @@ test("SSE status dispatch targets operational tenant buckets without leaking to 
   clients.forEach((client) => client.close());
 });
 
+test("rejected lifecycle event reaches all four operational owners with archive metadata", () => {
+  const lead = {
+    id: "lead-rejected-realtime",
+    caseId: "CLS-REJECTED-REALTIME",
+    status: "REJECTED",
+    workflowLocation: "rejected",
+    archivedAt: "2026-07-20T10:00:00.000Z",
+    terminalStatusAt: "2026-07-20T10:00:00.000Z",
+    rejectedAt: "2026-07-20T10:00:00.000Z",
+    rejectedBy: "executive-rejected@example.com",
+    rejectionReason: "Bank policy",
+    dealershipId: "dealer-rejected-realtime",
+    bankId: "bank-rejected-realtime",
+    branchId: "branch-rejected-realtime",
+    assignedExecutiveId: "executive-rejected-realtime",
+  };
+  const clients = [
+    mockConnection({ role: "finance-desk", uid: "finance-rejected", dealershipId: lead.dealershipId }),
+    mockConnection({ role: "gm", uid: "gm-rejected", dealershipId: lead.dealershipId }),
+    mockConnection({ role: "bank-manager", uid: "manager-rejected", bankId: lead.bankId, branchId: lead.branchId }),
+    mockConnection({ role: "loan-executive", uid: lead.assignedExecutiveId }),
+  ];
+
+  publishRealtimeEvent({
+    eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED,
+    lead,
+    data: { status: lead.status, previousStatus: "UNDER_BANK_PROCESS" },
+  });
+
+  clients.forEach((client) => {
+    const events = client.operationalEvents();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].status, "REJECTED");
+    assert.equal(events[0].workflowLocation, "rejected");
+    assert.equal(events[0].rejectionReason, "Bank policy");
+    client.close();
+  });
+});
+
 test("assigned lead realtime reaches admin, bank manager, and target loan executive", () => {
   const clients = [];
   const lead = {

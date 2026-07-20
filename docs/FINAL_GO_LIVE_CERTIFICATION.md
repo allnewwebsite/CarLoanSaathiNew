@@ -81,7 +81,6 @@ Go-live should proceed only after the live staging latency/stress gate is run wi
 2. Unbounded list scans: blocked by production contract tests.
 3. Workflow logs: optimized estimated reads are 1 for the local audit path, but the Firestore query timed out locally. Repeat in staging.
 4. Timeline latest rows: estimated reads are 1 for the local audit path, but the Firestore query timed out locally. Repeat in staging.
-5. Bank analytics aggregate: audit requires `BANK_ANALYTICS_SUMMARY_ID` to measure one deployed branch summary. Without it, estimated reads are 0 and no live branch was measured.
 6. API efficiency inventory: 153 routes scanned; 120 low, 26 medium, 7 high, 0 critical.
 
 ## Duplicate Reads, APIs, and Code
@@ -152,4 +151,3 @@ Remaining live gates:
 2. Store recurring go-live audit outputs as CI artifacts.
 3. Add automated bundle budget thresholds for vendor chunks.
 4. Add recurring production read-budget reports from Firestore usage exports.
-

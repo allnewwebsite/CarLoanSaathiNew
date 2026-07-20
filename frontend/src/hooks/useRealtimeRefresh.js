@@ -141,8 +141,16 @@ export function useBackgroundRefresh({ onRefresh, enabled = true, refreshKey = "
       scheduleFreshRefresh(refreshRef.current, state, 100);
     };
     const onMutation = (event) => {
-      if (!refreshOnMutation) return;
       const detail = event?.detail || {};
+      const status = String(detail.status || detail.lead?.status || "").trim().toUpperCase();
+      const eventType = String(detail.eventType || detail.event || "").trim().toUpperCase();
+      const terminalLifecycleEvent = detail.realtime === true
+        && ["REJECTED", "DISBURSED"].includes(status)
+        && ["LEAD_STATUS_UPDATED", "STATUS_UPDATED", "LEAD_REJECTED", "LEAD_DISBURSED"].includes(eventType);
+      // Patch-first lead tables stay fast, but terminal transitions must also
+      // reconcile from the canonical projection so every archive and active
+      // queue reaches the same final state from the same SSE event.
+      if (!refreshOnMutation && !terminalLifecycleEvent) return;
       const filter = mutationFilterRef.current;
       if (typeof filter === "function" && !filter(detail)) return;
       const key = mutationRefreshKey(refreshKey, detail);

@@ -28,8 +28,6 @@ const RELATED_LEAD_COLLECTIONS = Object.freeze([
   "auditLogs",
   "commissions",
   "payouts",
-  "bankAnalyticsLeadStates",
-  "bankRecentCases",
   "whatsappQueue",
   "notificationEvents",
 ]);
@@ -227,7 +225,7 @@ export async function permanentlyDeleteLead(lead) {
       limit: 500,
     }).catch(() => 0);
   }
-  clearCachedTags(["lead:list", "admin:summary", "bank:summary", "bank:analytics", "notifications", `lead:${lead.id}`]);
+  clearCachedTags(["lead:list", "admin:summary", "bank:summary", "notifications", `lead:${lead.id}`]);
   clearCachedValue(`lead:${lead.id}`);
   await deleteRecord("leads", lead.id);
   return true;

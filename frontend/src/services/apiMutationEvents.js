@@ -36,7 +36,6 @@ export function createApiMutationEvents({ invalidateGetCache, requestPortalHeade
   function invalidateLeadCaches() {
     [
       "/bank/leads",
-      "/bank/analytics",
       "/dealer/leads",
       "/gm/leads",
       "/timeline",

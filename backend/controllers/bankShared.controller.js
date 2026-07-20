@@ -34,7 +34,6 @@ import { queueDocumentsRequiredWhatsApp, queueLeadAssignedWhatsApp, queueStatusU
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
-import { getBankAnalyticsAggregate } from "../services/bankAnalyticsAggregate.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
 import {
   anyMatch,
@@ -132,7 +131,6 @@ export {
   normalizeIfsc,
   normalizeLoanCapacity,
   validateBankLocation,
-  getBankAnalyticsAggregate,
   assertLeadMutable,
   anyMatch,
   bankManagerCanAccessLead,
@@ -462,7 +460,6 @@ export function clearBankSummaryCaches() {
     "lead:list",
     "bank:summary",
     "admin:summary",
-    "bank:analytics",
     "bank:notifications",
     "bank:executives",
     "bank:executive-cases",

@@ -23,3 +23,15 @@ test("Super Admin root contains neither Total Leads nor archive More navigation"
   const adminSection = config.slice(config.indexOf('"super-admin": ['), config.indexOf("const notificationPrefetch"));
   assert.doesNotMatch(adminSection, /Total Leads|More|Rejected|Disbursed|\/admin\/leads/);
 });
+
+test("Bank Manager analytics navigation, route, page and realtime cache are removed", () => {
+  const config = read("layouts/DashboardLayout.config.js");
+  const router = read("routes/router.jsx");
+  const panel = read("pages/bank/BankBranchManagerPanel.jsx");
+  const realtime = read("services/realtimeClient.events.js");
+
+  [config, router, panel, realtime].forEach((source) => {
+    assert.doesNotMatch(source, /bank-manager\/analytics|\/bank\/analytics|BankAnalyticsPage|mode="analytics"/);
+  });
+  assert.equal(fs.existsSync(path.join(root, "pages/bank/BankAnalyticsPage.jsx")), false);
+});
