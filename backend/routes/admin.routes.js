@@ -10,7 +10,7 @@ import {
   suspendBankApproval,
   suspendDealershipApproval,
 } from "../controllers/adminApprovals.controller.js";
-import { deleteDealershipPermanently } from "../controllers/adminDealer.controller.js";
+import { deleteDealershipPermanently, getApprovedDealershipDetails } from "../controllers/adminDealer.controller.js";
 import { deleteBankPermanently } from "../controllers/adminBank.controller.js";
 import { freezeAdminPartner, getAdminOnboardingRequests, getAdminWorkflowLogs, getAdminWorkflowSettings, updateAdminOnboardingRequest, updateAdminWorkflowSettings } from "../controllers/adminWorkflow.controller.js";
 import { getAdminAuditLogs } from "../controllers/adminAudit.controller.js";
@@ -59,6 +59,7 @@ router.use(authenticate, requireRole(ROLES.SUPER_ADMIN));
 // Existing routes
 router.get("/onboarding-requests", getAdminOnboardingRequests);
 router.patch("/onboarding-requests/:id", updateAdminOnboardingRequest);
+router.get("/dealerships/:id", getApprovedDealershipDetails);
 router.delete("/dealerships/:id/permanent", deleteDealershipPermanently);
 router.delete("/banks/:id/permanent", deleteBankPermanently);
 router.get("/approvals/dealerships", getPendingDealershipApprovals);

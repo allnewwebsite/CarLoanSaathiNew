@@ -11,8 +11,9 @@ import {
 } from "./adminShared.controller.js";
 
 export async function dealershipApprovalListPayload({ status, search, query }) {
-  const page = await queryRecords("pendingDealershipApprovals", {
-    ...(status ? { where: [{ field: "status", value: status }] } : {}),
+  const collection = status === "approved" ? "approvedDealerships" : "pendingDealershipApprovals";
+  const page = await queryRecords(collection, {
+    ...(status && collection === "pendingDealershipApprovals" ? { where: [{ field: "status", value: status }] } : {}),
     orderBy: "createdAt",
     direction: "desc",
     limit: query.limit || 100,
@@ -21,7 +22,7 @@ export async function dealershipApprovalListPayload({ status, search, query }) {
     fields: APPROVAL_LIST_PROJECTION_FIELDS,
   });
   const requests = page.data.filter((item) => {
-    const statusOk = !status || String(item.status || "").toLowerCase() === status;
+    const statusOk = collection === "approvedDealerships" || !status || String(item.status || "").toLowerCase() === status;
     const typeOk = (item.accountType || item.type || "dealership") === "dealership";
     const text = [item.id, item.dealershipName, item.dealershipBrand, item.city, item.loginEmail, item.status, item.dealership?.authorizedDealerCode].filter(Boolean).join(" ").toLowerCase();
     return typeOk && statusOk && (!search || text.includes(search));

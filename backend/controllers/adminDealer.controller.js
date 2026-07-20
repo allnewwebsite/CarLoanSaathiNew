@@ -94,8 +94,53 @@ import {
   validateBankLocation,
   writeAuditLog,
 } from './adminShared.controller.js';
+import { getDealershipBankTieUps } from "../services/dealership.service.js";
 
 void ADMIN_SHARED_SENTINEL;
+
+export async function getApprovedDealershipDetails(req, res, next) {
+  try {
+    const requestedId = String(req.params.id || "").trim();
+    const legacyApproval = await resolveDealershipApprovalRequest(requestedId).catch(() => null);
+    const canonicalId = normalizeEmail(requestLoginEmail(legacyApproval) || requestedId);
+    const approvedRecord = await getRecord("approvedDealerships", canonicalId).catch(() => null);
+    const dealership = approvedRecord || await getRecord("dealerships", canonicalId).catch(() => null);
+    const isApproved = Boolean(approvedRecord)
+      || dealership?.approved === true
+      || dealership?.accountApproved === true
+      || String(dealership?.status || dealership?.dealerStatus || "").toLowerCase() === "approved";
+
+    if (!dealership || !isApproved) {
+      return res.status(404).json({
+        code: "APPROVED_DEALERSHIP_NOT_FOUND",
+        message: "This approved dealership could not be found. It may have been removed or the link is invalid.",
+      });
+    }
+
+    const approvalId = legacyApproval?.id || dealership.approvalRequestId || dealership.onboardingRequestId || "";
+    const [financeDesks, members, banks, approvalAudit, subscription] = await Promise.all([
+      findRecordsByField("financeDesks", "dealershipEmail", canonicalId, 25).catch(() => []),
+      findRecordsByField("dealershipManagers", "dealershipEmail", canonicalId, 100).catch(() => []),
+      getDealershipBankTieUps(canonicalId).catch(() => []),
+      approvalId ? findRecordsByField("approvalLogs", "entityId", approvalId, 25).catch(() => []) : Promise.resolve([]),
+      getRecord("dealershipSubscriptions", canonicalId).catch(() => null),
+    ]);
+
+    return res.json({
+      dealership: { ...dealership, id: canonicalId, loginEmail: dealership.loginEmail || canonicalId },
+      financeDesks,
+      members,
+      banks,
+      subscription,
+      approval: legacyApproval,
+      audit: approvalAudit,
+      canonicalId,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function deleteDealershipPermanently(req, res, next) {
   try {
     const id = String(req.params.id || "").trim();

@@ -62,7 +62,8 @@ test("secondary list APIs keep bounded pagination contracts", () => {
   ], "billing pagination");
 
   includesAll(read("backend/controllers/adminApprovalLists.controller.js"), [
-    "queryRecords(\"pendingDealershipApprovals\"",
+    "queryRecords(collection",
+    "\"approvedDealerships\" : \"pendingDealershipApprovals\"",
     "queryRecords(\"pendingBankApprovals\"",
     "maxLimit: 100",
     "cursor: query.cursor || null",

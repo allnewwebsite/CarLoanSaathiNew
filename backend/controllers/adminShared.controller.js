@@ -372,6 +372,13 @@ export async function resolveDealershipApprovalRequest(id) {
   });
   if (directApproval) return directApproval;
 
+  const normalizedId = normalizeEmail(id);
+  const approvalByIdentity = await firstAdminLookup([
+    () => findRecordsByField("pendingDealershipApprovals", "loginEmail", normalizedId, 5),
+    () => findRecordsByField("pendingDealershipApprovals", "primaryGoogleEmail", normalizedId, 5),
+  ]);
+  if (approvalByIdentity) return approvalByIdentity;
+
   const pendingAccount = await getRecord("pendingDealerAccounts", id).catch((error) => {
     if (firestoreNotFound(error)) return null;
     throw error;
