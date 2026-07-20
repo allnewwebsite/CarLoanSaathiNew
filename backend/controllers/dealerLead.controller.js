@@ -233,6 +233,7 @@ export async function createDealerLead(req, res, next) {
       createdBy: dealershipId,
       source: "Dealer Dashboard",
       status: LEAD_STATUSES.NEW,
+      workflowLocation: "active",
       generatedDate: now.slice(0, 10),
       generatedTime: now.slice(11, 19),
       generatedAt: now,

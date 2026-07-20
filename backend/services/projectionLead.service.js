@@ -54,6 +54,7 @@ function projectionPayload(lead = {}, { scopeType, scopeId: scope }) {
     createdAt: lead.createdAt || updatedAt,
     updatedAt,
     status: lead.status || "NEW",
+    workflowLocation: currentWorkflowLocation(lead),
     searchText: VIEW_SEARCH_FIELDS.map((field) => lead[field]).filter(Boolean).join(" ").toLowerCase(),
   }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "lead-view" });
 }
@@ -264,8 +265,14 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
 
   const scopeWhere = [...where];
   const statuses = statusValuesForProjectionQuery(query.status);
+  const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
   if (statuses.length === 1) where.push({ field: "status", value: statuses[0] });
   if (statuses.length > 1 && statuses.length <= 10) where.push({ field: "status", op: "in", value: statuses });
+  if (!statuses.length) {
+    where.push(archiveTerminal
+      ? { field: "workflowLocation", op: "in", value: ["rejected", "disbursed"] }
+      : { field: "workflowLocation", value: "active" });
+  }
   if (query.dealershipId) where.push({ field: "dealershipId", value: scopeId(query.dealershipId) });
   if (query.salespersonId) where.push({ field: "salespersonId", value: scopeId(query.salespersonId) });
   if (query.financeManagerId) where.push({ field: "financeManagerId", value: scopeId(query.financeManagerId) });
@@ -364,7 +371,6 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       }
       const mapStartedAt = Date.now();
       const search = String(query.search || "").trim();
-      const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
       const globalSearch = ["1", "true"].includes(String(query.globalSearch || "").toLowerCase());
       const data = freshRows
         .filter((item) => item.isDeadCase !== true || Boolean(search && globalSearch))

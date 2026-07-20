@@ -17,6 +17,7 @@ test("idle status prefetch is cancellable and never fans out searched queries", 
   assert.match(instantData, /String\(baseParams\.search \|\| ""\)\.trim\(\)/);
   assert.match(instantData, /cancelIdleCallback/);
   assert.match(instantData, /timers\.forEach\(\(timer\) => window\.clearTimeout\(timer\)\)/);
+  assert.match(instantData, /!\["REJECTED", "DISBURSED"\]\.includes\(currentStatus\)/);
   [
     "../src/pages/dashboard/finance/financeLeadList.data.js",
     "../src/pages/dashboard/gm/gmTracking.data.js",

@@ -56,6 +56,13 @@ test("terminal statuses enter their archive location immediately", () => {
   assert.equal(currentWorkflowLocation(rejected, new Date(terminalAt).getTime()), "rejected");
 });
 
+test("role projections scope active lifecycle before pagination", () => {
+  const source = fs.readFileSync(new URL("../services/projectionLead.service.js", import.meta.url), "utf8");
+  assert.match(source, /workflowLocation: currentWorkflowLocation\(lead\)/);
+  assert.match(source, /field: "workflowLocation", value: "active"/);
+  assert.match(source, /field: "workflowLocation", op: "in", value: \["rejected", "disbursed"\]/);
+});
+
 test("retention uses exactly three calendar months including month-end clamping", () => {
   assert.equal(addCalendarMonths("2026-01-31T10:30:00.000Z"), "2026-04-30T10:30:00.000Z");
   const lead = { status: LEAD_STATUSES.DISBURSED, terminalStatusAt: "2026-01-31T10:30:00.000Z" };

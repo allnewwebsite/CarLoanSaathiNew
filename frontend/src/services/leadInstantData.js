@@ -9,7 +9,10 @@ export function cachedLeadRows(url, { status = "", search = "", limit = 10 } = {
   const normalizedStatus = status ? normalizeStatus(status) : "";
   const query = String(search || "").trim().toLowerCase();
   return findCachedGetRows(url, (lead) => {
-    const statusMatches = !normalizedStatus || leadStatus(lead) === normalizedStatus;
+    const currentStatus = leadStatus(lead);
+    const statusMatches = normalizedStatus
+      ? currentStatus === normalizedStatus
+      : !["REJECTED", "DISBURSED"].includes(currentStatus);
     if (!statusMatches) return false;
     if (!query) return true;
     return JSON.stringify(lead).toLowerCase().includes(query);

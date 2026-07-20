@@ -165,6 +165,7 @@ export async function createLead(req, res, next) {
       dealershipName: payload.dealershipName || dealership?.dealershipName || "",
       dealershipCity,
       routingCity: dealershipCity,
+      workflowLocation: "active",
     });
     clearLeadMutationCaches(lead.id);
     await syncLeadProjection(lead).catch(() => null);
@@ -209,6 +210,7 @@ export async function createPublicLead(req, res, next) {
       dealershipEmail: dealershipId,
       dealershipId,
       status: LEAD_STATUSES.NEW,
+      workflowLocation: "active",
     });
     clearLeadMutationCaches(lead.id);
     await syncLeadProjection(lead).catch(() => null);
@@ -254,6 +256,7 @@ export async function createPublicLeadIntake(req, res, next) {
       email: payload.email || null,
       caseId,
       status: LEAD_STATUSES.NEW,
+      workflowLocation: "active",
       intakeSource: "public-apply-loan",
       source: "Public Apply Loan",
       publicIntake: true,
