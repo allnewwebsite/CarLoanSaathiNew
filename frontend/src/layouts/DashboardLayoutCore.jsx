@@ -100,6 +100,7 @@ export function DashboardLayout() {
   const nav = useMemo(() => navByRole[user?.role] || [], [user?.role]);
   const loanExecutiveMobile = user?.role === "loan-executive";
   const currentTarget = `${location.pathname}${location.search}`;
+  const routeContentKey = currentTarget;
   const isNavActive = useCallback((to) => (to.includes("?") ? currentTarget === to : location.pathname === to), [currentTarget, location.pathname]);
 
   useEffect(() => {
@@ -253,8 +254,10 @@ export function DashboardLayout() {
         </div>
         <div className={`w-full max-w-full overflow-x-hidden sm:px-6 lg:px-6 ${loanExecutiveMobile ? "px-3 py-3 sm:py-4 lg:py-5" : "px-4 py-5"}`}>
           <SubscriptionBanner user={user} />
-          <Suspense fallback={<DashboardContentFallback />}>
-            <Outlet />
+          <Suspense key={routeContentKey} fallback={<DashboardContentFallback />}>
+            <div key={routeContentKey} data-route-content={routeContentKey}>
+              <Outlet />
+            </div>
           </Suspense>
         </div>
       </main>

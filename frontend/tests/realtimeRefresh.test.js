@@ -55,3 +55,12 @@ test("SSE client uses bounded dedupe, exact backoff, and patch-first lead tables
   assert.match(executiveHooks, /refreshOnMutation: false/);
   assert.equal(executivePage.includes("console.log"), false);
 });
+
+test("dashboard route content remounts by pathname and query before new rows render", async () => {
+  const layout = await readFile(path.join(srcDir, "layouts", "DashboardLayoutCore.jsx"), "utf8");
+
+  assert.match(layout, /const currentTarget = `\$\{location\.pathname\}\$\{location\.search\}`/);
+  assert.match(layout, /const routeContentKey = currentTarget/);
+  assert.match(layout, /<Suspense key=\{routeContentKey\} fallback=\{<DashboardContentFallback \/>\}>/);
+  assert.match(layout, /<div key=\{routeContentKey\} data-route-content=\{routeContentKey\}>/);
+});
