@@ -7,8 +7,8 @@ export const navByRole = {
     { label: "Status", to: "/gm/status", icon: FileClock },
     { label: "All Salespersons", to: "/gm/salespersons", icon: Users },
     { label: "All Cases", to: "/gm/cases", icon: FileText },
-    { label: "Dead Cases", to: "/gm/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
+      { label: "Dead Cases", to: "/gm/dead-cases", icon: FileX2 },
       { label: "Rejected", to: "/gm/rejected", icon: FileX2 },
       { label: "Disbursed", to: "/gm/disbursed", icon: FileText },
     ] },
@@ -23,8 +23,8 @@ export const navByRole = {
     { label: "Active Members", to: "/finance/active-members", icon: Users },
     { label: "All Cases", to: "/finance/cases", icon: FileText },
     { label: "Bank Tie-Ups", to: "/finance/bank-tieups", icon: Landmark },
-    { label: "Dead Cases", to: "/finance/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
+      { label: "Dead Cases", to: "/finance/dead-cases", icon: FileX2 },
       { label: "Rejected", to: "/finance/rejected", icon: FileX2 },
       { label: "Disbursed", to: "/finance/disbursed", icon: FileText },
     ] },
@@ -36,8 +36,8 @@ export const navByRole = {
     { label: "Manage Executive", to: "/bank-manager/manage-executive", icon: Users },
     { label: "All Executives", to: "/bank-manager/executives", icon: ClipboardCheck },
     { label: "All Dealerships", to: "/bank-manager/dealerships", icon: Building2 },
-    { label: "Dead Cases", to: "/bank-manager/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
+      { label: "Dead Cases", to: "/bank-manager/dead-cases", icon: FileX2 },
       { label: "Rejected", to: "/bank-manager/rejected", icon: FileX2 },
       { label: "Disbursed", to: "/bank-manager/disbursed", icon: FileText },
     ] },
@@ -45,8 +45,8 @@ export const navByRole = {
   "loan-executive": [
     { label: "Total Leads", to: "/loan-executive/leads", icon: ClipboardList },
     { label: "Status", to: "/loan-executive/status", icon: FileClock },
-    { label: "Dead Cases", to: "/loan-executive/dead-cases", icon: FileX2 },
     { label: "More", icon: MoreHorizontal, children: [
+      { label: "Dead Cases", to: "/loan-executive/dead-cases", icon: FileX2 },
       { label: "Rejected", to: "/loan-executive/rejected", icon: FileX2 },
       { label: "Disbursed", to: "/loan-executive/disbursed", icon: FileText },
     ] },

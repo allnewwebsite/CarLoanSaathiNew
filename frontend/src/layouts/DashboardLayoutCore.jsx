@@ -14,7 +14,7 @@ const scheduleIdle = window.requestIdleCallback || ((callback) => window.setTime
 const cancelIdle = window.cancelIdleCallback || window.clearTimeout;
 
 function isLifecycleArchivePath(pathname = "") {
-  return /\/(rejected|disbursed)\/?$/.test(String(pathname));
+  return /\/(dead-cases|rejected|disbursed)\/?$/.test(String(pathname));
 }
 
 function DashboardContentFallback() {

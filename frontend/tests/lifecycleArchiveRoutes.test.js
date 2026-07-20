@@ -54,9 +54,20 @@ test("Dead Cases reuses the shared blue policy banner with its own lifecycle cop
   assert.match(deadCases, /must create a completely new case/);
 });
 
-test("More is session-local, collapsed by default, and route-expanded only for archive pages", () => {
+test("More is session-local, collapsed by default, and route-expanded for every archive page", () => {
   const layout = fs.readFileSync(path.join(src, "layouts/DashboardLayoutCore.jsx"), "utf8");
+  assert.match(layout, /dead-cases\|rejected\|disbursed/);
   assert.match(layout, /useState\(\(\) => isLifecycleArchivePath\(window\.location\.pathname\)\)/);
   assert.match(layout, /setMoreOpen\(isLifecycleArchivePath\(location\.pathname\)\)/);
   assert.doesNotMatch(layout, /localStorage\.(?:getItem|setItem)\([^\n]*more/i);
+});
+
+test("Dead Cases is grouped once under More for every operational portal", () => {
+  for (const [role, prefix] of [["gm", "gm"], ["finance-desk", "finance"], ["bank-manager", "bank-manager"], ["loan-executive", "loan-executive"]]) {
+    const section = nav.match(new RegExp(`"${role}": \\[([\\s\\S]*?)\\n  \\],`))?.[1] || "";
+    assert.equal((section.match(new RegExp(`/${prefix}/dead-cases`, "g")) || []).length, 1);
+    const more = section.slice(section.indexOf('{ label: "More"'));
+    assert.ok(more.indexOf("Dead Cases") < more.indexOf("Rejected"));
+    assert.ok(more.indexOf("Rejected") < more.indexOf("Disbursed"));
+  }
 });
