@@ -123,7 +123,8 @@ async function applyLeadStatusSideEffects({ req, existing, lead, nextStatus }) {
     leadId: req.params.id,
     dealerEmail: lead.dealerEmail || lead.createdBy,
     admin: true,
-    meta: { caseId: lead.caseId },
+    meta: { caseId: lead.caseId, status: nextStatus, eventVersion: lead.statusUpdatedAt || lead.updatedAt },
+    leadSnapshot: lead,
   });
   runLeadSideEffects("whatsapp-lead-status", [
     () => nextStatus === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS
@@ -377,11 +378,22 @@ export async function updateLeadStatus(req, res, next) {
     assertLeadMutable(existing);
     if (!(await canAccessLead(req, existing))) return res.status(403).json({ message: "Lead access denied" });
     const nextStatus = assertValidStatusTransition(existing?.status, req.body.status);
+    const now = new Date().toISOString();
+    const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
+    if (nextStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
+      return res.status(400).json({ message: "Rejection reason is required", code: "REJECTION_REASON_REQUIRED" });
+    }
     const statusUpdate = {
       status: nextStatus,
-      statusUpdatedAt: new Date().toISOString(),
+      statusUpdatedAt: now,
       statusUpdatedBy: req.user?.email || req.user?.uid || null,
-      ...statusAutomationPatch(nextStatus, new Date().toISOString(), existing),
+      ...statusAutomationPatch(nextStatus, now, existing),
+      ...(nextStatus === LEAD_STATUSES.REJECTED ? {
+        rejectionReason,
+        rejectionRemarks: req.body.remarks || rejectionReason,
+        rejectedAt: now,
+        rejectedBy: req.user?.email || req.user?.uid || null,
+      } : {}),
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);
     clearLeadMutationCaches(req.params.id);

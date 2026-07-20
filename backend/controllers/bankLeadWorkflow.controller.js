@@ -285,6 +285,9 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   const now = new Date().toISOString();
   const executiveName = partner.name || partner.fullName || partner.email || req.user?.email;
   const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
+  if (normalizedStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
+    throw Object.assign(new Error("Rejection reason is required"), { status: 400, code: "REJECTION_REASON_REQUIRED" });
+  }
   const statusPayload = {
     status: normalizedStatus,
     ...statusAutomationPatch(normalizedStatus, now, lead),
@@ -396,24 +399,6 @@ export function queueBankLeadStatusSideEffects({ req, lead, updated, partner, no
         message: statusNotificationMessage,
         leadId,
         dealerEmail: dealershipId,
-        recipientRole: "bank-manager",
-        recipientId: bankId,
-        priority: "medium",
-        entityType: "lead",
-        entityId: leadId,
-        actionUrl: `/bank-manager/leads/${leadId}`,
-        dealershipId,
-        bankId,
-        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
-        leadSnapshot: updated,
-        meta: { ...statusNotificationMeta, dedupeKey: "status-changed-bank-manager" },
-      }),
-      createNotification({
-        type: "STATUS_CHANGED",
-        title: "Case Status Updated",
-        message: statusNotificationMessage,
-        leadId,
-        dealerEmail: dealershipId,
         recipientRole: "finance-desk",
         recipientId: dealershipId,
         priority: "medium",
@@ -424,25 +409,7 @@ export function queueBankLeadStatusSideEffects({ req, lead, updated, partner, no
         bankId,
         assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
         leadSnapshot: updated,
-        meta: { ...statusNotificationMeta, pendingDocuments: requestedDocuments, pendingDocumentReason, dedupeKey: "status-changed-finance-desk" },
-      }),
-      createNotification({
-        type: "STATUS_CHANGED",
-        title: "Case Status Updated",
-        message: statusNotificationMessage,
-        leadId,
-        dealerEmail: dealershipId,
-        recipientRole: "gm",
-        recipientId: dealershipId,
-        priority: "medium",
-        entityType: "lead",
-        entityId: leadId,
-        actionUrl: `/gm/leads/${leadId}`,
-        dealershipId,
-        bankId,
-        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
-        leadSnapshot: updated,
-        meta: { ...statusNotificationMeta, dedupeKey: "status-changed-gm" },
+        meta: { ...statusNotificationMeta, pendingDocuments: requestedDocuments, pendingDocumentReason, eventVersion: updated.statusUpdatedAt || updated.updatedAt },
       }),
       isPendingDocumentStatus
         ? queueDocumentsRequiredWhatsApp({ lead: updated, documents: requestedDocuments })

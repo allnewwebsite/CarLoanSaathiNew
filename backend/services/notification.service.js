@@ -20,17 +20,38 @@ function safeNotificationId(...parts) {
   return `notification_${Buffer.from(key).toString("base64url").slice(0, 180)}`;
 }
 
-function notificationDedupeId({ type, recipientRole, recipientId, entityType, entityId, caseId, meta = {} } = {}) {
+function notificationDedupeId({ eventId, type, entityType, entityId, caseId, eventVersion, meta = {} } = {}) {
   return safeNotificationId(
-    meta.notificationId || meta.dedupeKey || "",
-    recipientRole || "",
-    recipientId || "",
+    eventId || meta.eventId || meta.notificationId || "",
     canonicalNotificationType(type),
     entityType || "",
     entityId || "",
     caseId || "",
+    eventVersion || "",
     meta.status || meta.action || "",
+    meta.documentId || meta.documentType || "",
   );
+}
+
+function notificationEventVersion({ lead = {}, meta = {}, requestId = null } = {}) {
+  return meta.eventVersion
+    || meta.statusUpdatedAt
+    || lead.statusUpdatedAt
+    || lead.acceptedAt
+    || lead.documentsRequestedAt
+    || lead.documentsUploadedAt
+    || lead.deadCaseDate
+    || lead.deadCaseRestoredAt
+    || lead.reassignedAt
+    || lead.assignmentTimestamp
+    || lead.assignedAt
+    || lead.updatedAt
+    || meta.documentId
+    || meta.status
+    || meta.action
+    || meta.reason
+    || requestId
+    || "initial";
 }
 
 function actorId(actor = {}) {
@@ -117,6 +138,7 @@ export async function createNotification({
   deliveryChannels = ["in-app"],
   source = "api",
   requestId = null,
+  eventId = null,
   leadSnapshot = null,
 }) {
   const lead = leadSnapshot || null;
@@ -127,18 +149,29 @@ export async function createNotification({
   const resolvedEntityId = entityId || leadId || caseId || null;
   const rendered = renderNotificationTemplate(type, { ...mergedMeta, title, message, caseId });
   const normalizedPriority = GOVERNANCE_LIMITS.notifications.priorities.includes(priority) ? priority : rendered.priority;
+  const eventVersion = notificationEventVersion({ lead: lead || {}, meta: mergedMeta, requestId });
+  const resolvedEventId = eventId || mergedMeta.eventId || safeNotificationId(
+    "business-event",
+    canonicalNotificationType(type),
+    entityType,
+    resolvedEntityId,
+    caseId,
+    eventVersion,
+  );
   const notificationId = notificationDedupeId({
+    eventId: resolvedEventId,
     type,
-    recipientRole: recipientRole || (admin ? "super-admin" : null),
-    recipientId: targetUserId,
     entityType,
     entityId: resolvedEntityId,
     caseId,
+    eventVersion,
     meta: mergedMeta,
   });
   const now = new Date().toISOString();
   const notificationPayload = {
     id: notificationId,
+    eventId: resolvedEventId,
+    eventVersion,
     recipientId: targetUserId,
     recipientEmail: targetEmail || targetUserId,
     userId: targetUserId,
@@ -186,7 +219,7 @@ export async function createNotification({
     return { created: true, notification: notificationPayload };
   });
   if (!creation.created) {
-    logInfo("Notification deduplicated", { notificationId, type, recipientRole, recipientId: targetUserId, caseId });
+    logInfo("Notification deduplicated", { notificationId, eventId: resolvedEventId, type, recipientRole, recipientId: targetUserId, caseId });
     return creation.notification;
   }
   const notification = creation.notification;
@@ -241,7 +274,7 @@ export async function createNotification({
     meta: { notificationId: notification.id, type, caseId, requestId },
   })).catch((error) => logError("Notification audit failed", { notificationId: notification.id, error: error.message }));
 
-  logInfo("Notification created", { notificationId: notification.id, type, recipientRole: notification.recipientRole, recipientId: notification.recipientId, caseId });
+  logInfo("Notification created", { notificationId: notification.id, eventId: resolvedEventId, type, recipientRole: notification.recipientRole, recipientId: notification.recipientId, caseId });
   return notification;
 }
 
@@ -287,8 +320,6 @@ export async function getNotifications({ query = {}, actor = {} } = {}) {
 function canAccessNotification(item, actor = {}) {
   const actorId = actor.email || actor.uid;
   if (actor.role === "super-admin") return true;
-  const expectedRole = item.recipientRole || item.role || "";
-  if (expectedRole && expectedRole !== actor.role && item.recipientId !== actorId && item.userId !== actorId) return false;
   if (item.recipientId === actorId || item.recipientEmail === actorId || item.userId === actorId || item.dealerEmail === actorId || item.partnerId === actorId) return true;
   if (["finance-desk", "gm"].includes(actor.role)) {
     return Boolean(actor.dealershipId && item.dealershipId === actor.dealershipId);
@@ -309,6 +340,8 @@ function canAccessNotification(item, actor = {}) {
       executiveIdentityValues(actor),
     );
   }
+  const expectedRole = item.recipientRole || item.role || "";
+  if (expectedRole && expectedRole !== actor.role) return false;
   return false;
 }
 

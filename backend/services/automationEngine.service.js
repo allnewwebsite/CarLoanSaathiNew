@@ -2,7 +2,7 @@ import { deleteRecord, deleteRecordsByQuery, queryRecords, updateRecord } from "
 import { createNotification } from "./notification.service.js";
 import { reassignLeadToNextBranchExecutive } from "./assignment.service.js";
 import { moveLeadToDeadCase } from "./deadCase.service.js";
-import { removeLeadProjections } from "./projection.service.js";
+import { removeLeadProjections, syncLeadProjectionSoon } from "./projection.service.js";
 import { deleteLeadDocument } from "./storage.service.js";
 import { clearCachedTags, clearCachedValue } from "./ttlCache.service.js";
 import { logError, logInfo } from "./logger.service.js";
@@ -125,20 +125,26 @@ export async function backfillAutomationMetadata() {
     if (!lead.lastWorkflowActionAt) {
       patch.lastWorkflowActionAt = lead.statusUpdatedAt || lead.updatedAt || patch.acceptedAt || assignmentAt || lead.createdAt;
     }
-    if ([LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(normalizeStatus(lead.status)) && !lead.terminalStatusAt) {
-      const terminalAt = lead.statusUpdatedAt || lead.updatedAt || lead.createdAt;
-      patch.terminalStatusAt = terminalAt;
-      patch.terminalVisibleUntil = addMilliseconds(terminalAt, AUTOMATION_POLICY.terminalActiveMs);
-      patch.workflowLocation = currentWorkflowLocation({ ...lead, terminalStatusAt: terminalAt });
-      patch.retentionDueAt = addCalendarMonths(terminalAt);
+    if ([LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(normalizeStatus(lead.status))) {
+      const terminalAt = lead.terminalStatusAt || lead.statusUpdatedAt || lead.updatedAt || lead.createdAt;
+      const archiveLocation = currentWorkflowLocation({ ...lead, terminalStatusAt: terminalAt });
+      if (!lead.terminalStatusAt) patch.terminalStatusAt = terminalAt;
+      if (lead.terminalVisibleUntil) patch.terminalVisibleUntil = null;
+      if (!lead.terminalMovedAt) patch.terminalMovedAt = terminalAt;
+      if (!lead.archivedAt) patch.archivedAt = terminalAt;
+      if (lead.workflowLocation !== archiveLocation) patch.workflowLocation = archiveLocation;
+      if (!lead.retentionDueAt) patch.retentionDueAt = addCalendarMonths(terminalAt);
+      if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED && !lead.rejectedAt) patch.rejectedAt = terminalAt;
     }
     if (lead.isDeadCase === true && !lead.retentionDueAt && lead.deadCaseDate) {
       patch.retentionDueAt = addCalendarMonths(lead.deadCaseDate);
     }
     if (!Object.keys(patch).length) continue;
-    await updateRecord("leads", lead.id, patch, { mutationRole: "finance-desk" }).catch((error) => {
+    const updatedLead = await updateRecord("leads", lead.id, patch, { mutationRole: "finance-desk" }).catch((error) => {
       logError("Automation metadata backfill failed", { leadId: lead.id, error: error.message });
+      return null;
     });
+    if (updatedLead) syncLeadProjectionSoon(updatedLead);
     updated += 1;
   }
   return { checked: leads.length, updated };

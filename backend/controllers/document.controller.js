@@ -119,7 +119,7 @@ export async function uploadDocument(req, res, next) {
       message: `${req.body.type || "Document"} uploaded for lead ${lead.caseId || req.body.leadId}`,
       leadId: req.body.leadId,
       recipientRole: "loan-executive",
-      meta: { caseId: lead.caseId, documents: [req.body.type || "Document"] },
+      meta: { caseId: lead.caseId, documentId: document.id, documents: [req.body.type || "Document"] },
     });
     runDocumentSideEffect("whatsapp-documents-uploaded", () => queueDocumentsUploadedWhatsApp({
       lead,

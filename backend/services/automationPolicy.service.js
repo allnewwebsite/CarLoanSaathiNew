@@ -3,7 +3,6 @@ import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 export const AUTOMATION_POLICY = Object.freeze({
   acceptanceSlaMs: 5 * 60 * 60 * 1000,
   inactivitySlaMs: 7 * 24 * 60 * 60 * 1000,
-  terminalActiveMs: 7 * 24 * 60 * 60 * 1000,
   retentionMonths: 3,
 });
 
@@ -86,12 +85,16 @@ export function statusAutomationPatch(status, now = new Date().toISOString(), pr
     lastWorkflowActionAt: now,
     ...(terminal ? {
       terminalStatusAt: terminalAt,
-      terminalVisibleUntil: previousLead.terminalVisibleUntil || addMilliseconds(terminalAt, AUTOMATION_POLICY.terminalActiveMs),
-      workflowLocation: "active",
+      terminalVisibleUntil: null,
+      terminalMovedAt: previousLead.terminalMovedAt || terminalAt,
+      archivedAt: previousLead.archivedAt || terminalAt,
+      workflowLocation: normalized === LEAD_STATUSES.REJECTED ? "rejected" : "disbursed",
       retentionDueAt: previousLead.retentionDueAt || addCalendarMonths(terminalAt),
     } : {
       terminalStatusAt: null,
       terminalVisibleUntil: null,
+      terminalMovedAt: null,
+      archivedAt: null,
       workflowLocation: "active",
       retentionDueAt: null,
     }),
@@ -99,11 +102,10 @@ export function statusAutomationPatch(status, now = new Date().toISOString(), pr
 }
 
 export function currentWorkflowLocation(lead = {}, now = Date.now()) {
+  void now;
   if (lead.isDeadCase === true) return "dead-case";
   const status = normalizeStatus(lead.status);
   if (!TERMINAL_AUTOMATION_STATUSES.has(status)) return "active";
-  const terminalAt = new Date(lead.terminalStatusAt || lead.statusUpdatedAt || lead.updatedAt || lead.createdAt || 0).getTime();
-  if (!Number.isFinite(terminalAt) || now < terminalAt + AUTOMATION_POLICY.terminalActiveMs) return "active";
   return status === LEAD_STATUSES.REJECTED ? "rejected" : "disbursed";
 }
 

@@ -7,9 +7,10 @@ function backoffDelayMs(retryCount) {
   return GOVERNANCE_LIMITS.notifications.retryBaseDelayMs * Math.max(1, 2 ** retryCount);
 }
 
-export async function enqueueNotificationEvent({ type, recipient, priority = "medium", payload = {}, requestId = null }) {
+export async function enqueueNotificationEvent({ eventId = null, type, recipient, priority = "medium", payload = {}, requestId = null }) {
+  const resolvedEventId = eventId || payload.eventId || requestId || `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return createRecord("notificationEvents", {
-    eventId: `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    eventId: resolvedEventId,
     type,
     recipient,
     priority,
@@ -46,6 +47,7 @@ export async function processNotificationEvents({ limit = 10 } = {}) {
         recipientRole: event.recipient?.role,
         userId: event.recipient?.userId,
         ...event.payload,
+        eventId: event.eventId,
         requestId: event.requestId,
         source: "worker",
       });

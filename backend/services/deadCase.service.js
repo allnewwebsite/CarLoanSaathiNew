@@ -92,6 +92,7 @@ async function notifyDeadCaseChange({ lead, eventType, title, message, req }) {
       customerName: lead.fullName || lead.customerName,
       deadCaseReason: lead.deadCaseReason || null,
       deadCaseDate: lead.deadCaseDate || null,
+      eventVersion: lead.deadCaseDate || lead.deadCaseRestoredAt || lead.updatedAt,
       navigateTo: "/finance/dead-cases",
       actor: req.user?.email || req.user?.uid || "finance-desk",
     },

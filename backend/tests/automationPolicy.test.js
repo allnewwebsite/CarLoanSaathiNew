@@ -48,11 +48,12 @@ test("only the assigned executive can accept a pending NEW lead before its SLA",
   assert.throws(() => assertLeadAcceptanceEligible({ lead: { ...lead, status: LEAD_STATUSES.REJECTED }, ownsLead: true }), /closed/i);
 });
 
-test("terminal statuses remain active for seven days then move to their archive location", () => {
+test("terminal statuses enter their archive location immediately", () => {
   const terminalAt = "2026-02-01T00:00:00.000Z";
   const rejected = { status: LEAD_STATUSES.REJECTED, ...statusAutomationPatch(LEAD_STATUSES.REJECTED, terminalAt) };
-  assert.equal(currentWorkflowLocation(rejected, new Date("2026-02-07T23:59:59.999Z").getTime()), "active");
-  assert.equal(currentWorkflowLocation(rejected, new Date("2026-02-08T00:00:00.000Z").getTime()), "rejected");
+  assert.equal(rejected.workflowLocation, "rejected");
+  assert.equal(rejected.archivedAt, terminalAt);
+  assert.equal(currentWorkflowLocation(rejected, new Date(terminalAt).getTime()), "rejected");
 });
 
 test("retention uses exactly three calendar months including month-end clamping", () => {
