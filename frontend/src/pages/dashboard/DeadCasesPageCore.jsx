@@ -27,10 +27,7 @@ export function DeadCasesPage({ audience = "finance" }) {
         <p className="mt-1 text-sm text-slate-500">Cases removed from the active loan workflow for lifecycle reference.</p>
       </div>
 
-      <PolicyInformationBanner
-        title="Dead Case Policy"
-        description="Cases automatically move to Dead Cases when there is no status update for 7 calendar days after a Loan Executive accepts ownership. Dead Cases remain available in the CarLoanSaathi ecosystem for 3 calendar months for reference and search purposes. After 3 calendar months, all customer information, uploaded documents, workflow history, notifications, assignments, and related records are permanently deleted from the system. Deleted cases cannot be recovered. If the customer returns in the future, the Dealership Finance Manager must create a completely new case."
-      />
+      <PolicyInformationBanner kind="dead" />
 
       <div className="flex justify-end">
         <div className="flex w-full flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:w-auto sm:flex-row sm:items-center">

@@ -13,17 +13,48 @@ const COPY = {
   },
 };
 
+const POLICY_COPY = {
+  dead: {
+    title: "Dead Case Policy",
+    lines: [
+      "Auto moved after 7 days without a status update.",
+      "Available for 3 months for reference.",
+      "Permanently deleted after 3 months.",
+      "A new case must be created if the customer returns.",
+    ],
+  },
+  rejected: {
+    title: "Rejected Case Policy",
+    lines: [
+      "Rejected cases are archived automatically.",
+      "Available for 3 months for reference.",
+      "Permanently deleted after 3 months.",
+    ],
+  },
+  disbursed: {
+    title: "Disbursed Case Policy",
+    lines: [
+      "Successfully completed loan cases.",
+      "Available for 3 months for reference.",
+      "Permanently deleted after 3 months.",
+    ],
+  },
+};
+
 export function lifecycleArchiveCopy(kind) {
   return COPY[kind] || COPY.rejected;
 }
 
-export function PolicyInformationBanner({ title, description }) {
+export function PolicyInformationBanner({ kind = "rejected" }) {
+  const policy = POLICY_COPY[kind] || POLICY_COPY.rejected;
   return (
-    <section className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-950">
-      <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#0d47a1]" aria-hidden="true" />
-      <div>
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-blue-900">{description}</p>
+    <section className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-blue-950">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0d47a1]" aria-hidden="true" />
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold leading-5">{policy.title}</h2>
+        <ul className="mt-1 grid gap-x-6 gap-y-0.5 text-xs leading-5 text-blue-900 sm:grid-cols-2" role="list">
+          {policy.lines.map((line) => <li key={line} className="flex min-w-0 gap-1.5"><span aria-hidden="true">•</span><span>{line}</span></li>)}
+        </ul>
       </div>
     </section>
   );
@@ -37,7 +68,7 @@ export function LifecycleArchiveHeader({ kind, search, onSearch }) {
         <h1 className="text-xl font-semibold text-slate-950">{copy.title}</h1>
         <p className="mt-1 text-sm text-slate-500">{copy.subtitle}</p>
       </div>
-      <PolicyInformationBanner title="Archive Retention Policy" description="Rejected and Disbursed cases are retained for 3 calendar months from the date they enter their final lifecycle state. After 3 calendar months, all customer information, uploaded documents, workflow history, notifications, assignments, and related records are permanently deleted from the CarLoanSaathi ecosystem. This action cannot be reversed." />
+      <PolicyInformationBanner kind={kind} />
       <label className="relative block rounded-lg border border-slate-200 bg-white p-3">
         <span className="sr-only">Search archived cases</span>
         <Search className="absolute left-6 top-5.5 h-4 w-4 text-slate-400" />

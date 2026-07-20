@@ -28,11 +28,11 @@ test("active Status tabs exclude rejected and disbursed lifecycle archives", () 
   assert.doesNotMatch(currentWorkflow, /DISBURSED/);
 });
 
-test("archive pages share one retention banner and existing archive API filter", () => {
+test("archive pages share compact policy banners and existing archive API filter", () => {
   const header = fs.readFileSync(path.join(src, "components/LifecycleArchiveHeader.jsx"), "utf8");
-  assert.match(header, /Archive Retention Policy/);
-  assert.match(header, /3 calendar months/);
-  assert.match(header, /cannot be reversed/);
+  assert.match(header, /Rejected Case Policy/);
+  assert.match(header, /Disbursed Case Policy/);
+  assert.match(header, /Available for 3 months for reference/);
   for (const relative of [
     "pages/dashboard/finance/FinanceLeadListScreens.jsx",
     "pages/dashboard/GmTrackingPanel.jsx",
@@ -49,9 +49,19 @@ test("Dead Cases reuses the shared blue policy banner with its own lifecycle cop
   const deadCases = fs.readFileSync(path.join(src, "pages/dashboard/DeadCasesPageCore.jsx"), "utf8");
   assert.match(header, /export function PolicyInformationBanner/);
   assert.match(deadCases, /<PolicyInformationBanner/);
-  assert.match(deadCases, /Dead Case Policy/);
-  assert.match(deadCases, /no status update for 7 calendar days/);
-  assert.match(deadCases, /must create a completely new case/);
+  assert.match(deadCases, /kind="dead"/);
+  assert.match(header, /Dead Case Policy/);
+  assert.match(header, /Auto moved after 7 days without a status update/);
+  assert.match(header, /A new case must be created if the customer returns/);
+});
+
+test("archive policy banners use only compact shared bullet copy", () => {
+  const header = fs.readFileSync(path.join(src, "components/LifecycleArchiveHeader.jsx"), "utf8");
+  assert.match(header, /Rejected Case Policy/);
+  assert.match(header, /Disbursed Case Policy/);
+  assert.match(header, /sm:grid-cols-2/);
+  assert.doesNotMatch(header, /all customer information|This action cannot be reversed|3 calendar months/);
+  assert.doesNotMatch(header, /<p[^>]*>\{description\}<\/p>/);
 });
 
 test("More is session-local, collapsed by default, and route-expanded for every archive page", () => {
