@@ -113,6 +113,7 @@ import {
   validateBankLocation,
   writeAuditLog,
 } from './bankShared.controller.js';
+import { currentWorkflowLocation } from "../services/automationPolicy.service.js";
 import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 import {
   bankExecutiveCanonicalUser,
@@ -181,7 +182,7 @@ export async function getBankExecutives(req, res, next) {
           || lead.assignedExecutiveName === executive.name
           || lead.assignedExecutiveName === executive.fullName
         );
-        const activeCases = cases.filter((lead) => ![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED, LEAD_STATUSES.CLOSED].includes(normalizeStatus(lead.status)));
+        const activeCases = cases.filter((lead) => currentWorkflowLocation(lead) === "active");
         return {
           ...safeExecutive,
           executiveId,

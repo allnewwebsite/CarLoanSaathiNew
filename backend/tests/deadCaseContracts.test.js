@@ -110,6 +110,9 @@ test("Finance Desk can move a lead to dead cases and required fields are enforce
   });
 
   assert.equal(updated.isDeadCase, true);
+  assert.equal(updated.workflowLocation, "dead-case");
+  assert.ok(updated.archivedAt);
+  assert.ok(updated.terminalStatusAt);
   assert.equal(updated.deadCaseReason, "Customer Not Interested");
   assert.equal(updated.deadCaseNotes, "Customer confirmed they do not want to continue.");
   assert.ok(updated.deadCaseDate);
@@ -157,6 +160,7 @@ test("dead cases leave active lists, enter dead-case lists, search by reason, an
 
   const restored = await restoreDeadCase({ req, leadId: deadLead.id });
   assert.equal(restored.isDeadCase, false);
+  assert.equal(restored.workflowLocation, "active");
 
   const restoredTimeline = await queryRecords("leadTimeline", {
     where: [{ field: "leadId", value: deadLead.id }],

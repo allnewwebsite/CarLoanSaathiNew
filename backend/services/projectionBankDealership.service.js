@@ -2,6 +2,7 @@ import { deleteRecord, getRecord, getRecordsByIds, queryRecords, upsertRecord } 
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { freshProjectionRows } from "./projectionFreshness.service.js";
+import { currentWorkflowLocation } from "./automationPolicy.service.js";
 import {
   isoNow,
   latestTimestamp,
@@ -22,9 +23,8 @@ function isDisbursedStatus(status) {
   return normalizeStatus(status) === LEAD_STATUSES.DISBURSED;
 }
 
-function isActiveStatus(status) {
-  const normalized = normalizeStatus(status);
-  return ![LEAD_STATUSES.DISBURSED, LEAD_STATUSES.REJECTED].includes(normalized);
+function isActiveLead(lead = {}) {
+  return currentWorkflowLocation(lead) === "active";
 }
 
 function canonicalDealershipName(dealership = {}) {
@@ -123,7 +123,7 @@ export async function syncBankDealershipProjection(lead = {}) {
   if (!dealership || !canonicalDealershipName(dealership)) return null;
   const seed = dealershipSummarySeed(lead, scope, dealership);
   const currentDisbursed = isDisbursedStatus(lead.status);
-  const currentActive = isActiveStatus(lead.status);
+  const currentActive = isActiveLead(lead);
   const sameRelationship = previous?.bankId === scope.bankId && previous?.dealershipId === scope.dealershipId;
 
   if (previous && !sameRelationship) {

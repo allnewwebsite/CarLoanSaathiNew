@@ -124,9 +124,8 @@ function localFilters(leads, query = {}) {
   const city = String(query.city || "").trim().toLowerCase();
   const date = String(query.date || "").trim();
   const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
-  const globalSearch = ["1", "true"].includes(String(query.globalSearch || "").toLowerCase());
   return leads.filter((lead) => {
-    if (lead.isDeadCase === true && !(search && globalSearch)) return false;
+    if (lead.isDeadCase === true) return false;
     const normalizedQueryStatus = normalizeStatus(status);
     const financeStatus = normalizeFinanceStatus(lead.status);
     const leadStatus = normalizeStatus(lead.status);
@@ -325,7 +324,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
   });
   return pageResponse({
     data: result.data
-      .filter((lead) => lead.isDeadCase !== true || Boolean(String(query.search || "").trim() && ["1", "true"].includes(String(query.globalSearch || "").toLowerCase())))
+      .filter((lead) => lead.isDeadCase !== true)
       .map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) })),
     limit,
     nextCursor: result.nextCursor,

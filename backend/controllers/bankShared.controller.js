@@ -35,6 +35,7 @@ import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.serv
 import { recordMonitoringSignal } from "../services/monitoringCenter.service.js";
 import { loanCapacityUpperBound, normalizeIfsc, normalizeLoanCapacity, validateBankLocation } from "../services/bankLocationMaster.service.js";
 import { assertLeadMutable } from "../utils/deadCase.js";
+import { currentWorkflowLocation } from "../services/automationPolicy.service.js";
 import {
   anyMatch,
   bankManagerCanAccessLead,
@@ -430,7 +431,8 @@ export async function clearExecutiveLeadAssignments({ identity, uid, email, mobi
 }
 
 export function activeExecutiveLeads(leads = []) {
-  return leads.filter((lead) => EXECUTIVE_ACTIVE_LEAD_STATUSES.has(normalizeStatus(lead.status || lead.assignmentStatus)));
+  return leads.filter((lead) => currentWorkflowLocation(lead) === "active"
+    && EXECUTIVE_ACTIVE_LEAD_STATUSES.has(normalizeStatus(lead.status || lead.assignmentStatus)));
 }
 
 export async function requireAssignedLead(req) {
@@ -609,7 +611,7 @@ export function groupDealershipsFromLeads(leads = []) {
     };
     current.totalCases += 1;
     if (normalizeStatus(lead.status) === LEAD_STATUSES.DISBURSED) current.totalDisbursedCases += 1;
-    if (![LEAD_STATUSES.DISBURSED, LEAD_STATUSES.REJECTED].includes(normalizeStatus(lead.status))) current.activeCases += 1;
+    if (currentWorkflowLocation(lead) === "active") current.activeCases += 1;
     const leadTime = lead.updatedAt || lead.statusUpdatedAt || lead.createdAt || lead.generatedAt;
     if (leadTime && (!current.lastLeadAt || String(leadTime) > String(current.lastLeadAt))) current.lastLeadAt = leadTime;
     grouped.set(identity.dealershipId, current);

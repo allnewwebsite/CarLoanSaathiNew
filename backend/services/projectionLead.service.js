@@ -370,10 +370,8 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
         return null;
       }
       const mapStartedAt = Date.now();
-      const search = String(query.search || "").trim();
-      const globalSearch = ["1", "true"].includes(String(query.globalSearch || "").toLowerCase());
       const data = freshRows
-        .filter((item) => item.isDeadCase !== true || Boolean(search && globalSearch))
+        .filter((item) => item.isDeadCase !== true)
         .filter((item) => {
           const status = normalizeStatus(item.status);
           if (![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(status)) return true;

@@ -4,7 +4,7 @@ import { AUDIT_ACTIONS, writeAuditLog } from "./audit.service.js";
 import { createNotification } from "./notification.service.js";
 import { syncLeadProjection } from "./projection.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "./realtime.service.js";
-import { addCalendarMonths } from "./automationPolicy.service.js";
+import { addCalendarMonths, currentWorkflowLocation } from "./automationPolicy.service.js";
 import { clearCachedTags } from "./ttlCache.service.js";
 import { DEAD_CASE_REASONS } from "../utils/deadCase.js";
 
@@ -184,6 +184,9 @@ export async function moveLeadToDeadCase({ req, leadId, reason, notes }) {
     lead,
     patch: {
       isDeadCase: true,
+      workflowLocation: "dead-case",
+      archivedAt: lead.archivedAt || now,
+      terminalStatusAt: lead.terminalStatusAt || now,
       deadCaseDate: lead.deadCaseDate || now,
       retentionDueAt: addCalendarMonths(lead.deadCaseDate || now),
       deadCaseBy: actor,
@@ -219,14 +222,16 @@ export async function restoreDeadCase({ req, leadId }) {
     throw error;
   }
   assertDealershipAccess(req, lead);
+  const restoredAt = new Date().toISOString();
+  const restoredLocation = currentWorkflowLocation({ ...lead, isDeadCase: false });
   return persistDeadCaseChange({
     req,
     lead,
     patch: {
       isDeadCase: false,
-      retentionDueAt: null,
-      deadCaseUpdatedAt: new Date().toISOString(),
-      restoredFromDeadCaseAt: new Date().toISOString(),
+      workflowLocation: restoredLocation,
+      deadCaseUpdatedAt: restoredAt,
+      restoredFromDeadCaseAt: restoredAt,
       restoredFromDeadCaseBy: req.user?.email || req.user?.uid || "finance-desk",
     },
     actionType: AUDIT_ACTIONS.LEAD_RESTORED_FROM_DEAD,
