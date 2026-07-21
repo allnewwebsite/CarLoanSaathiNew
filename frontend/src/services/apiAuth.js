@@ -81,6 +81,15 @@ export async function handleAuthResponseError(error, api) {
     return null;
   }
 
+  // Subscription is an entitlement, not an authentication failure. Keep the
+  // scoped JWT/session intact and move only this tab to the renewal page.
+  if (error.response?.status === 403 && ["SUBSCRIPTION_EXPIRED", "SUBSCRIPTION_PAYMENT_REQUIRED"].includes(error.response?.data?.code)) {
+    if (typeof window !== "undefined" && window.location.pathname !== "/subscription-activation") {
+      window.location.assign(error.response?.data?.redirect || "/subscription-activation");
+    }
+    return null;
+  }
+
   if ([401, 403, 423].includes(error.response?.status) && [
     "ACCOUNT_DELETED",
     "ACCOUNT_DISABLED",

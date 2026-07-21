@@ -289,6 +289,25 @@ check("subscription billing is server-verified and blocks only lead creation", (
   ], "subscription Firestore rules");
 });
 
+check("subscription expiry never clears authentication", () => {
+  const subscriptionMiddleware = read("backend/middleware/subscription.js");
+  const apiAuth = read("frontend/src/services/apiAuth.js");
+  const authHelpers = read("frontend/src/context/AuthContext.helpers.js");
+  includesAll(subscriptionMiddleware, [
+    "authenticated: true",
+    "subscriptionExpired: expired",
+    "redirect: \"/subscription-activation\"",
+    "res.status(403)",
+  ], "subscription authentication isolation response");
+  assert(!subscriptionMiddleware.includes("res.status(401)"), "subscription middleware must never use 401 for entitlement blocking");
+  includesAll(apiAuth, [
+    "SUBSCRIPTION_EXPIRED",
+    "SUBSCRIPTION_PAYMENT_REQUIRED",
+    "window.location.assign",
+  ], "subscription-only frontend redirect");
+  assert(!authHelpers.includes('"SUBSCRIPTION_EXPIRED"'), "subscription expiry must not be a session-clear error");
+});
+
 check("SSE ticket, stream, ack, and cleanup contracts remain present", () => {
   const realtimeRoutes = read("backend/routes/realtime.routes.js");
   const realtimeClient = readRealtimeClient();
