@@ -94,7 +94,6 @@ function leadRows(leads, mode = "total") {
         moneyValue(lead.loanAmount || lead.requiredLoanAmount),
         <StatusBadge key="status" lead={lead} />,
       ];
-      if (normalizeStatus(lead.status) === LEAD_STATUSES.REJECTED) cells.push(display(lead.rejectionReason));
       cells.push(
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.assignedExecutiveName),
@@ -252,14 +251,13 @@ export function StatusScreen() {
   const pageTo = (nextPage) => {
     setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)), ...(archiveTerminal ? { archiveTerminal } : {}) });
   };
-  const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
     <div className="space-y-4">
       <SectionTitle title="Status" subtitle="Status lists update from Loan Executive changes." />
       <div className="flex flex-wrap gap-2">
         {statusTabs.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-md border px-3 py-2 text-sm font-medium ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}
       </div>
-      <Table headers={rejected ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"] : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table headers={["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"]} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </div>
   );
 }
@@ -273,9 +271,7 @@ export function ArchiveCasesScreen({ kind }) {
   const copy = lifecycleArchiveCopy(kind);
   const { leads, total, hasMore, loading } = useDealerLeads({ status, archiveTerminal: "1", search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
   const pageTo = (nextPage) => setParams({ page: String(Math.max(Number(nextPage || 1), 1)), ...(search ? { search } : {}) });
-  const headers = kind === "rejected"
-    ? ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"]
-    : ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"];
+  const headers = ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"];
   return (
     <section className="space-y-4">
       <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams(value ? { search: value, page: "1" } : { page: "1" }); }} />

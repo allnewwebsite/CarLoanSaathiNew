@@ -103,14 +103,11 @@ export function StatusPage() {
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       leadStatusLabel(lead),
       dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt),
-      ...(normalizeStatus(status) === LEAD_STATUSES.REJECTED ? [display(lead.rejectionReason || lead.loanRejectionReason)] : []),
       display(lead.assignedExecutiveName || lead.assignedExecutiveEmail),
       <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
     ],
   })), [navigate, rows, status]);
-  const headers = normalizeStatus(status) === LEAD_STATUSES.REJECTED
-    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
-    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
+  const headers = ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
   return (
     <section className="space-y-4">
       <PageTitle title="Status" />
@@ -131,10 +128,8 @@ export function ArchiveCasesPage({ kind }) {
   const { rows, total, hasMore, loading, page, onPage } = useBankLeads(debouncedSearch, status, "1");
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
-    cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), moneyValue(lead.loanAmount || lead.requiredLoanAmount), leadStatusLabel(lead), dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt), ...(kind === "rejected" ? [display(lead.rejectionReason || lead.loanRejectionReason)] : []), display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>],
+    cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), moneyValue(lead.loanAmount || lead.requiredLoanAmount), leadStatusLabel(lead), dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt), display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>],
   })), [kind, navigate, rows]);
-  const headers = kind === "rejected"
-    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
-    : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
+  const headers = ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
   return <section className="space-y-4"><LifecycleArchiveHeader kind={kind} search={search} onSearch={setSearch} /><Table title={copy.title} headers={headers} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} emptyMessage={copy.empty} /></section>;
 }

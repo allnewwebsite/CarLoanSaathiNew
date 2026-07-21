@@ -55,7 +55,7 @@ export function FinanceLeadDetailPage() {
           </div>
         ) : null}
         <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Assigned Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, financeStatus(lead)]].map(([label, value]) => (
+          {[["Case ID", caseId(lead)], ["Customer", lead.fullName], ["City", lead.city], ["Assigned Bank", bankDisplay(lead)], ["Loan Amount", moneyValue(lead.loanAmount)], ["Salesperson", lead.assignedSalesperson], ["Finance Manager", lead.financeManagerName || lead.assignedFinanceManager], [LEAD_TABLE_LABELS.assignedExecutive, lead.assignedExecutiveName], [LEAD_TABLE_LABELS.executiveMobile, lead.assignedExecutiveMobile || lead.executiveMobile], [LEAD_TABLE_LABELS.currentStatus, financeStatus(lead)], ...(lead.rejectionReason || lead.loanRejectionReason ? [["Rejection Reason", lead.rejectionReason || lead.loanRejectionReason]] : []), ...(lead.disbursementRemarks ? [["Disbursement Remarks", lead.disbursementRemarks]] : [])].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase text-slate-500">{label}</p>
               <p className="mt-1 font-medium text-slate-900">{value || "-"}</p>

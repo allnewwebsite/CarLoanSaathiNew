@@ -182,7 +182,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         display(lead.financeManagerName || lead.assignedFinanceManager),
         display(lead.financeManagerMobile),
         dateTime(lead.updatedAt || lead.statusUpdatedAt || lead.createdAt),
-        ...(normalizeStatus(status) === LEAD_STATUSES.REJECTED ? [display(lead.rejectionReason || lead.loanRejectionReason), dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
+        ...(normalizeStatus(status) === LEAD_STATUSES.REJECTED ? [dateTime(lead.rejectedAt || lead.updatedAt), display(lead.updatedByExecutiveName || lead.rejectedBy)] : []),
         <button key="docs" onClick={() => navigate(`/loan-executive/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>,
       ]
       : [
@@ -205,7 +205,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
   }));
 
   const statusHeaders = normalizeStatus(status) === LEAD_STATUSES.REJECTED
-    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Rejection Reason", "Rejection Timestamp", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
+    ? ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Rejection Timestamp", LEAD_TABLE_LABELS.assignedExecutive, "Documents"]
     : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.lastUpdated, "Documents"];
 
   return (

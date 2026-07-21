@@ -43,7 +43,7 @@ export function caseRows(leads) {
   }));
 }
 
-export function statusRows(leads, rejected) {
+export function statusRows(leads) {
   return leads.map((lead) => {
     const cells = [
       caseId(lead),
@@ -52,7 +52,6 @@ export function statusRows(leads, rejected) {
       moneyValue(lead.loanAmount || lead.requiredLoanAmount),
       statusLabel(lead),
     ];
-    if (rejected) cells.push(display(lead.rejectionReason || lead.loanRejectionReason));
     cells.push(dateValue(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt));
     cells.push(timeValue(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt));
     cells.push(<DocumentsButton key="docs" lead={lead} />);

@@ -77,12 +77,9 @@ export function portalWorkflowStatus(value) {
 
 export function portalLeadStatusLabel(leadOrStatus) {
   const lead = leadOrStatus && typeof leadOrStatus === "object" ? leadOrStatus : null;
+  if (lead?.isDeadCase === true || lead?.lifecycleState === "DEAD" || lead?.currentLocation === "dead-case") return "Dead";
   const rawStatus = lead ? lead.status || lead.assignmentStatus || LEAD_STATUSES.NEW : leadOrStatus;
   const status = portalWorkflowStatus(rawStatus);
-  if (status === LEAD_STATUSES.REJECTED) {
-    const reason = cleanPortalText(lead?.rejectionReason || lead?.loanRejectionReason || lead?.rejectionRemarks);
-    return reason ? `Loan Rejected: ${reason}` : "Rejected";
-  }
   return statusLabel(status);
 }
 

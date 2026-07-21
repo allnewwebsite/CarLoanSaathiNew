@@ -77,14 +77,13 @@ function StatusScreen() {
   const pageTo = (nextPage) => {
     setParams({ status, page: String(Math.max(Number(nextPage || 1), 1)), ...(archiveTerminal ? { archiveTerminal } : {}) });
   };
-  const rejected = normalizeStatus(status) === LEAD_STATUSES.REJECTED;
   return (
     <section className="space-y-4">
       <SectionTitle title="Status" subtitle="Bank-updated loan statuses for this dealership." />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statusCards.map((item) => <button key={item.value} onClick={() => choose(item.value)} className={`rounded-lg border p-4 text-left text-sm font-semibold ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700 hover:border-[#0d47a1]/40"}`}>{item.label}</button>)}
       </div>
-      <Table title="Status Cases" headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
+      <Table title="Status Cases" headers={["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"]} rows={statusRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} />
     </section>
   );
 }
@@ -97,12 +96,11 @@ function ArchiveCasesScreen({ kind }) {
   const status = kind === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED;
   const copy = lifecycleArchiveCopy(kind);
   const { leads, total, hasMore, loading } = useGmLeads({ status, archiveTerminal: "1", search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
-  const rejected = kind === "rejected";
   const pageTo = (nextPage) => setParams({ page: String(Math.max(Number(nextPage || 1), 1)), ...(search ? { search } : {}) });
   return (
     <section className="space-y-4">
       <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams(value ? { search: value, page: "1" } : { page: "1" }); }} />
-      <Table title={copy.title} headers={rejected ? ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Rejection Reason", LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"] : ["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"]} rows={statusRows(leads, rejected)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={copy.empty} />
+      <Table title={copy.title} headers={["Case ID", "Customer Name", "Assigned Salesperson", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, "Last Updated Time", "Documents"]} rows={statusRows(leads)} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={copy.empty} />
     </section>
   );
 }
