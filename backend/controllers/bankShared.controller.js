@@ -6,6 +6,7 @@ import { addTimelineEvent, getTimelineForLead, TIMELINE_EVENTS } from "../servic
 import { createShortLivedDocumentUrl, deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
+import { LEAD_LIFECYCLE_STATES, lifecycleStateForLead } from "../services/automationPolicy.service.js";
 import { firebaseAdmin } from "../firebase/admin.js";
 import { queryBankLeads, queryExecutiveLeads } from "../services/leadQuery.service.js";
 import { ALERT_SEVERITY, emitOperationalAlert, recordOperationalEvent } from "../services/observability.service.js";
@@ -202,7 +203,23 @@ export function applyFilters(leads, query) {
   const executive = String(query.executive || "").trim().toLowerCase();
   const dealership = String(query.dealership || "").trim().toLowerCase();
   const dealershipId = String(query.dealershipId || "").trim().toLowerCase();
+  const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
+  const requestedStatus = normalizeStatus(query.status);
+  const requestedArchiveLifecycle = requestedStatus === LEAD_STATUSES.REJECTED
+    ? LEAD_LIFECYCLE_STATES.REJECTED
+    : requestedStatus === LEAD_STATUSES.DISBURSED
+      ? LEAD_LIFECYCLE_STATES.DISBURSED
+      : null;
   return leads.filter((lead) => {
+    // This is deliberately applied after every candidate source is merged.
+    // Bank fallback queries can find a lead by bank metadata even after it has
+    // left the active queue, so source-specific filters are not sufficient.
+    const lifecycle = lifecycleStateForLead(lead);
+    const lifecycleOk = archiveTerminal
+      ? (requestedArchiveLifecycle
+        ? lifecycle === requestedArchiveLifecycle
+        : [LEAD_LIFECYCLE_STATES.REJECTED, LEAD_LIFECYCLE_STATES.DISBURSED].includes(lifecycle))
+      : lifecycle === LEAD_LIFECYCLE_STATES.ACTIVE;
     const statusOk = !query.status || normalizeStatus(lead.status) === normalizeStatus(query.status) || lead.assignmentStatus === query.status;
     const dateOk = !query.date || (lead.assignmentTimestamp || lead.createdAt || "").startsWith(query.date);
     const searchOk = !search || leadText(lead).includes(search);
@@ -210,7 +227,7 @@ export function applyFilters(leads, query) {
     const dealershipOk = !dealership || String(lead.dealershipName || lead.dealerEmail || "").toLowerCase() === dealership;
     const dealershipIdOk = !dealershipId || String(lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "").toLowerCase() === dealershipId;
     const pendingDocsOk = !query.pendingDocs || [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.DOCUMENT_RECEIVED, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizeStatus(lead.status));
-    return statusOk && dateOk && searchOk && executiveOk && dealershipOk && dealershipIdOk && pendingDocsOk;
+    return lifecycleOk && statusOk && dateOk && searchOk && executiveOk && dealershipOk && dealershipIdOk && pendingDocsOk;
   });
 }
 

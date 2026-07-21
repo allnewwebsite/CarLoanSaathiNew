@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
+import { applyFilters } from "../controllers/bankShared.controller.js";
 
 test("lead list pagination clamps unsafe limits", () => {
   assert.deepEqual(paginationParams({ limit: "500", page: "2" }), {
@@ -57,4 +58,17 @@ test("lead page response omits non-finite totals and normalizes empty cursors", 
   assert.equal(response.hasMore, false);
   assert.equal("total" in response, false);
   assert.equal(response.source, "projection");
+});
+
+test("merged bank candidate lists never reintroduce terminal leads into active queues", () => {
+  const leads = [
+    { id: "active", status: "NEW" },
+    { id: "rejected", status: "REJECTED", rejectionReason: "Missing documents" },
+    { id: "disbursed", status: "DISBURSED", disbursementRemarks: "Completed" },
+    { id: "dead", status: "NEW", isDeadCase: true },
+  ];
+
+  assert.deepEqual(applyFilters(leads, {}).map((lead) => lead.id), ["active"]);
+  assert.deepEqual(applyFilters(leads, { status: "REJECTED", archiveTerminal: "1" }).map((lead) => lead.id), ["rejected"]);
+  assert.deepEqual(applyFilters(leads, { status: "DISBURSED", archiveTerminal: "1" }).map((lead) => lead.id), ["disbursed"]);
 });
