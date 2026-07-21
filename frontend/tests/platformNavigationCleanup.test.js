@@ -35,3 +35,14 @@ test("Bank Manager analytics navigation, route, page and realtime cache are remo
   });
   assert.equal(fs.existsSync(path.join(root, "pages/bank/BankAnalyticsPage.jsx")), false);
 });
+
+test("shared sidebar uses an icon-only collapse control and contains no session card", () => {
+  const layout = read("layouts/DashboardLayoutCore.jsx");
+
+  assert.match(layout, /ChevronLeft, ChevronRight/);
+  assert.match(layout, /const ToggleIcon = collapsed \? ChevronRight : ChevronLeft/);
+  assert.match(layout, /h-9 w-9 items-center justify-center/);
+  assert.doesNotMatch(layout, />\s*Collapse\s*</);
+  assert.doesNotMatch(layout, />Session</);
+  assert.doesNotMatch(layout, /user\?\.email\?\.slice\(0, 1\)/);
+});

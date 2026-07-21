@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Menu, X } from "lucide-react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { NotificationCenter } from "../components/NotificationCenter.jsx";
 import { PortalUserMenu } from "../components/PortalUserMenu.jsx";
@@ -118,7 +118,7 @@ export function DashboardLayout() {
     });
   }, [nav]);
 
-  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const ToggleIcon = collapsed ? ChevronRight : ChevronLeft;
   const headerEyebrow = user?.role === "bank-manager"
     ? `${user.bankName || "Bank Branch"} — ${user.bankIfsc || "IFSC Pending"}`
     : ["finance-desk", "gm"].includes(user?.role)
@@ -192,25 +192,17 @@ export function DashboardLayout() {
             );
           })}
         </div>
-        <div className="shrink-0 space-y-3">
+        <div className="shrink-0 pt-2">
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`hidden h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition-[background-color,color,transform,width,padding] duration-200 ease-out hover:bg-slate-50 hover:text-[#0d47a1] focus:outline-none focus:ring-2 focus:ring-[#0d47a1]/25 lg:inline-flex ${collapsed ? "lg:w-full lg:justify-center lg:px-2" : "lg:w-fit"}`}
+            className="hidden h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-[background-color,color,transform] duration-200 ease-out hover:bg-slate-50 hover:text-[#0d47a1] focus:outline-none focus:ring-2 focus:ring-[#0d47a1]/25 lg:inline-flex"
           >
-            <ToggleIcon className="h-4 w-4 shrink-0" />
-            <span className={`whitespace-nowrap transition-[opacity,transform,width] duration-200 ease-out ${collapsed ? "lg:w-0 lg:-translate-x-1 lg:opacity-0" : "lg:w-auto lg:translate-x-0 lg:opacity-100"}`}>
-              Collapse
-            </span>
+            <ToggleIcon className="h-4 w-4" aria-hidden="true" />
           </button>
-          <div className={`overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${loanExecutiveMobile ? "hidden lg:block" : ""} ${collapsed ? "lg:px-2" : ""}`}>
-            <p className={`text-xs font-medium uppercase tracking-[0.12em] text-slate-500 ${collapsed ? "lg:hidden" : ""}`}>Session</p>
-            <p className={`hidden text-center text-xs font-semibold text-slate-500 ${collapsed ? "lg:block" : ""}`}>{user?.email?.slice(0, 1)?.toUpperCase() || "U"}</p>
-            <p className={`mt-1 break-words text-sm font-medium leading-5 text-slate-900 transition-[max-height,opacity,transform] duration-200 ease-out ${collapsed ? "lg:max-h-0 lg:-translate-x-1 lg:opacity-0" : "lg:max-h-20 lg:translate-x-0 lg:opacity-100"}`}>{user?.email}</p>
-          </div>
         </div>
       </aside>
       <main className={`min-w-0 transition-[padding] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${collapsed ? "lg:pl-20" : "lg:pl-64"}`}>
