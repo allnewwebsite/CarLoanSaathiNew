@@ -267,6 +267,7 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
     error.status = 400;
     throw error;
   }
+  assertValidStatusTransition(lead.status, normalizedStatus);
   const pendingDocument = String(req.body.pendingDocument || "").trim();
   const requestedDocuments = Array.isArray(req.body.pendingDocumentsRequested)
     ? [...new Map(req.body.pendingDocumentsRequested.map((item) => String(item || "").trim()).filter(Boolean).map((item) => [item.toLowerCase(), item])).values()]
@@ -286,6 +287,16 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
   if (normalizedStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
     throw Object.assign(new Error("Rejection reason is required"), { status: 400, code: "REJECTION_REASON_REQUIRED" });
+  }
+  if (normalizedStatus === LEAD_STATUSES.DISBURSED) {
+    const disbursedAmount = Number(req.body.disbursedAmount);
+    const disbursementDate = String(req.body.disbursementDate || "").trim();
+    if (!Number.isFinite(disbursedAmount) || disbursedAmount <= 0) {
+      throw Object.assign(new Error("A valid disbursed amount is required"), { status: 400, code: "DISBURSED_AMOUNT_REQUIRED" });
+    }
+    if (!disbursementDate || Number.isNaN(Date.parse(disbursementDate))) {
+      throw Object.assign(new Error("A valid disbursement date is required"), { status: 400, code: "DISBURSEMENT_DATE_REQUIRED" });
+    }
   }
   const statusPayload = {
     status: normalizedStatus,
@@ -446,14 +457,34 @@ export async function updateBankLeadStatus(req, res, next) {
     const updated = await updateRecord("leads", lead.id, statusPayload);
     clearLeadDetailCaches(lead.id);
     clearBankSummaryCaches();
-    await syncLeadProjection(updated);
+    let synchronizationPending = false;
+    try {
+      await syncLeadProjection(updated);
+    } catch (syncError) {
+      synchronizationPending = true;
+      logError("Lead status projection synchronization failed", { leadId: lead.id, status: normalizedStatus, error: syncError.message });
+      await recordOperationalEvent({
+        type: "lead_status_projection_sync_failed",
+        severity: ALERT_SEVERITY.HIGH,
+        component: "lead-status-workflow",
+        message: "Canonical lead status was updated but projection synchronization requires retry",
+        entityId: lead.id,
+        requestId: req.requestId,
+        meta: { status: normalizedStatus, previousStatus: lead.status, error: syncError.message },
+      });
+      syncLeadProjectionSoon(updated);
+    }
     publishRealtimeEvent({
       eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED,
       lead: updated,
       actor: req.user,
       data: { status: normalizedStatus, previousStatus: lead.status },
     });
-    res.json({ message: "Lead status updated", lead: updated });
+    res.status(synchronizationPending ? 202 : 200).json({
+      message: synchronizationPending ? "Lead status updated; synchronization is retrying" : "Lead status updated",
+      lead: updated,
+      synchronizationPending,
+    });
     queueBankLeadStatusSideEffects({ req, lead, updated, partner, ...mutation });
   } catch (error) {
     next(error);

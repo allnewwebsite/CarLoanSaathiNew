@@ -406,7 +406,9 @@ check("WhatsApp business notifications are idempotent and backend-only", () => {
     "canonicalEventType",
     "WHATSAPP_NOTIFICATION_DEDUPED",
     "processingWhatsAppKeys",
-    "upsertRecord(\"whatsappQueue\", identity.notificationKey",
+    "runRecordTransaction",
+    "transaction.get(\"whatsappQueue\", identity.notificationKey)",
+    "transaction.set(\"whatsappQueue\", identity.notificationKey, queuePayload",
     "upsertRecord(\"notificationLogs\", notificationKey",
     ".filter((candidate) => !candidate.messageSid)",
     "status: \"processing\"",
@@ -535,7 +537,7 @@ check("dealership GSTIN is restored while bank GSTIN stays removed", () => {
   assert(!dealerRegistration.includes("officialDealershipEmail"), "dealer registration UI must not contain Official Dealership Email state or inputs");
   includesAll(dealerRegistration, ["gstinNumber", "GSTIN Number", "06ABCDE1234F1Z5"], "dealer GSTIN registration UI");
   includesAll(dealerController, ["requiredGstin", "gstinNumber: requiredGstin", "gstinNumber: dealership.gstinNumber"], "dealer GSTIN backend");
-  includesAll(superAdminDealership, ["[\"GSTIN\", dealer.gstinNumber || dealer.dealership?.gstinNumber]", "[\"GSTIN\", item.gstinNumber || item.dealership?.gstinNumber]"], "dealer GSTIN admin review");
+  includesAll(superAdminDealership, ["[\"GSTIN\", dealer.gstinNumber || dealer.gstin]", "[\"GSTIN\", item.gstinNumber || item.dealership?.gstinNumber]"], "dealer GSTIN admin review");
   assert(!bankRegistration.includes("gstin"), "bank registration UI must not contain GSTIN state, validation, or payload");
   assert(!bankRegistration.includes("GSTIN"), "bank registration UI must not show GSTIN label or validation text");
   assert(!bankRegistration.includes("GST Certificate"), "bank registration UI must not request GST Certificate");
@@ -572,6 +574,7 @@ check("dashboard Firestore cost optimizations stay in place", () => {
     "frontend/src/pages/dashboard/SuperAdminDashboard.jsx",
     "frontend/src/pages/dashboard/superAdmin/superAdmin.hooks.js",
     "frontend/src/pages/dashboard/superAdmin/SuperAdminLeadDetailPage.jsx",
+    "frontend/src/pages/dashboard/superAdmin/SuperAdminApprovalDetailPage.jsx",
   );
   includesAll(bankService, [
     "queryRecords(\"bankBranchCatalog\"",
@@ -588,7 +591,7 @@ check("dashboard Firestore cost optimizations stay in place", () => {
   includesAll(superAdmin, [
     "function useAdminEcosystem({ includeAudit = false } = {})",
     "includeAudit ? api.get(\"/admin/audit-logs\") : Promise.resolve({ data: [] })",
-    "useAdminEcosystem({ includeAudit: true })",
+    "useAdminEcosystem()",
   ], "admin audit lazy loading");
 });
 

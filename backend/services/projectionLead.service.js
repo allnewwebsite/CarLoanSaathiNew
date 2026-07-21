@@ -1,7 +1,7 @@
 import { deleteRecord, queryRecords, upsertRecord } from "./firestore.service.js";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
-import { logInfo, logWarn } from "./logger.service.js";
+import { logError, logInfo, logWarn } from "./logger.service.js";
 import { recordMonitoringSignal } from "./monitoringCenter.service.js";
 import { clearCachedValue, getCachedValue, setCachedValue } from "./ttlCache.service.js";
 import { freshProjectionRows } from "./projectionFreshness.service.js";
@@ -22,6 +22,7 @@ import {
   VIEW_SEARCH_FIELDS,
   withProjectionMetadata,
 } from "./projectionShared.service.js";
+import { ALERT_SEVERITY, recordOperationalEvent } from "./observability.service.js";
 import { executiveIdentityValues } from "./roleIdentity.service.js";
 import { currentWorkflowLocation, lifecycleStateForLead, LEAD_LIFECYCLE_STATES } from "./automationPolicy.service.js";
 
@@ -228,7 +229,17 @@ export async function removeLeadProjections(lead = {}) {
 }
 
 export function syncLeadProjectionSoon(lead = {}) {
-  Promise.resolve().then(() => syncLeadProjection(lead)).catch(() => {});
+  Promise.resolve().then(() => syncLeadProjection(lead)).catch(async (error) => {
+    logError("Deferred lead projection synchronization failed", { leadId: lead?.id || null, error: error.message });
+    await recordOperationalEvent({
+      type: "lead_projection_sync_failed",
+      severity: ALERT_SEVERITY.HIGH,
+      component: "lead-projection",
+      message: "Deferred lead projection synchronization failed",
+      entityId: lead?.id || null,
+      meta: { error: error.message },
+    });
+  });
 }
 
 export async function removeLeadExecutiveProjection({ leadId, executiveId }) {
