@@ -3,7 +3,7 @@ import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
 import { normalizedIdentity, uniqueIdentities } from "./roleIdentity.service.js";
-import { currentWorkflowLocation } from "./automationPolicy.service.js";
+import { currentWorkflowLocation, lifecycleStateForLead, LEAD_LIFECYCLE_STATES } from "./automationPolicy.service.js";
 
 const LEAD_FIELDS = [
   "id",
@@ -69,6 +69,7 @@ const LEAD_FIELDS = [
   "vehicleNumber",
   "registrationNumber",
   "isDeadCase",
+  "lifecycleState",
   "deadCaseDate",
   "deadCaseBy",
   "deadCaseReason",
@@ -153,10 +154,17 @@ function localFilters(leads, query = {}) {
     const bankOk = !bank || bankText === bank || bankText.includes(bank);
     const cityOk = !city || String(lead.city || "").toLowerCase() === city;
     const dateOk = !date || String(lead.createdAt || lead.updatedAt || "").startsWith(date);
-    const location = currentWorkflowLocation(lead);
-    const terminalStatus = [LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(leadStatus);
-    const locationOk = !terminalStatus
-      || (archiveTerminal ? location !== "active" : location === "active");
+    const lifecycle = lifecycleStateForLead(lead);
+    const expectedArchiveLifecycle = normalizedQueryStatus === LEAD_STATUSES.REJECTED
+      ? LEAD_LIFECYCLE_STATES.REJECTED
+      : normalizedQueryStatus === LEAD_STATUSES.DISBURSED
+        ? LEAD_LIFECYCLE_STATES.DISBURSED
+        : null;
+    const locationOk = archiveTerminal
+      ? (expectedArchiveLifecycle
+        ? lifecycle === expectedArchiveLifecycle
+        : [LEAD_LIFECYCLE_STATES.REJECTED, LEAD_LIFECYCLE_STATES.DISBURSED].includes(lifecycle))
+      : lifecycle === LEAD_LIFECYCLE_STATES.ACTIVE;
     return statusOk && salespersonOk && financeManagerOk && bankOk && cityOk && dateOk && locationOk;
   }).map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) }));
 }
@@ -323,9 +331,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     allowGlobal: true,
   });
   return pageResponse({
-    data: result.data
-      .filter((lead) => lead.isDeadCase !== true)
-      .map((lead) => ({ ...lead, currentLocation: currentWorkflowLocation(lead) })),
+    data: localFilters(result.data, query),
     limit,
     nextCursor: result.nextCursor,
   });

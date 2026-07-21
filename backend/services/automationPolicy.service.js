@@ -11,6 +11,24 @@ export const TERMINAL_AUTOMATION_STATUSES = new Set([
   LEAD_STATUSES.DISBURSED,
 ]);
 
+// This is the one visibility authority for every portal. Status describes
+// processing progress; lifecycleState decides whether a lead belongs in an
+// active queue or in one, and only one, terminal archive.
+export const LEAD_LIFECYCLE_STATES = Object.freeze({
+  ACTIVE: "ACTIVE",
+  REJECTED: "REJECTED",
+  DISBURSED: "DISBURSED",
+  DEAD: "DEAD",
+});
+
+export function lifecycleStateForLead(lead = {}) {
+  if (lead.isDeadCase === true || lead.lifecycleState === LEAD_LIFECYCLE_STATES.DEAD) return LEAD_LIFECYCLE_STATES.DEAD;
+  const status = normalizeStatus(lead.status);
+  if (lead.lifecycleState === LEAD_LIFECYCLE_STATES.REJECTED || status === LEAD_STATUSES.REJECTED) return LEAD_LIFECYCLE_STATES.REJECTED;
+  if (lead.lifecycleState === LEAD_LIFECYCLE_STATES.DISBURSED || status === LEAD_STATUSES.DISBURSED) return LEAD_LIFECYCLE_STATES.DISBURSED;
+  return LEAD_LIFECYCLE_STATES.ACTIVE;
+}
+
 export function addMilliseconds(value, milliseconds) {
   const start = new Date(value || Date.now());
   return new Date(start.getTime() + milliseconds).toISOString();
@@ -84,6 +102,9 @@ export function statusAutomationPatch(status, now = new Date().toISOString(), pr
   return {
     lastWorkflowActionAt: now,
     ...(terminal ? {
+      lifecycleState: normalized === LEAD_STATUSES.REJECTED
+        ? LEAD_LIFECYCLE_STATES.REJECTED
+        : LEAD_LIFECYCLE_STATES.DISBURSED,
       terminalStatusAt: terminalAt,
       terminalVisibleUntil: null,
       terminalMovedAt: previousLead.terminalMovedAt || terminalAt,
@@ -91,6 +112,7 @@ export function statusAutomationPatch(status, now = new Date().toISOString(), pr
       workflowLocation: normalized === LEAD_STATUSES.REJECTED ? "rejected" : "disbursed",
       retentionDueAt: previousLead.retentionDueAt || addCalendarMonths(terminalAt),
     } : {
+      lifecycleState: LEAD_LIFECYCLE_STATES.ACTIVE,
       terminalStatusAt: null,
       terminalVisibleUntil: null,
       terminalMovedAt: null,
@@ -103,10 +125,11 @@ export function statusAutomationPatch(status, now = new Date().toISOString(), pr
 
 export function currentWorkflowLocation(lead = {}, now = Date.now()) {
   void now;
-  if (lead.isDeadCase === true) return "dead-case";
-  const status = normalizeStatus(lead.status);
-  if (!TERMINAL_AUTOMATION_STATUSES.has(status)) return "active";
-  return status === LEAD_STATUSES.REJECTED ? "rejected" : "disbursed";
+  const lifecycleState = lifecycleStateForLead(lead);
+  if (lifecycleState === LEAD_LIFECYCLE_STATES.DEAD) return "dead-case";
+  if (lifecycleState === LEAD_LIFECYCLE_STATES.REJECTED) return "rejected";
+  if (lifecycleState === LEAD_LIFECYCLE_STATES.DISBURSED) return "disbursed";
+  return "active";
 }
 
 export function retentionAnchor(lead = {}) {

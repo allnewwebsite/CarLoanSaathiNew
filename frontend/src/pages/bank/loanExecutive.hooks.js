@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS } from "../../constants/status.js";
+import { LEAD_LIFECYCLE_STATES } from "../../constants/status.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { useRealtimeLeadPatch } from "../../hooks/useRealtimeEntityPatch.js";
@@ -77,7 +78,14 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     return scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => refreshLatest(page, { silent: true }), [page, refreshLatest]);
-  useRealtimeLeadPatch({ setRows, setTotal, statusFilter: status ? apiStatus(status) : "", pageSize, user });
+  useRealtimeLeadPatch({
+    setRows,
+    setTotal,
+    statusFilter: status ? apiStatus(status) : "",
+    lifecycleFilter: archiveTerminal ? (status === "DISBURSED" ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE,
+    pageSize,
+    user,
+  });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const applyLeadPatch = useCallback((lead = {}) => {
     const identity = String(lead.id || lead.leadId || lead.caseId || "");

@@ -16,6 +16,13 @@ export const LEAD_STATUSES = {
   CLOSED: "CLOSED",
 };
 
+export const LEAD_LIFECYCLE_STATES = Object.freeze({
+  ACTIVE: "ACTIVE",
+  REJECTED: "REJECTED",
+  DISBURSED: "DISBURSED",
+  DEAD: "DEAD",
+});
+
 export const STATUS_LABELS = {
   NEW: "New",
   CONTACTED: "Contacted",

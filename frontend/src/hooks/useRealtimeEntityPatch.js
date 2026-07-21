@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { normalizeStatus } from "../constants/status.js";
+import { LEAD_LIFECYCLE_STATES, normalizeStatus } from "../constants/status.js";
 
 function leadIdentity(lead = {}) {
   return [lead.id, lead.leadId, lead.sourceId, lead.caseId].map((value) => String(value || "").trim()).filter(Boolean);
@@ -78,6 +78,7 @@ function patchedLeadFromEvent(event = {}) {
     deadCaseNotes: lead.deadCaseNotes || event.deadCaseNotes || event.data?.deadCaseNotes || "",
     deadCaseUpdatedAt: lead.deadCaseUpdatedAt || event.deadCaseUpdatedAt || event.data?.deadCaseUpdatedAt || "",
     workflowLocation: lead.workflowLocation || event.workflowLocation || "",
+    lifecycleState: lead.lifecycleState || event.lifecycleState || event.data?.lifecycleState || "",
     archivedAt: lead.archivedAt || event.archivedAt || "",
     terminalStatusAt: lead.terminalStatusAt || event.terminalStatusAt || "",
     rejectedAt: lead.rejectedAt || event.rejectedAt || "",
@@ -101,11 +102,22 @@ function hasHydratedLeadPayload(event = {}) {
   );
 }
 
-function statusMatchesFilter(lead = {}, statusFilter = "") {
-  if (!statusFilter) {
-    return !["REJECTED", "DISBURSED"].includes(normalizeStatus(lead.status));
-  }
-  return normalizeStatus(lead.status) === normalizeStatus(statusFilter);
+function lifecycleOf(lead = {}) {
+  if (lead.isDeadCase === true || lead.lifecycleState === LEAD_LIFECYCLE_STATES.DEAD) return LEAD_LIFECYCLE_STATES.DEAD;
+  if (lead.lifecycleState) return lead.lifecycleState;
+  const status = normalizeStatus(lead.status);
+  if (status === "REJECTED") return LEAD_LIFECYCLE_STATES.REJECTED;
+  if (status === "DISBURSED") return LEAD_LIFECYCLE_STATES.DISBURSED;
+  return LEAD_LIFECYCLE_STATES.ACTIVE;
+}
+
+function leadMatchesDataset(lead = {}, statusFilter = "", lifecycleFilter = LEAD_LIFECYCLE_STATES.ACTIVE) {
+  // Defensive legacy fallback: a terminal status is never admitted to an
+  // active table even while an older projection is being backfilled.
+  const nonTerminalLegacyStatus = !["REJECTED", "DISBURSED"].includes(normalizeStatus(lead.status));
+  if (!statusFilter && lifecycleFilter === LEAD_LIFECYCLE_STATES.ACTIVE && !nonTerminalLegacyStatus) return false;
+  if (lifecycleOf(lead) !== lifecycleFilter) return false;
+  return !statusFilter || normalizeStatus(lead.status) === normalizeStatus(statusFilter);
 }
 
 function normalizedOwnerIdentity(value) {
@@ -153,7 +165,7 @@ function reassignmentDisposition(event = {}, user = {}) {
   return "unchanged";
 }
 
-export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", enabled = true, pageSize = 10, user = null } = {}) {
+export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", lifecycleFilter = LEAD_LIFECYCLE_STATES.ACTIVE, enabled = true, pageSize = 10, user = null } = {}) {
   useEffect(() => {
     if (!enabled || typeof setRows !== "function") return undefined;
     const onRealtime = (event) => {
@@ -164,8 +176,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
       const eventType = detail.eventType || detail.event;
       const ownershipDisposition = reassignmentDisposition(detail, user || {});
       const canInsertPatchedRow = hasHydratedLeadPayload(detail)
-        && patch.isDeadCase !== true
-        && statusMatchesFilter(patch, statusFilter)
+        && leadMatchesDataset(patch, statusFilter, lifecycleFilter)
         && (
           eventType === "LEAD_CREATED"
           || eventType === "LEAD_ASSIGNED"
@@ -193,7 +204,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
             return { ...row, ...patch };
           })
           .filter((row) => {
-            const keep = !sameLead(row, patch) || (row.isDeadCase !== true && statusMatchesFilter(row, statusFilter));
+            const keep = !sameLead(row, patch) || leadMatchesDataset(row, statusFilter, lifecycleFilter);
             if (!keep) removed = true;
             return keep;
           });
@@ -209,7 +220,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [enabled, pageSize, setRows, setTotal, statusFilter, user]);
+  }, [enabled, lifecycleFilter, pageSize, setRows, setTotal, statusFilter, user]);
 }
 
 export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true, user = null } = {}) {

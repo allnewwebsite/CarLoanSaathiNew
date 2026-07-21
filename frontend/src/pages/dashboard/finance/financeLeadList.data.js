@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CURRENT_WORKFLOW_STATUS_OPTIONS } from "../../../constants/status.js";
+import { LEAD_LIFECYCLE_STATES } from "../../../constants/status.js";
 import { useCursorPager } from "../../../hooks/useCursorPager.js";
 import { useRealtimeLeadPatch } from "../../../hooks/useRealtimeEntityPatch.js";
 import { mutationUrlMatches, useRoleLeadRealtime } from "../../../hooks/useRealtimeRefresh.js";
@@ -49,7 +50,7 @@ export function useDealerLeads(filters = {}) {
     return scheduleLeadPrefetch("/dealer/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
-  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, pageSize });
+  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, lifecycleFilter: filters.archiveTerminal ? (filters.status === "DISBURSED" ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE, pageSize });
   useRoleLeadRealtime({ onRefresh: loadLeads, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
 
   return { leads, total, hasMore, loading, loadLeads };

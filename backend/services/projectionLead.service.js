@@ -23,7 +23,7 @@ import {
   withProjectionMetadata,
 } from "./projectionShared.service.js";
 import { executiveIdentityValues } from "./roleIdentity.service.js";
-import { currentWorkflowLocation } from "./automationPolicy.service.js";
+import { currentWorkflowLocation, lifecycleStateForLead, LEAD_LIFECYCLE_STATES } from "./automationPolicy.service.js";
 
 export { PROJECTION_VERSION } from "./projectionShared.service.js";
 const projectionMissBackfills = new Set();
@@ -54,6 +54,7 @@ function projectionPayload(lead = {}, { scopeType, scopeId: scope }) {
     createdAt: lead.createdAt || updatedAt,
     updatedAt,
     status: lead.status || "NEW",
+    lifecycleState: lifecycleStateForLead(lead),
     workflowLocation: currentWorkflowLocation(lead),
     searchText: VIEW_SEARCH_FIELDS.map((field) => lead[field]).filter(Boolean).join(" ").toLowerCase(),
   }, { sourceCollection: "leads", sourceId: lead.id, sourceUpdatedAt: updatedAt, projectionType: "lead-view" });
@@ -268,10 +269,19 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
   const archiveTerminal = ["1", "true"].includes(String(query.archiveTerminal || query.terminalArchive || "").toLowerCase());
   if (statuses.length === 1) where.push({ field: "status", value: statuses[0] });
   if (statuses.length > 1 && statuses.length <= 10) where.push({ field: "status", op: "in", value: statuses });
+  // A status filter never overrides lifecycle visibility. Archive routes must
+  // request their own terminal lifecycle; every other list is active-only.
+  const archiveLifecycle = statuses.includes(LEAD_STATUSES.REJECTED)
+    ? LEAD_LIFECYCLE_STATES.REJECTED
+    : statuses.includes(LEAD_STATUSES.DISBURSED)
+      ? LEAD_LIFECYCLE_STATES.DISBURSED
+      : null;
   if (!statuses.length) {
     where.push(archiveTerminal
       ? { field: "workflowLocation", op: "in", value: ["rejected", "disbursed"] }
       : { field: "workflowLocation", value: "active" });
+  } else if (!archiveTerminal) {
+    where.push({ field: "workflowLocation", value: "active" });
   }
   if (query.dealershipId) where.push({ field: "dealershipId", value: scopeId(query.dealershipId) });
   if (query.salespersonId) where.push({ field: "salespersonId", value: scopeId(query.salespersonId) });
@@ -373,10 +383,9 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
       const data = freshRows
         .filter((item) => item.isDeadCase !== true)
         .filter((item) => {
-          const status = normalizeStatus(item.status);
-          if (![LEAD_STATUSES.REJECTED, LEAD_STATUSES.DISBURSED].includes(status)) return true;
-          const location = currentWorkflowLocation(item);
-          return archiveTerminal ? location !== "active" : location === "active";
+          const lifecycle = lifecycleStateForLead(item);
+          if (!archiveTerminal) return lifecycle === LEAD_LIFECYCLE_STATES.ACTIVE;
+          return archiveLifecycle ? lifecycle === archiveLifecycle : [LEAD_LIFECYCLE_STATES.REJECTED, LEAD_LIFECYCLE_STATES.DISBURSED].includes(lifecycle);
         })
         .map((item) => ({ ...item, id: item.sourceId || item.id, currentLocation: currentWorkflowLocation(item) }));
       const mapEndedAt = Date.now();
