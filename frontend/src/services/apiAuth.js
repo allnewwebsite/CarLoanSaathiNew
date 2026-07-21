@@ -1,5 +1,5 @@
 import axios from "axios";
-import { clearAuthStorage, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
+import { clearAuthStorage, getAuthScope, getStoredToken, getStoredUser, publishAuthEvent, updateStoredToken } from "./authSessionManager.js";
 import { apiBaseUrl } from "./apiBaseUrl.js";
 import { loginPathForCurrentPortal, redirectToLoginForRole, requestPortalHeader } from "./apiPortal.js";
 
@@ -57,6 +57,7 @@ export async function refreshSessionToken() {
 }
 
 export async function handleAuthResponseError(error, api) {
+  const responseCode = error.response?.data?.code || error.response?.data?.errorCode;
   if (error.response?.status === 401 && !error.config?._authRetry && !authEndpoint(error.config?.url)) {
     error.config._authRetry = true;
     const refreshed = await refreshSessionToken().catch(() => null);
@@ -65,8 +66,9 @@ export async function handleAuthResponseError(error, api) {
       return api(error.config);
     }
     const stored = getStoredUser();
+    const scope = getAuthScope();
     clearAuthStorage();
-    publishAuthEvent("logout", { reason: error.response?.data?.code || "session-refresh-failed" });
+    publishAuthEvent("logout", { scope, reason: responseCode || "session-refresh-failed" });
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
       redirectToLoginForRole(stored?.role, loginPathForCurrentPortal());
@@ -83,7 +85,7 @@ export async function handleAuthResponseError(error, api) {
 
   // Subscription is an entitlement, not an authentication failure. Keep the
   // scoped JWT/session intact and move only this tab to the renewal page.
-  if (error.response?.status === 403 && ["SUBSCRIPTION_EXPIRED", "SUBSCRIPTION_PAYMENT_REQUIRED"].includes(error.response?.data?.code)) {
+  if (error.response?.status === 403 && ["SUBSCRIPTION_EXPIRED", "SUBSCRIPTION_PAYMENT_REQUIRED"].includes(responseCode)) {
     if (typeof window !== "undefined" && window.location.pathname !== "/subscription-activation") {
       window.location.assign(error.response?.data?.redirect || "/subscription-activation");
     }
@@ -108,13 +110,14 @@ export async function handleAuthResponseError(error, api) {
     "SESSION_PORTAL_CHANGED",
     "SESSION_UID_CHANGED",
     "SESSION_REVOKED",
-  ].includes(error.response?.data?.code)) {
+  ].includes(responseCode)) {
     const stored = getStoredUser();
+    const scope = getAuthScope();
     clearAuthStorage();
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: error.response?.data?.code } }));
-      publishAuthEvent("logout", { reason: error.response?.data?.code });
-      redirectToLoginForRole(stored?.role, error.response?.data?.code === "BANK_ACCOUNT_INACTIVE" ? "/bank/login" : loginPathForCurrentPortal());
+      window.dispatchEvent(new CustomEvent("cls:auth-session-cleared", { detail: { code: responseCode } }));
+      publishAuthEvent("logout", { scope, reason: responseCode });
+      redirectToLoginForRole(stored?.role, responseCode === "BANK_ACCOUNT_INACTIVE" ? "/bank/login" : loginPathForCurrentPortal());
     }
   }
 

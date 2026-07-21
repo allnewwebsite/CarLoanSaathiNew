@@ -1,4 +1,4 @@
-import { getCurrentPortalScope } from "./authSessionManager.js";
+import { getAuthScope, getCurrentPortalScope, getStoredUser } from "./authSessionManager.js";
 
 export function loginPathForRole(role, fallback = "/finance/login") {
   const normalized = String(role || "").trim().toLowerCase();
@@ -35,7 +35,17 @@ export function loginPathForCurrentPortal(fallback = "/finance/login") {
 }
 
 export function requestPortalHeader() {
-  return getCurrentPortalScope() || loginPathForCurrentPortal().replace(/^\//, "").split("/")[0] || "finance";
+  const pathScope = getCurrentPortalScope();
+  if (pathScope) return pathScope;
+
+  // /subscription-activation is shared by Finance Desk and GM. Deriving the
+  // header from the URL there defaults GM to `finance`, which the backend
+  // correctly rejects as a GM login portal. Preserve the authenticated role.
+  const storedUser = getStoredUser();
+  if (storedUser?.loginPortal) return storedUser.loginPortal;
+  if (storedUser?.role === "gm") return "gm";
+  if (getAuthScope() === "gm") return "gm";
+  return loginPathForCurrentPortal().replace(/^\//, "").split("/")[0] || "finance";
 }
 
 export function redirectToLoginForRole(role, fallback = "/finance/login") {

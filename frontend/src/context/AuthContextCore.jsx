@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AUTH_STATES, clearAuthStorage, getCurrentPortalScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
+import { AUTH_STATES, clearAuthStorage, getAuthScope, getStoredToken, getStoredUser, publishAuthEvent, storeAuthSession, subscribeAuthEvents } from "../services/authSessionManager.js";
 import { selectedOnboardingPlan } from "../services/onboardingPlan.js";
 import { hasLoadedFirebaseAuth, loadApiClient, loadFirebaseAuth, loadRealtimeClient, stopRealtimeIfLoaded } from "./AuthContext.loaders.js";
 import {
@@ -212,7 +212,7 @@ export function AuthProvider({ children }) {
       const session = sessionFromResponse(response);
       applySession(session, token);
       try {
-        sessionStorage.setItem(sessionValidateKey(getCurrentPortalScope()), String(Date.now()));
+        sessionStorage.setItem(sessionValidateKey(getAuthScope()), String(Date.now()));
       } catch {
         // Validation timestamp is only a performance hint.
       }
@@ -238,7 +238,7 @@ export function AuthProvider({ children }) {
     }
     let recentlyValidated = false;
     try {
-      recentlyValidated = Date.now() - Number(sessionStorage.getItem(sessionValidateKey(getCurrentPortalScope())) || 0) < SESSION_VALIDATE_FRESHNESS_MS;
+      recentlyValidated = Date.now() - Number(sessionStorage.getItem(sessionValidateKey(getAuthScope())) || 0) < SESSION_VALIDATE_FRESHNESS_MS;
     } catch {
       recentlyValidated = false;
     }
@@ -273,7 +273,10 @@ export function AuthProvider({ children }) {
   useEffect(() => subscribeAuthEvents((event) => {
     if (event?.type !== "logout") return;
     const eventScope = event.payload?.scope;
-    const currentScope = getCurrentPortalScope();
+    // Subscription activation is intentionally shared by Finance and GM routes.
+    // Use the authenticated tab's stored scope there; the URL has no portal
+    // segment and must not make this tab accept another portal's logout event.
+    const currentScope = getAuthScope();
     if (eventScope && currentScope && eventScope !== currentScope) return;
     clearLocalSession({ signOutFirebase: false, broadcast: false, reason: event.payload?.reason || "cross-tab-logout" });
   }), []);
