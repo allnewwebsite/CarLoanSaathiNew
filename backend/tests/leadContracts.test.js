@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { pageResponse, paginationParams } from "../utils/pagination.js";
 import { applyFilters } from "../controllers/bankShared.controller.js";
@@ -71,4 +72,9 @@ test("merged bank candidate lists never reintroduce terminal leads into active q
   assert.deepEqual(applyFilters(leads, {}).map((lead) => lead.id), ["active"]);
   assert.deepEqual(applyFilters(leads, { status: "REJECTED", archiveTerminal: "1" }).map((lead) => lead.id), ["rejected"]);
   assert.deepEqual(applyFilters(leads, { status: "DISBURSED", archiveTerminal: "1" }).map((lead) => lead.id), ["disbursed"]);
+});
+
+test("bank dealership disbursed drill-down requests the terminal projection", () => {
+  const source = fs.readFileSync(new URL("../controllers/bankLeadRead.controller.js", import.meta.url), "utf8");
+  assert.match(source, /query: \{ \.\.\.req\.query, dealershipId, status: LEAD_STATUSES\.DISBURSED, archiveTerminal: "1" \}/);
 });

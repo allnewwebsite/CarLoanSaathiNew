@@ -33,8 +33,6 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
   const [selected, setSelected] = useState([]);
   const [otherDocument, setOtherDocument] = useState("");
   const [sanctionFile, setSanctionFile] = useState(null);
-  const [disbursedAmount, setDisbursedAmount] = useState("");
-  const [disbursementDate, setDisbursementDate] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     if (!status) return;
@@ -44,7 +42,6 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
       ...(otherSelected && otherDocument.trim() ? [`Other: ${otherDocument.trim()}`] : []),
     ];
     if (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && !requestedDocuments.length) return;
-    if (status === LEAD_STATUSES.DISBURSED && (!Number(disbursedAmount) || !disbursementDate)) return;
     setBusy(true);
     try {
       await api.patch(`/bank/leads/${lead.id}/status`, {
@@ -53,8 +50,6 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
         rejectionReason: status === LEAD_STATUSES.REJECTED ? remarks : undefined,
         pendingDocumentsRequested: status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? requestedDocuments : undefined,
         pendingDocumentReason: status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? remarks : undefined,
-        disbursedAmount: status === LEAD_STATUSES.DISBURSED ? Number(disbursedAmount) : undefined,
-        disbursementDate: status === LEAD_STATUSES.DISBURSED ? disbursementDate : undefined,
       });
       if (status === LEAD_STATUSES.DISBURSED && sanctionFile) {
         const form = new FormData();
@@ -99,16 +94,14 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
         <textarea className="mt-2 min-h-24 w-full rounded-md border border-slate-200 p-3 text-sm outline-none focus:border-[#0d47a1]" placeholder={status === LEAD_STATUSES.REJECTED ? "Rejection reason" : "Executive remark"} value={remarks} onChange={(event) => setRemarks(event.target.value)} />
       </label>
       {status === LEAD_STATUSES.DISBURSED ? (
-        <div className="mt-3 space-y-3">
-          <label className="block text-sm font-medium text-slate-700">Disbursed Amount *<input required min="1" type="number" inputMode="decimal" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={disbursedAmount} onChange={(event) => setDisbursedAmount(event.target.value)} /></label>
-          <label className="block text-sm font-medium text-slate-700">Disbursement Date *<input required type="date" className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={disbursementDate} onChange={(event) => setDisbursementDate(event.target.value)} /></label>
+        <div className="mt-3">
           <label className="block text-sm font-medium text-slate-700">
             Sanction Letter
             <input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" onChange={(event) => setSanctionFile(event.target.files?.[0] || null)} className="mt-2 block w-full rounded-md border border-slate-200 text-sm text-slate-600 file:mr-3 file:h-10 file:border-0 file:bg-slate-50 file:px-3 file:text-sm file:font-medium file:text-slate-700" />
           </label>
         </div>
       ) : null}
-      <button disabled={busy || !status || (status === LEAD_STATUSES.REJECTED && !remarks.trim()) || (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && (!selected.length || (selected.includes(otherDocumentLabel) && !otherDocument.trim()))) || (status === LEAD_STATUSES.DISBURSED && (!Number(disbursedAmount) || !disbursementDate))} onClick={submit} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+      <button disabled={busy || !status || (status === LEAD_STATUSES.REJECTED && !remarks.trim()) || (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && (!selected.length || (selected.includes(otherDocumentLabel) && !otherDocument.trim())))} onClick={submit} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
         {busy ? "Saving..." : status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? "Submit Document Request" : "Save Status"}
       </button>
     </Modal>

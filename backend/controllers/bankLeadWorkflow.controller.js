@@ -288,16 +288,6 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   if (normalizedStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
     throw Object.assign(new Error("Rejection reason is required"), { status: 400, code: "REJECTION_REASON_REQUIRED" });
   }
-  if (normalizedStatus === LEAD_STATUSES.DISBURSED) {
-    const disbursedAmount = Number(req.body.disbursedAmount);
-    const disbursementDate = String(req.body.disbursementDate || "").trim();
-    if (!Number.isFinite(disbursedAmount) || disbursedAmount <= 0) {
-      throw Object.assign(new Error("A valid disbursed amount is required"), { status: 400, code: "DISBURSED_AMOUNT_REQUIRED" });
-    }
-    if (!disbursementDate || Number.isNaN(Date.parse(disbursementDate))) {
-      throw Object.assign(new Error("A valid disbursement date is required"), { status: 400, code: "DISBURSEMENT_DATE_REQUIRED" });
-    }
-  }
   const statusPayload = {
     status: normalizedStatus,
     ...statusAutomationPatch(normalizedStatus, now, lead),

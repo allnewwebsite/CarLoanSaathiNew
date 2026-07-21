@@ -204,7 +204,10 @@ export async function getBankDealershipDisbursedCases(req, res, next) {
     if (!dealershipId) return res.status(400).json({ message: "Dealership is required" });
     const projected = await queryLeadProjectionForUser({
       user: { ...req.user, role: "bank-manager", bankId: identity.bankId },
-      query: { ...req.query, dealershipId, status: LEAD_STATUSES.DISBURSED },
+      // Terminal status queries must explicitly opt into the terminal archive.
+      // Without this flag the shared projection query adds workflowLocation=active
+      // and hides the disbursed rows represented by the dealership counter.
+      query: { ...req.query, dealershipId, status: LEAD_STATUSES.DISBURSED, archiveTerminal: "1" },
     }).catch(() => null);
     if (projected) {
       const [canonical] = await canonicalizeBankDealershipRows([{ dealershipId }]);
