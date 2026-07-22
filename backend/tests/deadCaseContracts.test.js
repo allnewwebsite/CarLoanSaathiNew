@@ -119,7 +119,7 @@ test("Finance Desk can move a lead to dead cases and required fields are enforce
   assert.ok(updated.deadCaseUpdatedAt);
 });
 
-test("dead cases leave active lists, enter dead-case lists, search by reason, and restore", async () => {
+test("dead cases leave active lists, enter dead-case lists, and restore", async () => {
   const dealershipId = `dealer-dead-list-${Date.now()}`;
   const req = financeReq(dealershipId);
   const activeLead = await fixtureLead({ dealershipId, caseId: `CLS-ACTIVE-${Date.now()}` });
@@ -140,7 +140,7 @@ test("dead cases leave active lists, enter dead-case lists, search by reason, an
   const deadCases = await queryDeadCases({ dealershipId, query: { limit: 50 } });
   assert.deepEqual(deadCases.data.map((lead) => lead.id), [deadLead.id]);
 
-  const searchResults = await queryDeadCases({ dealershipId, query: { search: "Duplicate", limit: 50 } });
+  const searchResults = await queryDeadCases({ dealershipId, query: { search: deadLead.caseId, limit: 50 } });
   assert.equal(searchResults.data.some((lead) => lead.id === deadLead.id), true);
 
   const markedTimeline = await queryRecords("leadTimeline", {

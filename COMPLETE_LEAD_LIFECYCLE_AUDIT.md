@@ -245,7 +245,7 @@ Dashboard counts are generally derived from filtered lead/projection queries and
   - `DOCUMENT_RECEIVED`, `ALL_DOCUMENTS_RECEIVED -> Document Received`
   - `APPROVED -> Under Bank Process`
 - This label collapsing makes analytics and user interpretation lossy.
-- Dead Cases has separate search, reason filters, pagination and CSV export behavior.
+- Dead Cases has separate search and pagination behavior.
 - Admin list/detail and analytics are read-only for leads.
 - `CLOSED`, `ACCEPTED`, `UNDER_REVIEW`, `APPROVED`, `ASSIGNED`, `REQUEST_DOCUMENT`, `ALL_DOCUMENTS_RECEIVED`, and `DOCS_PENDING` are not directly selectable in the current web status modal.
 

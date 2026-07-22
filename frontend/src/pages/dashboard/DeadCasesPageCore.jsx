@@ -2,7 +2,6 @@ import { Plus } from "lucide-react";
 import { useMemo } from "react";
 import { OperationalTable } from "../../components/OperationalTable.jsx";
 import { PolicyInformationBanner } from "../../components/LifecycleArchiveHeader.jsx";
-import { DEAD_CASE_REASONS } from "../../constants/deadCaseReasons.js";
 import { AUDIENCE_LABELS, PAGE_SIZE } from "./deadCases.helpers.js";
 import { useDeadCasesPageState } from "./deadCases.hooks.js";
 import { roleColumns } from "./deadCases.columns.jsx";
@@ -29,28 +28,18 @@ export function DeadCasesPage({ audience = "finance" }) {
 
       <PolicyInformationBanner kind="dead" />
 
-      <div className="flex justify-end">
-        <div className="flex w-full flex-col gap-3 rounded-[10px] border border-slate-200 bg-white p-3 shadow-sm sm:w-auto sm:flex-row sm:items-center">
-          <select
-            value={state.reasonFilter}
-            onChange={(event) => state.setReasonFilter(event.target.value)}
-            className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:w-56"
+      {state.canModify ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={state.openAdd}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0d47a1] px-4 text-sm font-semibold text-white shadow-sm"
           >
-            <option value="">Select Reason</option>
-            {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
-          </select>
-          {state.canModify ? (
-            <button
-              type="button"
-              onClick={state.openAdd}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#0d47a1] px-4 text-sm font-semibold text-white shadow-sm"
-            >
-              <Plus className="h-4 w-4" />
-              Add Dead Case
-            </button>
-          ) : null}
+            <Plus className="h-4 w-4" />
+            Add Dead Case
+          </button>
         </div>
-      </div>
+      ) : null}
 
       <OperationalTable
         title="Dead Cases"

@@ -48,7 +48,7 @@ export function DeadCaseDialogs({
               <label className="block text-sm font-medium text-slate-700">
                 Dead Reason *
                 <select value={addReason} onChange={(event) => onAddReasonChange(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100">
-                  <option value="">Select reason</option>
+                  <option value="">Choose a reason</option>
                   {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
                 </select>
               </label>
@@ -86,7 +86,7 @@ export function DeadCaseDialogs({
               <label className="block text-sm font-medium text-slate-700">
                 Dead Reason *
                 <select value={editReason} onChange={(event) => onEditReasonChange(event.target.value)} className="mt-1.5 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100">
-                  <option value="">Select reason</option>
+                  <option value="">Choose a reason</option>
                   {DEAD_CASE_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
                 </select>
               </label>

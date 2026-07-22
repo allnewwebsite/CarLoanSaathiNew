@@ -17,7 +17,6 @@ export function useDeadCasesPageState(audience = "finance") {
   const initialParams = { page: 1, limit: PAGE_SIZE };
   const cachedPayload = getCachedGetData(endpoint, initialParams);
   const initialPayload = Array.isArray(cachedPayload) ? { data: cachedPayload } : cachedPayload || {};
-  const [reasonFilter, setReasonFilter] = useState("");
   const [rows, setRows] = useState(() => initialPayload.data || []);
   const [loading, setLoading] = useState(() => !cachedPayload);
   const [actionId, setActionId] = useState("");
@@ -33,7 +32,7 @@ export function useDeadCasesPageState(audience = "finance") {
   const [addNotes, setAddNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, reasonFilter]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -44,7 +43,6 @@ export function useDeadCasesPageState(audience = "finance") {
         params: {
           page: requestPage,
           limit: PAGE_SIZE,
-          deadCaseReason: reasonFilter || undefined,
           ...cursor,
         },
       });
@@ -55,7 +53,7 @@ export function useDeadCasesPageState(audience = "finance") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [cursorParamsForPage, endpoint, page, reasonFilter, rememberNextCursor, requestPageForPage]);
+  }, [cursorParamsForPage, endpoint, page, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     load({ silent: Boolean(cachedPayload) });
@@ -165,11 +163,6 @@ export function useDeadCasesPageState(audience = "finance") {
     }
   }, [editLead?.id, editNotes, editReason, load]);
 
-  const setReasonAndResetPage = useCallback((value) => {
-    setReasonFilter(value);
-    setPage(1);
-  }, []);
-
   return {
     actionId,
     addError,
@@ -188,7 +181,6 @@ export function useDeadCasesPageState(audience = "finance") {
     openAdd,
     openEdit,
     page,
-    reasonFilter,
     restoreCase,
     rows,
     saveEdit,
@@ -200,7 +192,6 @@ export function useDeadCasesPageState(audience = "finance") {
     setEditNotes,
     setEditReason,
     setPage,
-    setReasonFilter: setReasonAndResetPage,
     submitAdd,
   };
 }

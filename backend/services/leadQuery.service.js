@@ -77,7 +77,7 @@ const LEAD_FIELDS = [
   "deadCaseUpdatedAt",
 ];
 
-const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "vehicleNumber", "registrationNumber", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedExecutiveName", "assignedExecutiveEmail", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager", "deadCaseReason"];
+const SEARCH_FIELDS = ["caseId", "fullName", "customerName", "mobile", "vehicleNumber", "registrationNumber", "city", "bankName", "assignedBankName", "selectedBankName", "branchName", "ifscCode", "bankPartner", "assignedExecutiveName", "assignedExecutiveEmail", "assignedSalesperson", "salespersonName", "financeManagerName", "assignedFinanceManager"];
 
 function normalizeFinanceStatus(status) {
   const normalized = normalizeStatus(status);
@@ -345,7 +345,6 @@ export async function queryDeadCases({ dealershipId = "", bankId = "", executive
   if (executiveId) where.push({ field: "assignedExecutiveId", value: executiveId });
   if (salespersonId) where.push({ field: "salespersonId", value: salespersonId });
   if (query.status) where.push({ field: "status", value: normalizeStatus(query.status) });
-  if (query.deadCaseReason) where.push({ field: "deadCaseReason", value: String(query.deadCaseReason).trim() });
   const result = await queryRecords("leads", {
     where,
     orderBy: "deadCaseDate",
