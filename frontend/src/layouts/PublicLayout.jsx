@@ -40,17 +40,78 @@ function NavTarget({ item, className = "", onClick }) {
 
 function RoleDropdown({ group, open, onOpen, onClose }) {
   const Icon = group.icon;
+  const closeTimerRef = useRef(null);
+  const itemRefs = useRef([]);
+  const triggerRef = useRef(null);
+
+  const cancelScheduledClose = () => {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const openMenu = () => {
+    cancelScheduledClose();
+    onOpen();
+  };
+
+  const scheduleClose = () => {
+    cancelScheduledClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      onClose();
+    }, 250);
+  };
+
+  const closeMenu = () => {
+    cancelScheduledClose();
+    onClose();
+  };
+
+  const focusItem = (index) => {
+    window.setTimeout(() => itemRefs.current[index]?.focus(), 0);
+  };
+
+  const restoreTriggerFocus = () => window.setTimeout(() => triggerRef.current?.focus(), 0);
+
+  useEffect(() => () => cancelScheduledClose(), []);
+
   return (
-    <div className="relative" onMouseEnter={onOpen} onMouseLeave={onClose}>
+    <div
+      className="relative"
+      onPointerEnter={(event) => { if (event.pointerType === "mouse") openMenu(); }}
+      onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(); }}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) scheduleClose(); }}
+    >
       <button
         type="button"
+        ref={triggerRef}
         className="inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-[#0d47a1] focus:outline-none focus:ring-2 focus:ring-[#0d47a1]/30"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => (open ? onClose() : onOpen())}
+        aria-controls={`${group.key}-menu`}
+        onClick={() => (open ? closeMenu() : openMenu())}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onClose();
-          if (event.key === "ArrowDown") onOpen();
+          if (event.key === "Escape") closeMenu();
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (open) closeMenu();
+            else {
+              openMenu();
+              focusItem(0);
+            }
+          }
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            openMenu();
+            focusItem(0);
+          }
+          if (event.key === "ArrowUp") {
+            event.preventDefault();
+            openMenu();
+            focusItem(group.items.length - 1);
+          }
         }}
       >
         <Icon className="h-4 w-4" />
@@ -58,20 +119,44 @@ function RoleDropdown({ group, open, onOpen, onClose }) {
         <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       <div
-        className={`absolute right-0 top-11 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 transition duration-150 ${
-          open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
+        id={`${group.key}-menu`}
+        className={`absolute right-0 top-10 z-50 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 transition duration-150 ${
+          open ? "visible pointer-events-auto translate-y-0 opacity-100" : "invisible pointer-events-none -translate-y-1 opacity-0"
         }`}
         role="menu"
+        onPointerEnter={(event) => { if (event.pointerType === "mouse") openMenu(); }}
+        onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(); }}
+        onKeyDown={(event) => {
+          const currentIndex = itemRefs.current.indexOf(document.activeElement);
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            focusItem((currentIndex + 1) % group.items.length);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            focusItem((currentIndex - 1 + group.items.length) % group.items.length);
+          } else if (event.key === "Home") {
+            event.preventDefault();
+            focusItem(0);
+          } else if (event.key === "End") {
+            event.preventDefault();
+            focusItem(group.items.length - 1);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            closeMenu();
+            restoreTriggerFocus();
+          }
+        }}
       >
         <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
           {group.label}
         </p>
         <div className="grid gap-1">
-          {group.items.map((item) => (
+          {group.items.map((item, index) => (
             <Link
               key={item.to}
               to={item.to}
-              onClick={onClose}
+              ref={(element) => { itemRefs.current[index] = element; }}
+              onClick={closeMenu}
               className="rounded-md px-3 py-2.5 transition hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
               role="menuitem"
             >
