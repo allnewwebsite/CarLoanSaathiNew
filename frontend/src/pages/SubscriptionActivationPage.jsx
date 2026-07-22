@@ -109,13 +109,21 @@ export function SubscriptionActivationPage() {
               <div className="flex justify-between"><dt>GST</dt><dd>{money(plan.gstAmount || 2700)}</dd></div>
               <div className="flex justify-between text-base font-semibold"><dt>Total payable</dt><dd>{money(plan.finalAmount || 17700)}</dd></div>
             </dl>
-            <label className="mt-6 flex items-start gap-3 text-sm leading-5 text-slate-200">
-              <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-0.5 h-4 w-4" />
-              I accept that the subscription fee is non-refundable after payment is captured and access is activated.
+            <label htmlFor="subscription-terms" className="mt-6 flex items-center gap-3 text-sm leading-6 text-slate-200">
+              <span className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg">
+                <input
+                  id="subscription-terms"
+                  type="checkbox"
+                  checked={accepted}
+                  onChange={(event) => setAccepted(event.target.checked)}
+                  className="h-5 w-5 cursor-pointer accent-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                />
+              </span>
+              <span className="min-w-0">I accept that the subscription fee is non-refundable after payment is captured and access is activated.</span>
             </label>
             {error ? <p className="mt-4 rounded-lg bg-red-500/15 px-3 py-2 text-sm text-red-100">{error}</p> : null}
             {!canPay ? <p className="mt-5 rounded-lg bg-amber-400/10 px-3 py-3 text-sm text-amber-100">Ask your dealership Finance Desk account to complete the payment. Access activates for all dealership users after verification.</p> : null}
-            <button type="button" disabled={loading || paying || !accepted || preview || !canPay} onClick={pay} className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="button" disabled={loading || paying || !accepted || preview || !canPay} onClick={pay} className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition-colors duration-200 disabled:opacity-50">
               {loading || paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
               {expired ? "Renew Professional Plan" : "Pay and Activate Account"}
             </button>
