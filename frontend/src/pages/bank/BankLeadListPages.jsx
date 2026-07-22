@@ -7,6 +7,7 @@ import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, status
 import { BankManagerTable as Table, PageTitle } from "./BankManagerPanelParts.jsx";
 import { ReassignLeadDialog } from "./ReassignLeadDialog.jsx";
 import { useBankLeads } from "./bankManager.hooks.js";
+import { useBankDealershipOptions } from "./dealershipFilter.js";
 import { caseId, dateTime, display, generatedAt, leadStatusLabel, moneyValue } from "./bankManager.helpers.js";
 
 export function TotalLeadsPage() {
@@ -121,15 +122,19 @@ export function StatusPage() {
 
 export function ArchiveCasesPage({ kind }) {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 180);
   const status = kind === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED;
   const copy = lifecycleArchiveCopy(kind);
+  const { dealerships, loading: dealershipsLoading } = useBankDealershipOptions();
+  const dealershipId = params.get("dealershipId") || "";
   const { rows, total, hasMore, loading, page, onPage } = useBankLeads(debouncedSearch, status, "1");
   const tableRows = useMemo(() => rows.map((lead) => ({
     key: lead.id,
     cells: [caseId(lead), display(lead.fullName || lead.customerName), display(lead.mobile), display(lead.city || lead.dealershipCity), moneyValue(lead.loanAmount || lead.requiredLoanAmount), leadStatusLabel(lead), dateTime(lead.statusUpdatedAt || lead.updatedAt || lead.createdAt), display(lead.assignedExecutiveName || lead.assignedExecutiveEmail), <button key="docs" onClick={() => navigate(`/bank-manager/leads/${lead.id}`)} className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700">Documents</button>],
   })), [kind, navigate, rows]);
   const headers = ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, LEAD_TABLE_LABELS.lastUpdated, LEAD_TABLE_LABELS.assignedExecutive, "Documents"];
-  return <section className="space-y-4"><LifecycleArchiveHeader kind={kind} search={search} onSearch={setSearch} /><Table title={copy.title} headers={headers} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} emptyMessage={copy.empty} /></section>;
+  const updateDealership = (value) => setParams({ ...(search ? { search } : {}), ...(value ? { dealershipId: value } : {}), page: "1" });
+  return <section className="space-y-4"><LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams({ ...(value ? { search: value } : {}), ...(dealershipId ? { dealershipId } : {}), page: "1" }); }} dealerships={dealerships} dealershipsLoading={dealershipsLoading} dealershipId={dealershipId} onDealershipChange={updateDealership} /><Table title={copy.title} headers={headers} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} emptyMessage={dealershipId ? `${copy.empty.replace("available", "found for this dealership")}` : copy.empty} /></section>;
 }

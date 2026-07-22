@@ -10,12 +10,12 @@ import { api, getCachedGetData, invalidateGetCache } from "../../services/api.js
 import { cachedLeadRows, scheduleLeadPrefetch } from "../../services/leadInstantData.js";
 import { apiStatus, leadMutationFilter, LOAN_EXECUTIVE_PAGE_SIZE as pageSize, responseRows } from "./loanExecutive.helpers.js";
 
-export function useExecutiveLeads({ search, status, archiveTerminal: archiveOverride = "" }) {
+export function useExecutiveLeads({ search, status, archiveTerminal: archiveOverride = "", dealershipId = "" }) {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
   const archiveTerminal = archiveOverride || params.get("archiveTerminal") || "";
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "", archiveTerminal });
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status: status ? apiStatus(status) : "", archiveTerminal, ...(dealershipId ? { dealershipId } : {}) });
   const apiFilterStatus = status ? apiStatus(status) : "";
   const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status: apiFilterStatus, search, limit: pageSize });
   const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
@@ -24,7 +24,7 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(false);
   const freshRequestRef = useRef(null);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || "", dealershipId || ""]);
   const load = useCallback(async (nextPage = page, options = {}) => {
     if (!options.silent) setLoading(true);
     try {
@@ -33,7 +33,7 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
       invalidateGetCache({ prefix: "/bank/leads", purge: true });
       const response = await api.get("/bank/leads", {
         skipCache: true,
-        params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status: apiFilterStatus, archiveTerminal, ...cursorParamsForPage(requestPage) },
+        params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status: apiFilterStatus, archiveTerminal, dealershipId: dealershipId || undefined, ...cursorParamsForPage(requestPage) },
       });
       const nextRows = responseRows(response);
       setRows(nextRows);
@@ -43,7 +43,7 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     } finally {
       if (!options.silent) setLoading(false);
     }
-  }, [page, search, apiFilterStatus, archiveTerminal, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
+  }, [page, search, apiFilterStatus, archiveTerminal, dealershipId, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
   const refreshLatest = useCallback((nextPage = page, options = { silent: true }) => {
     if (freshRequestRef.current) return freshRequestRef.current;
     const request = load(nextPage, options).finally(() => {
@@ -78,6 +78,11 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     return scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS.map(apiStatus), { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => refreshLatest(page, { silent: true }), [page, refreshLatest]);
+  const dealershipMatches = useCallback((lead = {}) => {
+    if (!dealershipId) return true;
+    const target = String(dealershipId).trim().toLowerCase();
+    return [lead.dealershipId, lead.dealerId, lead.dealershipEmail, lead.dealerEmail].some((value) => String(value || "").trim().toLowerCase() === target);
+  }, [dealershipId]);
   useRealtimeLeadPatch({
     setRows,
     setTotal,
@@ -85,6 +90,7 @@ export function useExecutiveLeads({ search, status, archiveTerminal: archiveOver
     lifecycleFilter: archiveTerminal ? (status === "DISBURSED" ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE,
     pageSize,
     user,
+    leadFilter: dealershipMatches,
   });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const applyLeadPatch = useCallback((lead = {}) => {

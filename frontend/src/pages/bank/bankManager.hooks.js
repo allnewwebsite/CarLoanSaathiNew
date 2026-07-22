@@ -16,21 +16,22 @@ export function useBankLeads(search, status = "", archiveOverride = "") {
   const [params, setParams] = useSearchParams();
   const page = Number(params.get("page") || 1);
   const archiveTerminal = archiveOverride || params.get("archiveTerminal") || "";
-  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, archiveTerminal });
+  const dealershipId = params.get("dealershipId") || "";
+  const cached = getCachedGetData("/bank/leads", { page, limit: pageSize, search, status, archiveTerminal, dealershipId });
   const fallbackRows = cached ? [] : cachedLeadRows("/bank/leads", { status, search, limit: pageSize });
   const cachedRows = cached ? responseRows({ data: cached }) : fallbackRows;
   const [rows, setRows] = useState(() => cachedRows);
   const [total, setTotal] = useState(() => cached?.total || cachedRows.length);
   const [hasMore, setHasMore] = useState(() => Boolean(cached?.hasMore || cached?.nextCursor));
   const [loading, setLoading] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || ""]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([search || "", status || "", dealershipId]);
 
   const load = useCallback(async (nextPage = page, { silent = false } = {}) => {
     if (!silent) setLoading(true);
     try {
       const targetPage = Math.max(Number(nextPage || 1), 1);
       const requestPage = requestPageForPage(targetPage);
-      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status, archiveTerminal, ...cursorParamsForPage(requestPage) } });
+      const response = await api.get("/bank/leads", { params: { page: requestPage, limit: pageSize, search, globalSearch: search ? "1" : "", status, archiveTerminal, dealershipId: dealershipId || undefined, ...cursorParamsForPage(requestPage) } });
       const nextRows = responseRows(response);
       setRows(nextRows);
       setHasMore(Boolean(response.data?.hasMore || response.data?.nextCursor));
@@ -39,19 +40,25 @@ export function useBankLeads(search, status = "", archiveOverride = "") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, status, archiveTerminal, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
+  }, [page, search, status, archiveTerminal, dealershipId, cursorParamsForPage, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => { load(page, { silent: true }); }, [load, page]);
   useEffect(() => {
     return scheduleLeadPrefetch("/bank/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: search || "" });
   }, [search]);
   const realtimeRefresh = useCallback(() => load(page, { silent: true }), [load, page]);
+  const dealershipMatches = useCallback((lead = {}) => {
+    if (!dealershipId) return true;
+    const target = String(dealershipId).trim().toLowerCase();
+    return [lead.dealershipId, lead.dealerId, lead.dealershipEmail, lead.dealerEmail].some((value) => String(value || "").trim().toLowerCase() === target);
+  }, [dealershipId]);
   useRealtimeLeadPatch({
     setRows,
     setTotal,
     statusFilter: status,
     lifecycleFilter: archiveTerminal ? (status === LEAD_STATUSES.DISBURSED ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE,
     pageSize,
+    leadFilter: dealershipMatches,
   });
   useRoleLeadRealtime({ onRefresh: realtimeRefresh, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
   const onPage = (nextPage) => setParams((current) => ({ ...Object.fromEntries(current.entries()), page: String(nextPage) }));

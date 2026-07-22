@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getBankRegistrationStatus, registerBankPartner, startBankRegistration } from "../controllers/bankRegistration.controller.js";
-import { getBankDealershipDisbursedCases, getBankDealerships, getBankLead, getBankLeads, getBankLeadTimeline, getBankNotifications } from "../controllers/bankLeadRead.controller.js";
+import { getBankDealershipDisbursedCases, getBankDealershipOptions, getBankDealerships, getBankLead, getBankLeads, getBankLeadTimeline, getBankNotifications } from "../controllers/bankLeadRead.controller.js";
 import { acceptBankLead, reassignBankLead, rejectBankLead, updateBankLeadRemarks, updateBankLeadStatus } from "../controllers/bankLeadWorkflow.controller.js";
 import { createBankExecutive, getBankExecutiveCases, getBankExecutives, removeBankExecutive } from "../controllers/bankExecutive.controller.js";
 import { deleteBankLeadDocument, uploadBankLeadDocument } from "../controllers/bankDocument.controller.js";
@@ -21,6 +21,7 @@ router.use(authenticate, requireRole(ROLES.BANK_MANAGER, ROLES.LOAN_EXECUTIVE));
 router.get("/leads", getBankLeads);
 router.get("/dead-cases", getBankDeadCases);
 router.get("/dealerships", requireRole(ROLES.BANK_MANAGER), getBankDealerships);
+router.get("/dealerships/options", getBankDealershipOptions);
 router.get("/dealerships/:dealershipId/disbursed", requireRole(ROLES.BANK_MANAGER), getBankDealershipDisbursedCases);
 router.get("/executives", requireRole(ROLES.BANK_MANAGER), getBankExecutives);
 router.post("/executives", requireRole(ROLES.BANK_MANAGER), createBankExecutive);

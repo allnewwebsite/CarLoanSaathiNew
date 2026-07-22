@@ -165,7 +165,7 @@ function reassignmentDisposition(event = {}, user = {}) {
   return "unchanged";
 }
 
-export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", lifecycleFilter = LEAD_LIFECYCLE_STATES.ACTIVE, enabled = true, pageSize = 10, user = null } = {}) {
+export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = "", lifecycleFilter = LEAD_LIFECYCLE_STATES.ACTIVE, enabled = true, pageSize = 10, user = null, leadFilter = null } = {}) {
   useEffect(() => {
     if (!enabled || typeof setRows !== "function") return undefined;
     const onRealtime = (event) => {
@@ -177,6 +177,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
       const ownershipDisposition = reassignmentDisposition(detail, user || {});
       const canInsertPatchedRow = hasHydratedLeadPayload(detail)
         && leadMatchesDataset(patch, statusFilter, lifecycleFilter)
+        && (!leadFilter || leadFilter(patch))
         && (
           eventType === "LEAD_CREATED"
           || eventType === "LEAD_ASSIGNED"
@@ -204,7 +205,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
             return { ...row, ...patch };
           })
           .filter((row) => {
-            const keep = !sameLead(row, patch) || leadMatchesDataset(row, statusFilter, lifecycleFilter);
+            const keep = !sameLead(row, patch) || (leadMatchesDataset(row, statusFilter, lifecycleFilter) && (!leadFilter || leadFilter(row)));
             if (!keep) removed = true;
             return keep;
           });
@@ -220,7 +221,7 @@ export function useRealtimeLeadPatch({ setRows, setTotal = null, statusFilter = 
     };
     window.addEventListener("cls:realtime-event", onRealtime);
     return () => window.removeEventListener("cls:realtime-event", onRealtime);
-  }, [enabled, lifecycleFilter, pageSize, setRows, setTotal, statusFilter, user]);
+  }, [enabled, leadFilter, lifecycleFilter, pageSize, setRows, setTotal, statusFilter, user]);
 }
 
 export function useRealtimeLeadDetailPatch({ leadId, setLead, enabled = true, user = null } = {}) {

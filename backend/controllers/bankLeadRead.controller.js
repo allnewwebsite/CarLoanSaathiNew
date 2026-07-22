@@ -231,6 +231,27 @@ export async function getBankDealershipDisbursedCases(req, res, next) {
   }
 }
 
+export async function getBankDealershipOptions(req, res, next) {
+  try {
+    const partner = await currentPartner(req);
+    if (!partner) return res.status(404).json({ message: "Bank partner profile not found" });
+    const scopedLeads = await assignedLeadsForPartner(partner, { limit: 1000, includeDeadCases: "1" });
+    const identity = bankIdentity(partner);
+    const projected = partner.roleType === "bank-manager"
+      ? await queryBankDealershipProjection({ bankId: identity.bankId, query: { ...req.query, page: 1, limit: 1000 } }).catch(() => null)
+      : null;
+    const grouped = [...(projected?.data || []), ...groupDealershipsFromLeads(scopedLeads)];
+    const canonicalRows = await canonicalizeBankDealershipRows(grouped);
+    const data = canonicalRows
+      .map((row) => ({ dealershipId: row.dealershipId || row.id, dealershipName: row.dealershipName || row.name || row.dealershipId || row.id }))
+      .filter((row) => row.dealershipId)
+      .sort((left, right) => String(left.dealershipName).localeCompare(String(right.dealershipName)));
+    return res.json({ data, total: data.length });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function getBankLead(req, res, next) {
   try {
     const partner = await currentPartner(req);

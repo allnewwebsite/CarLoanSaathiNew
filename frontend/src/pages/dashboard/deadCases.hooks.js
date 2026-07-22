@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useCursorPager } from "../../hooks/useCursorPager.js";
 import { api, getCachedGetData } from "../../services/api.js";
 import { DEAD_CASE_ENDPOINTS, PAGE_SIZE, sameLead } from "./deadCases.helpers.js";
+import { useBankDealershipOptions } from "../bank/dealershipFilter.js";
 
 const DEAD_CASE_REALTIME_EVENTS = new Set([
   "DEAD_CASE_CREATED",
@@ -14,8 +16,13 @@ const DEAD_CASE_REALTIME_EVENTS = new Set([
 export function useDeadCasesPageState(audience = "finance") {
   const endpoint = DEAD_CASE_ENDPOINTS[audience] || DEAD_CASE_ENDPOINTS.finance;
   const canModify = audience === "finance";
+  const filterEnabled = audience === "bank" || audience === "executive";
+  const [params, setParams] = useSearchParams();
+  const dealershipId = filterEnabled ? params.get("dealershipId") || "" : "";
+  const { dealerships, loading: dealershipsLoading } = useBankDealershipOptions(filterEnabled);
   const initialParams = { page: 1, limit: PAGE_SIZE };
-  const cachedPayload = getCachedGetData(endpoint, initialParams);
+  const baseCachedPayload = getCachedGetData(endpoint, initialParams);
+  const cachedPayload = dealershipId ? getCachedGetData(endpoint, { ...initialParams, dealershipId }) : baseCachedPayload;
   const initialPayload = Array.isArray(cachedPayload) ? { data: cachedPayload } : cachedPayload || {};
   const [rows, setRows] = useState(() => initialPayload.data || []);
   const [loading, setLoading] = useState(() => !cachedPayload);
@@ -32,7 +39,7 @@ export function useDeadCasesPageState(audience = "finance") {
   const [addNotes, setAddNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, dealershipId]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -43,6 +50,7 @@ export function useDeadCasesPageState(audience = "finance") {
         params: {
           page: requestPage,
           limit: PAGE_SIZE,
+          dealershipId: dealershipId || undefined,
           ...cursor,
         },
       });
@@ -53,7 +61,7 @@ export function useDeadCasesPageState(audience = "finance") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [cursorParamsForPage, endpoint, page, rememberNextCursor, requestPageForPage]);
+  }, [cursorParamsForPage, dealershipId, endpoint, page, rememberNextCursor, requestPageForPage]);
 
   useEffect(() => {
     load({ silent: Boolean(cachedPayload) });
@@ -65,6 +73,12 @@ export function useDeadCasesPageState(audience = "finance") {
       if (!DEAD_CASE_REALTIME_EVENTS.has(type)) return;
       const patch = event.detail?.lead || event.detail;
       if (!patch?.id && !patch?.leadId && !patch?.caseId) return;
+      if (dealershipId) {
+        const target = dealershipId.toLowerCase();
+        const matches = [patch.dealershipId, patch.dealerId, patch.dealershipEmail, patch.dealerEmail]
+          .some((value) => String(value || "").trim().toLowerCase() === target);
+        if (!matches) return;
+      }
       setRows((current) => {
         if (type === "DEAD_CASE_RESTORED" || type === "LEAD_RESTORED_FROM_DEAD" || patch.isDeadCase === false) {
           return current.filter((row) => !sameLead(row, patch));
@@ -77,7 +91,7 @@ export function useDeadCasesPageState(audience = "finance") {
     };
     window.addEventListener("cls:realtime-event", refreshOnDeadCase);
     return () => window.removeEventListener("cls:realtime-event", refreshOnDeadCase);
-  }, []);
+  }, [dealershipId]);
 
   const restoreCase = useCallback(async (lead) => {
     if (!canModify || !lead?.id) return;
@@ -163,6 +177,17 @@ export function useDeadCasesPageState(audience = "finance") {
     }
   }, [editLead?.id, editNotes, editReason, load]);
 
+  const setDealership = useCallback((value) => {
+    setParams((current) => {
+      const next = Object.fromEntries(current.entries());
+      if (value) next.dealershipId = value;
+      else delete next.dealershipId;
+      next.page = "1";
+      return next;
+    });
+    setPage(1);
+  }, [setParams]);
+
   return {
     actionId,
     addError,
@@ -171,6 +196,10 @@ export function useDeadCasesPageState(audience = "finance") {
     addReason,
     addSaving,
     canModify,
+    dealershipId,
+    dealerships,
+    dealershipsLoading,
+    filterEnabled,
     caseNumber,
     editError,
     editLead,
@@ -188,6 +217,7 @@ export function useDeadCasesPageState(audience = "finance") {
     setAddOpen,
     setAddReason,
     setCaseNumber,
+    setDealership,
     setEditLead,
     setEditNotes,
     setEditReason,

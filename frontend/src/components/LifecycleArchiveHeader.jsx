@@ -60,7 +60,7 @@ export function PolicyInformationBanner({ kind = "rejected" }) {
   );
 }
 
-export function LifecycleArchiveHeader({ kind, search, onSearch }) {
+export function LifecycleArchiveHeader({ kind, search, onSearch, dealerships = [], dealershipId = "", onDealershipChange, dealershipsLoading = false }) {
   const copy = lifecycleArchiveCopy(kind);
   return (
     <>
@@ -69,11 +69,22 @@ export function LifecycleArchiveHeader({ kind, search, onSearch }) {
         <p className="mt-1 text-sm text-slate-500">{copy.subtitle}</p>
       </div>
       <PolicyInformationBanner kind={kind} />
-      <label className="relative block rounded-lg border border-slate-200 bg-white p-3">
+      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_16rem]">
+        {onDealershipChange ? (
+          <label className="sr-only" htmlFor={`${kind}-dealership-filter`}>Select Dealership</label>
+        ) : null}
+        {onDealershipChange ? (
+          <select id={`${kind}-dealership-filter`} value={dealershipId} onChange={(event) => onDealershipChange(event.target.value)} disabled={dealershipsLoading} className="order-first h-9 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 sm:order-last">
+            <option value="">All Dealerships</option>
+            {dealerships.map((dealership) => <option key={dealership.dealershipId} value={dealership.dealershipId}>{dealership.dealershipName}</option>)}
+          </select>
+        ) : null}
+        <label className="relative block">
         <span className="sr-only">Search archived cases</span>
         <Search className="absolute left-6 top-5.5 h-4 w-4 text-slate-400" />
         <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search by customer name, case ID, mobile, city, or bank" className="h-9 w-full rounded-md border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100" />
-      </label>
+        </label>
+      </div>
     </>
   );
 }

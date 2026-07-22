@@ -340,7 +340,7 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
 export async function queryDeadCases({ dealershipId = "", bankId = "", executiveId = "", executiveIdentityValues = [], executiveNames = [], salespersonId = "", query = {}, fields = LEAD_FIELDS } = {}) {
   const { limit, cursor, page } = paginationParams(query);
   const where = [{ field: "isDeadCase", value: true }];
-  if (dealershipId) where.push({ field: "dealershipId", value: dealershipId });
+  if (dealershipId && !bankId && !executiveId && !executiveIdentityValues.length && !executiveNames.length) where.push({ field: "dealershipId", value: dealershipId });
   if (bankId) where.push({ field: "bankId", value: bankId });
   if (executiveId) where.push({ field: "assignedExecutiveId", value: executiveId });
   if (salespersonId) where.push({ field: "salespersonId", value: salespersonId });
@@ -383,8 +383,15 @@ export async function queryDeadCases({ dealershipId = "", bankId = "", executive
       && sameExecutive
       && same([lead.salespersonId, lead.salespersonEmail, lead.salespersonMobile, lead.salespersonJobId, lead.assignedSalesperson], salespersonIdentity);
   };
+  const requestedDealership = String(dealershipId || "").trim().toLowerCase();
+  const matchesDealership = (lead = {}) => !requestedDealership || [
+    lead.dealershipId,
+    lead.dealershipEmail,
+    lead.dealerEmail,
+    lead.dealerId,
+  ].some((value) => String(value || "").trim().toLowerCase() === requestedDealership);
   return pageResponse({
-    data: result.data.filter((lead) => lead.isDeadCase === true && matchesScopedIdentity(lead)),
+    data: result.data.filter((lead) => lead.isDeadCase === true && matchesScopedIdentity(lead) && matchesDealership(lead)),
     limit,
     nextCursor: result.nextCursor,
   });

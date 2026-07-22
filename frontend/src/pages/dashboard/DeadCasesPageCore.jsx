@@ -28,6 +28,16 @@ export function DeadCasesPage({ audience = "finance" }) {
 
       <PolicyInformationBanner kind="dead" />
 
+      {state.filterEnabled ? (
+        <div className="flex justify-end">
+          <label htmlFor="dead-cases-dealership-filter" className="sr-only">Select Dealership</label>
+          <select id="dead-cases-dealership-filter" value={state.dealershipId} onChange={(event) => state.setDealership(event.target.value)} disabled={state.dealershipsLoading} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 disabled:opacity-60 sm:w-64">
+            <option value="">All Dealerships</option>
+            {state.dealerships.map((dealership) => <option key={dealership.dealershipId} value={dealership.dealershipId}>{dealership.dealershipName}</option>)}
+          </select>
+        </div>
+      ) : null}
+
       {state.canModify ? (
         <div className="flex justify-end">
           <button

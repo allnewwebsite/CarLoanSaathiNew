@@ -3,6 +3,7 @@ import { getAuditLogs } from "../services/audit.service.js";
 import { moveCaseNumberToDeadCase, moveLeadToDeadCase, restoreDeadCase, updateDeadCaseMetadata } from "../services/deadCase.service.js";
 import { queryDeadCases } from "../services/leadQuery.service.js";
 import { executiveIdentityValues, executiveNameValues } from "../services/roleIdentity.service.js";
+import { assignedLeadsForPartner, currentPartner, dealershipIdentityFromLead } from "./bankShared.controller.js";
 
 function dealershipIdFromUser(user = {}) {
   return String(user.dealershipId || user.email || user.uid || "").trim().toLowerCase();
@@ -80,11 +81,19 @@ export async function getBankDeadCases(req, res, next) {
   try {
     const bankId = String(req.user?.bankId || req.user?.organizationId || "").trim();
     const actor = await loanExecutiveActor(req.user);
+    const dealershipId = String(req.query?.dealershipId || "").trim().toLowerCase();
+    if (dealershipId) {
+      const partner = await currentPartner(req);
+      const visibleLeads = partner ? await assignedLeadsForPartner(partner, { limit: 1000, includeDeadCases: "1" }) : [];
+      const authorized = visibleLeads.some((lead) => dealershipIdentityFromLead(lead)?.dealershipId?.toLowerCase() === dealershipId);
+      if (!authorized) return res.status(403).json({ message: "Dealership is outside your authorized bank scope", code: "DEALERSHIP_FORBIDDEN" });
+    }
     return res.json(await queryDeadCases({
       bankId,
       executiveId: "",
       executiveIdentityValues: req.user?.role === "loan-executive" ? executiveIdentityValues(actor) : [],
       executiveNames: req.user?.role === "loan-executive" ? executiveNameValues(actor) : [],
+      dealershipId,
       query: req.query,
     }));
   } catch (error) {

@@ -215,7 +215,9 @@ export function applyFilters(leads, query) {
     // Bank fallback queries can find a lead by bank metadata even after it has
     // left the active queue, so source-specific filters are not sufficient.
     const lifecycle = lifecycleStateForLead(lead);
-    const lifecycleOk = archiveTerminal
+    const lifecycleOk = query.includeDeadCases
+      ? true
+      : archiveTerminal
       ? (requestedArchiveLifecycle
         ? lifecycle === requestedArchiveLifecycle
         : [LEAD_LIFECYCLE_STATES.REJECTED, LEAD_LIFECYCLE_STATES.DISBURSED].includes(lifecycle))

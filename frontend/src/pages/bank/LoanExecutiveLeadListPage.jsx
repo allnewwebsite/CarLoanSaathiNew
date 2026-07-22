@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, FileText, LoaderCircle, MapPin } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { StatusBadge } from "../../components/StatusBadge.jsx";
@@ -16,6 +16,7 @@ import {
 } from "./LoanExecutiveLeadModals.jsx";
 import { CompactPagination, PageTitle, Table } from "./LoanExecutivePanelParts.jsx";
 import { useExecutiveLeads } from "./loanExecutive.hooks.js";
+import { useBankDealershipOptions } from "./dealershipFilter.js";
 import {
   caseId,
   dateTime,
@@ -74,30 +75,6 @@ function LeadCard({ lead, user, accepting, onAccept, onUpdate, onDocs, onDetails
   );
 }
 
-function dealershipValue(lead = {}) {
-  return String(
-    lead.dealershipId
-      || lead.dealerId
-      || lead.dealershipEmail
-      || lead.dealerEmail
-      || lead.dealershipName
-      || lead.dealerName
-      || "",
-  ).trim();
-}
-
-function dealershipLabel(lead = {}) {
-  return String(
-    lead.dealershipName
-      || lead.dealerName
-      || lead.dealershipEmail
-      || lead.dealerEmail
-      || lead.dealershipId
-      || lead.dealerId
-      || "Unassigned Dealership",
-  ).trim();
-}
-
 export function LoanExecutiveLeadListPage({ mode }) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -105,8 +82,6 @@ export function LoanExecutiveLeadListPage({ mode }) {
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
   const [acceptingLeadId, setAcceptingLeadId] = useState("");
-  const [dealershipFilter, setDealershipFilter] = useState("");
-  const [knownDealerships, setKnownDealerships] = useState([]);
   const archived = mode === "rejected" || mode === "disbursed";
   const statusMode = mode === "status" || archived;
   const archiveKind = archived ? mode : "";
@@ -117,19 +92,10 @@ export function LoanExecutiveLeadListPage({ mode }) {
     ? normalizeStatus(requestedStatus)
     : mode === "status" ? CURRENT_WORKFLOW_STATUS_OPTIONS[0] : "";
   const archiveCopy = archived ? lifecycleArchiveCopy(archiveKind) : null;
-  const { rows, total, hasMore, loading, page, onPage, load, refreshLatest, applyLeadPatch } = useExecutiveLeads({ search: debouncedSearch, status, archiveTerminal: archived ? "1" : "" });
-
-  useEffect(() => {
-    setKnownDealerships((current) => {
-      const byValue = new Map(current.map((item) => [item.value, item]));
-      rows.forEach((lead) => {
-        const value = dealershipValue(lead);
-        if (!value) return;
-        byValue.set(value, { value, label: dealershipLabel(lead) });
-      });
-      return [...byValue.values()].sort((left, right) => left.label.localeCompare(right.label));
-    });
-  }, [rows]);
+  const dealershipFilter = archived ? params.get("dealershipId") || "" : "";
+  const { dealerships, loading: dealershipsLoading } = useBankDealershipOptions(archived);
+  const { rows, total, hasMore, loading, page, onPage, load, refreshLatest, applyLeadPatch } = useExecutiveLeads({ search: debouncedSearch, status, archiveTerminal: archived ? "1" : "", dealershipId: dealershipFilter });
+  const updateDealership = (value) => setParams({ ...(search ? { search } : {}), ...(value ? { dealershipId: value } : {}), page: "1" });
 
   const updateStatus = async (lead, nextStatus) => {
     setStatusError("");
@@ -164,10 +130,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
     }
   };
 
-  const displayedLeads = useMemo(() => {
-    if (!dealershipFilter) return rows;
-    return rows.filter((lead) => dealershipValue(lead) === dealershipFilter);
-  }, [dealershipFilter, rows]);
+  const displayedLeads = rows;
 
   const tableRows = displayedLeads.map((lead) => ({
     key: lead.id,
@@ -210,18 +173,9 @@ export function LoanExecutiveLeadListPage({ mode }) {
 
   return (
     <section className="space-y-3 lg:space-y-4">
-      {archived ? <LifecycleArchiveHeader kind={archiveKind} search={search} onSearch={setSearch} /> : null}
+      {archived ? <LifecycleArchiveHeader kind={archiveKind} search={search} onSearch={(value) => { setSearch(value); setParams({ ...(value ? { search: value } : {}), ...(dealershipFilter ? { dealershipId: dealershipFilter } : {}), page: "1" }); }} dealerships={dealerships} dealershipsLoading={dealershipsLoading} dealershipId={dealershipFilter} onDealershipChange={updateDealership} /> : null}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="hidden lg:block">{!archived ? <PageTitle title={mode === "status" ? "Status" : "Total Leads"} /> : null}</div>
-        <select
-          value={dealershipFilter}
-          onChange={(event) => setDealershipFilter(event.target.value)}
-          disabled={!knownDealerships.length}
-          className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none focus:border-[#0d47a1] focus:ring-2 focus:ring-blue-100 disabled:opacity-60 sm:w-64"
-        >
-          <option value="">Select Dealership</option>
-          {knownDealerships.map((dealership) => <option key={dealership.value} value={dealership.value}>{dealership.label}</option>)}
-        </select>
       </div>
       {mode === "status" ? <div className="flex gap-2 overflow-x-auto pb-1">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium sm:text-sm ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
       {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
