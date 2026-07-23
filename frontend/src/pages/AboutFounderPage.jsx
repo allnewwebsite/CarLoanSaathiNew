@@ -41,7 +41,7 @@ export function AboutFounderPage() {
             <div className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-cyan-300/30 via-blue-300/10 to-orange-300/30 blur-2xl" />
             <div className="relative overflow-hidden rounded-[2.25rem] border border-white/80 bg-white/70 p-3 shadow-2xl shadow-blue-900/10 backdrop-blur-xl">
               <div className="flex aspect-square items-center justify-center overflow-hidden rounded-[1.8rem] bg-gradient-to-br from-blue-700 via-cyan-600 to-orange-400">
-                <img src="/assets/favicon.png" alt="CarLoanSaathi founder profile" loading="lazy" className="h-36 w-36 rounded-full border-8 border-white/80 bg-white object-contain shadow-2xl" />
+                <img src="/assets/founder-mohit.jpg" alt="Mohit, Founder and CEO of CarLoanSaathi" loading="lazy" className="h-[78%] w-[78%] rounded-full border-8 border-white/80 object-cover object-center shadow-2xl" />
               </div>
               <div className="absolute bottom-8 left-8 right-8 rounded-2xl border border-white/70 bg-white/85 p-4 shadow-lg backdrop-blur"><p className="text-xs font-bold uppercase tracking-[.16em] text-blue-700">Founder &amp; CEO</p><p className="mt-1 text-xl font-semibold text-slate-950">Mohit</p><p className="text-sm text-slate-500">Software Engineer · Bahadurgarh</p></div>
             </div>
