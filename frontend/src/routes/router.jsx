@@ -22,6 +22,7 @@ const pageModules = {
   home: () => import("../pages/HomePage.jsx"),
   howItWorks: () => import("../pages/HowItWorksPage.jsx"),
   plansBilling: () => import("../pages/PlansBillingPage.jsx"),
+  aboutFounder: () => import("../pages/AboutFounderPage.jsx"),
   dealerRegistration: () => import("../pages/DealerRegistrationPage.jsx"),
   subscriptionActivation: () => import("../pages/SubscriptionActivationPage.jsx"),
   bankRegistration: () => import("../pages/public/BankRegistration.jsx"),
@@ -45,6 +46,7 @@ const pageModules = {
 const HomePage = lazyPage(pageModules.home, "HomePage");
 const HowItWorksPage = lazyPage(pageModules.howItWorks, "HowItWorksPage");
 const PlansBillingPage = lazyPage(pageModules.plansBilling, "PlansBillingPage");
+const AboutFounderPage = lazyPage(pageModules.aboutFounder, "AboutFounderPage");
 const DealerRegistrationPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPage");
 const DealerRegistrationFormPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationFormPage");
 const DealerRegistrationPendingPage = lazyPage(pageModules.dealerRegistration, "DealerRegistrationPendingPage");
@@ -80,6 +82,7 @@ export const router = createBrowserRouter([
       { path: "/", element: <HomePage /> },
       { path: "/how-it-works", element: <HowItWorksPage /> },
       { path: "/plans-and-billing", element: <PlansBillingPage /> },
+      { path: "/about-founder", element: <AboutFounderPage /> },
       { path: "/terms", element: <LegalPage policy="terms" /> },
       { path: "/privacy", element: <LegalPage policy="privacy" /> },
       { path: "/refund-policy", element: <LegalPage policy="refund" /> },

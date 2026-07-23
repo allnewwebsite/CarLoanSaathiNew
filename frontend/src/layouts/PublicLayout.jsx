@@ -9,6 +9,7 @@ const customerNav = [
   { label: "Plans & Billing", to: "/plans-and-billing" },
   { label: "How It Works", to: "/how-it-works" },
   { label: "About", to: "/#about" },
+  { label: "About Founder", to: "/about-founder" },
   { label: "Contact", to: "/#contact" },
 ];
 
