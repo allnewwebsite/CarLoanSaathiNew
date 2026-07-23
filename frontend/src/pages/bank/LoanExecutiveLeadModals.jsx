@@ -11,7 +11,7 @@ import {
   loanExecutiveDocs as docs,
   moneyValue,
   otherDocumentLabel,
-  statusOptions,
+  statusOptionsForLead,
 } from "./loanExecutive.helpers.js";
 
 export function RejectModal({ lead, onClose, onSaved }) {
@@ -81,7 +81,7 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
         Status
         <select className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-[#0d47a1]" value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="">Select Status</option>
-          {statusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          {statusOptionsForLead(lead).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </label>
       {status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? (

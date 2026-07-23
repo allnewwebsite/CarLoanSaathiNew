@@ -1,4 +1,4 @@
-import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, statusLabel as leadStatusLabel } from "../../constants/status.js";
+import { CURRENT_WORKFLOW_STATUS_OPTIONS, LEAD_STATUSES, normalizeStatus, statusLabel as leadStatusLabel } from "../../constants/status.js";
 import { CUSTOMER_DOCUMENTS, OTHER_CUSTOMER_DOCUMENT } from "../../constants/customerDocuments.js";
 import { mutationUrlMatches } from "../../hooks/useRealtimeRefresh.js";
 import { normalizeRows } from "../../services/apiResponse.js";
@@ -17,6 +17,25 @@ export const statusOptions = [
   LEAD_STATUSES.REJECTED,
   LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS,
 ].map((value) => ({ label: leadStatusLabel(value), value }));
+
+const VALID_STATUS_TRANSITIONS = Object.freeze({
+  NEW: ["CONTACTED", "REQUEST_DOCUMENT", "REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "DISBURSED", "REJECTED"],
+  CONTACTED: ["REQUEST_DOCUMENT", "DOCUMENT_RECEIVED", "REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "DISBURSED", "REJECTED"],
+  REQUEST_DOCUMENT: ["DOCUMENT_RECEIVED", "REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "DISBURSED", "REJECTED"],
+  DOCUMENT_RECEIVED: ["REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "DISBURSED", "REJECTED"],
+  REQUEST_PENDING_DOCUMENTS: ["DOCUMENT_RECEIVED", "UNDER_BANK_PROCESS", "DISBURSED", "REJECTED"],
+  UNDER_BANK_PROCESS: ["REQUEST_PENDING_DOCUMENTS", "DOCS_PENDING", "DISBURSED", "REJECTED"],
+  ASSIGNED: ["CONTACTED", "REQUEST_DOCUMENT", "UNDER_BANK_PROCESS", "REJECTED"],
+  ACCEPTED: ["CONTACTED", "REQUEST_DOCUMENT", "UNDER_BANK_PROCESS", "DOCS_PENDING", "REJECTED"],
+  UNDER_REVIEW: ["REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "DOCS_PENDING", "REJECTED", "DISBURSED"],
+  DOCS_PENDING: ["DOCUMENT_RECEIVED", "REQUEST_PENDING_DOCUMENTS", "UNDER_BANK_PROCESS", "REJECTED"],
+});
+
+export function statusOptionsForLead(lead = {}) {
+  const current = normalizeStatus(lead.status || lead.assignmentStatus);
+  const allowed = new Set([current, ...(VALID_STATUS_TRANSITIONS[current] || [])]);
+  return statusOptions.filter((option) => allowed.has(option.value));
+}
 
 export const statusFilters = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: leadStatusLabel(value), value }));
 
