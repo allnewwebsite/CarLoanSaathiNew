@@ -115,6 +115,7 @@ import { runRecordTransaction } from "../services/firestore.service.js";
 import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
 void ACTIVE_EXPORT_SENTINEL;
+const PENDING_DOCUMENT_STATUSES = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING];
 export async function acceptBankLead(req, res, next) {
   try {
     const { partner, lead } = await requireAssignedLead(req);
@@ -279,6 +280,9 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   if (normalizedStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
     throw Object.assign(new Error("Rejection reason is required"), { status: 400, code: "REJECTION_REASON_REQUIRED" });
   }
+  if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus) && !requestedDocuments.length) {
+    throw Object.assign(new Error("At least one required document must be selected"), { status: 400, code: "REQUIRED_DOCUMENTS_REQUIRED" });
+  }
   const statusPayload = {
     status: normalizedStatus,
     ...statusAutomationPatch(normalizedStatus, now, lead),
@@ -301,6 +305,10 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
       rejectedAt: now,
       rejectedBy: executiveName,
       rejectionRemarks: req.body.remarks,
+    } : {}),
+    ...(PENDING_DOCUMENT_STATUSES.includes(normalizedStatus) ? {
+      requiredDocuments: requestedDocuments,
+      remark: pendingDocumentReason,
     } : {}),
     ...(normalizedStatus === LEAD_STATUSES.DISBURSED ? {
       disbursedAmount: req.body.disbursedAmount,

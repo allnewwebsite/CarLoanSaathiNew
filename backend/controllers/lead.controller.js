@@ -331,8 +331,13 @@ export async function updateLeadStatus(req, res, next) {
     const nextStatus = assertValidStatusTransition(existing?.status, req.body.status);
     const now = new Date().toISOString();
     const rejectionReason = String(req.body.rejectionReason || req.body.reason || req.body.remarks || "").trim();
+    const requestedDocuments = [...new Set((Array.isArray(req.body.requiredDocuments) ? req.body.requiredDocuments : Array.isArray(req.body.pendingDocumentsRequested) ? req.body.pendingDocumentsRequested : []).map((item) => String(item || "").trim()).filter(Boolean))];
+    const pendingDocumentReason = String(req.body.pendingDocumentReason || req.body.remark || req.body.remarks || "").trim();
     if (nextStatus === LEAD_STATUSES.REJECTED && !rejectionReason) {
       return res.status(400).json({ message: "Rejection reason is required", code: "REJECTION_REASON_REQUIRED" });
+    }
+    if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus) && !requestedDocuments.length) {
+      return res.status(400).json({ message: "At least one required document must be selected", code: "REQUIRED_DOCUMENTS_REQUIRED" });
     }
     const statusUpdate = {
       status: nextStatus,
@@ -344,6 +349,13 @@ export async function updateLeadStatus(req, res, next) {
         rejectionRemarks: req.body.remarks || rejectionReason,
         rejectedAt: now,
         rejectedBy: req.user?.email || req.user?.uid || null,
+      } : {}),
+      ...([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus) ? {
+        pendingDocuments: requestedDocuments,
+        pendingDocumentsRequested: requestedDocuments,
+        requiredDocuments: requestedDocuments,
+        pendingDocumentReason,
+        remark: pendingDocumentReason,
       } : {}),
     };
     const lead = await updateRecord("leads", req.params.id, statusUpdate);

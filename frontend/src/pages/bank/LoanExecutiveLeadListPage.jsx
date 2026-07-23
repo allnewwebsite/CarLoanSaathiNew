@@ -81,6 +81,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
   const [params, setParams] = useSearchParams();
   const [modal, setModal] = useState(null);
   const [statusError, setStatusError] = useState("");
+  const [statusNotice, setStatusNotice] = useState("");
   const [acceptingLeadId, setAcceptingLeadId] = useState("");
   const archived = mode === "rejected" || mode === "disbursed";
   const statusMode = mode === "status" || archived;
@@ -99,6 +100,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
 
   const updateStatus = async (lead, nextStatus) => {
     setStatusError("");
+    setStatusNotice("");
     if (nextStatus === "REJECTED_REASON") return setModal({ type: "reject", lead });
     if ([LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(nextStatus)) return setModal({ type: "docs", lead, status: nextStatus });
     if (nextStatus === "STATUS_UPDATE") return setModal({ type: "status", lead });
@@ -178,7 +180,8 @@ export function LoanExecutiveLeadListPage({ mode }) {
         <div className="hidden lg:block">{!archived ? <PageTitle title={mode === "status" ? "Status" : "Total Leads"} /> : null}</div>
       </div>
       {mode === "status" ? <div className="flex gap-2 overflow-x-auto pb-1">{statusFilters.map((item) => <button key={item.value} onClick={() => setParams({ status: item.value, page: "1" })} className={`shrink-0 rounded-md border px-3 py-2 text-xs font-medium sm:text-sm ${status === item.value ? "border-[#0d47a1] bg-[#0d47a1] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{item.label}</button>)}</div> : null}
-      {statusError ? <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
+      {statusError ? <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{statusError}</div> : null}
+      {statusNotice ? <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{statusNotice}</div> : null}
       <div className="hidden lg:block">
         <Table title={archived ? archiveCopy.title : mode === "status" ? "Filtered Cases" : "Assigned Leads"} headers={statusMode ? statusHeaders : ["Case ID", "Customer Name", "Mobile Number", "Customer City", "Car On-Road Price", "Required Loan Amount", LEAD_TABLE_LABELS.generatedDate, "Finance Manager", "Finance Manager Mobile", LEAD_TABLE_LABELS.currentStatus, "Update Status", "Documents"]} rows={tableRows} loading={loading} page={page} total={total} hasMore={hasMore} onPage={onPage} emptyMessage={archiveCopy?.empty} />
       </div>
@@ -200,7 +203,7 @@ export function LoanExecutiveLeadListPage({ mode }) {
         {rows.length || page > 1 ? <CompactPagination page={page} total={total} hasMore={hasMore} onPage={onPage} /> : null}
       </div>
       {modal?.type === "reject" ? <RejectModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
-      {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={() => { setModal(null); load(page); }} /> : null}
+      {modal?.type === "status" ? <StatusUpdateModal lead={modal.lead} onClose={() => setModal(null)} onSaved={({ message } = {}) => { setModal(null); setStatusNotice(message || "Status updated successfully."); load(1); }} /> : null}
       {modal?.type === "details" ? <LeadDetailsModal lead={modal.lead} onClose={() => setModal(null)} /> : null}
       {modal?.type === "document-actions" ? <DocumentsSheet lead={modal.lead} onClose={() => setModal(null)} /> : null}
     </section>

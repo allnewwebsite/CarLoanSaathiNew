@@ -34,19 +34,30 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
   const [otherDocument, setOtherDocument] = useState("");
   const [sanctionFile, setSanctionFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
-    if (!status) return;
+    if (busy || !status) return;
     const otherSelected = selected.includes(otherDocumentLabel);
     const requestedDocuments = [
       ...selected.filter((item) => item !== otherDocumentLabel),
       ...(otherSelected && otherDocument.trim() ? [`Other: ${otherDocument.trim()}`] : []),
     ];
-    if (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && !requestedDocuments.length) return;
+    if (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && !requestedDocuments.length) {
+      setError("Select at least one required document.");
+      return;
+    }
+    setError("");
     setBusy(true);
     try {
       await api.patch(`/bank/leads/${lead.id}/status`, {
+        caseId: lead.caseId || lead.id,
         status,
         remarks,
+        remark: remarks,
+        requiredDocuments: requestedDocuments,
+        updatedBy: "loan-executive",
+        updatedAt: new Date().toISOString(),
+        workflow: { source: "loan-executive-status-modal", requestedDocuments, remark: remarks },
         rejectionReason: status === LEAD_STATUSES.REJECTED ? remarks : undefined,
         pendingDocumentsRequested: status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? requestedDocuments : undefined,
         pendingDocumentReason: status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? remarks : undefined,
@@ -57,7 +68,9 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
         form.append("documentType", "sanction-letter");
         await api.post(`/bank/leads/${lead.id}/documents`, form, { headers: { "Content-Type": "multipart/form-data" } });
       }
-      onSaved();
+      onSaved({ message: status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? "Document request submitted successfully." : "Status updated successfully." });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || requestError.message || "Could not update the case. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -101,6 +114,7 @@ export function StatusUpdateModal({ lead, onClose, onSaved }) {
           </label>
         </div>
       ) : null}
+      {error ? <p role="alert" className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
       <button disabled={busy || !status || (status === LEAD_STATUSES.REJECTED && !remarks.trim()) || (status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS && (!selected.length || (selected.includes(otherDocumentLabel) && !otherDocument.trim())))} onClick={submit} className="mt-4 rounded-md bg-[#0d47a1] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
         {busy ? "Saving..." : status === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS ? "Submit Document Request" : "Save Status"}
       </button>
