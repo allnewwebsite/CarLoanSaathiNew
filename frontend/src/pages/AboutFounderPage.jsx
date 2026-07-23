@@ -3,7 +3,7 @@ import { ArrowRight, Award, Cloud, Code2, Cpu, HeartHandshake, Landmark, LockKey
 import { Link } from "react-router-dom";
 
 const profile = [
-  ["Name", "Mohit"], ["Based in", "Bahadurgarh, Haryana"], ["Qualification", "Bachelor of Computer Applications (BCA)"],
+  ["Name", "Mohit"], ["Based in", "Bahadurgarh, Haryana"], ["Qualification", "Computer Engineering"],
   ["Company", "CarLoanSaathi"], ["Company type", "Startup"], ["Role", "Founder & CEO"], ["Profession", "Software Engineer"],
 ];
 
