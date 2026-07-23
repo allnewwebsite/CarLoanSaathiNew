@@ -32,7 +32,9 @@ test("one business event owns one notification record across portal scopes", () 
   assert.match(notification, /eventId: resolvedEventId/);
   assert.match(notification, /notificationEventVersion/);
   assert.doesNotMatch(notification.match(/function notificationDedupeId[\s\S]*?\n}/)?.[0] || "", /recipientRole|recipientId/);
-  assert.equal((bankWorkflow.match(/createNotification\(\{/g) || []).length, 2);
+  const statusTransition = fs.readFileSync(new URL("../services/leadStatusTransition.service.js", import.meta.url), "utf8");
+  assert.equal((bankWorkflow.match(/createNotification\(\{/g) || []).length, 0);
+  assert.equal((statusTransition.match(/createNotification\(\{/g) || []).length, 1);
   assert.doesNotMatch(bankWorkflow, /status-changed-bank-manager|status-changed-gm/);
   assert.doesNotMatch(dealerLead, /finance-lead-created-bank-manager/);
 });

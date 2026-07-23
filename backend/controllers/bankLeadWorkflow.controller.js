@@ -21,7 +21,6 @@ import {
   clearLeadDetailCaches,
   collectExecutiveLeads,
   countCanonicalBankExecutives,
-  createNotification,
   createRecord,
   createShortLivedDocumentUrl,
   crypto,
@@ -38,7 +37,6 @@ import {
   documentBelongsToLead,
   emitBankLeadAccessDenied,
   emitOperationalAlert,
-  ensureCommissionForLead,
   EXECUTIVE_ACTIVE_LEAD_STATUSES,
   executiveBelongsToBank,
   executiveLeadSpecs,
@@ -85,9 +83,7 @@ import {
   queryNotificationProjectionForUser,
   queryRecords,
   queryTimelineProjection,
-  queueDocumentsRequiredWhatsApp,
   queueLeadAssignedWhatsApp,
-  queueStatusUpdatedWhatsApp,
   reassignLeadToNextBranchExecutive,
   REALTIME_EVENTS,
   recordMonitoringSignal,
@@ -114,6 +110,7 @@ import {
 } from './bankShared.controller.js';
 import { acceptedAutomationPatch, statusAutomationPatch } from "../services/automationPolicy.service.js";
 import { assertLeadAcceptanceEligible } from "../services/automationPolicy.service.js";
+import { runLeadStatusTransitionSideEffects } from "../services/leadStatusTransition.service.js";
 import { runRecordTransaction } from "../services/firestore.service.js";
 import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 
@@ -190,31 +187,25 @@ export async function rejectBankLead(req, res, next) {
     clearBankSummaryCaches();
     await syncLeadProjection(updated);
     publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_STATUS_UPDATED, lead: updated, actor: req.user, data: { status: nextStatus, previousStatus: lead.status } });
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.REJECTION,
-      title: "Lead Rejected",
-      description: remarks ? `${reason} - ${remarks}` : reason,
-      actorName: partner.email || partner.name || partner.fullName,
-      actorRole: req.user?.role || "bank",
-      branchId: partner.branchId || null,
-      metadata: { reason, remarks, status: nextStatus, customerName: lead.fullName },
-      leadSnapshot: lead,
+    await runLeadStatusTransitionSideEffects({
+      req,
+      existing: lead,
+      lead: updated,
+      nextStatus,
+      actor: partner,
+      pendingDocumentDescription: remarks ? `${reason} - ${remarks}` : reason,
+      notification: {
+        type: "rejection",
+        title: "Lead rejected",
+        message: remarks ? `${reason} - ${remarks}` : reason,
+        recipientRole: "finance-desk",
+        recipientId: lead.dealerEmail,
+        dealerEmail: lead.dealerEmail,
+        partnerId: partner.id,
+        priority: "high",
+        meta: { customerName: lead.fullName, reason, remarks },
+      },
     });
-    await addTimelineEvent({
-      leadId: lead.id,
-      eventType: TIMELINE_EVENTS.REJECTION_REASON_ADDED,
-      title: "Rejection Reason Added",
-      description: reason,
-      actorName: partner.email || partner.name || partner.fullName,
-      actorRole: req.user?.role || "bank",
-      metadata: { reason, remarks },
-      leadSnapshot: lead,
-    });
-    await createNotification({ type: "rejection", title: "Lead rejected", message: remarks ? `${reason} - ${remarks}` : reason, leadId: lead.id, partnerId: partner.id, dealerEmail: lead.dealerEmail, admin: true, recipientRole: "finance-desk", recipientId: lead.dealerEmail, phoneNumber: lead.dealerMobile, priority: "high", meta: { customerName: lead.fullName, reason, remarks } });
-    await writeAuditLog({ req, actionType: "BANK_REJECT", newValue: reason, leadId: lead.id });
-    Promise.resolve(queueStatusUpdatedWhatsApp({ lead: updated, statusLabel: STATUS_LABELS[nextStatus] || nextStatus }))
-      .catch((error) => logError("Bank reject WhatsApp side effect failed", { error: error.message, leadId: lead.id }));
     res.json({ message: "Lead rejected. Manual reassignment can be performed by bank manager if needed", lead: updated });
   } catch (error) {
     next(error);
@@ -351,86 +342,33 @@ export function buildBankLeadStatusMutation({ req, lead, partner }) {
   };
 }
 
-export function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalizedStatus, pendingDocument, requestedDocuments, pendingDocumentReason, pendingDocumentDescription }) {
-  const statusLabel = STATUS_LABELS[normalizedStatus] || normalizedStatus;
-  const isPendingDocumentStatus = [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus);
-  const leadId = updated.id || lead.id;
-  const caseId = updated.caseId || lead.caseId || leadId;
+export async function queueBankLeadStatusSideEffects({ req, lead, updated, partner, normalizedStatus, pendingDocument, requestedDocuments, pendingDocumentReason, pendingDocumentDescription }) {
+  const executiveName = partner.name || partner.fullName || partner.email || req.user?.email || "Loan Executive";
   const dealershipId = updated.dealershipId || updated.dealershipEmail || updated.dealerEmail || lead.dealershipId || lead.dealershipEmail || lead.dealerEmail || "";
   const bankId = updated.bankId || updated.assignedBankId || lead.bankId || lead.assignedBankId || partner.bankId || partner.id || "";
-  const executiveName = partner.name || partner.fullName || partner.email || req.user?.email || "Loan Executive";
-  const statusNotificationMessage = `Executive ${executiveName} updated ${caseId} to ${statusLabel}.`;
-  const statusNotificationMeta = {
-    caseId,
-    customerName: updated.fullName || lead.fullName || updated.customerName || lead.customerName || "",
-    status: normalizedStatus,
-    statusLabel,
-    executiveName,
-    dealershipId,
-    bankId,
-    assignedExecutiveId: updated.assignedExecutiveId || lead.assignedExecutiveId || partner.id || partner.uid || partner.email || "",
-    assignedExecutiveEmail: updated.assignedExecutiveEmail || lead.assignedExecutiveEmail || partner.email || "",
-  };
-  setImmediate(() => {
-    Promise.allSettled([
-      ensureCommissionForLead(updated, normalizedStatus),
-      addTimelineEvent({
-        leadId: lead.id,
-        eventType: normalizedStatus === LEAD_STATUSES.APPROVED
-          ? TIMELINE_EVENTS.APPROVAL
-          : normalizedStatus === LEAD_STATUSES.REJECTED
-            ? TIMELINE_EVENTS.REJECTION
-            : normalizedStatus === LEAD_STATUSES.DISBURSED
-              ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-              : isPendingDocumentStatus
-                ? TIMELINE_EVENTS.PENDING_DOCUMENTS_REQUESTED
-                : TIMELINE_EVENTS.STATUS_CHANGED,
-        title: `Status: ${statusLabel}`,
-        description: pendingDocumentDescription || `Bank updated status to ${statusLabel}`,
-        actorName: partner.email || partner.name || partner.fullName,
-        actorRole: req.user?.role || "bank",
-        branchId: partner.branchId || null,
-        metadata: { status: normalizedStatus, nextStatus: normalizedStatus, customerName: lead.fullName, pendingDocument, pendingDocuments: requestedDocuments, pendingDocumentReason },
-        leadSnapshot: updated,
-      }),
-      createNotification({
-        type: "STATUS_CHANGED",
-        title: "Case Status Updated",
-        message: statusNotificationMessage,
-        leadId,
-        dealerEmail: dealershipId,
-        recipientRole: "finance-desk",
-        recipientId: dealershipId,
-        priority: "medium",
-        entityType: "lead",
-        entityId: leadId,
-        actionUrl: `/finance/leads/${leadId}`,
-        dealershipId,
-        bankId,
-        assignedExecutiveId: statusNotificationMeta.assignedExecutiveId,
-        leadSnapshot: updated,
-        meta: { ...statusNotificationMeta, pendingDocuments: requestedDocuments, pendingDocumentReason, eventVersion: updated.statusUpdatedAt || updated.updatedAt },
-      }),
-      isPendingDocumentStatus
-        ? queueDocumentsRequiredWhatsApp({ lead: updated, documents: requestedDocuments })
-        : queueStatusUpdatedWhatsApp({ lead: updated, statusLabel }),
-      writeAuditLog({
-        req,
-        actionType: normalizedStatus === LEAD_STATUSES.DISBURSED
-          ? AUDIT_ACTIONS.DISBURSED
-          : normalizedStatus === LEAD_STATUSES.REJECTED
-            ? AUDIT_ACTIONS.REJECTED
-            : [LEAD_STATUSES.REQUEST_DOCUMENT, LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS, LEAD_STATUSES.DOCS_PENDING].includes(normalizedStatus)
-              ? AUDIT_ACTIONS.PENDING_DOCUMENT_REQUESTED
-              : AUDIT_ACTIONS.STATUS_UPDATED,
-        oldValue: lead.status,
-        newValue: normalizedStatus,
-        leadId: lead.id,
-        meta: { caseId: lead.caseId, oldStatus: lead.status, newStatus: normalizedStatus, dealershipId: lead.dealershipId, bankId: lead.bankId, assignedExecutiveId: lead.assignedExecutiveId, pendingDocuments: requestedDocuments, pendingDocumentReason },
-      }),
-    ]).then((results) => {
-      results.filter((result) => result.status === "rejected").forEach((result) => logError("Bank status side effect failed", { error: result.reason?.message || String(result.reason), leadId: lead.id, status: normalizedStatus }));
-    });
+  return runLeadStatusTransitionSideEffects({
+    req,
+    existing: lead,
+    lead: updated,
+    nextStatus: normalizedStatus,
+    actor: { ...partner, name: executiveName },
+    pendingDocument,
+    requestedDocuments,
+    pendingDocumentReason,
+    pendingDocumentDescription,
+    notification: {
+      type: normalizedStatus === LEAD_STATUSES.REJECTED ? "rejection" : "STATUS_CHANGED",
+      title: "Case Status Updated",
+      message: `Executive ${executiveName} updated ${updated.caseId || lead.caseId || lead.id} to ${STATUS_LABELS[normalizedStatus] || normalizedStatus}.`,
+      recipientRole: "finance-desk",
+      recipientId: dealershipId,
+      dealerEmail: dealershipId,
+      dealershipId,
+      bankId,
+      assignedExecutiveId: updated.assignedExecutiveId || lead.assignedExecutiveId || partner.id || partner.email,
+      actionUrl: `/finance/leads/${updated.id || lead.id}`,
+      meta: { executiveName, dealershipId, bankId, pendingDocuments: requestedDocuments, pendingDocumentReason },
+    },
   });
 }
 
@@ -475,7 +413,7 @@ export async function updateBankLeadStatus(req, res, next) {
       lead: updated,
       synchronizationPending,
     });
-    queueBankLeadStatusSideEffects({ req, lead, updated, partner, ...mutation });
+    await queueBankLeadStatusSideEffects({ req, lead, updated, partner, ...mutation });
   } catch (error) {
     next(error);
   }

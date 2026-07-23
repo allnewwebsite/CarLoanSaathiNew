@@ -1,7 +1,5 @@
 import { createRecord, getRecord, updateRecord } from "../services/firestore.service.js";
 import { leadSchema, publicLeadSchema } from "../validations/lead.validation.js";
-import { ensureCommissionForLead } from "../services/commission.service.js";
-import { createNotification } from "../services/notification.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
 import { assertValidStatusTransition, LEAD_STATUSES, normalizeStatus, STATUS_LABELS } from "../utils/status.constants.js";
@@ -14,9 +12,9 @@ import { queryLeadProjectionForUser, syncLeadProjection, syncLeadProjectionSoon 
 import { assertLeadMutable } from "../utils/deadCase.js";
 import { cached, clearCachedTags } from "../services/ttlCache.service.js";
 import { publishRealtimeEvent, REALTIME_EVENTS } from "../services/realtime.service.js";
-import { queueDocumentsRequiredWhatsApp, queueStatusUpdatedWhatsApp } from "../services/whatsapp.service.js";
 import { executiveQueryArgs, loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 import { statusAutomationPatch } from "../services/automationPolicy.service.js";
+import { runLeadStatusTransitionSideEffects } from "../services/leadStatusTransition.service.js";
 
 const suspiciousCityPattern = /test|asdf|fake|demo/i;
 
@@ -92,57 +90,7 @@ async function canAccessLead(req, lead) {
 }
 
 async function applyLeadStatusSideEffects({ req, existing, lead, nextStatus }) {
-  const processingTimeMinutes = existing.createdAt ? Math.max(Math.round((Date.now() - new Date(existing.createdAt).getTime()) / 60000), 0) : 0;
-  queueSafeAnalyticsEvent(ANALYTICS_EVENTS.STATUS_CHANGED, {
-    lead,
-    previousStatus: existing.status,
-    nextStatus,
-    processingTimeMinutes,
-  });
-  await ensureCommissionForLead(lead, nextStatus);
-  const statusLabel = STATUS_LABELS[normalizeStatus(nextStatus)] || nextStatus;
-  await addTimelineEvent({
-    leadId: req.params.id,
-    eventType: nextStatus === LEAD_STATUSES.APPROVED
-      ? TIMELINE_EVENTS.APPROVAL
-      : nextStatus === LEAD_STATUSES.REJECTED
-        ? TIMELINE_EVENTS.REJECTION
-        : nextStatus === LEAD_STATUSES.DISBURSED
-          ? TIMELINE_EVENTS.DISBURSEMENT_MARKED
-          : TIMELINE_EVENTS.STATUS_CHANGED,
-    title: `Status: ${statusLabel}`,
-    description: `Lead status updated to ${statusLabel}`,
-    actorName: req.user?.email || "system",
-    actorRole: req.user?.role || "system",
-    metadata: { oldStatus: existing.status, nextStatus, status: nextStatus, customerName: lead.fullName },
-  });
-  await createNotification({
-    type: nextStatus === LEAD_STATUSES.REJECTED ? "rejection" : nextStatus === LEAD_STATUSES.APPROVED ? "approval" : "status-update",
-    title: `Lead ${statusLabel}`,
-    message: `Lead ${lead.caseId || req.params.id} status updated to ${statusLabel}`,
-    leadId: req.params.id,
-    dealerEmail: lead.dealerEmail || lead.createdBy,
-    admin: true,
-    meta: { caseId: lead.caseId, status: nextStatus, eventVersion: lead.statusUpdatedAt || lead.updatedAt },
-    leadSnapshot: lead,
-  });
-  runLeadSideEffects("whatsapp-lead-status", [
-    () => nextStatus === LEAD_STATUSES.REQUEST_PENDING_DOCUMENTS
-      ? queueDocumentsRequiredWhatsApp({ lead, documents: lead.pendingDocuments || [] })
-      : queueStatusUpdatedWhatsApp({ lead, statusLabel }),
-  ]);
-  await writeAuditLog({
-    req,
-    actionType: nextStatus === LEAD_STATUSES.DISBURSED
-      ? AUDIT_ACTIONS.DISBURSED
-      : nextStatus === LEAD_STATUSES.REJECTED
-        ? AUDIT_ACTIONS.REJECTED
-        : AUDIT_ACTIONS.STATUS_UPDATED,
-    oldValue: existing.status,
-    newValue: nextStatus,
-    leadId: req.params.id,
-    meta: { caseId: lead.caseId, oldStatus: existing.status, newStatus: nextStatus, dealershipId: lead.dealershipId, bankId: lead.bankId },
-  });
+  await runLeadStatusTransitionSideEffects({ req, existing, lead, nextStatus, actor: req.user, notification: { admin: true } });
 }
 
 export async function createLead(req, res, next) {
