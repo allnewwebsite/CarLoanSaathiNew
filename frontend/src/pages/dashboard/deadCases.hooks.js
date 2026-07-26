@@ -19,10 +19,12 @@ export function useDeadCasesPageState(audience = "finance") {
   const filterEnabled = audience === "bank" || audience === "executive";
   const [params, setParams] = useSearchParams();
   const dealershipId = filterEnabled ? params.get("dealershipId") || "" : "";
+  const salespersonFilterEnabled = audience === "finance" || audience === "gm";
+  const salespersonId = salespersonFilterEnabled ? params.get("salespersonId") || "" : "";
   const { dealerships, loading: dealershipsLoading } = useBankDealershipOptions(filterEnabled);
   const initialParams = { page: 1, limit: PAGE_SIZE };
   const baseCachedPayload = getCachedGetData(endpoint, initialParams);
-  const cachedPayload = dealershipId ? getCachedGetData(endpoint, { ...initialParams, dealershipId }) : baseCachedPayload;
+  const cachedPayload = dealershipId || salespersonId ? getCachedGetData(endpoint, { ...initialParams, dealershipId: dealershipId || undefined, salespersonId: salespersonId || undefined }) : baseCachedPayload;
   const initialPayload = Array.isArray(cachedPayload) ? { data: cachedPayload } : cachedPayload || {};
   const [rows, setRows] = useState(() => initialPayload.data || []);
   const [loading, setLoading] = useState(() => !cachedPayload);
@@ -39,7 +41,7 @@ export function useDeadCasesPageState(audience = "finance") {
   const [addNotes, setAddNotes] = useState("");
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
-  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, dealershipId]);
+  const { cursorParamsForPage, rememberNextCursor, requestPageForPage } = useCursorPager([endpoint, dealershipId, salespersonId]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -51,6 +53,7 @@ export function useDeadCasesPageState(audience = "finance") {
           page: requestPage,
           limit: PAGE_SIZE,
           dealershipId: dealershipId || undefined,
+          salespersonId: salespersonId || undefined,
           ...cursor,
         },
       });
@@ -61,7 +64,7 @@ export function useDeadCasesPageState(audience = "finance") {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [cursorParamsForPage, dealershipId, endpoint, page, rememberNextCursor, requestPageForPage]);
+  }, [cursorParamsForPage, dealershipId, endpoint, page, rememberNextCursor, requestPageForPage, salespersonId]);
 
   useEffect(() => {
     load({ silent: Boolean(cachedPayload) });
@@ -73,6 +76,10 @@ export function useDeadCasesPageState(audience = "finance") {
       if (!DEAD_CASE_REALTIME_EVENTS.has(type)) return;
       const patch = event.detail?.lead || event.detail;
       if (!patch?.id && !patch?.leadId && !patch?.caseId) return;
+      if (salespersonId) {
+        load({ silent: true }).catch(() => {});
+        return;
+      }
       if (dealershipId) {
         const target = dealershipId.toLowerCase();
         const matches = [patch.dealershipId, patch.dealerId, patch.dealershipEmail, patch.dealerEmail]
@@ -91,7 +98,7 @@ export function useDeadCasesPageState(audience = "finance") {
     };
     window.addEventListener("cls:realtime-event", refreshOnDeadCase);
     return () => window.removeEventListener("cls:realtime-event", refreshOnDeadCase);
-  }, [dealershipId]);
+  }, [dealershipId, load, salespersonId]);
 
   const restoreCase = useCallback(async (lead) => {
     if (!canModify || !lead?.id) return;
@@ -188,6 +195,18 @@ export function useDeadCasesPageState(audience = "finance") {
     setPage(1);
   }, [setParams]);
 
+  const setSalesperson = useCallback((value) => {
+    setParams((current) => {
+      const next = Object.fromEntries(current.entries());
+      if (value) next.salespersonId = value;
+      else delete next.salespersonId;
+      next.page = "1";
+      return next;
+    });
+    setRows([]);
+    setPage(1);
+  }, [setParams]);
+
   return {
     actionId,
     addError,
@@ -213,6 +232,8 @@ export function useDeadCasesPageState(audience = "finance") {
     restoreCase,
     rows,
     saveEdit,
+    salespersonFilterEnabled,
+    salespersonId,
     setAddNotes,
     setAddOpen,
     setAddReason,
@@ -222,6 +243,7 @@ export function useDeadCasesPageState(audience = "finance") {
     setEditNotes,
     setEditReason,
     setPage,
+    setSalesperson,
     submitAdd,
   };
 }

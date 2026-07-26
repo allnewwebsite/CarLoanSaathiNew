@@ -6,6 +6,7 @@ import { AUDIENCE_LABELS, PAGE_SIZE } from "./deadCases.helpers.js";
 import { useDeadCasesPageState } from "./deadCases.hooks.js";
 import { roleColumns } from "./deadCases.columns.jsx";
 import { DeadCaseDialogs } from "./DeadCaseDialogs.jsx";
+import { ArchiveSalespersonFilter } from "./ArchiveSalespersonFilter.jsx";
 
 export function DeadCasesPage({ audience = "finance" }) {
   const state = useDeadCasesPageState(audience);
@@ -27,6 +28,10 @@ export function DeadCasesPage({ audience = "finance" }) {
       </div>
 
       <PolicyInformationBanner kind="dead" />
+
+      {state.salespersonFilterEnabled ? (
+        <ArchiveSalespersonFilter audience={audience} value={state.salespersonId} onChange={state.setSalesperson} />
+      ) : null}
 
       {state.filterEnabled ? (
         <div className="flex justify-end">
@@ -61,6 +66,7 @@ export function DeadCasesPage({ audience = "finance" }) {
         hasMore={state.hasMore}
         onPage={state.setPage}
         pageSize={PAGE_SIZE}
+        emptyMessage={state.salespersonId ? "No archived cases found for this salesperson." : "No dead cases found."}
       />
 
       <DeadCaseDialogs

@@ -47,6 +47,7 @@ export async function getFinanceDeadCases(req, res, next) {
   try {
     return res.json(await queryDeadCases({
       dealershipId: dealershipIdFromUser(req.user),
+      salespersonId: String(req.query?.salespersonId || "").trim(),
       query: req.query,
     }));
   } catch (error) {
@@ -70,6 +71,7 @@ export async function getGmDeadCases(req, res, next) {
   try {
     return res.json(await queryDeadCases({
       dealershipId: dealershipIdFromUser(req.user),
+      salespersonId: String(req.query?.salespersonId || "").trim(),
       query: req.query,
     }));
   } catch (error) {

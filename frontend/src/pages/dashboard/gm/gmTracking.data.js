@@ -51,8 +51,8 @@ export function useGmLeads(filters = {}) {
     return scheduleLeadPrefetch("/gm/leads", CURRENT_WORKFLOW_STATUS_OPTIONS, { limit: pageSize, search: filters.search || "" });
   }, [filters.search]);
 
-  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, lifecycleFilter: filters.archiveTerminal ? (filters.status === "DISBURSED" ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE, pageSize });
-  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: false });
+  useRealtimeLeadPatch({ setRows: setLeads, setTotal, statusFilter: filters.status, lifecycleFilter: filters.archiveTerminal ? (filters.status === "DISBURSED" ? LEAD_LIFECYCLE_STATES.DISBURSED : LEAD_LIFECYCLE_STATES.REJECTED) : LEAD_LIFECYCLE_STATES.ACTIVE, pageSize, enabled: !filters.salespersonId });
+  useRoleLeadRealtime({ onRefresh: load, pageSize, mutationFilter: leadMutationFilter, refreshOnMutation: Boolean(filters.salespersonId) });
 
   return { leads, total, hasMore, loading, load };
 }

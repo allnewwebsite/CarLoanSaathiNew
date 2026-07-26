@@ -1288,6 +1288,16 @@
       ]
     },
     {
+      "collectionGroup": "leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dealershipId", "order": "ASCENDING" },
+        { "fieldPath": "salespersonId", "order": "ASCENDING" },
+        { "fieldPath": "isDeadCase", "order": "ASCENDING" },
+        { "fieldPath": "deadCaseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "subscriptionPayments",
       "queryScope": "COLLECTION",
       "fields": [

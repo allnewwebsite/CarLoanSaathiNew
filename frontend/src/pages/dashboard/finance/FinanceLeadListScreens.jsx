@@ -9,6 +9,7 @@ import { dateTime, display, moneyValue } from "../financeDesk.helpers.js";
 import { FinanceTable as Table, SectionTitle } from "./FinanceDeskPanelParts.jsx";
 import { useDealerLeads } from "./financeLeadList.data.js";
 import { useActiveMembers, useFinanceManagers, useSalespersons } from "./financeStaff.hooks.js";
+import { ArchiveSalespersonFilter } from "../ArchiveSalespersonFilter.jsx";
 
 const statusTabs = CURRENT_WORKFLOW_STATUS_OPTIONS.map((value) => ({ label: standardStatusLabel(value), value }));
 
@@ -267,15 +268,22 @@ export function ArchiveCasesScreen({ kind }) {
   const [search, setSearch] = useState(params.get("search") || "");
   const debouncedSearch = useDebouncedValue(search, 180);
   const page = Math.max(Number(params.get("page") || 1), 1);
+  const salespersonId = params.get("salespersonId") || "";
   const status = kind === "disbursed" ? LEAD_STATUSES.DISBURSED : LEAD_STATUSES.REJECTED;
   const copy = lifecycleArchiveCopy(kind);
-  const { leads, total, hasMore, loading } = useDealerLeads({ status, archiveTerminal: "1", search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
-  const pageTo = (nextPage) => setParams({ page: String(Math.max(Number(nextPage || 1), 1)), ...(search ? { search } : {}) });
+  const { leads, total, hasMore, loading } = useDealerLeads({ status, archiveTerminal: "1", salespersonId, search: debouncedSearch, globalSearch: debouncedSearch ? "1" : "", page });
+  const setArchiveParams = (next = {}) => {
+    const merged = { salespersonId, search, page: "1", ...next };
+    Object.keys(merged).forEach((key) => !merged[key] && delete merged[key]);
+    setParams(merged);
+  };
+  const pageTo = (nextPage) => setArchiveParams({ page: String(Math.max(Number(nextPage || 1), 1)) });
   const headers = ["Case ID", "Customer Name", "Mobile Number", "Loan Amount", LEAD_TABLE_LABELS.currentStatus, "Finance Manager", LEAD_TABLE_LABELS.assignedExecutive, LEAD_TABLE_LABELS.executiveMobile, LEAD_TABLE_LABELS.lastUpdated, "Actions"];
   return (
     <section className="space-y-4">
-      <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setParams(value ? { search: value, page: "1" } : { page: "1" }); }} />
-      <Table title={copy.title} headers={headers} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={copy.empty} />
+      <LifecycleArchiveHeader kind={kind} search={search} onSearch={(value) => { setSearch(value); setArchiveParams({ search: value, page: "1" }); }} />
+      <ArchiveSalespersonFilter audience="finance" value={salespersonId} onChange={(value) => setArchiveParams({ salespersonId: value, page: "1" })} />
+      <Table title={copy.title} headers={headers} rows={leadRows(leads, "status")} loading={loading} page={page} total={total} hasMore={hasMore} onPage={pageTo} emptyMessage={salespersonId ? "No archived cases found for this salesperson." : copy.empty} />
     </section>
   );
 }
