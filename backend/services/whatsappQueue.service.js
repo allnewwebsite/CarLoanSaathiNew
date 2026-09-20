@@ -381,9 +381,10 @@ export function queueStatusUpdatedWhatsApp({ lead = {}, statusLabel = "" } = {})
   });
 }
 
-export function queueDocumentsUploadedWhatsApp({ lead = {}, documents = [] } = {}) {
+export function queueDocumentsUploadedWhatsApp({ lead = {}, documents = [], eventId = "" } = {}) {
   const documentKey = [...documents].map((document) => String(document || "").trim()).filter(Boolean).sort().join("-");
-  const eventVersion = lead.documentsUploadedAt
+  const eventVersion = eventId
+    || lead.documentsUploadedAt
     || lead.updatedAt
     || `${lead.status || ""}-${documentKey}`;
   return queueWhatsAppNotification({
@@ -406,6 +407,7 @@ export function queueDocumentsUploadedWhatsApp({ lead = {}, documents = [] } = {
       caseId: caseId(lead),
       documents,
       eventVersion,
+      eventId: eventId || undefined,
       recipient: lead.assignedExecutiveName || lead.assignedExecutiveEmail || null,
     },
   });

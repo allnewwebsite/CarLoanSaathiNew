@@ -630,7 +630,7 @@ function dispatchLocalEvent(event) {
   }
 }
 
-export function publishRealtimeEvent({ eventType, lead = null, notification = null, document = null, actor = null, data = {} } = {}) {
+export function publishRealtimeEvent({ eventId = null, eventType, lead = null, notification = null, document = null, actor = null, data = {} } = {}) {
   initRedisPubSub();
   const now = new Date().toISOString();
   const phaseOneEvent = PHASE_ONE_EVENTS.has(eventType);
@@ -658,7 +658,7 @@ export function publishRealtimeEvent({ eventType, lead = null, notification = nu
   };
   const dedupeKey = dedupeKeyForEvent({ eventType, leadSummary, notification, document, data });
   const event = {
-    id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+    id: eventId || Date.now() * 1000 + Math.floor(Math.random() * 1000),
     event: eventType,
     eventType,
     kind,

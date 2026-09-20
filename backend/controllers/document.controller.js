@@ -1,8 +1,8 @@
 import { createRecord, getRecord, queryRecords, updateRecord } from "../services/firestore.service.js";
 import { addTimelineEvent, TIMELINE_EVENTS } from "../services/timeline.service.js";
 import { createNotification } from "../services/notification.service.js";
-import { createShortLivedDocumentUrl, uploadLeadDocument } from "../services/storage.service.js";
-import { AUDIT_ACTIONS, writeAuditLog } from "../services/audit.service.js";
+import { createShortLivedDocumentUrl, deleteLeadDocument, uploadLeadDocument } from "../services/storage.service.js";
+import { AUDIT_ACTIONS, writeAuditLog, writeAuditLogOnce } from "../services/audit.service.js";
 import { assertValidDocumentStatusTransition, DOCUMENT_STATUSES, LEAD_STATUSES } from "../utils/status.constants.js";
 import { ALERT_SEVERITY, recordOperationalEvent } from "../services/observability.service.js";
 import { syncLeadProjectionSoon } from "../services/projection.service.js";
@@ -12,6 +12,18 @@ import { queueDocumentsRequiredWhatsApp, queueDocumentsUploadedWhatsApp } from "
 import { assertLeadMutable } from "../utils/deadCase.js";
 import { loanExecutiveMatchesLead } from "../services/roleIdentity.service.js";
 import { discardUploadedFile } from "../middleware/upload.js";
+import {
+  claimDocumentUpload,
+  claimUploadSideEffect,
+  completeDocumentUpload,
+  completeDocumentUploadOperation,
+  completeUploadSideEffect,
+  failUploadSideEffect,
+  idempotencyKeyFromRequest,
+  idempotentStorageObjectName,
+  uploadSideEffectIdentities,
+  uploadOperationIdentity,
+} from "../services/documentUploadIdempotency.service.js";
 
 function runDocumentSideEffect(label, task) {
   Promise.resolve()
@@ -54,6 +66,10 @@ async function canReviewCustomerDocument(req, lead) {
 }
 
 export async function uploadDocument(req, res, next) {
+  let uploadIdentity = null;
+  let uploadOwnerToken = null;
+  let uploadedStoragePath = null;
+  let documentPersisted = false;
   try {
     if (!req.file) return res.status(400).json({ message: "Document file is required" });
     const lead = req.body.leadId ? await getRecord("leads", req.body.leadId) : null;
@@ -70,64 +86,104 @@ export async function uploadDocument(req, res, next) {
       discardUploadedFile(req.file);
       return res.status(400).json({ message: "Document type is required" });
     }
-    const uploaded = await uploadLeadDocument(req.file, req.body.leadId, {
-      dealershipId: lead.dealershipId || req.user?.dealershipId,
-      caseId: lead.caseId,
-      bankId: lead.bankId,
-      branchId: lead.branchId || lead.bankBranchId,
-      branchCity: lead.bankBranchCity || lead.branchCity,
-      assignedExecutiveId: lead.assignedExecutiveId,
-      assignedExecutiveEmail: lead.assignedExecutiveEmail,
-      uploadedBy: req.user?.email,
-    });
-    const document = await createRecord("documents", {
-      leadId: req.body.leadId,
-      caseId: lead.caseId || req.body.leadId,
-      type: req.body.type,
-      status: "Uploaded",
-      file: uploaded?.originalName || req.file?.originalname,
-      url: null,
-      storagePath: uploaded?.storagePath,
-      filePath: uploaded?.storagePath,
-      fileType: req.body.type || req.file?.mimetype,
-      mimeType: uploaded?.mimeType,
-      size: uploaded?.size,
-      uploadedBy: req.user?.email,
-      dealershipId: lead.dealershipId || req.user?.dealershipId || null,
-      bankId: lead.bankId || null,
-      assignedExecutiveId: lead.assignedExecutiveId || null,
-    });
-    await writeAuditLog({
-      req,
-      actionType: AUDIT_ACTIONS.DOCUMENT_UPLOADED,
-      newValue: req.body.type || req.file?.originalname,
-      leadId: req.body.leadId,
-      meta: { documentId: document.id, caseId: lead.caseId, dealershipId: document.dealershipId, bankId: document.bankId },
-    });
-    await addTimelineEvent({
-      leadId: req.body.leadId,
-      eventType: TIMELINE_EVENTS.DOCUMENT_UPLOADED,
-      title: "Document Uploaded",
-      description: req.body.type || req.file?.originalname || "Document uploaded",
-      actorName: req.user?.email || "user",
-      actorRole: req.user?.role || "user",
-      metadata: { documentId: document.id, documentType: req.body.type, fileName: req.file?.originalname },
-    });
-    await createNotification({
-      type: "documents-uploaded",
-      title: "Documents uploaded",
-      message: `${req.body.type || "Document"} uploaded for lead ${lead.caseId || req.body.leadId}`,
-      leadId: req.body.leadId,
-      recipientRole: "loan-executive",
-      meta: { caseId: lead.caseId, documentId: document.id, documents: [req.body.type || "Document"] },
-    });
-    runDocumentSideEffect("whatsapp-documents-uploaded", () => queueDocumentsUploadedWhatsApp({
-      lead,
-      documents: [req.body.type || "Document"],
-    }));
-    publishRealtimeEvent({ eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user });
-    res.status(201).json(document);
+    const idempotencyKey = idempotencyKeyFromRequest(req);
+    if (idempotencyKey) {
+      uploadIdentity = await uploadOperationIdentity({ key: idempotencyKey, user: req.user, lead, documentType: req.body.type, file: req.file });
+      const claim = await claimDocumentUpload(uploadIdentity);
+      if (claim.state === "replay") {
+        discardUploadedFile(req.file);
+        const existing = await getRecord("documents", claim.documentId);
+        if (existing) return res.status(200).json({ ...existing, idempotentReplay: true });
+        const error = new Error("The completed upload record is unavailable.");
+        error.status = 409;
+        error.code = "IDEMPOTENCY_STATE_INCONSISTENT";
+        throw error;
+      }
+      if (claim.state === "in-progress") {
+        discardUploadedFile(req.file);
+        return res.status(409).json({ code: "UPLOAD_IN_PROGRESS", message: "This document upload is already in progress. Please retry shortly." });
+      }
+      uploadOwnerToken = claim.ownerToken;
+    }
+    let document;
+    if (uploadIdentity) {
+      document = await getRecord("documents", `document-${uploadIdentity.operationId}`);
+    }
+    if (!document) {
+      const uploaded = await uploadLeadDocument(req.file, req.body.leadId, {
+        dealershipId: lead.dealershipId || req.user?.dealershipId,
+        caseId: lead.caseId,
+        bankId: lead.bankId,
+        branchId: lead.branchId || lead.bankBranchId,
+        branchCity: lead.bankBranchCity || lead.branchCity,
+        assignedExecutiveId: lead.assignedExecutiveId,
+        assignedExecutiveEmail: lead.assignedExecutiveEmail,
+        uploadedBy: req.user?.email,
+        ...(uploadIdentity ? { storageObjectName: idempotentStorageObjectName(uploadIdentity, req.file) } : {}),
+      });
+      uploadedStoragePath = uploaded?.storagePath || null;
+      const payload = {
+        leadId: req.body.leadId,
+        caseId: lead.caseId || req.body.leadId,
+        type: req.body.type,
+        status: "Uploaded",
+        file: uploaded?.originalName || req.file?.originalname,
+        url: null,
+        storagePath: uploaded?.storagePath,
+        filePath: uploaded?.storagePath,
+        fileType: req.body.type || req.file?.mimetype,
+        mimeType: uploaded?.mimeType,
+        size: uploaded?.size,
+        uploadedBy: req.user?.email,
+        dealershipId: lead.dealershipId || req.user?.dealershipId || null,
+        bankId: lead.bankId || null,
+        assignedExecutiveId: lead.assignedExecutiveId || null,
+        ...(uploadIdentity ? { idempotencyKey, idempotencyOperationId: uploadIdentity.operationId } : {}),
+      };
+      if (uploadIdentity) {
+        const completed = await completeDocumentUpload({ identity: uploadIdentity, ownerToken: uploadOwnerToken, document: payload });
+        document = completed.document;
+      } else {
+        document = await createRecord("documents", payload);
+      }
+    }
+    documentPersisted = true;
+    const effectIdentities = uploadIdentity ? uploadSideEffectIdentities(document.id) : null;
+    const effects = [
+      ["audit", effectIdentities?.audit, () => uploadIdentity ? writeAuditLogOnce(effectIdentities.audit, {
+        req, actionType: AUDIT_ACTIONS.DOCUMENT_UPLOADED, newValue: req.body.type || req.file?.originalname, leadId: req.body.leadId,
+        meta: { documentId: document.id, caseId: lead.caseId, dealershipId: document.dealershipId, bankId: document.bankId },
+      }) : writeAuditLog({ req, actionType: AUDIT_ACTIONS.DOCUMENT_UPLOADED, newValue: req.body.type || req.file?.originalname, leadId: req.body.leadId, meta: { documentId: document.id, caseId: lead.caseId, dealershipId: document.dealershipId, bankId: document.bankId } })],
+      ["timeline", effectIdentities?.timeline, () => addTimelineEvent({ id: effectIdentities?.timeline, leadId: req.body.leadId, eventType: TIMELINE_EVENTS.DOCUMENT_UPLOADED, title: "Document Uploaded", description: req.body.type || req.file?.originalname || "Document uploaded", actorName: req.user?.email || "user", actorRole: req.user?.role || "user", metadata: { documentId: document.id, documentType: req.body.type, fileName: req.file?.originalname } })],
+      ["notification", effectIdentities?.notification, () => createNotification({ type: "documents-uploaded", eventId: effectIdentities?.notification, title: "Documents uploaded", message: `${req.body.type || "Document"} uploaded for lead ${lead.caseId || req.body.leadId}`, leadId: req.body.leadId, recipientRole: "loan-executive", meta: { caseId: lead.caseId, documentId: document.id, documents: [req.body.type || "Document"], eventId: effectIdentities?.notification } })],
+      ["whatsapp", effectIdentities?.whatsapp, () => queueDocumentsUploadedWhatsApp({ lead, documents: [req.body.type || "Document"], eventId: effectIdentities?.whatsapp })],
+      ["realtime", effectIdentities?.realtime, () => publishRealtimeEvent({ eventId: effectIdentities?.realtime, eventType: REALTIME_EVENTS.DOCUMENT_UPLOADED, lead, document, actor: req.user })],
+    ];
+    const pendingEffects = [];
+    for (const [effect, identity, task] of effects) {
+      if (!uploadIdentity) {
+        await task();
+        continue;
+      }
+      const claim = await claimUploadSideEffect({ operationId: uploadIdentity.operationId, ownerToken: uploadOwnerToken, effect });
+      if (claim.state === "completed") continue;
+      if (claim.state === "in-progress") { pendingEffects.push(effect); continue; }
+      try {
+        await task();
+        const completion = await completeUploadSideEffect({ operationId: uploadIdentity.operationId, ownerToken: uploadOwnerToken, effect, identity });
+        if (completion.state !== "completed") pendingEffects.push(effect);
+      } catch (error) {
+        pendingEffects.push(effect);
+        await failUploadSideEffect({ operationId: uploadIdentity.operationId, ownerToken: uploadOwnerToken, effect, error });
+        logError("Document upload side effect deferred", { effect, error: error.message, documentId: document.id });
+      }
+    }
+    if (uploadIdentity) await completeDocumentUploadOperation({ operationId: uploadIdentity.operationId, ownerToken: uploadOwnerToken });
+    res.status(pendingEffects.length ? 202 : 201).json({ ...document, ...(pendingEffects.length ? { sideEffectsPending: pendingEffects } : {}) });
   } catch (error) {
+    if (uploadIdentity && uploadedStoragePath && !documentPersisted) {
+      await deleteLeadDocument(uploadedStoragePath).catch(() => {});
+    }
     discardUploadedFile(req.file);
     next(error);
   }

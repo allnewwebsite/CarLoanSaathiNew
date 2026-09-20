@@ -234,6 +234,7 @@ function legacyTimelineFallbackAllowed(query = {}) {
 }
 
 export async function addTimelineEvent({
+  id,
   leadId,
   eventType,
   title,
@@ -264,6 +265,7 @@ export async function addTimelineEvent({
   );
   const lead = snapshot || null;
   const event = await createRecord("leadTimeline", {
+    ...(id ? { id } : {}),
     leadId,
     caseId: lead?.caseId || metaPayload.caseId || null,
     eventType: eventType || type,

@@ -6,16 +6,22 @@ export async function uploadLeadDocument(file, leadId, metadata = {}) {
   if (!file) return null;
 
   if (!storage) {
+    const safeName = path.basename(metadata.storageObjectName || file.filename || file.originalname).replace(/[^a-zA-Z0-9._-]/g, "-");
+    const deterministicPath = metadata.storageObjectName ? path.join(path.dirname(file.path), safeName) : file.path;
+    if (deterministicPath !== file.path) {
+      if (fs.existsSync(deterministicPath)) fs.rmSync(file.path, { force: true });
+      else fs.renameSync(file.path, deterministicPath);
+    }
     return {
-      url: `/uploads/${file.filename}`,
-      storagePath: file.path,
+      url: `/uploads/${path.basename(deterministicPath)}`,
+      storagePath: deterministicPath,
       originalName: file.originalname,
       mimeType: file.mimetype,
       size: file.size,
     };
   }
 
-  const safeName = path.basename(file.filename || file.originalname).replace(/[^a-zA-Z0-9._-]/g, "-");
+  const safeName = path.basename(metadata.storageObjectName || file.filename || file.originalname).replace(/[^a-zA-Z0-9._-]/g, "-");
   const folderLeadId = String(metadata.caseId || leadId).replace(/[^a-zA-Z0-9._-]/g, "-");
   const destination = `documents/leads/${folderLeadId}/${safeName}`;
   await storage.upload(file.path, {
