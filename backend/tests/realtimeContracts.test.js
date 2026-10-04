@@ -84,6 +84,37 @@ test("SSE status dispatch targets operational tenant buckets without leaking to 
   clients.forEach((client) => client.close());
 });
 
+test("new Finance Desk cases are delivered only to the authenticated dealership scope", () => {
+  const dealershipId = "dealer-new-case-target";
+  const target = mockConnection({
+    role: "finance-desk",
+    uid: "finance-new-case-target",
+    dealershipId,
+  });
+  const other = mockConnection({
+    role: "finance-desk",
+    uid: "finance-new-case-other",
+    dealershipId: "dealer-new-case-other",
+  });
+  const lead = {
+    id: "lead-new-case-target",
+    caseId: "CLS-NEW-CASE-TARGET",
+    status: "NEW",
+    dealershipId,
+    dealershipEmail: dealershipId,
+  };
+
+  publishRealtimeEvent({ eventType: REALTIME_EVENTS.LEAD_CREATED, lead });
+
+  const delivered = target.operationalEvents();
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0].leadId, lead.id);
+  assert.equal(delivered[0].caseId, lead.caseId);
+  assert.equal(other.operationalEvents().length, 0);
+  target.close();
+  other.close();
+});
+
 test("rejected lifecycle event reaches all four operational owners with archive metadata", () => {
   const lead = {
     id: "lead-rejected-realtime",

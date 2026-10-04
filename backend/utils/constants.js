@@ -10,13 +10,18 @@ export const LEAD_STATUSES = ["NEW", "ASSIGNED", "ACCEPTED", "UNDER_REVIEW", "DO
 
 export const ADMIN_LEAD_STATUSES = LEAD_STATUSES;
 
-export const DOCUMENT_TYPES = [
+export const OTHER_CUSTOMER_DOCUMENT = "Other Document";
+
+export const STANDARD_CUSTOMER_DOCUMENTS = [
   "Aadhaar",
   "PAN",
   "Salary Slip",
+  "ITR",
   "Bank Statement",
-  "Invoice",
   "Electricity Bill",
-  "RC",
-  "Insurance",
+  "Rent Agreement",
+  "Form 16",
 ];
+
+export const CUSTOMER_DOCUMENTS = [...STANDARD_CUSTOMER_DOCUMENTS, OTHER_CUSTOMER_DOCUMENT];
+export const DOCUMENT_TYPES = CUSTOMER_DOCUMENTS;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { DOCUMENT_TYPES } from "../utils/constants.js";
 
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -41,6 +42,20 @@ test("customer document catalog including Other Document is shared across portal
   assert.equal(finance.includes("CUSTOMER_DOCUMENTS"), true);
   assert.equal(gm.includes("CUSTOMER_DOCUMENTS"), true);
   assert.equal(admin.includes("CUSTOMER_DOCUMENTS"), true);
+});
+
+test("backend canonical customer document catalog excludes retired labels", () => {
+  assert.deepEqual(DOCUMENT_TYPES, [
+    "Aadhaar",
+    "PAN",
+    "Salary Slip",
+    "ITR",
+    "Bank Statement",
+    "Electricity Bill",
+    "Rent Agreement",
+    "Form 16",
+    "Other Document",
+  ]);
 });
 
 test("document upload authority is independent from the request checklist", () => {
