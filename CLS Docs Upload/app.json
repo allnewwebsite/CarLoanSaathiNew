@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "CarLoanSaathi Finance Desk",
+    "slug": "car-loan-saathi-finance-desk-docs",
+    "version": "1.0.0",
+    "icon": "./src/assets/brand/stamp.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./src/assets/brand/stamp.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow CarLoanSaathi Finance Desk to select customer documents.",
+          "cameraPermission": "Allow CarLoanSaathi Finance Desk to photograph customer documents."
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.carloansaathi.financedeskdocs",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/brand/stamp.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.carloansaathi.financedeskdocs"
+    },
+    "extra": {
+      "apiBaseUrl": "",
+      "eas": {
+        "projectId": "495cba12-f909-4482-91ed-9f337ac78d6c"
+      }
+    },
+    "owner": "hydarkdevil"
+  }
+}

@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.env.*
+!.env.example
+android/.gradle/
+android/.cxx/
+ios/Pods/
+*.apk
+*.aab
