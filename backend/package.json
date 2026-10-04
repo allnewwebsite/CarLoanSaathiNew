@@ -11,6 +11,7 @@
     "start": "node server.js",
     "test": "node --test tests/*.test.js",
     "create-super-admin": "node scripts/createSuperAdmin.js",
+    "repair-super-admin-profile": "node scripts/repairSuperAdminProfile.js",
     "maintenance": "node scripts/runMaintenance.js",
     "backfill:metrics": "node scripts/backfillMetrics.js",
     "backfill:phase1-projections": "node scripts/backfillPhase1Projections.js",

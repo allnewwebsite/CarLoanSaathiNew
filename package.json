@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "create-super-admin": "npm --prefix backend run create-super-admin",
+    "repair-super-admin-profile": "npm --prefix backend run repair-super-admin-profile --",
     "maintenance": "npm --prefix backend run maintenance",
     "backfill:metrics": "npm --prefix backend run backfill:metrics",
     "backfill:bank-analytics": "npm --prefix backend run backfill:bank-analytics",
