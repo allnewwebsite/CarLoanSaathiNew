@@ -59,6 +59,8 @@ Target page shape:
 
 ## Workflow Mutations
 
+`POST /api/documents/upload` accepts an optional `Idempotency-Key` header. New mobile clients must generate one key per logical upload and reuse it for retries. The same key with the same authenticated uploader, dealership, case, document type, and file returns the canonical document; a mismatch returns `409 IDEMPOTENCY_KEY_CONFLICT`. Requests without this header retain existing behavior.
+
 | Endpoint | Roles | Body | Shape | Side Effects |
 | --- | --- | --- | --- | --- |
 | `POST /api/dealer/leads` | `finance-desk` | lead form | lead record | projections, audit, timeline, analytics |
