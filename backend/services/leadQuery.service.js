@@ -1,4 +1,5 @@
 import { countRecords, queryRecords } from "./firestore.service.js";
+import { cursorQueryHash, encodeCursor, parseCursor } from "./firestoreQuery.service.js";
 import { paginationParams, pageResponse } from "../utils/pagination.js";
 import { LEAD_STATUSES, normalizeStatus } from "../utils/status.constants.js";
 import { logInfo } from "./logger.service.js";
@@ -202,6 +203,22 @@ function queryWhere(baseWhere = [], query = {}) {
   return where;
 }
 
+function leadCursorScope(query = {}) {
+  const { limit: _limit, cursor: _cursor, page: _page, ...filters } = query;
+  return { kind: "lead-list", filters };
+}
+
+function normalizedLeadSearch(query = {}) {
+  return /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search;
+}
+
+function cursorMismatch() {
+  const error = new Error("Pagination cursor does not match this list's filters or ordering. Refresh the list and try again.");
+  error.status = 400;
+  error.code = "INVALID_PAGINATION_CURSOR";
+  return error;
+}
+
 export async function queryDealershipLeads({ dealershipId, query = {}, fields = LEAD_FIELDS, requestId = null } = {}) {
   const startedAt = Date.now();
   const { limit, cursor, page } = paginationParams(query);
@@ -213,8 +230,9 @@ export async function queryDealershipLeads({ dealershipId, query = {}, fields = 
     limit,
     cursor,
     page,
-    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+    search: normalizedLeadSearch(query),
     searchFields: SEARCH_FIELDS,
+    cursorScope: leadCursorScope(query),
     fields,
   });
   const queryEndedAt = Date.now();
@@ -253,8 +271,9 @@ export async function queryBankLeads({ bankId, query = {}, fields = LEAD_FIELDS 
     limit,
     cursor,
     page,
-    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+    search: normalizedLeadSearch(query),
     searchFields: SEARCH_FIELDS,
+    cursorScope: leadCursorScope(query),
     fields,
   });
   const data = localFilters(result.data, query);
@@ -290,27 +309,64 @@ export async function queryExecutiveLeads({
     specs.findIndex((item) => item.field === spec.field && item.value === spec.value) === index
   );
   if (!uniqueSpecs.length) return pageResponse({ data: [], limit, nextCursor: null });
-  const results = await Promise.all(uniqueSpecs.map((spec) =>
-    queryRecords("leads", {
-      where: queryWhere([spec], query),
+  const search = normalizedLeadSearch(query);
+  const unionScope = { kind: "executive-lead-union", specs: uniqueSpecs, filters: leadCursorScope(query) };
+  const unionHash = cursorQueryHash({
+    collection: "leads",
+    where: uniqueSpecs.map((spec) => ({ ...spec, op: "==" })),
+    orderBy: "createdAt",
+    direction: "desc",
+    search,
+    searchFields: SEARCH_FIELDS,
+    cursorScope: unionScope,
+  });
+  const unionCursor = cursor ? parseCursor(cursor) : null;
+  if (unionCursor && (unionCursor.orderBy !== "createdAt" || unionCursor.direction !== "desc" || unionCursor.queryHash !== unionHash)) throw cursorMismatch();
+
+  const results = await Promise.all(uniqueSpecs.map((spec) => {
+    const where = queryWhere([spec], query);
+    const cursorScope = leadCursorScope(query);
+    const subqueryHash = cursorQueryHash({
+      collection: "leads", where, orderBy: "createdAt", direction: "desc", search,
+      searchFields: SEARCH_FIELDS, cursorScope,
+    });
+    const subCursor = unionCursor
+      ? encodeCursor({ id: unionCursor.id, createdAt: unionCursor.value }, "createdAt", "desc", subqueryHash)
+      : null;
+    return queryRecords("leads", {
+      where,
       orderBy: "createdAt",
       direction: "desc",
       limit,
-      cursor,
+      cursor: subCursor,
       page,
-      search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+      search,
       searchFields: SEARCH_FIELDS,
+      cursorScope,
       fields,
-    }).catch(() => ({ data: [], nextCursor: null }))
-  ));
+    }).catch((error) => {
+      if (unionCursor) throw error;
+      return { data: [], nextCursor: null };
+    });
+  }));
   const byId = new Map();
   results.forEach((result) => {
     result.data.forEach((lead) => byId.set(lead.id, lead));
   });
-  const rows = [...byId.values()]
-    .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")))
-    .slice(0, limit);
-  const nextCursor = results.find((result) => result.nextCursor)?.nextCursor || null;
+  const orderedRows = [...byId.values()].sort((left, right) => {
+    const leftValue = typeof left.createdAt?.toMillis === "function" ? left.createdAt.toMillis() : left.createdAt instanceof Date ? left.createdAt.getTime() : left.createdAt;
+    const rightValue = typeof right.createdAt?.toMillis === "function" ? right.createdAt.toMillis() : right.createdAt instanceof Date ? right.createdAt.getTime() : right.createdAt;
+    const valueOrder = leftValue < rightValue ? 1 : leftValue > rightValue ? -1 : 0;
+    if (valueOrder) return valueOrder;
+    const leftId = String(left.id || "");
+    const rightId = String(right.id || "");
+    return leftId < rightId ? 1 : leftId > rightId ? -1 : 0;
+  });
+  const hasMore = orderedRows.length > limit;
+  const rows = orderedRows.slice(0, limit);
+  const nextCursor = hasMore
+    ? encodeCursor(rows[rows.length - 1], "createdAt", "desc", unionHash)
+    : null;
   const data = localFilters(rows, query);
   return pageResponse({ data, limit, nextCursor });
 }
@@ -325,8 +381,9 @@ export async function queryAllLeads({ query = {}, fields = LEAD_FIELDS }) {
     limit,
     cursor,
     page,
-    search: /^CLS-/i.test(String(query.search || "").trim()) ? "" : query.search,
+    search: normalizedLeadSearch(query),
     searchFields: SEARCH_FIELDS,
+    cursorScope: leadCursorScope(query),
     fields,
     allowGlobal: true,
   });
@@ -354,6 +411,7 @@ export async function queryDeadCases({ dealershipId = "", bankId = "", executive
     page,
     search: query.search,
     searchFields: SEARCH_FIELDS,
+    cursorScope: leadCursorScope(query),
     fields,
     maxLimit: 100,
     allowGlobal: !dealershipId && !bankId && !executiveId && !salespersonId,

@@ -339,6 +339,11 @@ export async function queryLeadProjectionForUser({ user = {}, query = {}, fields
         page,
         search: query.search,
         searchFields: ["searchText", ...VIEW_SEARCH_FIELDS],
+        cursorScope: {
+          kind: "lead-projection",
+          role,
+          filters: Object.fromEntries(Object.entries(query).filter(([key]) => !["limit", "cursor", "page"].includes(key))),
+        },
         fields: projectionFields,
         maxLimit: 100,
       });

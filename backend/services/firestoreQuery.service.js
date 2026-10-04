@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import { FieldPath, Timestamp } from "firebase-admin/firestore";
 import { firestore } from "../firebase/admin.js";
 import { assertCompositeIndexFallbackAllowed, assertLeadQueryScoped, assertPaginationSafe, clampQueryLimit, withQueryMonitoring } from "./queryGovernance.service.js";
 import { logInfo, logWarn } from "./logger.service.js";
@@ -89,19 +91,144 @@ export async function listRecentRecords(collection, { limit = 50, orderBy = "cre
   }).then((page) => page.data);
 }
 
-function parseCursor(cursor) {
+export function parseCursor(cursor) {
   if (!cursor) return null;
   try {
-    return JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
-  } catch {
-    return null;
+    const encoded = String(cursor);
+    if (encoded.length > 8192) throw new Error("Cursor is too large");
+    const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    if (!parsed || typeof parsed !== "object" || parsed.v !== 2
+      || !Object.hasOwn(parsed, "value") || typeof parsed.id !== "string" || !parsed.id
+      || typeof parsed.orderBy !== "string" || !["asc", "desc"].includes(parsed.direction)
+      || !/^[a-f0-9]{64}$/.test(parsed.queryHash || "")
+      || !isValidCursorValue(parsed.value)) {
+      throw new Error("Invalid cursor structure");
+    }
+    return parsed;
+  } catch (cause) {
+    const error = new Error("Pagination cursor is invalid or expired. Refresh the list and try again.", { cause });
+    error.status = 400;
+    error.code = "INVALID_PAGINATION_CURSOR";
+    throw error;
   }
 }
 
-function encodeCursor(record, orderByField) {
+function isValidCursorValue(value, depth = 0) {
+  if (depth > 8) return false;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.length <= 100 && value.every((entry) => isValidCursorValue(entry, depth + 1));
+  if (!value || typeof value !== "object") return false;
+  if (value.__cursorType === "date") return typeof value.value === "string" && Number.isFinite(Date.parse(value.value));
+  if (Object.hasOwn(value, "_seconds") || Object.hasOwn(value, "_nanoseconds")) {
+    return Number.isInteger(value._seconds) && Number.isInteger(value._nanoseconds)
+      && value._nanoseconds >= 0 && value._nanoseconds < 1_000_000_000;
+  }
+  return Object.keys(value).length <= 100 && Object.values(value).every((entry) => isValidCursorValue(entry, depth + 1));
+}
+
+function decodeCursorValue(value) {
+  if (value && typeof value === "object" && value.__cursorType === "date" && typeof value.value === "string") {
+    return new Date(value.value);
+  }
+  if (value && typeof value === "object" && Number.isInteger(value._seconds) && Number.isInteger(value._nanoseconds)) {
+    return new Timestamp(value._seconds, value._nanoseconds);
+  }
+  return value;
+}
+
+function stableSerialize(value) {
+  if (value instanceof Date) return JSON.stringify({ __cursorType: "date", value: value.toISOString() });
+  if (value && typeof value.toMillis === "function") return stableSerialize({ _seconds: value.seconds, _nanoseconds: value.nanoseconds });
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function cursorQueryHash({
+  collection,
+  where = [],
+  orderBy = "createdAt",
+  direction = "desc",
+  search = "",
+  searchFields = [],
+  cursorScope = null,
+  allowGlobal = false,
+} = {}) {
+  const identity = stableSerialize({ collection, where, orderBy, direction, search, searchFields, cursorScope, allowGlobal: Boolean(allowGlobal) });
+  return crypto.createHash("sha256").update(identity).digest("hex");
+}
+
+export function encodeCursor(record, orderByField, direction = "desc", queryHash = "") {
   if (!record) return null;
-  const value = record[orderByField] || record.createdAt || record.updatedAt || "";
-  return Buffer.from(JSON.stringify({ value, id: record.id })).toString("base64url");
+  if (!/^[a-f0-9]{64}$/.test(queryHash)) throw new TypeError("A query-bound cursor hash is required");
+  const value = record[orderByField] ?? null;
+  const serializableValue = value instanceof Date
+    ? { __cursorType: "date", value: value.toISOString() }
+    : value && typeof value.toJSON === "function"
+      ? value.toJSON()
+      : value;
+  return Buffer.from(JSON.stringify({ v: 2, orderBy: orderByField, direction, queryHash, value: serializableValue, id: String(record.id) })).toString("base64url");
+}
+
+function invalidCursorError() {
+  const error = new Error("Pagination cursor does not match this list's filters or ordering. Refresh the list and try again.");
+  error.status = 400;
+  error.code = "INVALID_PAGINATION_CURSOR";
+  return error;
+}
+
+function compareScalar(left, right) {
+  if (left === right) return 0;
+  const leftMissing = left === null || left === undefined;
+  const rightMissing = right === null || right === undefined;
+  if (leftMissing && rightMissing) return 0;
+  if (leftMissing) return -1;
+  if (rightMissing) return 1;
+  const leftValue = typeof left?.toMillis === "function" ? left.toMillis() : left instanceof Date ? left.getTime() : left;
+  const rightValue = typeof right?.toMillis === "function" ? right.toMillis() : right instanceof Date ? right.getTime() : right;
+  if (typeof leftValue === "number" && typeof rightValue === "number") return leftValue < rightValue ? -1 : 1;
+  const a = String(leftValue);
+  const b = String(rightValue);
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareRecordToCursor(record, cursor, orderByField, direction) {
+  const valueOrder = compareScalar(record[orderByField], decodeCursorValue(cursor.value));
+  const idOrder = compareScalar(String(record.id || ""), String(cursor.id || ""));
+  const tupleOrder = valueOrder || idOrder;
+  return direction === "asc" ? tupleOrder : -tupleOrder;
+}
+
+function compareRecords(left, right, orderByField, direction) {
+  const tupleOrder = compareScalar(left[orderByField], right[orderByField])
+    || compareScalar(String(left.id || ""), String(right.id || ""));
+  return direction === "asc" ? tupleOrder : -tupleOrder;
+}
+
+export function applyStableFirestoreOrdering(ref, { orderBy, direction = "desc", cursor = null } = {}) {
+  let query = ref.orderBy(orderBy, direction).orderBy(FieldPath.documentId(), direction);
+  if (cursor) query = query.startAfter(decodeCursorValue(cursor.value), String(cursor.id));
+  return query;
+}
+
+export async function scanFirestoreSearchPages({ fetchPage, search, searchFields, limit, orderBy, direction = "desc", cursor = null, scanLimit = Math.max(limit + 1, 50) }) {
+  const matchingDocs = [];
+  let rawReadCount = 0;
+  let scanCursor = cursor;
+  while (matchingDocs.length <= limit) {
+    const page = await fetchPage(scanCursor, scanLimit);
+    rawReadCount += page.size;
+    for (const doc of page.docs) {
+      if (applySearch([{ ...doc.data(), id: doc.id }], search, searchFields).length) matchingDocs.push(doc);
+    }
+    if (matchingDocs.length > limit || page.size < scanLimit || !page.docs.length) break;
+    const lastDoc = page.docs[page.docs.length - 1];
+    scanCursor = { value: lastDoc.get(orderBy), id: lastDoc.id };
+  }
+  return { docs: matchingDocs, size: rawReadCount };
 }
 
 function applyMemoryWhere(records, whereClauses = []) {
@@ -136,7 +263,7 @@ function isMissingCompositeIndexError(error) {
     || String(error?.message || "").includes("requires an index");
 }
 
-async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset = 0, search, searchFields, fields, maxLimit }) {
+async function fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset = 0, search, searchFields, fields, maxLimit, queryHash }) {
   const startedAt = Date.now();
   logWarn("Firestore composite index missing; using scoped fallback query", {
     collection,
@@ -150,20 +277,20 @@ async function fallbackIndexedQuery({ collection, where, orderBy, direction, saf
     ref = ref.where(clause.field, clause.op || "==", clause.value);
   }
   const fallbackLimit = Math.min(Math.max(safeLimit * 5, safeLimit), maxLimit);
-  const snapshot = await ref.limit(fallbackLimit).get();
-  recordFirestoreRead({ collection, operation: "query-fallback", documentsReturned: snapshot.size, estimatedReads: snapshot.size, limit: fallbackLimit });
-  let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-  rows = applySearch(rows, search, searchFields);
-  rows = rows.sort((left, right) => {
-    const leftValue = String(left[orderBy] || "");
-    const rightValue = String(right[orderBy] || "");
-    return direction === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
-  });
-  if (parsedCursor) {
-    const index = rows.findIndex((row) => row.id === parsedCursor.id);
-    if (index >= 0) rows = rows.slice(index + 1);
+  const snapshot = await ref.limit(fallbackLimit + 1).get();
+  if (snapshot.size > fallbackLimit) {
+    const error = new Error("A required Firestore index is missing; refresh later or contact support.");
+    error.status = 503;
+    error.code = "FIRESTORE_COMPOSITE_INDEX_REQUIRED";
+    throw error;
   }
+  recordFirestoreRead({ collection, operation: "query-fallback", documentsReturned: snapshot.size, estimatedReads: snapshot.size, limit: fallbackLimit + 1 });
+  let rows = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
+  rows = applySearch(rows, search, searchFields);
+  rows = rows.sort((left, right) => compareRecords(left, right, orderBy, direction));
+  if (parsedCursor) rows = rows.filter((row) => compareRecordToCursor(row, parsedCursor, orderBy, direction) > 0);
   if (offset) rows = rows.slice(offset);
+  const hasMore = rows.length > safeLimit;
   rows = rows.slice(0, safeLimit);
   if (collection === "leads") rows = await withLeadCaseIds(rows, rows.map((row) => ({ ref: firestore.collection(collection).doc(row.id) })));
   if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
@@ -188,7 +315,7 @@ async function fallbackIndexedQuery({ collection, where, orderBy, direction, saf
   return {
     data: rows.map((record) => selectFields(record, fields)),
     limit: safeLimit,
-    nextCursor: null,
+    nextCursor: hasMore ? encodeCursor(rows[rows.length - 1], orderBy, direction, queryHash) : null,
     indexFallback: true,
   };
 }
@@ -199,6 +326,7 @@ export async function queryRecords(collection, {
   direction = "desc",
   limit = 20,
   cursor = null,
+  cursorScope = null,
   page = null,
   search = "",
   searchFields = [],
@@ -207,7 +335,10 @@ export async function queryRecords(collection, {
   allowGlobal = false,
 } = {}) {
   const safeLimit = Math.min(clampQueryLimit(limit, 20), maxLimit);
+  const hasSearch = Boolean(String(search || "").trim());
   const parsedCursor = parseCursor(cursor);
+  const expectedCursorHash = cursorQueryHash({ collection, where, orderBy, direction, search, searchFields, cursorScope, allowGlobal });
+  if (parsedCursor && (parsedCursor.orderBy !== orderBy || parsedCursor.direction !== direction || parsedCursor.queryHash !== expectedCursorHash)) throw invalidCursorError();
   const pageNumber = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : null;
   assertPaginationSafe({ page: pageNumber, limit: safeLimit, cursor, collection });
   const offset = !parsedCursor && pageNumber && pageNumber > 1 ? (pageNumber - 1) * safeLimit : 0;
@@ -249,24 +380,18 @@ export async function queryRecords(collection, {
 
   if (!firestore) {
     const memoryStartedAt = Date.now();
-    let rows = applyMemoryWhere(memoryStore[collection] || [], where);
+    let rows = applyMemoryWhere(memoryStore[collection] || [], where).filter((record) => Object.hasOwn(record, orderBy));
     rows = applySearch(rows, search, searchFields);
-    rows = rows.sort((left, right) => {
-      const leftValue = String(left[orderBy] || "");
-      const rightValue = String(right[orderBy] || "");
-      return direction === "asc" ? leftValue.localeCompare(rightValue) : rightValue.localeCompare(leftValue);
-    });
-    if (parsedCursor) {
-      const index = rows.findIndex((row) => row.id === parsedCursor.id);
-      if (index >= 0) rows = rows.slice(index + 1);
-    }
+    rows = rows.sort((left, right) => compareRecords(left, right, orderBy, direction));
+    if (parsedCursor) rows = rows.filter((row) => compareRecordToCursor(row, parsedCursor, orderBy, direction) > 0);
     if (offset) rows = rows.slice(offset);
     const page = rows.slice(0, safeLimit);
+    const hasMore = rows.length > safeLimit;
     const memoryPage = {
       data: page.map((record) => selectFields(record, fields)),
       total: rows.length,
       limit: safeLimit,
-      nextCursor: page.length === safeLimit ? encodeCursor(page[page.length - 1], orderBy) : null,
+      nextCursor: hasMore ? encodeCursor(page[page.length - 1], orderBy, direction, expectedCursorHash) : null,
     };
     if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
       logInfo("Firestore memory query completed", {
@@ -292,21 +417,36 @@ export async function queryRecords(collection, {
   const queryStartedAt = Date.now();
   try {
     snapshot = await withQueryMonitoring({ collection, operation: "query", where, limit: safeLimit }, async () => {
-      let ref = firestore.collection(collection);
-      for (const clause of where) {
-        ref = ref.where(clause.field, clause.op || "==", clause.value);
-      }
-      ref = ref.orderBy(orderBy, direction);
-      if (parsedCursor?.value) ref = ref.startAfter(parsedCursor.value);
-      else if (offset) ref = ref.offset(offset);
-      if (fields.length && typeof ref.select === "function") ref = ref.select(...fields.filter((field) => field !== "id"));
-      ref = ref.limit(safeLimit + 1);
-      return ref.get();
+      const buildQuery = (afterCursor) => {
+        let ref = firestore.collection(collection);
+        for (const clause of where) ref = ref.where(clause.field, clause.op || "==", clause.value);
+        ref = applyStableFirestoreOrdering(ref, { orderBy, direction, cursor: afterCursor });
+        if (!afterCursor && offset) ref = ref.offset(offset);
+        const projection = [...new Set([
+          ...fields.filter((field) => field !== "id"),
+          ...(hasSearch ? searchFields : []),
+          orderBy,
+        ])];
+        if (fields.length && projection.length && typeof ref.select === "function") ref = ref.select(...projection);
+        return ref;
+      };
+
+      if (!hasSearch) return buildQuery(parsedCursor).limit(safeLimit + 1).get();
+      if (!searchFields.length) return { docs: [], size: 0 };
+      return scanFirestoreSearchPages({
+        fetchPage: (afterCursor, pageLimit) => buildQuery(afterCursor).limit(pageLimit).get(),
+        search,
+        searchFields,
+        limit: safeLimit,
+        orderBy,
+        direction,
+        cursor: parsedCursor,
+      });
     });
   } catch (error) {
     if (isMissingCompositeIndexError(error) && where.length) {
       assertCompositeIndexFallbackAllowed({ collection, where, orderBy });
-      return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit });
+      return fallbackIndexedQuery({ collection, where, orderBy, direction, safeLimit, parsedCursor, offset, search, searchFields, fields, maxLimit, queryHash: expectedCursorHash });
     }
     if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
       logWarn("Firestore query failed", {
@@ -328,7 +468,7 @@ export async function queryRecords(collection, {
     }
     throw error;
   }
-  let rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  let rows = snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
   recordFirestoreRead({
     collection,
     operation: "query",
@@ -343,14 +483,14 @@ export async function queryRecords(collection, {
     estimatedReads: snapshot.size,
     limit: safeLimit,
   });
-  rows = applySearch(rows, search, searchFields);
+  if (!hasSearch) rows = applySearch(rows, search, searchFields);
   const hasMore = rows.length > safeLimit;
   rows = rows.slice(0, safeLimit);
   if (collection === "leads") rows = await withLeadCaseIds(rows, snapshot.docs.slice(0, rows.length));
   const resultPage = {
     data: rows.map((record) => selectFields(record, fields)),
     limit: safeLimit,
-    nextCursor: hasMore ? encodeCursor(rows[rows.length - 1], orderBy) : null,
+    nextCursor: hasMore ? encodeCursor(rows[rows.length - 1], orderBy, direction, expectedCursorHash) : null,
   };
   if (DIAGNOSTIC_QUERY_COLLECTIONS.has(collection)) {
     logInfo("Firestore query completed", {
